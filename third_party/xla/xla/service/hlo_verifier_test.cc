@@ -5103,6 +5103,56 @@ TEST_F(HloVerifierTest, VerifyBuffersLayoutChangeInPinAllowed) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithoutWrappedComputation) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  ENTRY Entry {
+  p0 = f32[10] parameter(0)
+  b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}: (0, {})}
+  async-start = ((b(f32[10])), b(f32[10])) custom-call-start(b0),
+    custom_call_target="foo"
+  async-done = b(f32[10]) custom-call-done(async-start)
+  ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  // Without the user provided wrapped computation, the verifier generated
+  // wrapped computation doesn't have the needed alias information for buffers.
+  EXPECT_THAT(status.message(),
+              HasSubstr("buffer is used in operands but not in results"));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithWrappedComputation) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  wrapped_async {
+    p = b(f32[10]) parameter(0)
+    ROOT b = b(f32[10]) custom-call(p), custom_call_target="foo",
+      output_to_operand_aliasing={{}: (0, {})},
+      api_version=API_VERSION_STATUS_RETURNING
+  }
+
+  ENTRY Entry {
+  p0 = f32[10] parameter(0)
+  b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}: (0, {})}
+  async-start = ((b(f32[10])), b(f32[10])) async-start(b0), calls=wrapped_async
+  async-done = b(f32[10]) async-done(async-start)
+  ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTestLayoutSensitive,
        VerifyBuffersLayoutChangeInPinNotAllowed) {
   const char* const hlo = R"(

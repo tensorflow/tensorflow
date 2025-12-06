@@ -914,7 +914,14 @@ class HloComputation {
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
 
+  // Returns true iff instructions in this computation are either the root or
+  // parameter instructions.
+  bool InstructionsAreRootOrParameters() const;
   // Returns true iff this computation can be inlined as a single instruction.
+  // This routine is currently only used to convert AsyncStart/AsyncUpdate
+  // with an explicit wrapped async computation into a wrapped-async-op. If the
+  // wrapped async computation contains operand-to-output aliasing, returns
+  // false to prevent such a conversion.
   bool CanExpandIntoSingleInstruction() const;
 
   // A comparator that orders computations by their unique IDs. This is used

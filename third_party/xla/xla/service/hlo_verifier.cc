@@ -2828,7 +2828,7 @@ absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
 // Checks that the asynchronous computation only has a root and parameter
 // instructions.
 absl::Status VerifyAsyncComputation(const HloComputation* async_computation) {
-  if (!async_computation->CanExpandIntoSingleInstruction()) {
+  if (!async_computation->InstructionsAreRootOrParameters()) {
     return FailedPrecondition(
         "Asynchronous computation %s expected to contain only the root and "
         "parameter instructions.",
@@ -3489,6 +3489,14 @@ absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
 absl::Status VerifyBuffers(const HloModule& module, bool layout_sentitive) {
   for (auto* comp : module.computations()) {
     for (auto* inst : comp->instructions()) {
+      if (inst->IsAsynchronous()) {
+        // No need for additional buffer verification as the correctness of
+        // buffer usage in AsyncStart/Update/Done is guaranteed through:
+        //   .Making sure these ops are consistent with the wrapped computation.
+        //   .Buffer verification for the custom-call op inside the wrapped
+        //    computation.
+        continue;
+      }
       if (inst->opcode() == HloOpcode::kCustomCall) {
         TF_RETURN_IF_ERROR(VerifyCustomCall(
             Cast<HloCustomCallInstruction>(inst), layout_sentitive));
