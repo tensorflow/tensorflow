@@ -25,7 +25,7 @@ namespace tensorflow {
 class StringFormatOp : public OpKernel {
  public:
   explicit StringFormatOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string template_;
+    std::string template_;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("template", &template_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("placeholder", &placeholder_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
@@ -43,7 +43,7 @@ class StringFormatOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &formatted_string));
 
-    string msg;
+    std::string msg;
     absl::StrAppend(&msg, split_template_[0]);
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       absl::StrAppend(&msg, ctx->input(i).SummarizeValue(summarize_, true));
@@ -54,8 +54,8 @@ class StringFormatOp : public OpKernel {
   }
 
  private:
-  int32 summarize_ = 0;
-  string placeholder_;
+  int32_t summarize_ = 0;
+  std::string placeholder_;
   std::vector<std::string> split_template_;
 };
 

@@ -190,8 +190,8 @@ class StridedSliceOp : public OpKernel {
   }
 
  private:
-  int32 begin_mask, end_mask;
-  int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  int32_t begin_mask, end_mask;
+  int32_t ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
 
 template <typename Device, typename T>
@@ -223,9 +223,9 @@ class StridedSliceGradOp : public OpKernel {
         errors::InvalidArgument("shape must be 1-D, got shape.shape = ",
                                 input_shape_tensor.shape().DebugString()));
     if (input_shape_tensor.dtype() == DT_INT32) {
-      OP_REQUIRES_OK(
-          context, TensorShapeUtils::MakeShape(input_shape_tensor.vec<int32>(),
-                                               &input_shape));
+      OP_REQUIRES_OK(context,
+                     TensorShapeUtils::MakeShape(
+                         input_shape_tensor.vec<int32_t>(), &input_shape));
     } else if (input_shape_tensor.dtype() == DT_INT64) {
       OP_REQUIRES_OK(context,
                      TensorShapeUtils::MakeShape(
@@ -284,8 +284,8 @@ class StridedSliceGradOp : public OpKernel {
   }
 
  private:
-  int32 begin_mask, end_mask;
-  int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  int32_t begin_mask, end_mask;
+  int32_t ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
 
 template <typename Device, typename T, bool isTensor>
@@ -411,8 +411,8 @@ class StridedSliceAssignOp : public OpKernel {
   }
 
  private:
-  int32 begin_mask, end_mask;
-  int32 ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  int32_t begin_mask, end_mask;
+  int32_t ellipsis_mask, new_axis_mask, shrink_axis_mask;
 };
 
 #define REGISTER_STRIDED_SLICE(type)                                    \

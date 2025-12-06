@@ -64,7 +64,7 @@ class StringLowerOp : public OpKernel {
   }
 
  private:
-  string encoding_;
+  std::string encoding_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringLower").Device(DEVICE_CPU), StringLowerOp);
