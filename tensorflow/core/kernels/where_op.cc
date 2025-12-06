@@ -374,9 +374,9 @@ TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
 
 REGISTER_KERNEL_BUILDER(Name("Where")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
-                        WhereCPUOp<int32>);
+                        WhereCPUOp<int32_t>);
 
 }  // namespace tensorflow
