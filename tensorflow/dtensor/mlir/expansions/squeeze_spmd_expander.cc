@@ -66,7 +66,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SqueezeSPMDExpander::ComputeLayoutForward(
 
   std::vector<std::string> layout_specs;
   layout_specs.reserve(input_layout.rank());
-  for (int64 i = 0; i < input_layout.rank(); ++i) {
+  for (int64_t i = 0; i < input_layout.rank(); ++i) {
     if (squeeze_dims.empty()) {
       if (shape[i] > 1) {
         layout_specs.push_back(input_layout.sharding_spec(i));
