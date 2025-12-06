@@ -61,7 +61,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -71,7 +71,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -184,7 +184,7 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
     int64_t num_elements_;
   };
 
-  static string ElementString(int64_t n) {
+  static std::string ElementString(int64_t n) {
     if (n == kInfiniteCardinality) {
       return absl::StrCat("an infinite number of elements");
     }

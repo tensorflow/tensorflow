@@ -93,7 +93,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(typename Iterator::Params{
           this, absl::StrCat(prefix, "::DenseToSparseBatch")});
     }
@@ -107,7 +107,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return absl::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
                           ")::Dataset");
     }

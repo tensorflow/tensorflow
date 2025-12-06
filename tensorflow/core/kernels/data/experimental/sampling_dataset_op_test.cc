@@ -28,7 +28,7 @@ class SamplingDatasetParams : public DatasetParams {
   SamplingDatasetParams(T input_dataset_params, float rate,
                         DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
-                        string node_name)
+                        std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         rate_(rate) {
@@ -46,7 +46,8 @@ class SamplingDatasetParams : public DatasetParams {
     return {rate, seed_tensor, seed2_tensor};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
                     SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
@@ -59,7 +60,7 @@ class SamplingDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return SamplingDatasetOp::kDatasetType;
   }
 

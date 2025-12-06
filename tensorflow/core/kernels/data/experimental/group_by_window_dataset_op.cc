@@ -91,7 +91,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::GroupByWindow")});
     }
@@ -103,7 +103,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "GroupByWindowDatasetOp::Dataset";
     }
 
@@ -435,7 +435,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      absl::Status SaveGroup(IteratorStateWriter* writer, const string& name,
+      absl::Status SaveGroup(IteratorStateWriter* writer,
+                             const std::string& name,
                              const std::vector<std::vector<Tensor>>& group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         TF_RETURN_IF_ERROR(
@@ -452,7 +453,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       absl::Status RestoreGroup(IteratorContext* ctx,
-                                IteratorStateReader* reader, const string& name,
+                                IteratorStateReader* reader,
+                                const std::string& name,
                                 std::vector<std::vector<Tensor>>* group)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         int64_t group_size;
