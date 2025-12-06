@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_GROUP_EVENTS_H_
 #define XLA_TSL_PROFILER_UTILS_GROUP_EVENTS_H_
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -103,6 +104,8 @@ class EventNode {
 
   int RootLevel() const { return root_level_; }
 
+  bool IsRoot() const { return root_level_ > 0; }
+
   bool IsCompiledFunc() const;
 
   // Compare two EventNodes based on start timestamp.
@@ -173,6 +176,9 @@ class EventForest {
       std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       tensorflow::profiler::XPlane* plane);
+  void ConnectIntraThreadTPU(tensorflow::profiler::XPlane* plane,
+                             XPlaneVisitor* visitor,
+                             ContextGroupMap* context_groups);
 
   // Creates an EventNode for each event in event_node_map and connect events
   // according to the nesting relationship within the thread.
@@ -216,12 +222,16 @@ class EventForest {
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
+  absl::flat_hash_set<XPlane*> registered_planes_;
   // std::deque for pointer stability.
   std::deque<std::pair<tensorflow::profiler::XPlane*, XPlaneVisitor>> planes_;
   // The "step" id (actually it is "function" id that are associated with
   // the tf.data pipeline.
   absl::flat_hash_set<int64_t> tf_data_step_ids_;
   EventList tf_loop_root_events_;
+  // The root events for TPUs per core.
+  std::vector<std::vector<EventNode*>> tensor_core_root_events_per_core_;
+  std::vector<std::vector<EventNode*>> sparse_core_root_events_per_core_;
   GroupMetadataMap group_metadata_map_;
 };
 
@@ -246,8 +256,10 @@ void GroupHostAndPlanes(
     const std::vector<tensorflow::profiler::XPlane*>& device_traces,
     EventForest* event_forest);
 
-void GroupXplaneEvents(tensorflow::profiler::XPlane* plane,
-                       const GroupMetadataMap& group_metadata_map);
+// Groups the events in the provided TPU plane by the step line or module line
+// depending on whether the loop is on the device or host.
+void GroupTpuXPlaneEvents(tensorflow::profiler::XPlane* plane,
+                          const GroupMetadataMap& group_metadata_map);
 
 void GroupTpuEventsOSS(
     tensorflow::profiler::XSpace* space,

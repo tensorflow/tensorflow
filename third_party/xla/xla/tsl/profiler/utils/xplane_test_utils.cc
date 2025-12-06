@@ -16,11 +16,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -58,8 +60,13 @@ XPlane* GetOrCreateHostXPlane(XSpace* space) {
 XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
                              absl::string_view device_type,
                              double peak_tera_flops_per_second,
-                             double peak_hbm_bw_gigabytes_per_second) {
+                             double peak_hbm_bw_gigabytes_per_second,
+                             std::optional<int32_t> sparsecore_core_id) {
   std::string name = TpuPlaneName(device_ordinal);
+  if (sparsecore_core_id.has_value()) {
+    name = std::string(
+        absl::StrCat(name, " SparseCore ", sparsecore_core_id.value()));
+  }
   XPlane* xplane = FindOrAddMutablePlaneWithName(space, name);
   XPlaneBuilder builder(xplane);
   builder.AddStatValue(*builder.GetOrCreateStatMetadata(
