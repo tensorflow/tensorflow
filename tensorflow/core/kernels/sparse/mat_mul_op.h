@@ -276,7 +276,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   Eigen::Ref<const SparseMatrix> GetSparseMatrixRef(
       const CSRSparseMatrix& csr_matrix, const int batch_index,
       const int64_t row_begin, const int64_t num_shard_rows,
-      std::vector<int32>* row_ptrs) {
+      std::vector<int32_t>* row_ptrs) {
     // Compute the row pointers of the sparse sub-matrix.
     row_ptrs->resize(num_shard_rows + 1);
     const int64_t row_offset =
@@ -325,7 +325,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
                 // Define an Eigen::SparseMatrix over the row range:
                 // [row_begin, row_end) of the CSR SparseMatrix A.
-                std::vector<int32> row_ptrs;
+                std::vector<int32_t> row_ptrs;
                 auto sparse_matrix = GetSparseMatrixRef(
                     lhs, batch_idx, row_begin, num_shard_rows, &row_ptrs);
 
@@ -396,7 +396,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
                 // Define a new sparse sub-matrix from the row range
                 // [row_begin, row_end) of the sparse matrix A.
-                std::vector<int32> row_ptrs;
+                std::vector<int32_t> row_ptrs;
                 auto sparse_matrix = GetSparseMatrixRef(
                     lhs, batch_idx, row_begin, num_shard_rows, &row_ptrs);
 
