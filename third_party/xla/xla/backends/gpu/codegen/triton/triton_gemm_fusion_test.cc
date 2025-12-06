@@ -3112,6 +3112,47 @@ ENTRY e {
                   /*run_hlo_passes=*/false));
 }
 
+TEST_F(TritonGemmTest, MixedF8DotExecutesCorrectly) {
+  if (!GetCudaComputeCapability().IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires a Hopper+ GPU";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(R"(
+triton_dot {
+  p0 = f8e5m2[32,32] parameter(0)
+  p1 = f8e4m3fn[32,32] parameter(1)
+  _ = f32[32,32] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+e {
+  p0 = f8e5m2[32,32] parameter(0)
+  p1 = f8e4m3fn[32,32] parameter(1)
+  _ = f32[32,32] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,
+                         "split_k":1,"num_stages":2,"num_warps":4,
+                         "num_ctas":1}}}
+})"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f8e5m2[32,32] parameter(0)
+  p0c = f16[32,32] convert(p0)
+  p1 = f8e4m3fn[32,32] parameter(1)
+  p1c = f16[32,32] convert(p1)
+  _ = f32[32,32] dot(p0c, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(ref_module),
+                                      std::move(module_and_metadata.module),
+                                      ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
+                                      /*run_hlo_passes=*/false));
+}
+
 TEST_F(TritonGemmTest, Fp8DotWithManyWarpsDoesNotCrash) {
   if (!GetCudaComputeCapability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Doesn't pass on pre-Hopper GPUs.";
