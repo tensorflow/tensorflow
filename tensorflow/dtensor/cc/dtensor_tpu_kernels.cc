@@ -80,7 +80,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     LOG(INFO) << "ConfigureAndInitializeGlobalTPUOpKernel op";
 
     ResourceMgr* rmgr = GetTPUConfigResourceMgr();
-    std::vector<int32> core_id_output_vec;
+    std::vector<int32_t> core_id_output_vec;
     auto retry_timeout = dtensor_tpu_init_retry_timeout;
 
     TpuSystemInterface* tpu_system = GetPreferredTpuSystem();
@@ -112,7 +112,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
             0, TensorShape({static_cast<long long>(core_id_output_vec_size)}),
             &ctx_output));
     for (size_t i = 0; i < core_id_output_vec_size; ++i) {
-      ctx_output->flat<int32>()(i) = core_id_output_vec[i];
+      ctx_output->flat<int32_t>()(i) = core_id_output_vec[i];
     }
 
     LOG(INFO) << "ConfigureAndInitializeGlobalTPUOpKernel done";
@@ -131,7 +131,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
 
   static absl::Status InitializeInternal(
       OpKernelContext* ctx, ResourceMgr* rmgr, absl::Duration retry_timeout,
-      std::vector<int32>* core_id_output_vec) {
+      std::vector<int32_t>* core_id_output_vec) {
     // Reset the TPU embedding engine interface if we are not the master.
     // We need to reset the interface before initializing the host because the
     // resetting process reset the TPU platform.
@@ -165,7 +165,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     }
 
     std::string host_config_serialized;
-    std::vector<int32> num_device_per_host;
+    std::vector<int32_t> num_device_per_host;
     const auto tpu_topology = tpu_platform->topology();
     num_device_per_host.reserve(tpu_topology.HostCount());
     for (int i = 0; i < tpu_topology.HostCount(); ++i) {
