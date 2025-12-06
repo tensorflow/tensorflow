@@ -28,7 +28,7 @@ namespace tensorflow {
 // implement the Run method.
 class EagerOpRewrite {
  public:
-  EagerOpRewrite(string name, string file, string line) {
+  EagerOpRewrite(std::string name, std::string file, std::string line) {
     debug_info_.name = name;
     debug_info_.file = file;
     debug_info_.line = line;
@@ -43,7 +43,7 @@ class EagerOpRewrite {
 
   // Holds information about the rewrite registration.
   struct DebugInfo {
-    string name, file, line;
+    std::string name, file, line;
   };
 
   // Returns information about the registered Eager op rewrite.
@@ -75,7 +75,7 @@ class EagerOpRewriteRegistry {
  private:
   static constexpr int32_t kNumPhases = 2;
   // Holds all the registered Eager op rewrites and their ordinal numbers.
-  std::array<std::list<std::pair<std::unique_ptr<EagerOpRewrite>, int32>>,
+  std::array<std::list<std::pair<std::unique_ptr<EagerOpRewrite>, int32_t>>,
              kNumPhases>
       rewrites_;
 };

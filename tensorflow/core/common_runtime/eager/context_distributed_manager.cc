@@ -362,7 +362,7 @@ bool AreLocalDevicesCompatible(const EagerContext* context,
 }
 
 absl::Status AddRemoteDevicesToMgr(
-    const std::vector<string>& added_remote_workers,
+    const std::vector<std::string>& added_remote_workers,
     WorkerCacheInterface* worker_cache, DynamicDeviceMgr* remote_device_mgr) {
   std::vector<std::unique_ptr<Device>> remote_devices;
   mutex remote_devices_mu;
@@ -394,7 +394,7 @@ absl::Status AddRemoteDevicesToMgr(
 }
 
 absl::Status GetAllRemoteDevices(
-    const std::vector<string>& remote_workers,
+    const std::vector<std::string>& remote_workers,
     WorkerCacheInterface* worker_cache,
     std::unique_ptr<DynamicDeviceMgr>* device_mgr) {
   auto remote_device_mgr = std::make_unique<DynamicDeviceMgr>();
@@ -405,13 +405,13 @@ absl::Status GetAllRemoteDevices(
 }
 
 absl::Status RemoveRemoteDevicesFromMgr(
-    const std::vector<string>& removed_remote_workers,
+    const std::vector<std::string>& removed_remote_workers,
     DynamicDeviceMgr* remote_device_mgr) {
   const std::vector<Device*> remote_devices =
       (remote_device_mgr->ListDevices());
   std::vector<Device*> devices_to_remove;
   for (Device* d : remote_devices) {
-    for (const string& remote_worker : removed_remote_workers) {
+    for (const std::string& remote_worker : removed_remote_workers) {
       if (DeviceNameUtils::IsSameAddressSpace(remote_worker, d->name())) {
         devices_to_remove.emplace_back(d);
         break;
@@ -423,8 +423,8 @@ absl::Status RemoveRemoteDevicesFromMgr(
 }
 
 absl::Status ListRemoteWorkers(ServerInterface* server,
-                               const string& local_worker,
-                               std::vector<string>* remote_workers) {
+                               const std::string& local_worker,
+                               std::vector<std::string>* remote_workers) {
   server->master_env()->worker_cache->ListWorkers(remote_workers);
   remote_workers->erase(
       std::remove(remote_workers->begin(), remote_workers->end(), local_worker),
@@ -432,22 +432,22 @@ absl::Status ListRemoteWorkers(ServerInterface* server,
   return absl::OkStatus();
 }
 
-void DifferentiateWorkerLists(const std::vector<string>* current_list,
-                              const std::vector<string>* new_list,
-                              std::vector<string>* added,
-                              std::vector<string>* removed,
-                              std::vector<string>* existing) {
+void DifferentiateWorkerLists(const std::vector<std::string>* current_list,
+                              const std::vector<std::string>* new_list,
+                              std::vector<std::string>* added,
+                              std::vector<std::string>* removed,
+                              std::vector<std::string>* existing) {
   // Get STL set_difference and set_intersection with one list traversal.
   // Similar to the set_difference library function, the input lists
   // (`current_list` and `new_list`) must be sorted before calling the function.
   added->resize(new_list->size());
   removed->resize(current_list->size());
   existing->resize(current_list->size());
-  std::vector<string>::const_iterator curr_it = current_list->begin();
-  std::vector<string>::const_iterator new_it = new_list->begin();
-  std::vector<string>::iterator added_it = added->begin();
-  std::vector<string>::iterator removed_it = removed->begin();
-  std::vector<string>::iterator existing_it = existing->begin();
+  std::vector<std::string>::const_iterator curr_it = current_list->begin();
+  std::vector<std::string>::const_iterator new_it = new_list->begin();
+  std::vector<std::string>::iterator added_it = added->begin();
+  std::vector<std::string>::iterator removed_it = removed->begin();
+  std::vector<std::string>::iterator existing_it = existing->begin();
   while (curr_it != current_list->end() && new_it != new_list->end()) {
     if (*curr_it < *new_it) {
       *removed_it++ = *curr_it++;
@@ -466,10 +466,10 @@ void DifferentiateWorkerLists(const std::vector<string>* current_list,
 }
 
 absl::Status GetReplacedFromExistingWorkers(
-    const std::vector<string>* existing_workers, uint64 context_id,
-    uint64 context_view_id, const ServerDef& server_def,
+    const std::vector<std::string>* existing_workers, uint64_t context_id,
+    uint64_t context_view_id, const ServerDef& server_def,
     eager::EagerClientCache* client_cache,
-    std::vector<string>* replaced_workers) {
+    std::vector<std::string>* replaced_workers) {
   BlockingCounter counter(existing_workers->size());
   std::vector<absl::Status> statuses(existing_workers->size());
   eager::KeepAliveRequest request;
@@ -505,8 +505,8 @@ absl::Status GetReplacedFromExistingWorkers(
 }
 
 absl::Status CreateRemoteContexts(
-    EagerContext* context, const std::vector<string>& remote_workers,
-    uint64 context_id, uint64 context_view_id, int keep_alive_secs,
+    EagerContext* context, const std::vector<std::string>& remote_workers,
+    uint64_t context_id, uint64_t context_view_id, int keep_alive_secs,
     const ServerDef& server_def, eager::EagerClientCache* remote_eager_workers,
     bool async, const eager::CreateContextRequest& base_request,
     int64_t init_timeout_in_ms, int retries, bool clear_existing_contexts) {
@@ -514,7 +514,7 @@ absl::Status CreateRemoteContexts(
   BlockingCounter counter(num_remote_workers);
   std::vector<absl::Status> statuses(num_remote_workers);
   for (int i = 0; i < num_remote_workers; i++) {
-    const string& remote_worker = remote_workers[i];
+    const std::string& remote_worker = remote_workers[i];
     DeviceNameUtils::ParsedName parsed_name;
     if (!DeviceNameUtils::ParseFullName(remote_worker, &parsed_name)) {
       statuses[i] = errors::InvalidArgument("Unable to parse ", remote_worker,
@@ -583,10 +583,10 @@ absl::Status CreateRemoteContexts(
 }
 
 absl::Status UpdateRemoteContexts(
-    EagerContext* context, const std::vector<string>& remote_workers,
-    const std::vector<string>& added_workers,
-    const std::vector<string>& removed_workers, uint64 context_id,
-    uint64 context_view_id, const ServerDef& server_def,
+    EagerContext* context, const std::vector<std::string>& remote_workers,
+    const std::vector<std::string>& added_workers,
+    const std::vector<std::string>& removed_workers, uint64_t context_id,
+    uint64_t context_view_id, const ServerDef& server_def,
     eager::EagerClientCache* remote_eager_workers,
     const eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
@@ -594,8 +594,8 @@ absl::Status UpdateRemoteContexts(
   std::vector<absl::Status> statuses(num_remote_workers);
 
   int cluster_device_count = base_request.cluster_device_attributes_size();
-  std::unordered_set<string> added_or_removed(added_workers.begin(),
-                                              added_workers.end());
+  std::unordered_set<std::string> added_or_removed(added_workers.begin(),
+                                                   added_workers.end());
   std::copy(removed_workers.begin(), removed_workers.end(),
             std::inserter(added_or_removed, added_or_removed.end()));
   // Whether each device is in the updated (added or removed) workers
@@ -604,7 +604,7 @@ absl::Status UpdateRemoteContexts(
     const auto& da = base_request.cluster_device_attributes().at(i);
     DeviceNameUtils::ParsedName pn;
     DeviceNameUtils::ParseFullName(da.name(), &pn);
-    string task_name;
+    std::string task_name;
     DeviceNameUtils::GetTaskName(pn, &task_name);
     if (added_or_removed.find(task_name) != added_or_removed.end()) {
       device_added_or_removed[i] = true;
@@ -612,7 +612,7 @@ absl::Status UpdateRemoteContexts(
   }
 
   for (int i = 0; i < num_remote_workers; i++) {
-    const string& remote_worker = remote_workers[i];
+    const std::string& remote_worker = remote_workers[i];
     DeviceNameUtils::ParsedName parsed_name;
     if (!DeviceNameUtils::ParseFullName(remote_worker, &parsed_name)) {
       statuses[i] = errors::InvalidArgument("Unable to parse ", remote_worker,
@@ -689,15 +689,15 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
                                         bool reset_context, int keep_alive_secs,
                                         int64_t init_timeout_in_ms, int retries,
                                         bool clear_existing_contexts = false) {
-  string worker_name =
-      strings::StrCat("/job:", server_def.job_name(),
-                      "/replica:0/task:", server_def.task_index());
+  std::string worker_name =
+      absl::StrCat("/job:", server_def.job_name(),
+                   "/replica:0/task:", server_def.task_index());
 
   // List of current remote workers before updating server_def. Unused if
   // resetting the server_def.
-  std::vector<string> curr_remote_workers;
+  std::vector<std::string> curr_remote_workers;
   // List of updated remote workers.
-  std::vector<string> remote_workers;
+  std::vector<std::string> remote_workers;
 
   // New server created for new server_def. Unused if updating server_def.
   std::unique_ptr<ServerInterface> new_server;
@@ -722,10 +722,10 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
         ListRemoteWorkers(server, worker_name, &remote_workers));
   }
 
-  uint64 context_id = context->GetContextId();
+  uint64_t context_id = context->GetContextId();
   // TODO(b/291142876) Check for invalid context id here (instead of in the C
   // API).
-  uint64 context_view_id = context->GetContextViewId();
+  uint64_t context_view_id = context->GetContextViewId();
   if (reset_context) {
     context_id = EagerContext::NewContextId();
     context_view_id = 0;
@@ -757,10 +757,10 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
   // * existing_workers: set(curr_remote_workers) intersect set(remote_workers)
   // * replaced_workers: workers with the same task names and potentially the
   //     same `hostname:port`s, but replaced by different processes
-  std::vector<string> added_workers;
-  std::vector<string> removed_workers;
-  std::vector<string> existing_workers;
-  std::vector<string> replaced_workers;
+  std::vector<std::string> added_workers;
+  std::vector<std::string> removed_workers;
+  std::vector<std::string> existing_workers;
+  std::vector<std::string> replaced_workers;
 
   // New remote device manager created for new server_def. Unused if updating
   // server_def.
@@ -791,10 +791,11 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
         remote_eager_workers.get(), &replaced_workers));
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Updating cluster with following changes";
-      for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
-      for (const string& w : removed_workers)
+      for (const std::string& w : added_workers)
+        VLOG(1) << "  Added worker " << w;
+      for (const std::string& w : removed_workers)
         VLOG(1) << "  Removed worker " << w;
-      for (const string& w : replaced_workers)
+      for (const std::string& w : replaced_workers)
         VLOG(1) << "  Replaced worker " << w;
     }
     if (!replaced_workers.empty()) {
@@ -804,7 +805,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
                              replaced_workers.end());
       added_workers.insert(added_workers.end(), replaced_workers.begin(),
                            replaced_workers.end());
-      for (const string& w : replaced_workers) {
+      for (const std::string& w : replaced_workers) {
         existing_workers.erase(
             std::remove(existing_workers.begin(), existing_workers.end(), w),
             existing_workers.end());
@@ -868,7 +869,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
     }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
-        for (const string& w : existing_workers) {
+        for (const std::string& w : existing_workers) {
           VLOG(1) << "Updating cluster with existing worker " << w;
         }
       }
@@ -883,7 +884,7 @@ absl::Status UpdateContextWithServerDef(EagerContext* context,
     }
   }
 
-  auto session_name = strings::StrCat("eager_", context_id);
+  auto session_name = absl::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   if (reset_context) {
     tsl::core::RefCountPtr<RemoteRendezvous> r =
@@ -937,15 +938,16 @@ absl::Status EagerContextDistributedManager::SetOrUpdateServerDef(
     if (reset_context) {
       const auto& cdf = server_def.cluster_device_filters();
       for (const auto& jdf : cdf.jobs()) {
-        const string remote_prefix = "/job:" + jdf.name() + "/task:";
+        const std::string remote_prefix = "/job:" + jdf.name() + "/task:";
         for (const auto& tdf : jdf.tasks()) {
           const int32_t task_index = tdf.first;
-          std::vector<string> device_filters(tdf.second.device_filters_size());
+          std::vector<std::string> device_filters(
+              tdf.second.device_filters_size());
           for (int i = 0; i < tdf.second.device_filters_size(); i++) {
             device_filters[i] = tdf.second.device_filters(i);
           }
-          const string remote_worker =
-              strings::StrCat(remote_prefix, task_index);
+          const std::string remote_worker =
+              absl::StrCat(remote_prefix, task_index);
           TF_RETURN_IF_ERROR(
               context_->SetRemoteDeviceFilters(remote_worker, device_filters));
         }
@@ -973,9 +975,9 @@ absl::Status EagerContextDistributedManager::SetOrUpdateServerDef(
 
 absl::Status EagerContextDistributedManager::InitializeLocalOnlyContext(
     const ServerDef& server_def, int keep_alive_secs) {
-  string worker_name =
-      strings::StrCat("/job:", server_def.job_name(),
-                      "/replica:0/task:", server_def.task_index());
+  std::string worker_name =
+      absl::StrCat("/job:", server_def.job_name(),
+                   "/replica:0/task:", server_def.task_index());
   // New server created for new server_def. Unused if updating server_def.
   std::unique_ptr<ServerInterface> new_server;
   ServerInterface* server;
@@ -985,7 +987,7 @@ absl::Status EagerContextDistributedManager::InitializeLocalOnlyContext(
   LOG_AND_RETURN_IF_ERROR(
       NewServerWithOptions(server_def, {device_mgr}, &new_server));
   server = new_server.get();
-  uint64 context_id = EagerContext::NewContextId();
+  uint64_t context_id = EagerContext::NewContextId();
   // Make master eager context accessible by local eager service, which might
   // receive send tensor requests from remote workers.
   LOG_AND_RETURN_IF_ERROR(
@@ -995,7 +997,7 @@ absl::Status EagerContextDistributedManager::InitializeLocalOnlyContext(
   server->worker_env()->device_mgr->ListDeviceAttributes(
       &local_device_attributes);
 
-  auto session_name = strings::StrCat("eager_", context_id);
+  auto session_name = absl::StrCat("eager_", context_id);
   auto* session_mgr = server->worker_env()->session_mgr;
   tsl::core::RefCountPtr<RemoteRendezvous> r =
       server->worker_env()->rendezvous_mgr->Find(context_id);
@@ -1054,7 +1056,7 @@ absl::Status EagerContextDistributedManager::EnableCollectiveOps(
     const bool enable_coordination =
         !config.experimental().coordination_config().service_type().empty();
     if (enable_coordination) {
-      auto session_name = strings::StrCat("eager_", context_->GetContextId());
+      auto session_name = absl::StrCat("eager_", context_->GetContextId());
       std::shared_ptr<WorkerSession> worker_session;
       auto* session_mgr = server->worker_env()->session_mgr;
       // Start coordination service within session if this is the leader.
