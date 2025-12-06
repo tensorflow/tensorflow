@@ -121,13 +121,6 @@ limitations under the License.
 #define DEBUG_TYPE "xla-translate"
 
 using ::int64_t;
-using ::tsl::int16;
-using ::tsl::int32;
-using ::tsl::int8;
-using ::tsl::uint16;
-using ::tsl::uint32;
-using ::tsl::uint64;
-using ::tsl::uint8;
 
 // All Module level and Function level attributes must be included in:
 //   xla/mlir_hlo/utils/unregistered_attributes.h
