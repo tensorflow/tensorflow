@@ -51,6 +51,10 @@ REGISTER_NO_GRADIENT_OP("Floor");
 // Conjugate helper function returns the conjugate of an Output if it
 // is complex valued.
 Output ConjugateHelper(const Scope& scope, const Output& out) {
+  // Check if the output node is valid before accessing its type
+  if (out.node() == nullptr) {
+    return out;
+  }
   DataType dtype = out.type();
   if (dtype == DT_COMPLEX64 || dtype == DT_COMPLEX128) {
     return Conj(scope, out);
