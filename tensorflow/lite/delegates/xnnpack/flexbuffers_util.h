@@ -48,7 +48,7 @@ tflite::xnnpack::FloatPointer inline flexbuffers::Reference::As<
 #if !FLATBUFFERS_LITTLEENDIAN
   // Flexbuffers are always stored in little endian order. Returning a pointer
   // to the float data on a big endian architecture is meaningless.
-  return nullptr;
+  return {nullptr};
 #else
   return {IsFloat() ? reinterpret_cast<const float*>(data_) : nullptr};
 #endif
