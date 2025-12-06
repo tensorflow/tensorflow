@@ -228,9 +228,11 @@ class Module(autotrackable.AutoTrackable):
     class Foo(tf.Module):
       def __init__(self):
         super().__init__()
-        self.x = [tf.constant('a'), tf.constant('b')]
-        self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
-        self.z = tf.constant('e')
+        self.x = [tf.convert_to_tensor('a', dtype=tf.string),
+                  tf.convert_to_tensor('b', dtype=tf.string)]
+        self.y = {'i': tf.convert_to_tensor('c', dtype=tf.string),
+                  'j': tf.convert_to_tensor('d', dtype=tf.string)}
+        self.z = tf.convert_to_tensor('e', dtype=tf.string)
 
       @property
       def tensors(self):
