@@ -118,5 +118,16 @@ TEST(UnsortedSegmentProdModelTest, FloatTest_Simple2D) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
+TEST(UnsortedSegmentProdModelTest, Int8Test_Simple) {
+  UnsortedSegmentProdModel<int8_t> model(
+      {TensorType_INT8, {8}}, {TensorType_INT32, {8}}, {TensorType_INT32, {1}});
+  model.PopulateTensor<int8_t>(model.data(), {1, 2, 3, 4, 4, 3, 2, 1});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {1, 0, 1, 7, 7, 7, 7, 7});
+  model.PopulateTensor<int32_t>(model.num_segments(), {8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({2, 3, 1, 1, 1, 1, 1, 96}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({8}));
+}
+
 }  // namespace
 }  // namespace tflite
