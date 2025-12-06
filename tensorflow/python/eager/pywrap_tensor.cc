@@ -1144,7 +1144,7 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
 
   // NOTE: The c_str from this string needs to outlast the function, hence is
   // static.
-  static tensorflow::string fully_qualified_name =
+  static std::string fully_qualified_name =
       absl::StrCat(module, ".EagerTensor");
 
   static PyType_Spec EagerTensor_Type_spec = {
