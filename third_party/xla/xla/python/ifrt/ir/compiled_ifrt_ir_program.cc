@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/program_interpreter.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -327,6 +328,8 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   mlir::MLIRContext* context = mlir_module.getContext();
   xla::ifrt::support::RegisterMlirDialects(*context);
 
+  std::string program_name = mlir_module.getName().value_or("unknown").str();
+
   // Add the bounded executables to the atom program executable map so that
   // they can be used by the interpreter
   std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_executable_map =
@@ -434,8 +437,16 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     }
   }
 
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(devices));
+  TF_ASSIGN_OR_RETURN(
+      auto interpreter,
+      ProgramInterpreter::Create(client, program_name, mlir_module,
+                                 atom_executable_map, std::move(device_list)));
+  TF_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
+
   return CompiledIfrtIrProgram{
-      /*program_name=*/mlir_module.getName().value_or("unknown").str(),
+      /*program_name=*/std::move(program_name),
       /*atom_program_executables=*/std::move(atom_executable_map),
       /*in_specs=*/std::move(in_specs),
       /*out_specs=*/std::move(out_specs),
@@ -444,6 +455,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
       /*program=*/std::move(ifrt_ir_program),
       /*device_assignments=*/std::move(device_assignments),
       /*compile_options=*/compile_options,
+      /*execute_fn=*/std::move(execute_fn),
   };
 }
 
