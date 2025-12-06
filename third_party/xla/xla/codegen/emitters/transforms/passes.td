@@ -141,6 +141,7 @@ def LowerToLLVMPass :
     "mlir::func::FuncDialect",
     "mlir::LLVM::LLVMDialect",
     "mlir::NVVM::NVVMDialect",
+    "mlir::ROCDL::ROCDLDialect",
   ];
 
   let options = [

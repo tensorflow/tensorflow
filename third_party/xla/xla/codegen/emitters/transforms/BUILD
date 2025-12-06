@@ -29,6 +29,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lowering_utils",
+    srcs = ["lowering_utils.cc"],
+    hdrs = ["lowering_utils.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
 gentbl_cc_library(
     name = "passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -62,6 +73,7 @@ cc_library(
     deps = [
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
+        ":lowering_utils",
         ":passes_inc_gen",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
