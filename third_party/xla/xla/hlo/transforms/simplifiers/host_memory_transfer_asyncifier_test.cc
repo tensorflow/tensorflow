@@ -47,7 +47,7 @@ class HostMemoryTransferAsyncifierTest : public HloHardwareIndependentTestBase {
   }
 
   absl::StatusOr<bool> RunAsyncifier(HloModule* module) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }

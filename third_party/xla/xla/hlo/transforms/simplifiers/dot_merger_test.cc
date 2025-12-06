@@ -304,7 +304,7 @@ TEST_F(DotMergerTest, MergeThree) {
 
   // Clean up some redundant slice-of-slices so it's easier to pattern-match.
   AlgebraicSimplifier algsimp{AlgebraicSimplifierOptions{}};
-  TF_ASSERT_OK(this->RunHloPass(&algsimp, module.get()).status());
+  ASSERT_OK(this->RunHloPass(&algsimp, module.get()).status());
 
   const HloInstruction* s0 = nullptr;
   const HloInstruction* s1 = nullptr;
@@ -346,7 +346,7 @@ TEST_F(DotMergerTest, NoMergeThreeDueToCycle) {
   EXPECT_TRUE(changed);
 
   AlgebraicSimplifier algsimp{AlgebraicSimplifierOptions{}};
-  TF_ASSERT_OK(this->RunHloPass(&algsimp, module.get()).status());
+  ASSERT_OK(this->RunHloPass(&algsimp, module.get()).status());
 
   const HloInstruction* s0 = nullptr;
   const HloInstruction* s1 = nullptr;
@@ -468,7 +468,7 @@ TEST_F(DotMergerTest, MergeWithBatchDimsAndMultipleContractingDims) {
   DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Slice(), m::Slice())));
 }
@@ -624,7 +624,7 @@ TEST_F(DotMergerTest, MergeMultipleNonContractingDimsInRhsSharedOperand) {
   DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max());
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* s0 = nullptr;
   const HloInstruction* s1 = nullptr;

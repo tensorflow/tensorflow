@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
@@ -116,7 +117,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, scheduler.Run(module.get()));
   EXPECT_TRUE(changed);
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
@@ -168,7 +169,7 @@ ENTRY root {
       HloSchedule schedule,
       ScheduleModule(module.get(), ListMemoryScheduler(&alias_info_, &size_fn),
                      /*execution_threads=*/{}, &peak_memory));
-  TF_ASSERT_OK(module->set_schedule(schedule));
+  ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -351,14 +352,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_FALSE(module->has_schedule());
-  TF_ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
+  ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   // Verify that a clone of the module also has a schedule.
   std::unique_ptr<HloModule> clone = module->Clone();
   ASSERT_TRUE(clone->has_schedule());
-  TF_ASSERT_OK(clone->schedule().Verify());
+  ASSERT_OK(clone->schedule().Verify());
 }
 
 TEST_F(HloSchedulingTest, BFSScheduler) {

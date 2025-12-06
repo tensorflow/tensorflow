@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -74,17 +75,17 @@ TEST(RamFileBlockCacheTest, ValidateAndUpdateFileSignature) {
 
   // First read.
   EXPECT_TRUE(cache.ValidateAndUpdateFileSignature(filename, 123));
-  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
   EXPECT_EQ(calls, 1);
 
   // Second read. Hit cache.
   EXPECT_TRUE(cache.ValidateAndUpdateFileSignature(filename, 123));
-  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
   EXPECT_EQ(calls, 1);
 
   // Third read. File signatures are different.
   EXPECT_FALSE(cache.ValidateAndUpdateFileSignature(filename, 321));
-  TF_EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, filename, 0, 16, &out));
   EXPECT_EQ(calls, 2);
 }
 
@@ -111,13 +112,13 @@ TEST(RamFileBlockCacheTest, PassThrough) {
   RamFileBlockCache cache3(0, 0, 0, fetcher);
   RamFileBlockCache cache4(1000, 1000, 0, fetcher);
   std::vector<char> out;
-  TF_EXPECT_OK(ReadCache(&cache1, want_filename, want_offset, want_n, &out));
+  EXPECT_OK(ReadCache(&cache1, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 1);
-  TF_EXPECT_OK(ReadCache(&cache2, want_filename, want_offset, want_n, &out));
+  EXPECT_OK(ReadCache(&cache2, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 2);
-  TF_EXPECT_OK(ReadCache(&cache3, want_filename, want_offset, want_n, &out));
+  EXPECT_OK(ReadCache(&cache3, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 3);
-  TF_EXPECT_OK(ReadCache(&cache4, want_filename, want_offset, want_n, &out));
+  EXPECT_OK(ReadCache(&cache4, want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 4);
 }
 
@@ -148,7 +149,7 @@ TEST(RamFileBlockCacheTest, BlockAlignment) {
     for (size_t offset = 0; offset < 10; offset++) {
       for (size_t n = block_size - 2; n <= block_size + 2; n++) {
         std::vector<char> got;
-        TF_EXPECT_OK(ReadCache(&cache, "", offset, n, &got));
+        EXPECT_OK(ReadCache(&cache, "", offset, n, &got));
         // Verify the size of the read.
         if (offset + n <= size) {
           // Expect a full read.
@@ -196,7 +197,7 @@ TEST(RamFileBlockCacheTest, CacheHits) {
   // fetch the corresponding block).
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < block_count; j++) {
-      TF_EXPECT_OK(ReadCache(&cache, "", block_size * j, block_size, &out));
+      EXPECT_OK(ReadCache(&cache, "", block_size * j, block_size, &out));
     }
   }
 }
@@ -230,7 +231,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
   RamFileBlockCache cache(block_size, block_size, 0, fetcher);
   std::vector<char> out;
   // Reading the first 16 bytes should be fine.
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, block_size, &out));
   EXPECT_TRUE(first_block);
   EXPECT_EQ(out.size(), block_size);
   // Reading at offset file_size + 4 will read the second block (since the read
@@ -241,7 +242,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
   EXPECT_TRUE(second_block);
   // Reading the second full block will return 8 bytes, from a cache hit.
   second_block = false;
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
   EXPECT_FALSE(second_block);
   EXPECT_EQ(out.size(), file_size - block_size);
 }
@@ -264,7 +265,7 @@ TEST(RamFileBlockCacheTest, Inconsistent) {
   RamFileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
   std::vector<char> out;
   // Read the second block; this should yield an OK status and a single byte.
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
   EXPECT_EQ(out.size(), 1);
   // Now read the first block; this should yield an INTERNAL error because we
   // had already cached a partial block at a later position.
@@ -295,30 +296,30 @@ TEST(RamFileBlockCacheTest, LRU) {
   // fetcher calls that the cache makes.
   calls.push_back(0);
   // Cache miss - drains an element from `calls`.
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
   // Cache hit - does not drain an element from `calls`.
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
   calls.push_back(block_size);
   // Cache miss followed by cache hit.
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
   calls.push_back(2 * block_size);
   // Cache miss followed by cache hit.  Causes eviction of LRU element.
-  TF_EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
-  TF_EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
   // LRU element was at offset 0.  Cache miss.
   calls.push_back(0);
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
   // Element at 2 * block_size is still in cache, and this read should update
   // its position in the LRU list so it doesn't get evicted by the next read.
-  TF_EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 2 * block_size, 1, &out));
   // Element at block_size was evicted.  Reading this element will also cause
   // the LRU element (at 0) to be evicted.
   calls.push_back(block_size);
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size, 1, &out));
   // Element at 0 was evicted again.
   calls.push_back(0);
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 1, &out));
 }
 
 TEST(RamFileBlockCacheTest, MaxStaleness) {
@@ -336,14 +337,14 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
   // expected.
   RamFileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
-  TF_EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
   // Now advance the clock one second at a time and redo the read. The call
   // count should advance every 3 seconds (i.e. every time the staleness is
   // greater than 2).
   for (int i = 1; i <= 10; i++) {
     env->SetNowSeconds(i + 1);
-    TF_EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
+    EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
     EXPECT_EQ(calls, 1 + i / 3);
   }
   // Now create a cache with max staleness of 0, and verify that it also works
@@ -352,12 +353,12 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
   env->SetNowSeconds(0);
   RamFileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
-  TF_EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
   // Advance the clock by a huge amount and verify that the cached block is
   // used to satisfy the read.
   env->SetNowSeconds(365 * 24 * 60 * 60);  // ~1 year, just for fun.
-  TF_EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
 }
 
@@ -384,41 +385,41 @@ TEST(RamFileBlockCacheTest, RemoveFile) {
   std::vector<char> A(n, 'A');
   std::vector<char> B(n, 'B');
   // Fill the cache.
-  TF_EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
   EXPECT_EQ(out, a);
   EXPECT_EQ(calls, 1);
-  TF_EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
   EXPECT_EQ(out, A);
   EXPECT_EQ(calls, 2);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
   EXPECT_EQ(out, b);
   EXPECT_EQ(calls, 3);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
   EXPECT_EQ(out, B);
   EXPECT_EQ(calls, 4);
   // All four blocks should be in the cache now.
-  TF_EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
   EXPECT_EQ(out, a);
-  TF_EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
   EXPECT_EQ(out, A);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
   EXPECT_EQ(out, b);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
   EXPECT_EQ(out, B);
   EXPECT_EQ(calls, 4);
   // Remove the blocks from "a".
   cache.RemoveFile("a");
   // Both blocks from "b" should still be there.
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, n, &out));
   EXPECT_EQ(out, b);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 8, n, &out));
   EXPECT_EQ(out, B);
   EXPECT_EQ(calls, 4);
   // The blocks from "a" should not be there.
-  TF_EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 0, n, &out));
   EXPECT_EQ(out, a);
   EXPECT_EQ(calls, 5);
-  TF_EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 8, n, &out));
   EXPECT_EQ(out, A);
   EXPECT_EQ(calls, 6);
 }
@@ -440,20 +441,20 @@ TEST(RamFileBlockCacheTest, Prune) {
   RamFileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());
   // Read three blocks into the cache, and advance the timestamp by one second
   // with each read. Start with a block of "a" at the current timestamp `now`.
-  TF_EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
   // Now load a block of a different file "b" at timestamp `now` + 1
   env->SetNowSeconds(now + 1);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
   // Now load a different block of file "a" at timestamp `now` + 1. When the
   // first block of "a" expires, this block should also be removed because it
   // also belongs to file "a".
-  TF_EXPECT_OK(ReadCache(&cache, "a", 8, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 8, 1, &out));
   // Ensure that all blocks are in the cache (i.e. reads are cache hits).
   EXPECT_EQ(cache.CacheSize(), 24);
   EXPECT_EQ(calls, 3);
-  TF_EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
-  TF_EXPECT_OK(ReadCache(&cache, "a", 8, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "a", 8, 1, &out));
   EXPECT_EQ(calls, 3);
   // Advance the fake timestamp so that "a" becomes stale via its first block.
   env->SetNowSeconds(now + 2);
@@ -469,7 +470,7 @@ TEST(RamFileBlockCacheTest, Prune) {
   // There should be one block left in the cache, and it should be the first
   // block of "b".
   EXPECT_EQ(cache.CacheSize(), 8);
-  TF_EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
+  EXPECT_OK(ReadCache(&cache, "b", 0, 1, &out));
   EXPECT_EQ(calls, 3);
   // Advance the fake time to `now` + 3, at which point "b" becomes stale.
   env->SetNowSeconds(now + 3);
@@ -514,8 +515,7 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
     threads.emplace_back(
         Env::Default()->StartThread({}, "caller", [&cache, i, block_size]() {
           std::vector<char> out;
-          TF_EXPECT_OK(
-              ReadCache(&cache, "a", i * block_size, block_size, &out));
+          EXPECT_OK(ReadCache(&cache, "a", i * block_size, block_size, &out));
           std::vector<char> x(block_size, 'x');
           EXPECT_EQ(out, x);
         }));
@@ -548,12 +548,12 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
   std::unique_ptr<Thread> concurrent(
       Env::Default()->StartThread({}, "concurrent", [&cache, block_size] {
         std::vector<char> out;
-        TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size / 2, &out));
+        EXPECT_OK(ReadCache(&cache, "", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);
       }));
   notification.WaitForNotification();
   std::vector<char> out;
-  TF_EXPECT_OK(ReadCache(&cache, "", block_size / 2, block_size / 2, &out));
+  EXPECT_OK(ReadCache(&cache, "", block_size / 2, block_size / 2, &out));
   EXPECT_EQ(out.size(), block_size / 2);
 
   EXPECT_EQ(1, num_requests);
@@ -570,11 +570,11 @@ TEST(RamFileBlockCacheTest, Flush) {
   };
   RamFileBlockCache cache(16, 32, 0, fetcher);
   std::vector<char> out;
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
   EXPECT_EQ(calls, 1);
   cache.Flush();
-  TF_EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
+  EXPECT_OK(ReadCache(&cache, "", 0, 16, &out));
   EXPECT_EQ(calls, 2);
 }
 
