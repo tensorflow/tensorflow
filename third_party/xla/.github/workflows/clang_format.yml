@@ -29,9 +29,6 @@ jobs:
       run:
         shell: bash
     timeout-minutes: 6
-    if: |
-      github.event.sender.type == 'User' ||
-      contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
