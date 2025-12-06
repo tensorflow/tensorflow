@@ -221,6 +221,7 @@ cc_library(
         ":hlo_op_metadata",
         ":named_sharding",
         ":tile_assignment",
+        "//third_party/highway/hwy/contrib/sort:vqsort",
         "//xla:array",
         "//xla:printer",
         "//xla:shape_tree",
