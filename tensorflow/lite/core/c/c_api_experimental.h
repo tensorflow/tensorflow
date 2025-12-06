@@ -407,6 +407,39 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
     TfLiteInterpreter* interpreter, int tensor_index);
+
+/// The severity level of a TFLite log message.
+/// This enum mirrors the LogSeverity enum in tensorflow/lite/logger.h.
+///
+/// WARNING: This is an experimental API and subject to change.
+// LINT.IfChange
+typedef enum TfLiteLogSeverity {
+  /// Default log severity level.
+  kTfLiteLogVerbose = 0,
+  /// Log routine information.
+  kTfLiteLogInfo = 1,
+  /// Log warning events that might cause problems.
+  kTfLiteLogWarning = 2,
+  /// Log error events that are likely to cause problems.
+  kTfLiteLogError = 3,
+  /// Silence logging
+  kTfLiteLogSilent = 4,
+} TfLiteLogSeverity;
+// LINT.ThenChange(//tensorflow/lite/logger.h)
+
+/// Get the minimum severity level for logging. Default is INFO in prod
+/// builds and VERBOSE in debug builds.
+/// Note: Default is always VERBOSE on Android.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteLogSeverity
+TfLiteLoggerOptionsGetMinimumLogSeverity();
+
+/// Set the minimum severity level for logging, returning the old severity.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteLogSeverity
+TfLiteLoggerOptionsSetMinimumLogSeverity(TfLiteLogSeverity new_severity);
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
