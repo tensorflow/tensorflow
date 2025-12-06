@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 
@@ -62,6 +68,14 @@ struct CompiledIfrtIrProgram {
 
   // The compile options used to compile the program.
   std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options;
+
+  // Precompiled execute function that interprets the IFRT IR program. The
+  // signature matches that of `xla::ifrt::LoadedExecutable::Execute()`.
+  absl::AnyInvocable<absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+      std::optional<xla::ifrt::DeviceListRef> devices)>
+      execute_fn;
 
   // Compiles an IFRT IR program.
   static absl::StatusOr<CompiledIfrtIrProgram> Create(
