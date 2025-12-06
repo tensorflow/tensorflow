@@ -34,8 +34,18 @@ namespace tensorflow {
 
 namespace {
 
-// Use environment setting if specified (init once)
-constexpr int32 kMaxThreadCount = 1024;
+// Calculate maximum thread count based on hardware (8x CPU cores)
+int32 GetMaxThreadCount() {
+  static const int32 max_threads = []() {
+    const int hw_concurrency = std::thread::hardware_concurrency();
+    if (hw_concurrency == 0) {
+      return 128;  // Fallback if detection fails
+    }
+    // Allow 8x oversubscription, minimum 128
+    return std::max(hw_concurrency * 8, 128);
+  }();
+  return max_threads;
+}
 
 int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
   // 0 means auto-detect - valid
@@ -52,15 +62,16 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
 
   // Get hardware info for validation
   const int hardware_concurrency = std::thread::hardware_concurrency();
-  const int max_reasonable = std::max(hardware_concurrency * 2, 1024);
+  const int max_threads = GetMaxThreadCount();
+  const int max_reasonable = std::max(hardware_concurrency * 2, 128);
 
   // CRITICAL: Clamp to prevent segfault
-  if (requested_threads > kMaxThreadCount) {
+  if (requested_threads > max_threads) {
     LOG(ERROR) << thread_type << " thread count " << requested_threads
-               << " exceeds hard limit of " << kMaxThreadCount
-               << ". Clamping to " << kMaxThreadCount
+               << " exceeds hard limit of " << max_threads
+               << ". Clamping to " << max_threads
                << ". Hardware concurrency: " << hardware_concurrency;
-    return kMaxThreadCount;
+    return max_threads;
   }
 
   // Warn if value is very large
@@ -73,12 +84,13 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
   return requested_threads;
 }
 
+// Use environment setting if specified (init once)
 int32 GetEnvNumInterOpThreads() {
   static int32_t env_num_threads = NumInterOpThreadsFromEnvironment();
   return env_num_threads;
 }
 
-int32 DefaultNumInterOpThreads() {
+int32_t DefaultNumInterOpThreads() {
 #ifndef __ANDROID__
   int32_t env_num_threads = GetEnvNumInterOpThreads();
   if (env_num_threads > 0) {
@@ -88,7 +100,7 @@ int32 DefaultNumInterOpThreads() {
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 #else
- // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
+  // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
   // used (regardless of what was chosen here); instead, all work was done on
   // the thread(s) calling Session::Run. That's no longer the case, but we'd
   // like to avoid suddenly higher concurrency and peak resource usage (for the
@@ -132,13 +144,13 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
-int32 NumInterOpThreadsFromEnvironment() {
+int32_t NumInterOpThreadsFromEnvironment() {
   int32_t num;
   const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
   return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
 }
 
-int32 NumIntraOpThreadsFromEnvironment() {
+int32_t NumIntraOpThreadsFromEnvironment() {
   int32_t num;
   const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
   return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
@@ -202,12 +214,11 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options, int32_t num_threads) {
 
-  const int32_t validated_num_threads = ValidateThreadCount(
-      num_threads, "thread_pool");
+  num_threads = ValidateThreadCount(num_threads, "thread_pool");
 
   const int32_t num_threads_real =
-      validated_num_threads > 0 ? validated_num_threads
-                                : NumInterOpThreadsFromSessionOptions(options);
+      num_threads > 0 ? num_threads
+                      : NumInterOpThreadsFromSessionOptions(options);
 
   VLOG(1) << "Session inter op parallelism threads: " << num_threads_real;
   return new thread::ThreadPool(
@@ -220,7 +231,7 @@ void SchedClosure(absl::AnyInvocable<void()> closure) {
   if (!tsl::tracing::EventCollector::IsEnabled()) {
     return Env::Default()->SchedClosure(std::move(closure));
   }
-  uint64 id = tsl::tracing::GetUniqueArg();
+  uint64_t id = tsl::tracing::GetUniqueArg();
   tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure, id);
 
   Env::Default()->SchedClosure([id, closure = std::move(closure)]() mutable {
