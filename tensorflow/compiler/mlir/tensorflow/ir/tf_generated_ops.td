@@ -6525,8 +6525,8 @@ tf.math.greater(x, y) ==> [False, False, True]
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$x,
-    TF_IntOrFpTensor:$y
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   let results = (outs
@@ -6558,8 +6558,8 @@ tf.math.greater_equal(x, y) ==> [True, False, True, True]
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$x,
-    TF_IntOrFpTensor:$y
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   let results = (outs
@@ -7734,8 +7734,8 @@ tf.math.less(x, y) ==> [False, True, True]
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$x,
-    TF_IntOrFpTensor:$y
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   let results = (outs
@@ -7767,8 +7767,8 @@ tf.math.less_equal(x, y) ==> [True, True, True]
   }];
 
   let arguments = (ins
-    TF_IntOrFpTensor:$x,
-    TF_IntOrFpTensor:$y
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y
   );
 
   let results = (outs
