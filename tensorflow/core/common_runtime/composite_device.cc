@@ -23,18 +23,20 @@ namespace tensorflow {
 const char* const kCompositeDeviceType = "COMPOSITE";
 
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
-    const std::vector<string>& underlying_devices, const int unique_device_id,
-    const DeviceNameUtils::ParsedName& host_name, absl::Status* status) {
+    const std::vector<std::string>& underlying_devices,
+    const int unique_device_id, const DeviceNameUtils::ParsedName& host_name,
+    absl::Status* status) {
   DeviceNameUtils::ParsedName parsed_name = host_name;
   parsed_name.type = kCompositeDeviceType;
   parsed_name.id = unique_device_id;
-  const string device_name = DeviceNameUtils::ParsedNameToString(parsed_name);
+  const std::string device_name =
+      DeviceNameUtils::ParsedNameToString(parsed_name);
   return CompositeDevice::MakeDevice(underlying_devices, device_name, status);
 }
 
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
-    const std::vector<string>& underlying_devices, const string& device_name,
-    absl::Status* status) {
+    const std::vector<std::string>& underlying_devices,
+    const std::string& device_name, absl::Status* status) {
   if (underlying_devices.empty()) {
     status->Update(
         errors::InvalidArgument("underlying_devices should not be empty."));
@@ -47,7 +49,7 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
         " when creating CompositeDevice."));
     return nullptr;
   }
-  const string& underlying_type = parsed_name.type;
+  const std::string& underlying_type = parsed_name.type;
   for (int i = 1; i < underlying_devices.size(); ++i) {
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(underlying_devices.at(i), &name)) {

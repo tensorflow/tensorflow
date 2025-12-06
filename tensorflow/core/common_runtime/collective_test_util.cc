@@ -57,11 +57,12 @@ bool FailTestRMA::MaybeFail(const StatusCallback& done) {
 }
 
 void FailTestRMA::RecvFromPeer(
-    const string& peer_device, const string& peer_task, bool peer_is_local,
-    const string& key, Device* to_device, DeviceContext* to_device_ctx,
-    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    CancellationManager* cancellation_manager, const StatusCallback& done) {
+    const std::string& peer_device, const std::string& peer_task,
+    bool peer_is_local, const std::string& key, Device* to_device,
+    DeviceContext* to_device_ctx, const AllocatorAttributes& to_alloc_attr,
+    Tensor* to_tensor, const DeviceLocality& client_locality,
+    int dev_to_dev_stream_index, CancellationManager* cancellation_manager,
+    const StatusCallback& done) {
   if (MaybeFail(done)) return;
   CollectiveRemoteAccessLocal::RecvFromPeer(
       peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
@@ -69,14 +70,12 @@ void FailTestRMA::RecvFromPeer(
       cancellation_manager, done);
 }
 
-void FailTestRMA::PostToPeer(const string& peer_device, const string& peer_task,
-                             const string& key, Device* from_device,
-                             DeviceContext* from_device_ctx,
-                             const AllocatorAttributes& from_alloc_attr,
-                             const Tensor* from_tensor,
-                             const DeviceLocality& client_locality,
-                             CancellationManager* cancellation_manager,
-                             const StatusCallback& done) {
+void FailTestRMA::PostToPeer(
+    const std::string& peer_device, const std::string& peer_task,
+    const std::string& key, Device* from_device, DeviceContext* from_device_ctx,
+    const AllocatorAttributes& from_alloc_attr, const Tensor* from_tensor,
+    const DeviceLocality& client_locality,
+    CancellationManager* cancellation_manager, const StatusCallback& done) {
   if (MaybeFail(done)) return;
   CollectiveRemoteAccessLocal::PostToPeer(
       peer_device, peer_task, key, from_device, from_device_ctx,
@@ -97,7 +96,7 @@ std::vector<std::unique_ptr<Device>> CreateCPUDevices(
   std::vector<std::unique_ptr<Device>> devices;
   for (int wi = 0; wi < num_workers; ++wi) {
     for (int di = 0; di < num_devices_per_worker; ++di) {
-      string dev_name =
+      std::string dev_name =
           absl::StrCat("/job:worker/replica:0/task:", wi, "/device:CPU:", di);
       devices.push_back(std::make_unique<ThreadPoolDevice>(
           sess_opts, dev_name, mem_limit, dev_locality, cpu_allocator()));
@@ -188,8 +187,9 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
 }
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
-    const CollectiveTestEnv& test_env, int rank, const string& collective_name,
-    CollectiveType collective_type, DataType dtype, const TensorShape& shape,
+    const CollectiveTestEnv& test_env, int rank,
+    const std::string& collective_name, CollectiveType collective_type,
+    DataType dtype, const TensorShape& shape,
     const std::vector<std::vector<int>> user_specified_rank) {
   static constexpr int kGroupKey = 5;
   static constexpr int kInstanceKey = 17;
@@ -210,7 +210,7 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
     std::iter_swap(local_ring_order.begin() + di,
                    local_ring_order.begin() + other);
   }
-  string lro_buf;
+  std::string lro_buf;
   for (auto d : local_ring_order) absl::StrAppend(&lro_buf, d, ", ");
   VLOG(1) << "local_ring_order " << lro_buf;
 
@@ -221,7 +221,7 @@ core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
   col_params->group.num_tasks = test_env.num_workers;
   col_params->group.device_type = test_env.device_type;
   for (int wi = 0; wi < test_env.num_workers; ++wi) {
-    string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
+    std::string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
     col_params->group.num_devices_per_task[task_name] =
         test_env.num_devices_per_worker;
     for (int di = 0; di < test_env.num_devices_per_worker; ++di) {
@@ -356,7 +356,8 @@ absl::Status RunCollective(CollectiveTestEnv* test_env,
   core::ScopedUnref unref_collective_impl(collective_impl);
   TF_RETURN_IF_ERROR(collective_impl->InitializeCollectiveParams(col_params));
 
-  string exec_key = absl::StrCat(col_params->instance.instance_key, ":0:0");
+  std::string exec_key =
+      absl::StrCat(col_params->instance.instance_key, ":0:0");
   auto col_ctx = std::make_shared<CollectiveContext>(
       test_env->col_exec.get(), test_env->nccl_communicator.get(),
       test_env->device_mgr.get(), &ctx, &op_params, col_params, exec_key,
