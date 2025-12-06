@@ -167,7 +167,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/serialization:writer_lib",
         "//tensorflow/lite/tools/versioning",
-        "@FP16",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -574,6 +574,7 @@ cc_test(
         "//tensorflow/lite:array",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
     ],
 )
