@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "DecodeJxl"
+  in_arg {
+    name: "contents"
+    description: <<END
+0-D.  The JPEG XL encoded image.
+END
+  }
+  out_arg {
+    name: "image"
+    description: <<END
+3-D with shape `[height, width, channels]`.
+END
+  }
+  attr {
+    name: "channels"
+    description: <<END
+Number of color channels for the decoded image.
+END
+  }
+  summary: "Decode a JPEG XL encoded image to a uint8 tensor."
+  description: <<END
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the JPEG XL encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+The number of channels must match that of the underlying file.
+END
+}

@@ -1,0 +1,26 @@
+licenses(["notice"])
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "dec",
+    srcs = glob(["c/dec/*.c"]),
+    hdrs = glob([
+        "c/dec/*.h",
+        "c/include/**/*.h",
+    ]),
+    copts = ["-Wno-sign-compare"],
+    includes = ["c/include"],
+)
+
+cc_library(
+    name = "enc",
+    srcs = glob(["c/enc/*.c"]),
+    hdrs = glob([
+        "c/enc/*.h",
+        "c/include/**/*.h",
+    ]),
+    copts = ["-Wno-sign-compare"],
+    includes = ["c/include"],
+    deps = [":dec"],
+)
