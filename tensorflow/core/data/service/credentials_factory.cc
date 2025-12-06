@@ -58,7 +58,7 @@ absl::Status CredentialsFactory::Get(absl::string_view protocol,
     return absl::OkStatus();
   }
 
-  std::vector<string> available_types;
+  std::vector<std::string> available_types;
   for (const auto& factory : credentials_factories()) {
     available_types.push_back(factory.first);
   }

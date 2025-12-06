@@ -128,7 +128,7 @@ absl::Status DataTransferClient::Build(
     return it->second(config, out);
   }
 
-  std::vector<string> available_names;
+  std::vector<std::string> available_names;
   for (const auto& factory : transfer_client_factories()) {
     available_names.push_back(factory.first);
   }
