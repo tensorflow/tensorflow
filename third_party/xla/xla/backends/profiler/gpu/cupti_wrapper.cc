@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
+#include <cstdint>
+
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/backends/profiler/gpu/cupti_interface.h"
 
 #if CUPTI_API_VERSION >= 24
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_pmsampling.h"
@@ -162,6 +165,17 @@ CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
                                         uint8_t per_thread_stream,
                                         uint32_t* stream_id) {
   return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
+}
+
+extern "C" {
+// Prototype for cuptiActivityEnableHWTrace if headers are not present.
+[[gnu::weak]] CUptiResult cuptiActivityEnableHWTrace(uint8_t enable);
+}  // extern "C"
+
+CUptiResult CuptiWrapper::ActivityEnableHWTrace(bool enable) {
+  return (cuptiActivityEnableHWTrace == nullptr)
+             ? CUPTI_ERROR_NOT_SUPPORTED
+             : cuptiActivityEnableHWTrace(enable ? 1 : 0);
 }
 
 // Prototypes for PM sampling and profiler host APIs if headers are not present

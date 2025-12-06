@@ -1068,6 +1068,15 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   return absl::StrCat(tsl::port::Hostname(), ": ", error_message);
 }
 
+const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
+                                CUptiResult err) {
+  const char* err_str = "ERROR-WHEN-GETTING-NAME";
+  if (cupti_interface != nullptr) {
+    cupti_interface->GetResultString(err, &err_str);
+  }
+  return err_str;
+}
+
 }  // namespace
 
 CuptiTracer::CuptiTracer(CuptiInterface* cupti_interface)
@@ -1437,6 +1446,20 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                       "overhead may be big. CUPTI ERROR CODE:"
                    << err;
     }
+    if (option_->enable_activity_hardware_tracing) {
+      auto err = cupti_interface_->ActivityEnableHWTrace(true);
+      if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+        LOG(INFO)
+            << "CUPTI activity HW trace not enabled due to not supported on "
+               "this platform!";
+      } else if (err != CUPTI_SUCCESS) {
+        LOG(WARNING)
+            << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE:"
+            << err << " (" << GetCuptiErrorString(cupti_interface_, err) << ")";
+      } else {
+        LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
+      }
+    }
     RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacks(
         RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
     VLOG(1) << "Enabling activity tracing for "
@@ -1473,6 +1496,22 @@ absl::Status CuptiTracer::DisableActivityTracing() {
       RETURN_IF_CUPTI_ERROR(ActivityDisable(activity));
     }
     option_->activities_selected.clear();
+
+    if (option_->enable_activity_hardware_tracing) {
+      auto err = cupti_interface_->ActivityEnableHWTrace(false);
+      // CUPTI_ERROR_NOT_SUPPORTED here is ok as it already handled/logged
+      // in EnableActivityTracing.
+      if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+        LOG(INFO) << "CUPTI activity HW trace not disabled due to not "
+                     "supported on this platform!";
+      } else if (err != CUPTI_SUCCESS) {
+        LOG(WARNING)
+            << "Fail to disable CUPTI activity HW trace, CUPTI ERROR CODE:"
+            << err << " (" << GetCuptiErrorString(cupti_interface_, err) << ")";
+      } else {
+        LOG(INFO) << "CUPTI activity HW trace successfully disabled.";
+      }
+    }
 
     VLOG(1) << "Flushing CUPTI activity buffer";
     RETURN_IF_CUPTI_ERROR(ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
