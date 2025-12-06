@@ -140,6 +140,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "gpu_clique_rendezvous",
+    srcs = ["gpu_clique_rendezvous.cc"],
+    hdrs = ["gpu_clique_rendezvous.h"],
+    deps = [
+        ":gpu_clique_key",
+        "//xla:util",
+        "//xla/core/collectives:rank_id",
+        "//xla/service:rendezvous",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_clique_rendezvous_test",
+    srcs = ["gpu_clique_rendezvous_test.cc"],
+    deps = [
+        ":gpu_clique_key",
+        ":gpu_clique_rendezvous",
+        "//xla/core/collectives:rank_id",
+        "//xla/runtime:device_id",
+        "//xla/service:rendezvous",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "gpu_cliques",
     srcs = ["gpu_cliques.cc"],
     hdrs = ["gpu_cliques.h"],
