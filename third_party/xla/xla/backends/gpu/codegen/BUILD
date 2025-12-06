@@ -295,7 +295,6 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters:transpose",
         "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/codegen:ir_emission_utils",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
