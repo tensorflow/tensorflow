@@ -1381,30 +1381,33 @@ PjRtCApiClient::CreateBuffersForAsyncHostToDevice(
       PJRT_Client_CreateBuffersForAsyncHostToDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.client = c_client_.get();
+
   args.num_shape_specs = shape_specs.size();
-  args.shape_specs = new PJRT_ShapeSpec[shape_specs.size()];
-  absl::Cleanup cleanup =
-      absl::MakeCleanup([&args] { delete[] args.shape_specs; });
-  const ShapeSpec* iterator = shape_specs.begin();
-  for (int i = 0; i < shape_specs.size(); ++i) {
-    args.shape_specs[i] = pjrt::ConvertToPjRtShapeSpec(*(iterator++));
+  absl::InlinedVector<PJRT_ShapeSpec, 4> c_shape_specs;
+  c_shape_specs.reserve(shape_specs.size());
+  for (const ShapeSpec& shape_spec : shape_specs) {
+    c_shape_specs.push_back(pjrt::ConvertToPjRtShapeSpec(shape_spec));
   }
+  args.shape_specs = c_shape_specs.data();
+
+  absl::InlinedVector<pjrt::BufferMemoryLayoutData, 4> layout_data_list;
+  absl::InlinedVector<PJRT_Buffer_MemoryLayout*, 4> device_layout_list;
   if (device_layouts.has_value()) {
     args.num_device_layouts = device_layouts->size();
-    auto device_layout_list =
-        std::make_unique<std::vector<PJRT_Buffer_MemoryLayout*>>(
-            device_layouts->size());
+    device_layout_list.reserve(device_layouts->size());
+    layout_data_list.reserve(device_layouts->size());
     for (int i = 0; i < device_layouts->size(); ++i) {
       if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
         const Layout& layout = (*device_layouts)[i].value();
         TF_ASSIGN_OR_RETURN(pjrt::BufferMemoryLayoutData c_layout_data,
                             pjrt::ConvertToBufferMemoryLayoutData(layout));
-        device_layout_list->emplace_back(&(c_layout_data.c_layout));
+        layout_data_list.push_back(std::move(c_layout_data));
+        device_layout_list.emplace_back(&(layout_data_list.back().c_layout));
       } else {
-        device_layout_list->emplace_back(nullptr);
+        device_layout_list.emplace_back(nullptr);
       }
     }
-    args.device_layouts = device_layout_list->data();
+    args.device_layouts = device_layout_list.data();
   } else {
     args.num_device_layouts = 0;
     args.device_layouts = nullptr;
