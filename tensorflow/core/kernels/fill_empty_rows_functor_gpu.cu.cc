@@ -54,7 +54,8 @@ typename T::ConstPointerType to_pointers(const T& x) {
 template <typename Tindex, typename... CallerArgs, typename... KernelArgs>
 Status wrap_kernel_call(void (*func)(KernelArgs...), const GPUDevice& device,
                         Tindex size, CallerArgs... args) {
-  auto config = GetGpuLaunchConfig(size, device);
+  auto config =
+      GetGpuLaunchConfig(size, device, /*allow_int64_work_element_count=*/true);
   return GpuLaunchKernel(func, config.block_count, config.thread_per_block, 0,
                          device.stream(), config, to_pointers(args)...);
 }
