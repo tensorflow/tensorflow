@@ -120,7 +120,7 @@ struct ExampleStore {
     example.Clear();
     for (int b = 0; b < batch_size; ++b) {
       for (int k = 0; k < num_keys; ++k) {
-        string k_str = strings::Printf("feature_%d", k);
+        std::string k_str = strings::Printf("feature_%d", k);
         Feature f;
         fill(&f, feature_size);
         Features* features = example.mutable_features();
@@ -225,7 +225,7 @@ static Graph* ParseExampleV2(int batch_size, int num_keys, int feature_size) {
   std::vector<DataType> ragged_value_types;
   std::vector<DataType> ragged_split_types;
   std::vector<PartialTensorShape> dense_shapes;
-  Tensor keys_t(DT_STRING, {static_cast<int32>(num_keys)});
+  Tensor keys_t(DT_STRING, {static_cast<int32_t>(num_keys)});
   auto keys_flat = keys_t.flat<tstring>();
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
@@ -287,14 +287,14 @@ static Graph* ParseSingleExample(int num_keys, int feature_size) {
   Tensor serialized(DT_STRING, TensorShape());
   serialized.scalar<tstring>()() = serialized_batch_1.vec<tstring>()(0);
 
-  std::vector<string> sparse_keys;
-  std::vector<string> dense_keys;
+  std::vector<std::string> sparse_keys;
+  std::vector<std::string> dense_keys;
   std::vector<NodeBuilder::NodeOut> dense_defaults;
   std::vector<DataType> sparse_types;
   std::vector<PartialTensorShape> dense_shapes;
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
-    string key = strings::Printf("feature_%d", i);
+    std::string key = strings::Printf("feature_%d", i);
     switch (opt.benchmark_type) {
       case kDense:
         dense_keys.push_back(key),
