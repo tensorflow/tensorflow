@@ -186,10 +186,10 @@ class LuOp : public OpKernel {
                               .TypeConstraint<idx_type>("output_idx_type"), \
                           LuOp<type, idx_type>);
 
-REGISTER_LU(float, int32);
-REGISTER_LU(double, int32);
-REGISTER_LU(complex64, int32);
-REGISTER_LU(complex128, int32);
+REGISTER_LU(float, int32_t);
+REGISTER_LU(double, int32_t);
+REGISTER_LU(complex64, int32_t);
+REGISTER_LU(complex128, int32_t);
 
 REGISTER_LU(float, int64_t);
 REGISTER_LU(double, int64_t);
