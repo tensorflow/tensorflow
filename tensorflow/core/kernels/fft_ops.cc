@@ -163,7 +163,7 @@ class FFTBase : public OpKernel {
 
     Tensor* out;
     TensorShape output_shape = input_shape;
-    uint64 fft_shape[3] = {0, 0, 0};
+    uint64_t fft_shape[3] = {0, 0, 0};
 
     // In R2C or C2R mode, we use a second input to specify the FFT length
     // instead of inferring it from the input shape.
@@ -175,7 +175,7 @@ class FFTBase : public OpKernel {
                   errors::InvalidArgument("fft_length must have shape [",
                                           fft_rank, "]"));
 
-      auto fft_length_as_vec = fft_length.vec<int32>();
+      auto fft_length_as_vec = fft_length.vec<int32_t>();
       for (int i = 0; i < fft_rank; ++i) {
         OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                     errors::InvalidArgument(
@@ -186,7 +186,7 @@ class FFTBase : public OpKernel {
         // IRFFTs, the inner-most input dimension must have length of at least
         // fft_shape[i] / 2 + 1.
         bool inner_most = (i == fft_rank - 1);
-        uint64 min_input_dim_length =
+        uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
         auto input_index = input_shape.dims() - fft_rank + i;
         OP_REQUIRES(
@@ -198,9 +198,9 @@ class FFTBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index)));
-        uint64 dim = IsForward() && inner_most && fft_shape[i] != 0
-                         ? fft_shape[i] / 2 + 1
-                         : fft_shape[i];
+        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
+                           ? fft_shape[i] / 2 + 1
+                           : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     } else {
@@ -251,8 +251,8 @@ class FFTBase : public OpKernel {
   virtual bool IsReal() const = 0;
 
   // The function that actually computes the FFT.
-  virtual void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-                     Tensor* out) = 0;
+  virtual void DoFFT(OpKernelContext* ctx, const Tensor& in,
+                     uint64_t* fft_shape, Tensor* out) = 0;
 };
 
 class FFTNBase : public OpKernel {
@@ -277,7 +277,7 @@ class FFTNBase : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank of at least ", fft_rank,
                                  " but got: ", input_shape.DebugString())));
-    auto axes_as_vec = axes.vec<int32>();
+    auto axes_as_vec = axes.vec<int32_t>();
     // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
     for (int i = 0; i < fft_rank; ++i) {
       axes_shape[i] = axes_as_vec(i) % input_rank;
@@ -303,7 +303,7 @@ class FFTNBase : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "fft_length must have shape [", fft_rank,
                     "], but got: ", fft_length.shape().dim_size(0), ".")));
-    auto fft_length_as_vec = fft_length.vec<int32>();
+    auto fft_length_as_vec = fft_length.vec<int32_t>();
     for (int i = 0; i < fft_rank; ++i) {
       OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                   absl::InvalidArgumentError(absl::StrCat(
@@ -312,7 +312,7 @@ class FFTNBase : public OpKernel {
       fft_shape[i] = fft_length_as_vec(i);
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
-        uint64 min_input_dim_length =
+        uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
         auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
@@ -324,9 +324,9 @@ class FFTNBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index))));
-        uint64 dim = IsForward() && inner_most && fft_shape[i] != 0
-                         ? fft_shape[i] / 2 + 1
-                         : fft_shape[i];
+        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
+                           ? fft_shape[i] / 2 + 1
+                           : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       } else {
         output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
@@ -374,8 +374,9 @@ class FFTNBase : public OpKernel {
   virtual bool IsForward() const = 0;
 
   // The function that actually computes the FFT.
-  virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-                      int32* axes_shape, Tensor* out) = 0;
+  virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in,
+                      uint64_t* fft_shape, int32_t* axes_shape,
+                      Tensor* out) = 0;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -390,7 +391,7 @@ class FFTCPU : public FFTBase {
   bool IsForward() const override { return Forward; }
   bool IsReal() const override { return _Real; }
 
-  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
     std::vector<size_t> axes(Rank());
     int batch_dims = in.dims() - FFTRank;

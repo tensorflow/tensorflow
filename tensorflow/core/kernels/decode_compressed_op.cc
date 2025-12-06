@@ -184,7 +184,7 @@ class DecodeCompressedOp : public OpKernel {
 
  private:
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
-  string compression_type_;
+  std::string compression_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeCompressed").Device(DEVICE_CPU),

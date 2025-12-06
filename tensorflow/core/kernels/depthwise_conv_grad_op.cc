@@ -560,7 +560,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
 
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -619,7 +619,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
             "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
             input_sizes.dims()));
     TensorShape input_shape;
-    const int32* in_sizes_data = input_sizes.template flat<int32>().data();
+    const int32_t* in_sizes_data = input_sizes.template flat<int32_t>().data();
 
     for (int i = 0; i < input_sizes.NumElements(); ++i) {
       OP_REQUIRES(context, in_sizes_data[i] >= 0,
@@ -695,7 +695,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
   bool use_cudnn_grouped_conv_;
 
  private:
-  std::vector<int32> strides_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
@@ -1071,7 +1071,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
 
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -1129,7 +1129,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
             "Conv2DBackpropFilter: filter_sizes input must be 1-dim, not ",
             filter_sizes.dims()));
     TensorShape filter_shape;
-    const int32* filter_sizes_data = filter_sizes.template flat<int32>().data();
+    const int32_t* filter_sizes_data =
+        filter_sizes.template flat<int32_t>().data();
     for (int i = 0; i < filter_sizes.NumElements(); ++i) {
       OP_REQUIRES(context, filter_sizes_data[i] >= 0,
                   errors::InvalidArgument("Dimension ", i,
@@ -1249,7 +1250,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
   bool use_cudnn_grouped_conv_;
 
  private:
-  std::vector<int32> strides_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
