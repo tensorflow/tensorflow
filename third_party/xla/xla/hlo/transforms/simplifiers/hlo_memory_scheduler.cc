@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/metrics.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -609,18 +610,22 @@ absl::StatusOr<HloSchedule> DefaultMemoryScheduler::Run(
     *peak_memory = min_memory;
   }
 
+  XLA_ADD_METRIC_I64("hlo-scheduling", "memory-bytes", min_memory);
   if (min_memory == list_memory) {
     VLOG(2) << "Chose min-memory list sequence: "
             << HumanReadableNumBytes(list_memory);
+    XLA_ADD_METRIC_STR("hlo-scheduling", "memory-scheduler", "list");
     return list_sequence;
   }
   if (min_memory == dfs_memory) {
     VLOG(2) << "Chose min-memory dfs sequence: "
             << HumanReadableNumBytes(dfs_memory);
+    XLA_ADD_METRIC_STR("hlo-scheduling", "memory-scheduler", "dfs");
     return dfs_sequence;
   }
   VLOG(2) << "Chose min-memory post_order sequence: "
           << HumanReadableNumBytes(post_order_memory);
+  XLA_ADD_METRIC_STR("hlo-scheduling", "memory-scheduler", "post_order");
   return post_order_sequence;
 }
 
