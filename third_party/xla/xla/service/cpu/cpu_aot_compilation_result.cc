@@ -196,8 +196,8 @@ CpuAotCompilationResult::LoadExecutable(
       cpu_executable,
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),
-                            std::move(*thunks), std::move(constants), nullptr,
-                            nullptr, target_machine_options));
+                            std::move(*thunks), std::move(constants),
+                            target_machine_options));
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.

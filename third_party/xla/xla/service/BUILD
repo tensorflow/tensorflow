@@ -1526,7 +1526,6 @@ cc_library(
     deps = [
         ":buffer_assignment",
         ":computation_layout",
-        ":hlo_execution_profile",
         ":hlo_module_config",
         ":hlo_proto_cc",
         ":maybe_owning_device_memory",

@@ -110,24 +110,6 @@ class CpuAotCompilationResult : public AotCompilationResult {
       TargetMachineOptionsProto target_machine_options =
           TargetMachineOptionsProto());
 
-  [[deprecated(
-      "HloProfilePrinterData is not used anymore. Use the other Create "
-      "method instead.")]] static absl::
-      StatusOr<std::unique_ptr<CpuAotCompilationResult>>
-      Create(const HloModule* hlo_module,
-             const BufferAssignment* buffer_assignment,
-             absl::string_view function_name,
-             std::vector<ObjFileProto> obj_files,
-             std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
-             std::unique_ptr<FunctionLibrary> function_library,
-             std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-             TargetMachineOptionsProto target_machine_options =
-                 TargetMachineOptionsProto()) {
-    return Create(hlo_module, buffer_assignment, function_name,
-                  std::move(obj_files), std::move(symbols), thunks,
-                  std::move(function_library), target_machine_options);
-  }
-
   ~CpuAotCompilationResult() override = default;
 
   absl::StatusOr<std::string> SerializeAsString() const override {
