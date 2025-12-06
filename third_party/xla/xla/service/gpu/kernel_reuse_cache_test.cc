@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -32,14 +33,14 @@ TEST_F(KernelReuseTest, ExportAndLoadWork) {
   EXPECT_TRUE(cache.IsEmpty());
   auto [result, was_cached] = cache.GetWithStatus(
       "fingerprint", []() { return KernelReuseCache::Entry{}; });
-  TF_EXPECT_OK(result);
+  EXPECT_OK(result);
   EXPECT_NE(result.value(), nullptr);
   EXPECT_FALSE(was_cached);
   EXPECT_FALSE(cache.IsEmpty());
   const CompilationCacheProto proto = cache.Export();
   cache.Clear();
   EXPECT_TRUE(cache.IsEmpty());
-  TF_EXPECT_OK(cache.Load(proto));
+  EXPECT_OK(cache.Load(proto));
   EXPECT_FALSE(cache.IsEmpty());
 }
 
@@ -54,9 +55,8 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
       });
       return cache.Export();
     }("k1");
-    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/false,
-                                       proto,
-                                       {{.name = "k1", .binary = {5, 6}}}));
+    EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/false, proto,
+                                    {{.name = "k1", .binary = {5, 6}}}));
   }
   {
     const CompilationCacheProto proto = [](std::string kernel_name) {
@@ -66,12 +66,11 @@ TEST_F(KernelReuseTest, UpdatingDiskKernelCacheWorks) {
       });
       return cache.Export();
     }("k2");
-    TF_EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/true,
-                                       proto,
-                                       {{.name = "k2", .binary = {7, 8}}}));
+    EXPECT_OK(UpdateDiskKernelCache(cache_file_path, /*do_append=*/true, proto,
+                                    {{.name = "k2", .binary = {7, 8}}}));
   }
   std::string serialized;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), cache_file_path, &serialized));
   CompilationCacheProto proto;
   EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
