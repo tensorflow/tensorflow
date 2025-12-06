@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -405,9 +405,9 @@ TEST(CustomCallThunkTest, ProtoConversion) {
 
   se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations device_allocations(
-      {stream_executor::DeviceMemoryBase(
+      {stream_executor::DeviceAddressBase(
            absl::bit_cast<void*>(static_cast<intptr_t>(0xDEADBEEF)), 1024),
-       stream_executor::DeviceMemoryBase(
+       stream_executor::DeviceAddressBase(
            absl::bit_cast<void*>(static_cast<intptr_t>(0xABCDEF)), 1024)},
       0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(

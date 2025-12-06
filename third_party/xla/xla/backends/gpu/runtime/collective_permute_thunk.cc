@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -202,7 +202,7 @@ absl::Status CollectivePermuteStartThunk::Initialize(
     TF_RETURN_IF_ERROR(recv_ptr_map_.InitializeId(current_id));
 
     if (source_id) {
-      std::vector<se::DeviceMemoryBase> dest_addrs;
+      std::vector<se::DeviceAddressBase> dest_addrs;
       absl::c_transform(device_buffers, std::back_inserter(dest_addrs),
                         [](const DeviceBufferPair& buffer) {
                           return buffer.destination_buffer;
@@ -210,7 +210,7 @@ absl::Status CollectivePermuteStartThunk::Initialize(
       std::vector<void*> dest_opaques;
       absl::c_transform(
           dest_addrs, std::back_inserter(dest_opaques),
-          [](se::DeviceMemoryBase dest_addr) { return dest_addr.opaque(); });
+          [](se::DeviceAddressBase dest_addr) { return dest_addr.opaque(); });
       TF_RETURN_IF_ERROR(recv_ptr_map_.PutRecvPtr(current_id, dest_opaques));
     }
   }
@@ -368,7 +368,7 @@ absl::Status RunCollectivePermute(
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
 
-  std::vector<se::DeviceMemoryBase> src_addrs, dest_addrs;
+  std::vector<se::DeviceAddressBase> src_addrs, dest_addrs;
   absl::c_transform(
       buffers, std::back_inserter(src_addrs),
       [](const DeviceBufferPair& buffer) { return buffer.source_buffer; });
@@ -431,7 +431,7 @@ absl::Status RunCollectivePermute(
     // buffer.
     VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
                                   device_string);
-    for (se::DeviceMemoryBase& dest_addr : dest_addrs) {
+    for (se::DeviceAddressBase& dest_addr : dest_addrs) {
       TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
     }
   }
@@ -446,8 +446,8 @@ absl::Status RunCollectivePermute(
 
     VLOG(3) << current_id << " initiating memcpy to " << *target_id;
     for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
-      se::DeviceMemoryBase dst_addr =
-          se::DeviceMemoryBase(recv_ptrs.get().at(idx));
+      se::DeviceAddressBase dst_addr =
+          se::DeviceAddressBase(recv_ptrs.get().at(idx));
       auto src_addr = src_addrs.at(idx);
       TF_RETURN_IF_ERROR(
           stream.MemcpyD2D(&dst_addr, src_addr, src_addr.size()));

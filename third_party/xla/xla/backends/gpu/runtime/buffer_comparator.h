@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -44,9 +44,9 @@ class BufferComparator {
   //     abs(a - b) / (max(abs(a), abs(b)) + 1) < tolerance
   //
   // See the implementation for the tolerance value.
-  absl::StatusOr<bool> CompareEqual(se::Stream* stream,
-                                    const se::DeviceMemoryBase& current,
-                                    const se::DeviceMemoryBase& expected) const;
+  absl::StatusOr<bool> CompareEqual(
+      se::Stream* stream, const se::DeviceAddressBase& current,
+      const se::DeviceAddressBase& expected) const;
 
  private:
   Shape shape_;

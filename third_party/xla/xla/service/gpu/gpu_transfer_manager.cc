@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
@@ -136,12 +136,12 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
 
   // First, figure out which parts of `device_shape` are dynamic and where the
   // dynamic shapes live in GPU memory.  We'll copy the bytes at the
-  // DeviceMemoryBase into the Shape*'s dimensions.
-  std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
+  // DeviceAddressBase into the Shape*'s dimensions.
+  std::vector<std::pair<se::DeviceAddressBase, Shape*>> copies;
 
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
-          const se::DeviceMemoryBase& buffer) -> absl::Status {
+          const se::DeviceAddressBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -162,7 +162,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
 
-        auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
+        auto buffer_8 = se::DeviceAddress<uint8_t>(buffer);
         auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));
 
@@ -188,7 +188,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
     TF_RETURN_IF_ERROR(EnsurePinnedBuffersAllocated(stream->parent()));
 
     for (const auto& src_dst : copies) {
-      se::DeviceMemoryBase src = src_dst.first;
+      se::DeviceAddressBase src = src_dst.first;
       if (!pinned_buffers_.empty() && src.size() <= kPinnedBufferBytes) {
         void* buf = pinned_buffers_.back();
         pinned_buffers_.pop_back();
@@ -208,7 +208,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
 
   // Copy into the h2d_memcpy_dsts.
   for (int i = 0; i < copies.size(); i++) {
-    se::DeviceMemoryBase src = copies[i].first;
+    se::DeviceAddressBase src = copies[i].first;
     void* dst = h2d_memcpy_dsts[i];
     TF_RETURN_IF_ERROR(stream->Memcpy(dst, src, src.size()));
   }
@@ -246,7 +246,7 @@ static absl::Status ForEachChunk(
 }
 
 absl::Status GpuTransferManager::TransferBufferFromDevice(
-    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
+    se::Stream* stream, const se::DeviceAddressBase& source, int64_t size,
     void* destination) {
   if (source.size() < size) {
     return absl::FailedPreconditionError(absl::StrFormat(
@@ -270,7 +270,7 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
     VLOG(5) << "Transfer buffer chunk from device: offset=" << chunk_offset
             << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
 
-    se::DeviceMemoryBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
+    se::DeviceAddressBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
     TF_RETURN_IF_ERROR(stream->Memcpy(staging, chunk, chunk_size));
 
     void* dst = reinterpret_cast<char*>(destination) + chunk_offset;
@@ -288,7 +288,7 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
 
 absl::Status GpuTransferManager::TransferBufferToDevice(
     se::Stream* stream, int64_t size, const void* source,
-    se::DeviceMemoryBase* destination) {
+    se::DeviceAddressBase* destination) {
   if (destination->size() < size) {
     return absl::FailedPreconditionError(absl::StrFormat(
         "Destination allocation on device not large enough for data transfer: "

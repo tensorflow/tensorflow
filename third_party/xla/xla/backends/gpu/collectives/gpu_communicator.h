@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace xla::gpu {
 
@@ -47,44 +47,44 @@ class GpuCommunicator : public Communicator {
   virtual Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) = 0;
 
-  virtual absl::Status LaunchAllReduce(se::DeviceMemoryBase send_buffer,
-                                       se::DeviceMemoryBase recv_buffer,
+  virtual absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
+                                       se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        ReductionKind reduction_kind,
                                        const Executor& executor) = 0;
 
-  virtual absl::Status LaunchBroadcast(se::DeviceMemoryBase send_buffer,
-                                       se::DeviceMemoryBase recv_buffer,
+  virtual absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
+                                       se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        RankId root,
                                        const Executor& executor) = 0;
 
-  virtual absl::Status LaunchReduceScatter(se::DeviceMemoryBase send_buffer,
-                                           se::DeviceMemoryBase recv_buffer,
+  virtual absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
+                                           se::DeviceAddressBase recv_buffer,
                                            PrimitiveType dtype, size_t count,
                                            ReductionKind reduction_kind,
                                            const Executor& executor) = 0;
 
-  virtual absl::Status LaunchAllGather(se::DeviceMemoryBase send_buffer,
-                                       se::DeviceMemoryBase recv_buffer,
+  virtual absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
+                                       se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        const Executor& executor) = 0;
 
   virtual absl::Status LaunchAllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
       PrimitiveType dtype, size_t count, const Executor& executor) = 0;
 
   virtual absl::Status LaunchCollectivePermute(
-      se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+      se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
       PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
       absl::Span<const RankId> target_ranks, const Executor& executor) = 0;
 
-  virtual absl::Status LaunchSend(se::DeviceMemoryBase send_buffer,
+  virtual absl::Status LaunchSend(se::DeviceAddressBase send_buffer,
                                   PrimitiveType dtype, size_t count,
                                   RankId peer, const Executor& executor) = 0;
 
-  virtual absl::Status LaunchRecv(se::DeviceMemoryBase recv_buffer,
+  virtual absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
                                   PrimitiveType dtype, size_t count,
                                   RankId peer, const Executor& executor) = 0;
 };

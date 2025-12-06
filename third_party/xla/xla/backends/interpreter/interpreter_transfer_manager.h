@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -37,7 +37,7 @@ class InterpreterTransferManager : public GenericTransferManager {
 
   bool CanBufferBeAccessedNow(
       se::StreamExecutor* executor,
-      const se::DeviceMemoryBase& device_buffer) const override {
+      const se::DeviceAddressBase& device_buffer) const override {
     return true;
   }
 

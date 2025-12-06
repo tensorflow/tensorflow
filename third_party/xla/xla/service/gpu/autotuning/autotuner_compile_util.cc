@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -54,7 +54,7 @@ namespace gpu {
 namespace {
 
 std::vector<ExecutionInput> ExecutionInputsFromBuffers(
-    absl::Span<se::DeviceMemoryBase const> buffers,
+    absl::Span<se::DeviceAddressBase const> buffers,
     absl::Span<Shape const> shapes) {
   CHECK_EQ(buffers.size(), shapes.size());
   std::vector<ExecutionInput> inputs;
@@ -70,11 +70,10 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
 
 }  // namespace
 
-AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
-                                           se::StreamExecutor& stream_executor,
-                                           se::Stream& stream,
-                                           se::DeviceMemoryAllocator& allocator,
-                                           const DebugOptions& opts)
+AutotunerCompileUtil::AutotunerCompileUtil(
+    std::unique_ptr<Compiler> compiler, se::StreamExecutor& stream_executor,
+    se::Stream& stream, se::DeviceAddressAllocator& allocator,
+    const DebugOptions& opts)
     : compiler_(std::move(compiler)),
       stream_executor_(stream_executor),
       stream_(stream),
@@ -88,7 +87,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
 absl::StatusOr<AutotunerCompileUtil::ProfilingOutput>
 AutotunerCompileUtil::ProfileExecutable(
     Executable* executable, se::Stream* stream,
-    absl::Span<se::DeviceMemoryBase const> input_buffers,
+    absl::Span<se::DeviceAddressBase const> input_buffers,
     absl::Span<Shape const> input_shapes) {
   tsl::profiler::TraceMe traceme("ProfileExecutable");
   {
@@ -155,7 +154,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
         "Deviceless autotuning is not supported.");
   }
   se::StreamExecutor* stream_exec = config.GetExecutor();
-  se::DeviceMemoryAllocator* allocator = config.GetAllocator();
+  se::DeviceAddressAllocator* allocator = config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));

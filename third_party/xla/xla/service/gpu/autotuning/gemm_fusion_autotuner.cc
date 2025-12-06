@@ -103,8 +103,8 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
@@ -1701,7 +1701,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   se::StreamExecutor* stream_exec = config_.GetExecutor();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
-  se::DeviceMemoryAllocator* device_allocator = config_.GetAllocator();
+  se::DeviceAddressAllocator* device_allocator = config_.GetAllocator();
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
   backends.push_back(std::make_unique<FissionBackend>(

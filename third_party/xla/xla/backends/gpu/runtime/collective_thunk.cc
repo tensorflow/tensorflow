@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -214,7 +214,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 }
 
 absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
-                                 const se::DeviceMemoryBase& buffer,
+                                 const se::DeviceAddressBase& buffer,
                                  Communicator* comm,
                                  bool use_symmetric_buffer) {
   TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));

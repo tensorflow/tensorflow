@@ -44,8 +44,8 @@ limitations under the License.*/
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/kernel.h"
@@ -72,10 +72,10 @@ static constexpr int32_t kAllReduceArgsCount = 6;
 static constexpr int32_t kNumParameters = 2;
 
 // Helper for allocating memory on the device.
-absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
+absl::StatusOr<se::DeviceAddressHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
     absl::string_view debug_buffer_name) {
-  se::DeviceMemoryHandle local_buffer_alloc(
+  se::DeviceAddressHandle local_buffer_alloc(
       executor,
       executor->Allocate(
           size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
@@ -146,7 +146,7 @@ absl::Status CollectiveKernelThunk::ExchangeStateMetadata(
       << "Device " << params.collective_params->global_device_id
       << "is not in the clique.";
 
-  std::vector<se::DeviceMemoryBase> parameters{
+  std::vector<se::DeviceAddressBase> parameters{
       state.local_buffers_handle.memory(),
       state.signal_buffers_handle.memory()};
   TF_RET_CHECK(parameters.size() == kNumParameters);
@@ -190,12 +190,12 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
 
       TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryHandle local_buffers_handle,
+          se::DeviceAddressHandle local_buffers_handle,
           AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
                          "Local buffers"));
 
       TF_ASSIGN_OR_RETURN(
-          se::DeviceMemoryHandle signal_buffers_handle,
+          se::DeviceAddressHandle signal_buffers_handle,
           AllocateMemory(params.executor, kSignalBufferSize * kNumBuffers,
                          "Signal buffers"));
 
@@ -287,9 +287,9 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   }
   const CollectiveThunk::Buffer& buffer = buffers_[0];
   const PrimitiveType element_type = collective_config_.operand_element_type[0];
-  se::DeviceMemoryBase source_buffer =
+  se::DeviceAddressBase source_buffer =
       params.buffer_allocations->GetDeviceAddress(buffer.source_buffer);
-  se::DeviceMemoryBase destination_buffer =
+  se::DeviceAddressBase destination_buffer =
       params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
 
   const std::optional<RankId> rank =
@@ -316,9 +316,9 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Performing one-shot all-reduce for clique " << clique_key.ToString();
 
-  se::DeviceMemoryBase input_buffer_ptr =
+  se::DeviceAddressBase input_buffer_ptr =
       state->remote_buffer_ptrs[buffer_index];
-  se::DeviceMemoryBase signal_buffer_ptr =
+  se::DeviceAddressBase signal_buffer_ptr =
       state->signal_buffer_ptrs[buffer_index];
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "input_buffer_ptr: " << input_buffer_ptr.opaque()
@@ -329,12 +329,12 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       << "(block x threadsPerBlock)";
 
   if (state->kernel != nullptr) {
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase remote_buffers,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
                         CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
                             state->metadata, /*num_parameters=*/kNumParameters,
                             /*num_devices=*/num_devices,
                             /*parameter_index=*/0));
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase signal_buffers,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase signal_buffers,
                         CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
                             state->metadata, /*num_parameters=*/kNumParameters,
                             /*num_devices=*/num_devices,

@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -77,7 +77,7 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   InitializeParams initialize_params;
   initialize_params.stream = params.stream;
   TF_RETURN_IF_ERROR(Initialize(initialize_params));
-  std::vector<se::DeviceMemoryBase> buffer_args;
+  std::vector<se::DeviceAddressBase> buffer_args;
   buffer_args.reserve(args_.size());
   for (const BufferAllocation::Slice& arg : args_) {
     auto addr = params.buffer_allocations->GetDeviceAddress(arg);
@@ -90,7 +90,7 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     buffer_args.push_back(addr);
   }
   return graph_->get()->Execute(
-      *params.stream, absl::Span<se::DeviceMemoryBase>(buffer_args),
+      *params.stream, absl::Span<se::DeviceAddressBase>(buffer_args),
       params.collective_params->local_device_id.value());
 }
 

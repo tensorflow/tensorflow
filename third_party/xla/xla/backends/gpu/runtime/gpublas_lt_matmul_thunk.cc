@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -93,7 +93,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
 
-  se::DeviceMemoryBase bias, a_scale, b_scale, c_scale, d_scale, d_amax, aux,
+  se::DeviceAddressBase bias, a_scale, b_scale, c_scale, d_scale, d_amax, aux,
       workspace;
   if (bias_.allocation() != nullptr) {
     bias = allocs.GetDeviceAddress(bias_);

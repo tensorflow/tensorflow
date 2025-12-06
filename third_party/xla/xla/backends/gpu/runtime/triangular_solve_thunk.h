@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -87,9 +87,9 @@ class TriangularSolveThunk : public Thunk {
   const int64_t b_batch_stride_;
 };
 
-absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
-                                se::DeviceMemoryBase b_data,
-                                se::DeviceMemoryBase temp_data,
+absl::Status RunTriangularSolve(se::DeviceAddressBase a_data,
+                                se::DeviceAddressBase b_data,
+                                se::DeviceAddressBase temp_data,
                                 se::blas::UpperLower uplo, se::blas::Side side,
                                 se::blas::Diagonal unit_diagonal,
                                 se::blas::Transpose transpose_a,

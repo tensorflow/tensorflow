@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -64,14 +64,14 @@ class CollectiveMetadataThunk : public Thunk {
   // metadata.
   static absl::Status ConstructCollectiveMetadata(
       const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
-      std::vector<se::DeviceMemoryBase> parameters,
+      std::vector<se::DeviceAddressBase> parameters,
       std::shared_ptr<CollectiveMultimem> multimem,
-      se::DeviceMemoryBase destination);
+      se::DeviceAddressBase destination);
 
   // Calculate the device memory base for the given parameter index.
   // The size of the returned memory is num_devices pointers.
-  static absl::StatusOr<se::DeviceMemoryBase> GetParameterDeviceMemoryBase(
-      se::DeviceMemoryBase metadata, int64_t num_parameters,
+  static absl::StatusOr<se::DeviceAddressBase> GetParameterDeviceMemoryBase(
+      se::DeviceAddressBase metadata, int64_t num_parameters,
       int64_t num_devices, int64_t parameter_index);
 
  private:

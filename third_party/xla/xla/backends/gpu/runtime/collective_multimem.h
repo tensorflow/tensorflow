@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"  // IWYU pragma: keep
@@ -53,12 +53,12 @@ class CollectiveMultimem {
   // to allow callers to associate arbitrary data with the collective multimem.
   static absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Allocate(
       se::StreamExecutor* executor, const GpuCliqueKey& clique_key, RankId rank,
-      se::DeviceMemoryBase map_to, std::any payload = {});
+      se::DeviceAddressBase map_to, std::any payload = {});
 
   // Allocates a CollectiveMultimem for the given global device id.
   static absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Allocate(
       se::StreamExecutor* executor, const GpuCliqueKey& clique_key,
-      GlobalDeviceId global_device_id, se::DeviceMemoryBase map_to,
+      GlobalDeviceId global_device_id, se::DeviceAddressBase map_to,
       std::any payload = {});
 
   const GpuCliqueKey& clique_key() const { return clique_key_; }

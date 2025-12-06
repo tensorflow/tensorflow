@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -42,11 +42,11 @@ namespace xla::gpu {
 //   absl::Status indicating success or failure of the operation.
 template <typename T>
 absl::Status select_k_exec(int device_ordinal,
-                           ::stream_executor::DeviceMemoryAllocator* allocator,
+                           ::stream_executor::DeviceAddressAllocator* allocator,
                            ::stream_executor::Stream* stream,
-                           ::stream_executor::DeviceMemoryBase data_in,
-                           ::stream_executor::DeviceMemoryBase data_out,
-                           ::stream_executor::DeviceMemoryBase indices_out,
+                           ::stream_executor::DeviceAddressBase data_in,
+                           ::stream_executor::DeviceAddressBase data_out,
+                           ::stream_executor::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
                            std::uint32_t k);
 

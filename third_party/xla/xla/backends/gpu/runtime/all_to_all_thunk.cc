@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
@@ -173,7 +173,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       if (config_.has_split_dimension) {
         buffer_rendezvous_value.buffer = reinterpret_cast<uint64_t>(
             GpuCollectives::Slice(
-                se::DeviceMemoryBase(device_buffers[0].destination_buffer),
+                se::DeviceAddressBase(device_buffers[0].destination_buffer),
                 device_buffers[0].element_type,
                 buffer_idx * chunk_element_count, chunk_element_count)
                 .opaque());
@@ -301,8 +301,8 @@ absl::Status RunAllToAll(bool has_split_dimension,
   // in which case inputs are split and outputs concatenated in that dimension
   // (here, we only support dimension 0), or it takes a list of inputs
   // and produces a tuple of outputs.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers;
-  absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers;
 
   if (has_split_dimension) {
     TF_RET_CHECK(element_count % num_ranks == 0)
@@ -389,11 +389,11 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
       size_t chunk_element_count = buffer.element_count / num_ranks;
 
       for (int peer = 0; peer < num_ranks; ++peer) {
-        se::DeviceMemoryBase send_slice = GpuCollectives::Slice(
+        se::DeviceAddressBase send_slice = GpuCollectives::Slice(
             buffer.source_buffer, buffer.element_type,
             peer * chunk_element_count, chunk_element_count);
-        se::DeviceMemoryBase dst_addr =
-            se::DeviceMemoryBase((void*)receive_pointer_map[peer]);
+        se::DeviceAddressBase dst_addr =
+            se::DeviceAddressBase((void*)receive_pointer_map[peer]);
         TF_RETURN_IF_ERROR(
             stream.MemcpyD2D(&dst_addr, send_slice, send_slice.size()));
       }
@@ -405,8 +405,8 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
     for (int peer = 0; peer < num_ranks; ++peer) {
       auto buffer_idx = (rank.value() + peer) % num_ranks;
       // double buffer, exchange data with peer
-      se::DeviceMemoryBase dst_addr =
-          se::DeviceMemoryBase((void*)receive_pointer_map[peer]);
+      se::DeviceAddressBase dst_addr =
+          se::DeviceAddressBase((void*)receive_pointer_map[peer]);
       TF_RETURN_IF_ERROR(
           stream.MemcpyD2D(&dst_addr, buffers[buffer_idx].source_buffer,
                            buffers[buffer_idx].source_buffer.size()));

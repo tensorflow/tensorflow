@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -102,7 +102,7 @@ CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
   // We check only allocations referenced by commands in a cmd sequence, and
   // leave every other entry default initialized (nullptr device memory).
   for (BufferAllocation::Index index : commands.allocs_indices()) {
-    se::DeviceMemoryBase alloc = allocs->GetDeviceAddress(index);
+    se::DeviceAddressBase alloc = allocs->GetDeviceAddress(index);
 
     if (recorded_allocs.size() <= index) {
       recorded_allocs.resize(index + 1);

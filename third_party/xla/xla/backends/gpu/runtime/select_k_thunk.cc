@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
@@ -76,16 +76,17 @@ absl::Status SelectKThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Launching " << ToString(0);
 
   // Map buffer slices to device memory.
-  absl::InlinedVector<se::DeviceMemoryBase, 3> buffer_args;
+  absl::InlinedVector<se::DeviceAddressBase, 3> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {
-    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    se::DeviceAddressBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
             << ": " << buf.opaque() << " (" << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 
   int device_ordinal = params.buffer_allocations->device_ordinal();
-  se::DeviceMemoryAllocator* allocator =
+  se::DeviceAddressAllocator* allocator =
       params.buffer_allocations->memory_allocator();
   se::Stream* stream = params.stream;
 

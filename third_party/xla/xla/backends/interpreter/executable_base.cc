@@ -39,8 +39,8 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -172,7 +172,7 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
 absl::StatusOr<ExecutionOutput>
 InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     const Shape& shape, const HloInputOutputAliasConfig& alias_config,
-    se::DeviceMemoryAllocator* allocator,
+    se::DeviceAddressAllocator* allocator,
     std::vector<ExecutionInput>* arguments, se::Stream* stream) {
   TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
@@ -201,7 +201,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
   ExecutionOutput result(shape, allocator, executor->device_ordinal());
   for (auto& pair : result.MutableResult()->buffers()) {
     const ShapeIndex& result_index = pair.first;
-    se::DeviceMemoryBase& result_buffer = pair.second;
+    se::DeviceAddressBase& result_buffer = pair.second;
     int64_t allocation_bytes =
         transfer_manager->GetByteSizeRequirement(ShapeUtil::GetSubshape(
             result.Result().on_device_shape(), result_index));
@@ -218,7 +218,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
       MaybeOwningDeviceMemory* device_memory =
           input.MutableBuffer(alias->parameter_index);
       if (auto owning = device_memory->Release()) {
-        se::DeviceMemoryBase device_memory_base = owning->Release();
+        se::DeviceAddressBase device_memory_base = owning->Release();
         *device_memory = device_memory_base;
         result_buffer = device_memory_base;
         result.AddAliasedIndex(result_index);

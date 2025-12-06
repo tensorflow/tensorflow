@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -57,9 +57,9 @@ stream_executor::Stream* GpuCollectives::Executor::stream() const {
   return stream_;
 }
 
-se::DeviceMemoryBase GpuCollectives::Slice(se::DeviceMemoryBase buff,
-                                           PrimitiveType dtype, size_t offset,
-                                           size_t count) {
+se::DeviceAddressBase GpuCollectives::Slice(se::DeviceAddressBase buff,
+                                            PrimitiveType dtype, size_t offset,
+                                            size_t count) {
   size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
   return buff.GetByteSlice(offset * multiplier, count * multiplier);
 }

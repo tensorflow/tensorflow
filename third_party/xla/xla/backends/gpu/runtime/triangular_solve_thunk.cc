@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -152,9 +152,9 @@ absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
   return proto;
 }
 
-absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
-                                se::DeviceMemoryBase b_data,
-                                se::DeviceMemoryBase temp_data,
+absl::Status RunTriangularSolve(se::DeviceAddressBase a_data,
+                                se::DeviceAddressBase b_data,
+                                se::DeviceAddressBase temp_data,
                                 se::blas::UpperLower uplo, se::blas::Side side,
                                 se::blas::Diagonal unit_diagonal,
                                 se::blas::Transpose transpose_a,
@@ -179,34 +179,34 @@ absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
   if (batch_size == 1) {
     switch (type) {
       case F32: {
-        se::DeviceMemory<float> b_data_typed(b_data);
+        se::DeviceAddress<float> b_data_typed(b_data);
         launch_ok = blas->DoBlasTrsm(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<float>(a_data), lda, &b_data_typed,
-            ldb);
+            /*alpha=*/1.0f, se::DeviceAddress<float>(a_data), lda,
+            &b_data_typed, ldb);
         break;
       }
       case F64: {
-        se::DeviceMemory<double> b_data_typed(b_data);
+        se::DeviceAddress<double> b_data_typed(b_data);
         launch_ok = blas->DoBlasTrsm(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0, se::DeviceMemory<double>(a_data), lda, &b_data_typed,
-            ldb);
+            /*alpha=*/1.0, se::DeviceAddress<double>(a_data), lda,
+            &b_data_typed, ldb);
         break;
       }
       case C64: {
-        se::DeviceMemory<std::complex<float>> b_data_typed(b_data);
+        se::DeviceAddress<std::complex<float>> b_data_typed(b_data);
         launch_ok = blas->DoBlasTrsm(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<std::complex<float>>(a_data), lda,
+            /*alpha=*/1.0f, se::DeviceAddress<std::complex<float>>(a_data), lda,
             &b_data_typed, ldb);
         break;
       }
       case C128: {
-        se::DeviceMemory<std::complex<double>> b_data_typed(b_data);
+        se::DeviceAddress<std::complex<double>> b_data_typed(b_data);
         launch_ok = blas->DoBlasTrsm(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0, se::DeviceMemory<std::complex<double>>(a_data), lda,
+            /*alpha=*/1.0, se::DeviceAddress<std::complex<double>>(a_data), lda,
             &b_data_typed, ldb);
         break;
       }
@@ -221,9 +221,9 @@ absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
     int64_t batch_pointers_bytes = sizeof(void*) * batch_size;
     TF_RET_CHECK(temp_data.size() >= 2 * batch_pointers_bytes);
     void** temp_base = reinterpret_cast<void**>(temp_data.opaque());
-    se::DeviceMemoryBase a_pointers(temp_base, batch_pointers_bytes);
-    se::DeviceMemoryBase b_pointers(temp_base + batch_size,
-                                    batch_pointers_bytes);
+    se::DeviceAddressBase a_pointers(temp_base, batch_pointers_bytes);
+    se::DeviceAddressBase b_pointers(temp_base + batch_size,
+                                     batch_pointers_bytes);
 
     TF_RETURN_IF_ERROR(MakeBatchPointers(stream, a_data, a_batch_stride,
                                          batch_size, a_pointers));
@@ -232,35 +232,36 @@ absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
 
     switch (type) {
       case F32: {
-        se::DeviceMemory<float*> typed_b_pointers(b_pointers);
+        se::DeviceAddress<float*> typed_b_pointers(b_pointers);
         launch_ok = blas->DoBlasTrsmBatched(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<float*>(a_pointers), lda,
+            /*alpha=*/1.0f, se::DeviceAddress<float*>(a_pointers), lda,
             &typed_b_pointers, ldb, batch_size);
         break;
       }
       case F64: {
-        se::DeviceMemory<double*> typed_b_pointers(b_pointers);
+        se::DeviceAddress<double*> typed_b_pointers(b_pointers);
         launch_ok = blas->DoBlasTrsmBatched(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<double*>(a_pointers), lda,
+            /*alpha=*/1.0f, se::DeviceAddress<double*>(a_pointers), lda,
             &typed_b_pointers, ldb, batch_size);
         break;
       }
       case C64: {
-        se::DeviceMemory<std::complex<float>*> typed_b_pointers(b_pointers);
+        se::DeviceAddress<std::complex<float>*> typed_b_pointers(b_pointers);
         launch_ok = blas->DoBlasTrsmBatched(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<std::complex<float>*>(a_pointers),
+            /*alpha=*/1.0f, se::DeviceAddress<std::complex<float>*>(a_pointers),
             lda, &typed_b_pointers, ldb, batch_size);
         break;
       }
       case C128: {
-        se::DeviceMemory<std::complex<double>*> typed_b_pointers(b_pointers);
+        se::DeviceAddress<std::complex<double>*> typed_b_pointers(b_pointers);
         launch_ok = blas->DoBlasTrsmBatched(
             stream, side, uplo, transpose_a, unit_diagonal, m, n,
-            /*alpha=*/1.0f, se::DeviceMemory<std::complex<double>*>(a_pointers),
-            lda, &typed_b_pointers, ldb, batch_size);
+            /*alpha=*/1.0f,
+            se::DeviceAddress<std::complex<double>*>(a_pointers), lda,
+            &typed_b_pointers, ldb, batch_size);
         break;
       }
       default:

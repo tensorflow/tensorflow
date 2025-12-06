@@ -107,7 +107,7 @@ std::string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::fdo_profile=", absl::BytesToHexString(fdo_profile()));
   }
   if (device_memory_size() != 0) {
-    StrAppend(&key, "::device_memory_size=", device_memory_size());
+    StrAppend(&key, "::device_address_size=", device_memory_size());
   }
   StrAppend(&key, "::use_shardy_partitioner=", use_shardy_partitioner());
   if (partition_size() != 0) {

@@ -51,9 +51,9 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
@@ -203,7 +203,7 @@ class GpuExecutable : public Executable {
                              const ServiceExecutableRunOptions* run_options);
 
   using BufferAllocToDeviceMemoryMap =
-      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressBase>;
 
   // Loads the PTX or CUBIN for this executable and initializes all
   // constants that haven't already been initialized by the CUDA driver. Loaded
@@ -257,13 +257,13 @@ class GpuExecutable : public Executable {
   absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal);
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal);
 
-  absl::StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+  absl::StatusOr<se::DeviceAddressBase> BufferForAllocation(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
       int64_t arg_idx);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
@@ -357,14 +357,14 @@ class GpuExecutable : public Executable {
   // Cache previous memory allocations for current module, this is used to help
   // identify if user's model have unstable pointers by turning on VLOG(5).
   absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      std::vector<se::DeviceMemoryBase>>
+                      std::vector<se::DeviceAddressBase>>
       module_allocations_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   // Retains shared ownership of on-device constants that are managed by XLA and
   // potentially shared with other executables.
-  std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
+  std::vector<std::shared_ptr<se::DeviceAddressBase>> shared_constants_;
   bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;

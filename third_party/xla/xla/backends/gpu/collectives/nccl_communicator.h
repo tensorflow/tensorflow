@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
@@ -87,47 +87,47 @@ class NcclCommunicator : public GpuCommunicator {
   // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
   // get the base address of buffer. We will use the base address to keep track
   // of which chunks we have registered.
-  absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
+  absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
                                   int device_ordinal,
                                   bool use_symmetric_buffer) final;
 
   Future<> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 
-  Future<> AllReduce(se::DeviceMemoryBase send_buffer,
-                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> AllReduce(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, ReductionKind reduction_kind,
                      const Executor& executor) final;
 
-  Future<> Broadcast(se::DeviceMemoryBase send_buffer,
-                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> Broadcast(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, RankId root, const Executor& executor) final;
 
-  Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
+                         se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
                          const Executor& executor) final;
 
-  Future<> AllGather(se::DeviceMemoryBase send_buffer,
-                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> AllGather(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, const Executor& executor) final;
 
-  Future<> AllToAll(absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-                    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+  Future<> AllToAll(absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+                    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
                     PrimitiveType dtype, size_t count,
                     const Executor& executor) final;
 
-  Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  Future<> CollectivePermute(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              std::optional<RankId> source_rank,
                              absl::Span<const RankId> target_ranks,
                              const Executor& executor) final;
 
-  Future<> Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  Future<> Send(se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
-  Future<> Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                 size_t count, RankId peer, const Executor& executor) final;
 
   std::string ToString() const final;
@@ -136,7 +136,7 @@ class NcclCommunicator : public GpuCommunicator {
 
  private:
   absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceMemoryBase buffer, int device_ordinal,
+      se::DeviceAddressBase buffer, int device_ordinal,
       bool use_symmetric_buffer);
 
   class NcclRegisteredBufferHandle;
@@ -150,46 +150,46 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status GroupStart();
   absl::Status GroupEnd();
 
-  absl::Status LaunchAllReduce(se::DeviceMemoryBase send_buffer,
-                               se::DeviceMemoryBase recv_buffer,
+  absl::Status LaunchAllReduce(se::DeviceAddressBase send_buffer,
+                               se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
                                ReductionKind reduction_kind,
                                const Executor& executor) final;
 
-  absl::Status LaunchBroadcast(se::DeviceMemoryBase send_buffer,
-                               se::DeviceMemoryBase recv_buffer,
+  absl::Status LaunchBroadcast(se::DeviceAddressBase send_buffer,
+                               se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count, RankId root,
                                const Executor& executor) final;
 
-  absl::Status LaunchReduceScatter(se::DeviceMemoryBase send_buffer,
-                                   se::DeviceMemoryBase recv_buffer,
+  absl::Status LaunchReduceScatter(se::DeviceAddressBase send_buffer,
+                                   se::DeviceAddressBase recv_buffer,
                                    PrimitiveType dtype, size_t count,
                                    ReductionKind reduction_kind,
                                    const Executor& executor) final;
 
-  absl::Status LaunchAllGather(se::DeviceMemoryBase send_buffer,
-                               se::DeviceMemoryBase recv_buffer,
+  absl::Status LaunchAllGather(se::DeviceAddressBase send_buffer,
+                               se::DeviceAddressBase recv_buffer,
                                PrimitiveType dtype, size_t count,
                                const Executor& executor) final;
 
   absl::Status LaunchAllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
       PrimitiveType dtype, size_t count, const Executor& executor) final;
 
-  absl::Status LaunchCollectivePermute(se::DeviceMemoryBase send_buffer,
-                                       se::DeviceMemoryBase recv_buffer,
+  absl::Status LaunchCollectivePermute(se::DeviceAddressBase send_buffer,
+                                       se::DeviceAddressBase recv_buffer,
                                        PrimitiveType dtype, size_t count,
                                        std::optional<RankId> source_rank,
                                        absl::Span<const RankId> target_ranks,
                                        const Executor& executor) final;
 
-  absl::Status LaunchSend(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
-                          size_t count, RankId peer,
+  absl::Status LaunchSend(se::DeviceAddressBase send_buffer,
+                          PrimitiveType dtype, size_t count, RankId peer,
                           const Executor& executor) final;
 
-  absl::Status LaunchRecv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                          size_t count, RankId peer,
+  absl::Status LaunchRecv(se::DeviceAddressBase recv_buffer,
+                          PrimitiveType dtype, size_t count, RankId peer,
                           const Executor& executor) final;
 
   // Polls the communicator until any pending non-blocking operations are "done"

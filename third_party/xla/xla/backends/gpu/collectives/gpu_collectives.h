@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -134,8 +134,8 @@ class GpuCollectives : public Collectives {
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
-  static stream_executor::DeviceMemoryBase Slice(
-      stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
+  static stream_executor::DeviceAddressBase Slice(
+      stream_executor::DeviceAddressBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.

@@ -63,7 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
@@ -579,7 +579,7 @@ class TracedCommandBuffer : public CommandBufferCmd::State {
   std::vector<BufferAllocation::Index> allocs_indices_;
 
   struct Entry {
-    std::vector<se::DeviceMemoryBase> recorded_allocs;
+    std::vector<se::DeviceAddressBase> recorded_allocs;
     std::unique_ptr<se::CommandBuffer> command_buffer;
   };
   const CommandBufferCmd* trace_cmd_;

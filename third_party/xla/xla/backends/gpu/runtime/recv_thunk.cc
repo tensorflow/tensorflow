@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -104,7 +104,7 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
           << hlo_name_ << ")";
 
   const std::optional<int64_t> source_id = source_target.source;
-  se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
+  se::DeviceAddressBase dest_addr = buffer.destination_buffer;
 
   VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, source_id = %d",
                                 device_ordinal, device_string, current_id,

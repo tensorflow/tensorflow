@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/stream.h"
@@ -51,8 +51,8 @@ struct ComparisonParams {
   bool run_host_compare = true;
   const Shape* shape = nullptr;
   se::Stream* stream = nullptr;
-  se::DeviceMemoryBase current{};
-  se::DeviceMemoryBase expected{};
+  se::DeviceAddressBase current{};
+  se::DeviceAddressBase expected{};
 };
 
 // Compares two buffers on the GPU.
@@ -62,7 +62,7 @@ template <typename ElementT>
 static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
-  se::DeviceMemoryHandle out(executor, executor->AllocateScalar<uint64_t>());
+  se::DeviceAddressHandle out(executor, executor->AllocateScalar<uint64_t>());
 
   TF_RETURN_IF_ERROR(
       params.stream->MemZero(out.address_ptr(), sizeof(uint64_t)));
@@ -71,8 +71,8 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
                     params.current.size(), params.expected.size());
   }
 
-  se::DeviceMemory<ElementT> current_typed(params.current);
-  se::DeviceMemory<ElementT> expected_typed(params.expected);
+  se::DeviceAddress<ElementT> current_typed(params.current);
+  se::DeviceAddress<ElementT> expected_typed(params.expected);
   uint64_t buffer_size = current_typed.ElementCount();
 
   TF_ASSIGN_OR_RETURN(
@@ -95,7 +95,7 @@ static absl::StatusOr<bool> DeviceCompare(const ComparisonParams& params) {
                    1, 1),
       dim.thread_counts_per_block());
 
-  se::DeviceMemory<uint64_t> as_uint64(out.address());
+  se::DeviceAddress<uint64_t> as_uint64(out.address());
   TF_RETURN_IF_ERROR(comparison_kernel.Launch(
       dim.thread_counts_per_block(), dim.block_counts(), params.stream,
       current_typed, expected_typed, static_cast<float>(params.relative_tol),
@@ -183,8 +183,8 @@ static absl::StatusOr<bool> CompareEqualParameterized(
 }
 
 absl::StatusOr<bool> BufferComparator::CompareEqual(
-    se::Stream* stream, const se::DeviceMemoryBase& current,
-    const se::DeviceMemoryBase& expected) const {
+    se::Stream* stream, const se::DeviceAddressBase& current,
+    const se::DeviceAddressBase& expected) const {
   ComparisonParams params{relative_tol_, verbose_, run_host_compare_, &shape_,
                           stream,        current,  expected};
 
