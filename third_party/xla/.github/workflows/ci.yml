@@ -73,6 +73,12 @@ jobs:
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-a3-8g-h100-8gpu",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU 8xH100",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-arm64-c4a-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
             name: "XLA Linux ARM64 CPU",
