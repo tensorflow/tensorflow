@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,8 +83,8 @@ class CollectiveThunk : public Thunk {
 
   // Device memory resolved for the collective operation buffers.
   struct OpDeviceMemory {
-    absl::InlinedVector<se::DeviceMemoryBase, 4> source;
-    absl::InlinedVector<se::DeviceMemoryBase, 4> destination;
+    absl::InlinedVector<se::DeviceAddressBase, 4> source;
+    absl::InlinedVector<se::DeviceAddressBase, 4> destination;
   };
 
   CollectiveThunk(CollectiveKind collective_kind, Thunk::Info info,

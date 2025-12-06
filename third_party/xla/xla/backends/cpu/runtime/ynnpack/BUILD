@@ -96,7 +96,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",

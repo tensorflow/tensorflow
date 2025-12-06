@@ -53,7 +53,7 @@ static absl::StatusOr<std::unique_ptr<InputBuffers>> PrepareBackedBuffers(
     Literal literal(shape, true);
 
     backed_buffers->backing_literals.push_back(std::move(literal));
-    backed_buffers->buffers.emplace_back(stream_executor::DeviceMemoryBase(
+    backed_buffers->buffers.emplace_back(stream_executor::DeviceAddressBase(
         backed_buffers->backing_literals.back().untyped_data(),
         backed_buffers->backing_literals.back().size_bytes()));
   }

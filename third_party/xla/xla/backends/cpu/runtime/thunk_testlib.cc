@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace xla::cpu {
 
@@ -43,7 +43,7 @@ BufferAllocation::Slice CreateBufferAllocationSlice(
 }
 
 BufferAllocations CreateBufferAllocations(absl::Span<Literal*> literals) {
-  std::vector<se::DeviceMemoryBase> buffers;
+  std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(literals.size());
 
   for (auto* literal : literals) {
