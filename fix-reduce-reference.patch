@@ -1,0 +1,17 @@
+diff --git a/tensorflow/lite/kernels/reduce.cc b/tensorflow/lite/kernels/reduce.cc
+index 8ead4274826..0a7afb5a2a5 100644
+--- a/tensorflow/lite/kernels/reduce.cc
++++ b/tensorflow/lite/kernels/reduce.cc
+@@ -472,10 +472,10 @@ TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
+     TF_LITE_ENSURE(
+         context,
+         reference_ops::QuantizedMeanOrSum(
+-            GetTensorData<uint8_t>(op_context.input),
++            GetTensorData<T>(op_context.input),
+             op_context.input->params.zero_point, op_context.input->dims->data,
+             op_context.input->dims->size,
+-            GetTensorData<uint8_t>(op_context.output), op_data->multiplier,
++            GetTensorData<T>(op_context.output), op_data->multiplier,
+             op_data->shift, op_context.output->params.zero_point,
+             op_context.output->dims->data, op_context.output->dims->size,
+             GetTensorData<int>(op_context.axis), num_axis,
