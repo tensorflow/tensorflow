@@ -94,7 +94,44 @@ class ConcatBaseOp : public XlaOpKernel {
     }
 
     VLOG(1) << "Concat dim " << concat_dim << " equivalent to " << axis;
-    ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), input_data, axis));
+    xla::XlaOp result = xla::ConcatInDim(ctx->builder(), input_data, axis);
+
+    // Preserve dynamic dimension information for the concat axis.
+    // If any input has a dynamic dimension along `axis`, compute the
+    // summed size (mixing dynamic GetDimensionSize() and static constants)
+    // and set it on the concat result using SetDimensionSize.
+    bool any_input_dynamic = false;
+    xla::XlaOp dynamic_size_sum;
+    bool size_sum_initialized = false;
+
+    for (int i = 0; i < N; ++i) {
+      // Query the input XLA shape to see if this dimension is dynamic.
+      auto input_shape_or = ctx->InputXlaShape(i);
+      OP_REQUIRES_OK(ctx, input_shape_or.status());
+      const xla::Shape& input_shape = *input_shape_or;
+
+      xla::XlaOp input_size;
+      if (input_shape.is_dynamic_dimension(axis)) {
+        any_input_dynamic = true;
+        input_size = xla::GetDimensionSize(input_data[i], axis);
+      } else {
+        input_size = xla::ConstantR0<int32_t>(ctx->builder(),
+                                              input_shape.dimensions(axis));
+      }
+
+      if (!size_sum_initialized) {
+        dynamic_size_sum = input_size;
+        size_sum_initialized = true;
+      } else {
+        dynamic_size_sum = xla::Add(dynamic_size_sum, input_size);
+      }
+    }
+
+    if (any_input_dynamic && N > 0) {
+      result = xla::SetDimensionSize(result, dynamic_size_sum, axis);
+    }
+
+    ctx->SetOutput(0, result);
   }
 
  private:
