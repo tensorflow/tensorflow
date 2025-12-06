@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -79,8 +79,8 @@ absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {
-          se::DeviceMemoryBase src_addr = buffer.source_buffer;
-          se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
+          se::DeviceAddressBase src_addr = buffer.source_buffer;
+          se::DeviceAddressBase dest_addr = buffer.destination_buffer;
           TF_RETURN_IF_ERROR(comm->LaunchBroadcast(
               // Always use rank 0 since we always broadcast from the first id
               // in replica_groups

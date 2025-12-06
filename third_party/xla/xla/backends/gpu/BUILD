@@ -26,7 +26,7 @@ cc_library(
         "//xla/ffi",
         "//xla/ffi/api:c_api",
         "//xla/ffi/api:c_api_internal",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/base:core_headers",

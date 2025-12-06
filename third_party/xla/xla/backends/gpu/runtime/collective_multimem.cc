@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/rendezvous.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -73,7 +73,7 @@ struct AllocateRendezvousKey {
 struct AllocateParams {
   se::StreamExecutor* executor;
   RankId rank;
-  se::DeviceMemoryBase map_to;
+  se::DeviceAddressBase map_to;
   std::any payload;
 };
 
@@ -102,7 +102,7 @@ struct MappedPtrFormatter {
 absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
 CollectiveMultimem::Allocate(se::StreamExecutor* executor,
                              const GpuCliqueKey& clique_key, RankId rank,
-                             se::DeviceMemoryBase map_to, std::any payload) {
+                             se::DeviceAddressBase map_to, std::any payload) {
   VLOG(3) << absl::StrFormat(
       "rank=[%d] Allocate collective multimem for clique: %s", rank.value(),
       clique_key.ToString());
@@ -185,7 +185,7 @@ absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
 CollectiveMultimem::Allocate(se::StreamExecutor* executor,
                              const GpuCliqueKey& clique_key,
                              GlobalDeviceId global_device_id,
-                             se::DeviceMemoryBase map_to, std::any payload) {
+                             se::DeviceAddressBase map_to, std::any payload) {
   if (std::optional<RankId> rank = clique_key.rank(global_device_id)) {
     return Allocate(executor, clique_key, *rank, map_to, std::move(payload));
   }

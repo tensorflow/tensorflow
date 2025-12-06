@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
@@ -89,7 +89,7 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
         host_buffer_allocs;
 
     // Device memory buffer for output offsets.
-    se::DeviceMemoryHandle output_offsets_device_buffer;
+    se::DeviceAddressHandle output_offsets_device_buffer;
 
     // Event to synchronize streams on different devices at the start of the
     // kernel.

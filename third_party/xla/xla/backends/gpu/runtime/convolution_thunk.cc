@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -85,7 +85,7 @@ GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
 absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  std::vector<se::DeviceMemoryBase> operand_se_buffers, result_se_buffers;
+  std::vector<se::DeviceAddressBase> operand_se_buffers, result_se_buffers;
   operand_se_buffers.reserve(operand_buffers_.size());
   for (BufferAllocation::Slice buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
@@ -96,7 +96,7 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
     result_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
   }
 
-  se::DeviceMemoryBase scratch =
+  se::DeviceAddressBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   bool runner_created = false;

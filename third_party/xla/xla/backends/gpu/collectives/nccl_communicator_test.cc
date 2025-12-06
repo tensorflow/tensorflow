@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -130,7 +130,7 @@ TEST(NcclCommunicator, DoubleAbortFails) {
 TEST(NcclCommunicator, OperationsFailAfterAbort) {
   for (const bool blocking : {true, false}) {
     // Declare placeholder variables to make the operations below compile.
-    se::DeviceMemoryBase buf;
+    se::DeviceAddressBase buf;
     PrimitiveType dtype = PrimitiveType::U64;
     size_t count = 0;
     ReductionKind rk = ReductionKind::SUM;

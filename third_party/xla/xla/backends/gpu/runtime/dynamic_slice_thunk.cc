@@ -51,7 +51,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -277,8 +277,8 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::Stream& stream = *params.stream;
   const BufferAllocations& orig_allocations = *params.buffer_allocations;
 
-  absl::InlinedVector<se::DeviceMemoryBase, 8> slice_buffers(
-      slices_.size(), se::DeviceMemoryBase());
+  absl::InlinedVector<se::DeviceAddressBase, 8> slice_buffers(
+      slices_.size(), se::DeviceAddressBase());
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_alloc = [&] {
@@ -300,7 +300,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     // `argument_buffer` will contain the original offset for slice
     // `argument_slice` within `orig_allocations`
-    se::DeviceMemoryBase argument_buffer =
+    se::DeviceAddressBase argument_buffer =
         orig_allocations.GetDeviceAddress(*slice.embedded_thunk_argument);
 
     // If argument is not sliced, just use the original buffer.
@@ -350,7 +350,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
         VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
                 << "]: transfer offset from device " << alloc_slice.ToString();
 
-        se::DeviceMemoryBase offset_src =
+        se::DeviceAddressBase offset_src =
             orig_allocations.GetDeviceAddress(alloc_slice);
         int64_t* offset_dst = &offset_value(argument_idx, offset_idx);
 

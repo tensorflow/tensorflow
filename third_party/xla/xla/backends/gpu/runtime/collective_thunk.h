@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -271,8 +271,8 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
-  se::DeviceMemoryBase source_buffer;
-  se::DeviceMemoryBase destination_buffer;
+  se::DeviceAddressBase source_buffer;
+  se::DeviceAddressBase destination_buffer;
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };

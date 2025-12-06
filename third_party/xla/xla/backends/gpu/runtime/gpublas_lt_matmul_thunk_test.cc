@@ -47,8 +47,8 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -169,7 +169,7 @@ class GpuBlasLtThunkBuilder {
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
-    std::vector<se::DeviceMemoryBase> buffers(mem_buffers_.size());
+    std::vector<se::DeviceAddressBase> buffers(mem_buffers_.size());
     for (size_t i = 0; i < buffers.size(); i++) {
       buffers[i] = *mem_buffers_[i];
     }

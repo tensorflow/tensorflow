@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -149,7 +149,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
   TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
   bool* condition_result = handle.get<bool>();
-  se::DeviceMemoryBase condition_result_data =
+  se::DeviceAddressBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
           condition_result_buffer_index_);
 

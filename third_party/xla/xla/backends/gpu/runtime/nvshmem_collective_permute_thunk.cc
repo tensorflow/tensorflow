@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -161,7 +161,7 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
 
-  std::vector<se::DeviceMemoryBase> src_addrs, dest_addrs;
+  std::vector<se::DeviceAddressBase> src_addrs, dest_addrs;
   absl::c_transform(
       buffers, std::back_inserter(src_addrs),
       [](const DeviceBufferPair& buffer) { return buffer.source_buffer; });

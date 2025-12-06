@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -99,14 +99,14 @@ NormRunner& NormThunk::GetOrCreateRunner(
 absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  se::DeviceMemoryBase x_se_buffer =
+  se::DeviceAddressBase x_se_buffer =
       buffer_allocations.GetDeviceAddress(x_buffer_);
-  se::DeviceMemoryBase scale_se_buffer =
+  se::DeviceAddressBase scale_se_buffer =
       buffer_allocations.GetDeviceAddress(scale_buffer_);
-  se::DeviceMemoryBase y_or_dx_se_buffer =
+  se::DeviceAddressBase y_or_dx_se_buffer =
       buffer_allocations.GetDeviceAddress(y_or_dx_buffer_);
 
-  std::optional<se::DeviceMemoryBase> bias_se_buffer, expectation_se_buffer,
+  std::optional<se::DeviceAddressBase> bias_se_buffer, expectation_se_buffer,
       norm_factor_se_buffer, dy_se_buffer, dscale_se_buffer, dbias_se_buffer;
   if (bias_buffer_) {
     bias_se_buffer = buffer_allocations.GetDeviceAddress(bias_buffer_.value());
@@ -125,7 +125,7 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
         buffer_allocations.GetDeviceAddress(dbias_buffer_.value());
   }
 
-  se::DeviceMemoryBase scratch =
+  se::DeviceAddressBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   RunNormOptions opts;

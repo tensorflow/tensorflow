@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -88,15 +88,15 @@ absl::Status RunAllReduceKernel(
     PrimitiveType element_type,                      //
     ReductionKind reduction_kind,                    //
     se::gpu::AllReduceStrategy all_reduce_strategy,  //
-    se::DeviceMemoryBase symmetric_input_buffer,     //
-    se::DeviceMemoryBase local_input_buffer,         //
-    se::DeviceMemoryBase output_buffer,              //
+    se::DeviceAddressBase symmetric_input_buffer,    //
+    se::DeviceAddressBase local_input_buffer,        //
+    se::DeviceAddressBase output_buffer,             //
     RankId rank,                                     //
     int64_t num_ranks,                               //
     int64_t num_elements,                            //
-    se::DeviceMemoryBase symmetric_signal_buffer,    //
+    se::DeviceAddressBase symmetric_signal_buffer,   //
     uint32_t signal_value,                           //
-    se::DeviceMemoryBase metadata                    //
+    se::DeviceAddressBase metadata                   //
 );
 
 }  // namespace xla::gpu

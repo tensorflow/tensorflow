@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -83,10 +83,10 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
   constexpr int64_t num_row_elements = 2;
   constexpr int64_t n = num_input_rows * num_row_elements;
 
-  stream_executor::DeviceMemoryHandle input_buffer(
+  stream_executor::DeviceAddressHandle input_buffer(
       executor, executor->AllocateArray<T>(n));
 
-  std::vector<stream_executor::DeviceMemoryHandle> output_buffers;
+  std::vector<stream_executor::DeviceAddressHandle> output_buffers;
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
     ASSERT_TRUE(!output_buffers[i].memory().is_null());
@@ -94,13 +94,13 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
         stream->MemZero(output_buffers[i].memory_ptr(), n * sizeof(T)));
   }
 
-  stream_executor::DeviceMemoryHandle input_offsets_buffer(
+  stream_executor::DeviceAddressHandle input_offsets_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
-  stream_executor::DeviceMemoryHandle send_sizes_buffer(
+  stream_executor::DeviceAddressHandle send_sizes_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
-  stream_executor::DeviceMemoryHandle output_offsets_buffer(
+  stream_executor::DeviceAddressHandle output_offsets_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
 
@@ -126,7 +126,7 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
                               output_offsets.data(),
                               output_offsets.size() * sizeof(int64_t)));
 
-  std::vector<se::DeviceMemoryBase> output_buffers_span;
+  std::vector<se::DeviceAddressBase> output_buffers_span;
   for (auto& output_buffer : output_buffers) {
     output_buffers_span.push_back(output_buffer.memory());
   }

@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/xla_data.pb.h"
 
@@ -111,12 +111,12 @@ class FftThunk : public Thunk {
   const Shape output_shape_;
 };
 
-absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
-                    se::DeviceMemoryBase output, const Shape& output_shape,
+absl::Status RunFft(se::DeviceAddressBase input, const Shape& input_shape,
+                    se::DeviceAddressBase output, const Shape& output_shape,
                     se::fft::Type fft_type,
                     absl::Span<const int64_t> fft_length, int device_ordinal,
                     FftPlanCache* fft_plan_cache, se::Stream* stream,
-                    se::DeviceMemoryAllocator* memory_allocator);
+                    se::DeviceAddressAllocator* memory_allocator);
 
 }  // namespace gpu
 }  // namespace xla

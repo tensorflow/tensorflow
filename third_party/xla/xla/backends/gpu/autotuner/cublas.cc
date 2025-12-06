@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
@@ -57,7 +57,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return configs;
   }
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
+  std::unique_ptr<se::DeviceAddressAllocator> allocator =
       std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
@@ -80,7 +80,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
     TF_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
-        /*data=*/se::DeviceMemoryBase(), layout.leading_dim_stride,
+        /*data=*/se::DeviceAddressBase(), layout.leading_dim_stride,
         layout.batch_stride, type,
         // BLAS is column-major by default.
         (layout.order == se::gpu::MatrixLayout::Order::kColumnMajor

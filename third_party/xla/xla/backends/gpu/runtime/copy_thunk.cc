@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -51,9 +51,9 @@ DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
 
 absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
+  se::DeviceAddressBase destination_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
-  se::DeviceMemoryBase source_data =
+  se::DeviceAddressBase source_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
   VLOG(3) << "Memcpy D2D of size " << mem_size_ << " from "
           << source_data.opaque() << " to " << destination_data.opaque();
@@ -182,9 +182,9 @@ DeviceToHostCopyThunk::DeviceToHostCopyThunk(
 
 absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
+  se::DeviceAddressBase destination_data =
       params.buffer_allocations->GetDeviceAddress(destination());
-  se::DeviceMemoryBase source_data =
+  se::DeviceAddressBase source_data =
       params.buffer_allocations->GetDeviceAddress(source());
   void* cpu_dst = destination_data.opaque();
   TF_ASSIGN_OR_RETURN(
@@ -263,9 +263,9 @@ HostToDeviceCopyThunk::HostToDeviceCopyThunk(
 
 absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
+  se::DeviceAddressBase destination_data =
       params.buffer_allocations->GetDeviceAddress(destination());
-  se::DeviceMemoryBase source_data =
+  se::DeviceAddressBase source_data =
       params.buffer_allocations->GetDeviceAddress(source());
   void* cpu_src = source_data.opaque();
   TF_ASSIGN_OR_RETURN(
@@ -374,9 +374,9 @@ DynamicMemcpyThunk::DynamicMemcpyThunk(
       offsets_(std::move(offsets)) {}
 
 absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::DeviceMemoryBase src_data =
+  se::DeviceAddressBase src_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
-  se::DeviceMemoryBase dst_data =
+  se::DeviceAddressBase dst_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
 
   int64_t iteration_index = 0;

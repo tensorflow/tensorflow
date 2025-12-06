@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/ffi.h"  // IWYU pragma: export
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -38,7 +38,7 @@ namespace xla::ffi {
 
 // Type tag binds to one of the following types defined by XLA:GPU runtime:
 struct Stream {};                    //  `se::Stream*`
-struct Allocator {};                 //  `se::DeviceMemoryAllocator*`
+struct Allocator {};                 //  `se::DeviceAddressAllocator*`
 struct ScratchAllocator {};          //  `se::OwningScratchAllocator`
 struct CollectiveParams {};          //  `const xla::gpu::CollectiveParams*`
 struct CollectiveCliqueRequests {};  //  `xla::gpu::CollectiveCliqueRequests*`
@@ -83,7 +83,7 @@ struct CtxDecoding<PlatformStream<T>> {
 
 template <>
 struct CtxDecoding<Allocator> {
-  using Type = stream_executor::DeviceMemoryAllocator*;
+  using Type = stream_executor::DeviceAddressAllocator*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,

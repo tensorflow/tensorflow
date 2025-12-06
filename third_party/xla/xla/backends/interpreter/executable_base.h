@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla.pb.h"
 namespace xla {
@@ -55,7 +55,7 @@ class InterpreterExecutableBase : public Executable {
  private:
   absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
-      se::DeviceMemoryAllocator* allocator,
+      se::DeviceAddressAllocator* allocator,
       std::vector<ExecutionInput>* arguments, stream_executor::Stream* stream);
 
   InterpreterExecutableBase(const InterpreterExecutableBase&) = delete;

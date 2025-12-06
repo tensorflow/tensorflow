@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -213,7 +213,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
 }
 
 Future<> NvshmemCommunicator::AllReduce(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
   if (aborted_) {
@@ -352,8 +352,8 @@ size_t GetPrimitiveTypeSize(PrimitiveType type) {
 // the actual data transfer between peers.
 absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
                                       PrimitiveType type,
-                                      se::DeviceMemoryBase recv_buffer,
-                                      se::DeviceMemoryBase send_buffer,
+                                      se::DeviceAddressBase recv_buffer,
+                                      se::DeviceAddressBase send_buffer,
                                       size_t count, RankId peer,
                                       const Executor& executor) {
   if (!op_name.empty() && op_name != "send" && op_name != "recv") {
@@ -446,8 +446,8 @@ absl::Status NvshmemCommunicator::P2P(absl::string_view op_name,
   return absl::OkStatus();
 }
 
-Future<> NvshmemCommunicator::Send(se::DeviceMemoryBase recv_buffer,
-                                   se::DeviceMemoryBase send_buffer,
+Future<> NvshmemCommunicator::Send(se::DeviceAddressBase recv_buffer,
+                                   se::DeviceAddressBase send_buffer,
                                    PrimitiveType dtype, size_t count,
                                    RankId peer, const Executor& executor) {
   VLOG(1) << "Send NVSHMEM communicator: " << ToString();
@@ -464,8 +464,8 @@ Future<> NvshmemCommunicator::Send(se::DeviceMemoryBase recv_buffer,
   return absl::OkStatus();
 }
 
-Future<> NvshmemCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
-                                   se::DeviceMemoryBase send_buffer,
+Future<> NvshmemCommunicator::Recv(se::DeviceAddressBase recv_buffer,
+                                   se::DeviceAddressBase send_buffer,
                                    PrimitiveType dtype, size_t count,
                                    RankId peer, const Executor& executor) {
   VLOG(1) << "Recv NVSHMEM communicator: " << ToString();

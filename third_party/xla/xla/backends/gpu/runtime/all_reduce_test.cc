@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -110,10 +110,10 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     std::vector<std::unique_ptr<se::Stream>> streams;
-    std::vector<se::DeviceMemoryBase> allocated_buffers;
-    std::vector<se::DeviceMemoryBase> local_input_buffers;
-    std::vector<se::DeviceMemoryBase> data_buffers;
-    std::vector<se::DeviceMemoryBase> signal_flags_buffers;
+    std::vector<se::DeviceAddressBase> allocated_buffers;
+    std::vector<se::DeviceAddressBase> local_input_buffers;
+    std::vector<se::DeviceAddressBase> data_buffers;
+    std::vector<se::DeviceAddressBase> signal_flags_buffers;
 
     uint64_t input_size = num_elements * sizeof(T);
     uint64_t aligned_input_size =
@@ -149,15 +149,16 @@ class AllReduceKernelTest : public ::testing::Test,
                                             input_data[i].data(), input_size));
     }
 
-    std::vector<se::DeviceMemoryBase> metadata_buffers;
+    std::vector<se::DeviceAddressBase> metadata_buffers;
     // One for signal and one for input parameters.
     constexpr int kNumPeerParameters = 2;
     size_t param_to_peers_size = sizeof(void*) * kNumPeerParameters * num_ranks;
     std::vector<void*> param_to_peers_ptrs;
-    for (const se::DeviceMemoryBase& local_input_buffer : local_input_buffers) {
+    for (const se::DeviceAddressBase& local_input_buffer :
+         local_input_buffers) {
       param_to_peers_ptrs.push_back(local_input_buffer.opaque());
     }
-    for (const se::DeviceMemoryBase& signal_flags_buffer :
+    for (const se::DeviceAddressBase& signal_flags_buffer :
          signal_flags_buffers) {
       param_to_peers_ptrs.push_back(signal_flags_buffer.opaque());
     }
@@ -182,7 +183,7 @@ class AllReduceKernelTest : public ::testing::Test,
       metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
           sizeof(CollectiveKernelMetadata) + param_to_peers_size));
 
-      se::DeviceMemoryBase param_to_peers_ptrs_buffer =
+      se::DeviceAddressBase param_to_peers_ptrs_buffer =
           metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
                                            param_to_peers_size);
       metadata.param_to_peers =

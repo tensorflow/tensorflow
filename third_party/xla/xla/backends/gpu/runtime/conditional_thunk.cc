@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -110,7 +110,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     return handle.get<int32_t>();
   }();
 
-  se::DeviceMemoryBase branch_index_address =
+  se::DeviceAddressBase branch_index_address =
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);
   if (branch_index_is_bool_) {
     TF_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),

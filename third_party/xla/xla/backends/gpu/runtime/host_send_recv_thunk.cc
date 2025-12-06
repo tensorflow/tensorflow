@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -186,7 +186,7 @@ absl::Status HostSendThunk::ExecuteOnStream(const ExecuteParams& params) {
     stream = params.stream;
   }
 
-  se::DeviceMemoryBase src =
+  se::DeviceAddressBase src =
       params.buffer_allocations->GetDeviceAddress(buffer_);
 
   // Send buffer to a handler registered with the executable.
@@ -382,7 +382,7 @@ absl::Status HostRecvThunk::ExecuteOnStream(const ExecuteParams& params) {
     stream = params.stream;
   }
 
-  se::DeviceMemoryBase dst =
+  se::DeviceAddressBase dst =
       params.buffer_allocations->GetDeviceAddress(buffer_);
 
   // Recv buffer from a handler registered with the run options.

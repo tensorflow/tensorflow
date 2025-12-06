@@ -58,8 +58,8 @@ limitations under the License.
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -97,7 +97,7 @@ static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
     auto elements = absl::c_accumulate(operand->shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(operand->shape.element_type());
-    se::DeviceMemoryBase placeholder_arg(nullptr, elements * dtype_bytes);
+    se::DeviceAddressBase placeholder_arg(nullptr, elements * dtype_bytes);
     builder.AddBufferArg(placeholder_arg, operand->shape.element_type(),
                          operand->shape.dimensions());
   }
@@ -115,7 +115,7 @@ static absl::StatusOr<ffi::CallFrame> BuildCallFramePrototype(
     auto elements = absl::c_accumulate(result->shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(result->shape.element_type());
-    se::DeviceMemoryBase placeholder_ret(nullptr, elements * dtype_bytes);
+    se::DeviceAddressBase placeholder_ret(nullptr, elements * dtype_bytes);
     builder.AddBufferRet(placeholder_ret, result->shape.element_type(),
                          result->shape.dimensions());
   }
@@ -374,26 +374,26 @@ CustomCallThunk::BuildCallFrame(
     const BufferAllocations* absl_nullable buffer_allocations) {
   auto device_memory = [&](BufferAllocation::Slice slice) {
     return buffer_allocations ? buffer_allocations->GetDeviceAddress(slice)
-                              : se::DeviceMemoryBase{};
+                              : se::DeviceAddressBase{};
   };
 
   // Collect arguments buffers.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments;
   arguments.reserve(operands_.size());
   for (auto& operand : operands_) {
     if (!operand.has_value()) {
-      arguments.push_back(se::DeviceMemoryBase{});
+      arguments.push_back(se::DeviceAddressBase{});
     } else {
       arguments.push_back(device_memory(operand->slice));
     }
   }
 
   // Collect results buffers.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results;
   results.reserve(results_.size());
   for (auto& result : results_) {
     if (!result.has_value()) {
-      results.push_back(se::DeviceMemoryBase{});
+      results.push_back(se::DeviceAddressBase{});
     } else {
       results.push_back(device_memory(result->slice));
     }
@@ -418,7 +418,7 @@ CallOptions CustomCallThunk::BuildCallOptions(
     const CollectiveCliques* absl_nullable collective_cliques,
     const ffi::ExecutionContext* absl_nullable execution_context) {
   int32_t device_ordinal = -1;
-  se::DeviceMemoryAllocator* allocator = nullptr;
+  se::DeviceAddressAllocator* allocator = nullptr;
   if (buffer_allocations != nullptr) {
     device_ordinal = buffer_allocations->device_ordinal();
     allocator = buffer_allocations->memory_allocator();

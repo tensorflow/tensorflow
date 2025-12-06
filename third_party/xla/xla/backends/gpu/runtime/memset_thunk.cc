@@ -22,14 +22,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::DeviceMemoryBase dest_data =
+  se::DeviceAddressBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   return params.stream->MemZero(&dest_data, dest_data.size());
 }
@@ -55,7 +55,7 @@ absl::StatusOr<ThunkProto> MemzeroThunk::ToProto() const {
 
 absl::Status Memset32BitValueThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase dest_data =
+  se::DeviceAddressBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   return params.stream->Memset32(&dest_data, value_, dest_data.size());
 }

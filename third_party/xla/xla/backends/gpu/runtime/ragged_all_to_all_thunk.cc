@@ -49,8 +49,8 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
@@ -108,8 +108,8 @@ absl::Status LoadRaggedTensorMetadata(
 
 // Runs AllToAll on a buffer that contains ragged tensor metadata.
 absl::Status RunAllToAllOnIndexBuffer(
-    const se::DeviceMemoryBase& source_buffer, int64_t num_updates_per_replica,
-    const se::DeviceMemoryBase& destination_buffer, PrimitiveType element_type,
+    const se::DeviceAddressBase& source_buffer, int64_t num_updates_per_replica,
+    const se::DeviceAddressBase& destination_buffer, PrimitiveType element_type,
     se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
@@ -119,10 +119,10 @@ absl::Status RunAllToAllOnIndexBuffer(
        &destination_buffer, &stream](GpuCommunicator* comm) -> absl::Status {
         for (int peer = 0; peer < num_ranks; ++peer) {
           int64_t offset = peer * num_updates_per_replica;
-          se::DeviceMemoryBase send_slice =
+          se::DeviceAddressBase send_slice =
               GpuCollectives::Slice(source_buffer, element_type, offset,
                                     /*count=*/num_updates_per_replica);
-          se::DeviceMemoryBase recv_slice =
+          se::DeviceAddressBase recv_slice =
               GpuCollectives::Slice(destination_buffer, element_type, offset,
                                     /*count=*/num_updates_per_replica);
           TF_RETURN_IF_ERROR(comm->LaunchSend(send_slice, element_type,
@@ -144,7 +144,7 @@ absl::Status RunRaggedAllToAll(
     int64_t ragged_row_element_size, int64_t num_total_updates,
     const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
     Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
-    const se::DeviceMemoryBase& output_offsets_device_buffer,
+    const se::DeviceAddressBase& output_offsets_device_buffer,
     bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal)
@@ -182,18 +182,18 @@ absl::Status RunRaggedAllToAll(
        &stream](GpuCommunicator* comm) -> absl::Status {
         PrimitiveType element_type = buffers[0].element_type;
 
-        se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
-        se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
+        se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+        se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
 
         for (int64_t i = 0; i < num_updates_per_replica; ++i) {
           for (int peer = 0; peer < num_ranks; ++peer) {
             int64_t idx = peer * num_updates_per_replica + i;
-            se::DeviceMemoryBase send_slice = GpuCollectives::Slice(
+            se::DeviceAddressBase send_slice = GpuCollectives::Slice(
                 input_buffer, element_type,
                 input_offsets[idx] * ragged_row_element_size,
                 send_sizes[idx] * ragged_row_element_size);
 
-            se::DeviceMemoryBase recv_slice = GpuCollectives::Slice(
+            se::DeviceAddressBase recv_slice = GpuCollectives::Slice(
                 output_buffer, element_type,
                 output_offsets[idx] * ragged_row_element_size,
                 recv_sizes[idx] * ragged_row_element_size);
@@ -218,7 +218,7 @@ absl::Status RunRaggedAllToAll(
 // Contains the values that are passed between host threads with rendezvous.
 struct RendezvousValue {
   RankId rank;
-  se::DeviceMemoryBase output_buffer;
+  se::DeviceAddressBase output_buffer;
   se::Event* start_event;
   se::Event* end_event;
 
@@ -234,7 +234,7 @@ absl::StatusOr<std::shared_ptr<std::vector<RendezvousValue>>>
 RendezvousBeforeKernelStart(absl::string_view name,
                             const GpuCliqueKey& clique_key, RankId rank,
                             int64_t num_ranks,
-                            const se::DeviceMemoryBase& output_buffer,
+                            const se::DeviceAddressBase& output_buffer,
                             se::Stream& stream, se::Event* start_event,
                             se::Event* end_event) {
   RendezvousValue rendezvous_value;
@@ -321,8 +321,8 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
 
   PrimitiveType element_type = buffers[0].element_type;
 
-  se::DeviceMemoryBase input_buffer = buffers[0].source_buffer;
-  se::DeviceMemoryBase output_buffer = buffers[1].destination_buffer;
+  se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+  se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
@@ -332,7 +332,7 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
 
   const int64_t num_updates_per_replica = config_.num_total_updates / num_ranks;
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> output_ptrs;
+  absl::InlinedVector<se::DeviceAddressBase, 4> output_ptrs;
   for (auto& value : *rendezvous_values) {
     output_ptrs.push_back(value.output_buffer);
   }
@@ -432,7 +432,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     state->host_buffer_allocs.push_back(std::move(alloc));
   }
 
-  state->output_offsets_device_buffer = se::DeviceMemoryHandle{
+  state->output_offsets_device_buffer = se::DeviceAddressHandle{
       executor,
       executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
 
