@@ -36,7 +36,6 @@ load("//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
-load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
 
 def _third_party_ext_impl(mctx):  # @unused
     benchmark()
@@ -75,7 +74,6 @@ def _third_party_ext_impl(mctx):  # @unused
     tensorrt()
     triton()
     uv()
-    xnnpack()
 
 third_party_ext = module_extension(
     implementation = _third_party_ext_impl,
