@@ -36,7 +36,7 @@ class InterleaveDatasetParams : public DatasetParams {
                           DataTypeVector type_arguments,
                           DataTypeVector output_dtypes,
                           std::vector<PartialTensorShape> output_shapes,
-                          string node_name)
+                          std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
@@ -60,7 +60,8 @@ class InterleaveDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->reserve(input_dataset_params_.size() +
                          other_arguments_.size() + 2);
@@ -85,7 +86,7 @@ class InterleaveDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return InterleaveDatasetOp::kDatasetType;
   }
 

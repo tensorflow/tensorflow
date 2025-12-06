@@ -75,7 +75,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Model")});
   }
@@ -87,7 +87,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override { return "ModelDatasetOp::Dataset"; }
+  std::string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);

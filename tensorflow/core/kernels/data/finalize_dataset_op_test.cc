@@ -31,7 +31,7 @@ class FinalizeDatasetParams : public DatasetParams {
   template <typename T>
   FinalizeDatasetParams(T input_dataset_params, DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
-                        string node_name)
+                        std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         has_captured_ref_(false) {
@@ -40,7 +40,8 @@ class FinalizeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->emplace_back(FinalizeDatasetOp::kInputDataset);
     return absl::OkStatus();
   }
@@ -52,7 +53,7 @@ class FinalizeDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return "Finalize"; }
+  std::string dataset_type() const override { return "Finalize"; }
 
  private:
   bool has_captured_ref_;
