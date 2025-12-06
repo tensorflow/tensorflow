@@ -99,15 +99,16 @@ class DenseToCSRSparseMatrixCPUOp : public OpKernel {
                        TensorShape({(num_rows + 1) * batch_size}));
 
     // Fill the row pointers with zeros.
-    functor::SetZeroFunctor<Device, int32> set_zero;
-    set_zero(ctx->eigen_device<Device>(), csr_row_ptr.flat<int32>());
+    functor::SetZeroFunctor<Device, int32_t> set_zero;
+    set_zero(ctx->eigen_device<Device>(), csr_row_ptr.flat<int32_t>());
 
     // Convert from COO to CSR format.
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(
-        ctx, coo_to_csr(batch_size, num_rows, num_cols,
-                        indices.matrix<int64_t>(), batch_ptr.vec<int32>(),
-                        csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
+        ctx,
+        coo_to_csr(batch_size, num_rows, num_cols, indices.matrix<int64_t>(),
+                   batch_ptr.vec<int32_t>(), csr_row_ptr.vec<int32_t>(),
+                   csr_col_ind.vec<int32_t>()));
 
     CSRSparseMatrix output_csr_matrix;
     OP_REQUIRES_OK(ctx, CSRSparseMatrix::CreateCSRSparseMatrix(
