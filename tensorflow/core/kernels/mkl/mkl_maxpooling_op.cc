@@ -76,8 +76,10 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // If input is an empty tensor, allocate an empty output tensor and return
-      if (input_tensor.NumElements() == 0) {
+      // If input is an empty tensor, or the output shape has zero elements,
+      // allocate an empty output tensor and return
+      auto out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+      if (input_tensor.NumElements() == 0 || out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
