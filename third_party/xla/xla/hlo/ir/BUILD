@@ -203,12 +203,14 @@ cc_library(
 
 cc_library(
     name = "named_sharding",
+    srcs = ["named_sharding.cc"],
     hdrs = ["named_sharding.h"],
     deps = [
         ":mesh_and_axis",
         ":tile_assignment",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )

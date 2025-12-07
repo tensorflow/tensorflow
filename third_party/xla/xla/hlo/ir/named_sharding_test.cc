@@ -24,6 +24,32 @@ namespace {
 
 using DimensionSharding = NamedSharding::DimensionSharding;
 
+TEST(NamedShardingTest, AxisNameCtor) {
+  Mesh mesh_abcd({2, 4, 3, 8}, {"a", "b", "c", "d"});
+  AxisRef axis_a(0);
+  AxisRef axis_b(1);
+  AxisRef axis_c(2);
+  AxisRef axis_d(3);
+
+  NamedSharding sharding =
+      test_utils::FromAxisNames(mesh_abcd, /*dim_shardings=*/{{"c"}, {"b"}},
+                                /*replicated_axes=*/{"a"},
+                                /*unreduced_axes=*/{"d"});
+  DimensionSharding ds_c({axis_c}, /*is_closed=*/true);
+  DimensionSharding ds_b({axis_b}, /*is_closed=*/true);
+  EXPECT_EQ(sharding,
+            NamedSharding(mesh_abcd, {ds_c, ds_b}, {axis_a}, {axis_d}));
+
+  NamedSharding sharding2 = test_utils::FromAxisNames(
+      mesh_abcd,
+      /*dim_shardings=*/{{"c", "a"}, {}, {"b"}},
+      /*replicated_axes=*/{"d"}, /*unreduced_axes=*/{});
+  DimensionSharding ds_ca({axis_c, axis_a}, /*is_closed=*/true);
+  EXPECT_EQ(sharding2,
+            NamedSharding(mesh_abcd, {ds_ca, DimensionSharding(), ds_b},
+                          {axis_d}, {}));
+}
+
 TEST(NamedShardingTest, Equality) {
   Mesh mesh_abcd({2, 4, 3, 8}, {"a", "b", "c", "d"});
 
