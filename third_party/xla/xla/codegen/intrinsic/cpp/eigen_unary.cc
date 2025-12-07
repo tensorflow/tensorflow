@@ -36,12 +36,39 @@ inline VecType VectorTanh(const VecType x) {
 // XLA entrypoints, renamed with asm in header file.
 //===--------------------------------------------------------------------===//
 
+using FloatArrayType = Eigen::Array<float, 16, 1>;
+
 // Single precision
 float tanh_f32(float x) { return Eigen::internal::ptanh_float(x); }
+Vec4f tanh_v4f32(Vec4f x) {
+  FloatArrayType buffer = FloatArrayType::Zero();
+  Eigen::Map<const Eigen::Array<float, 4, 1>, Eigen::Aligned> x_map(
+      reinterpret_cast<const float*>(&x));
+  buffer.head<4>() = x_map;
+  FloatArrayType result = buffer.tanh();
+  return *reinterpret_cast<Vec4f*>(&result);
+}
+Vec8f tanh_v8f32(Vec8f x) {
+  FloatArrayType buffer = FloatArrayType::Zero();
+  Eigen::Map<const Eigen::Array<float, 8, 1>, Eigen::Aligned> x_map(
+      reinterpret_cast<const float*>(&x));
+  buffer.head<8>() = x_map;
+  FloatArrayType result = buffer.tanh();
+  return *reinterpret_cast<Vec8f*>(&result);
+}
 Vec16f tanh_v16f32(Vec16f x) { return VectorTanh(x); }
 
 // Double precision
+using DoubleArrayType = Eigen::Array<double, 8, 1>;
 double tanh_f64(double x) { return Eigen::internal::ptanh_double(x); }
+Vec4d tanh_v4f64(Vec4d x) {
+  DoubleArrayType buffer = DoubleArrayType::Zero();
+  Eigen::Map<const Eigen::Array<double, 4, 1>, Eigen::Aligned> x_map(
+      reinterpret_cast<const double*>(&x));
+  buffer.head<4>() = x_map;
+  DoubleArrayType result = buffer.tanh();
+  return *reinterpret_cast<Vec4d*>(&result);
+}
 Vec8d tanh_v8f64(Vec8d x) { return VectorTanh(x); }
 
 }  // namespace xla::codegen

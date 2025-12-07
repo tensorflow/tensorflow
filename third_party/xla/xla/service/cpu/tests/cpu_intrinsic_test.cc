@@ -193,20 +193,14 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
         R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
         0xC01FFEC880000000)"},
 
-    IntrinsicTestSpec{
-        HloOpcode::kTanh, F32, true, kTriple_x86_64, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
-        0xC01FFEC880000000)"},
+    IntrinsicTestSpec{HloOpcode::kTanh, F32, true, kTriple_x86_64, "",
+                      R"(CHECK: fmul <{{[0-9]+}} x float>)"},
 
-    IntrinsicTestSpec{
-        HloOpcode::kTanh, F32, true, kTriple_x86_64, "+avx",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <8 x float> %{{[^,]+}}, splat (float
-        0xC01FFEC880000000)"},
+    IntrinsicTestSpec{HloOpcode::kTanh, F32, true, kTriple_x86_64, "+avx",
+                      R"(CHECK: fmul <{{[0-9]+}} x float>)"},
 
-    IntrinsicTestSpec{
-        HloOpcode::kTanh, F32, true, kTriple_android_arm, "",
-        R"(CHECK: fcmp {{(fast )?(uge|olt)}} <4 x float> %{{[^,]+}}, splat (float
-        0xC01FFEC880000000)"},
+    IntrinsicTestSpec{HloOpcode::kTanh, F32, true, kTriple_android_arm, "",
+                      R"(CHECK: fmul <{{[0-9]+}} x float>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, F32, true, kTriple_x86_64, "",

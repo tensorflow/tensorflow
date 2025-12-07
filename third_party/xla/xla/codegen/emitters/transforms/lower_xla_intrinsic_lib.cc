@@ -38,12 +38,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/intrinsic/cpp/intrinsic_declarations.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
 #include "xla/codegen/intrinsic/log1p.h"
 #include "xla/codegen/intrinsic/rsqrt.h"
-#include "xla/codegen/intrinsic/tanh.h"
 #include "xla/codegen/intrinsic/type.h"
 
 namespace xla {
@@ -254,7 +254,8 @@ class LowerXlaIntrinsicLibPass
         LowerIntrinsicPattern<codegen::intrinsics::Exp, mlir::math::ExpOp>,
         LowerIntrinsicPattern<codegen::intrinsics::Log1p, mlir::math::Log1pOp>,
         LowerIntrinsicPattern<codegen::intrinsics::Rsqrt, mlir::math::RsqrtOp>,
-        LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::EigenTanh,
+                              mlir::math::TanhOp>,
         LowerErfPattern, LowerTruncF32BF16FPattern>(&getContext(), module_op);
 
     if (mlir::failed(

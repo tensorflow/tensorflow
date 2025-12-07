@@ -34,6 +34,8 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
 ; vectorized minimum:
 ; CHECK call <{{[0-9]+}} x double> @llvm.minimum.v4f64{{.+}}0x40862E42FEFA39EF
 ; CHECK-NOT: {{.*}}call{{.*}}ldexp
+; CHECK-NOT: define{{.*}}xla.ldexp
+; CHECK-NOT: define{{.*}}xla.exp
 
 ; Check that the loop epilogue does an unvectorized minimum.
 ; CHECK: scalar.ph:

@@ -10,6 +10,7 @@ lit_test_suite(
     srcs = [
         "exp_inlines.ll",
         "ir_compiler_basic_test.ll",
+        "ir_compiler_cpp_gen_inlines_vectorizes_test.ll",
         "ir_compiler_vectorization_test.ll",
         "ldexp_inlines.ll",
     ],
