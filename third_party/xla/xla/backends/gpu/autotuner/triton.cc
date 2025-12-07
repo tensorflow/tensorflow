@@ -20,11 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
@@ -40,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
@@ -104,12 +101,25 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
-  const HloDotInstruction* dot =
-      Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
-          *instr.fused_instructions_computation(), HloOpcode::kDot));
+  const HloInstruction* dot_instr = hlo_query::GetFirstInstructionWithOpcode(
+      *instr.fused_instructions_computation(), HloOpcode::kDot);
+  if (dot_instr != nullptr) {
+    return GetSupportedConfigsForDot(dot_instr);
+  }
+  const HloInstruction* scaled_dot_instr =
+      hlo_query::GetFirstInstructionWithOpcode(
+          *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
+  if (scaled_dot_instr != nullptr) {
+    return GetSupportedConfigsForScaledDot(scaled_dot_instr);
+  }
+  return std::vector<std::unique_ptr<BackendConfig>>();
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
   TritonDotFusionSearchSpace search_space(target_config().device_description,
                                           dot);
-
   bool supports_contracting_split =
       HloBfsFindAll({dot}, [&](const HloInstruction* node) {
         return node->opcode() == HloOpcode::kSlice;
@@ -146,6 +156,25 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
     auto any = std::make_unique<google::protobuf::Any>();
     any->PackFrom(config.ToProto());
     configs.push_back(std::move(any));
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  for (int block_m = 16; block_m <= 256; block_m *= 2) {
+    for (int block_n = 16; block_n <= 256; block_n *= 2) {
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(TritonGemmConfig(block_m, block_n,
+                                     /*block_k=*/128, /*split_k=*/1,
+                                     /*num_stages=*/1,
+                                     /*num_warps=*/4,
+                                     /*num_ctas=*/1,
+                                     /*is_tma_allowed=*/false)
+                        .ToProto());
+      configs.push_back(std::move(any));
+    }
   }
   return configs;
 }

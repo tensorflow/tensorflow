@@ -55,6 +55,11 @@ class TritonBackend : public GpuCodegenBackend {
  private:
   bool IsSupported(const HloInstruction& instr) override;
 
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigsForDot(const HloInstruction* instr);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigsForScaledDot(const HloInstruction* instr);
+
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;
