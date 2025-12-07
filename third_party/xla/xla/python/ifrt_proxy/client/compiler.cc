@@ -65,7 +65,6 @@ Compiler::Compiler(xla::ifrt::Client* client,
 absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
-  LOG(INFO) << "yunnam_debug Compiler::CompileAndLoad";
   auto request = std::make_unique<CompileRequest>();
   {
     tsl::profiler::TraceMe traceme("IfrtProxyProgramSerialize");
