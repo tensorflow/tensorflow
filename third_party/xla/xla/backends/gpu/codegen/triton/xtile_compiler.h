@@ -48,9 +48,6 @@ limitations under the License.
 
 namespace mlir {
 namespace triton {
-namespace nvidia_gpu {
-struct ClusterInfo;
-}
 }  // namespace triton
 }  // namespace mlir
 
@@ -59,7 +56,6 @@ namespace gpu {
 
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
-  std::optional<se::ClusterDim> cluster_dim;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
 

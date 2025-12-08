@@ -42,9 +42,6 @@ PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args) {
   args->out_asm = asm_copy;
   args->out_asm_size = result.asm_text.size();
   args->out_smem_bytes = result.smem_bytes;
-  args->out_cluster_dim_x = result.cluster_dim_x;
-  args->out_cluster_dim_y = result.cluster_dim_y;
-  args->out_cluster_dim_z = result.cluster_dim_z;
   return nullptr;
 }
 
