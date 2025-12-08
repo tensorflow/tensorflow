@@ -264,7 +264,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
     // Convert intermediate tensor.
     for (auto &op : bb) {
       if (llvm::dyn_cast<tosa::ConstOp>(&op)) {
-        continue;  // Skip if the operation is a tosa::ConstOp
+        op->emitError("tosa.const operations are not expected in this pass. Please run tosa-convert-tfl-uint8 before tosa-legalize-tfl");
       }
 
       for (Value output_val : op.getResults()) {
