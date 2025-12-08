@@ -95,18 +95,26 @@ class AttributeMap {
 
   template <typename T>
   absl::StatusOr<T> Get(const std::string& key) const {
-    if constexpr (std::is_same_v<T, std::string> ||
-                  std::is_same_v<T, absl::string_view>) {
-      return Get<T, StringValue>(key);
-    } else if constexpr (std::is_same_v<T, bool>) {
-      return Get<T, BoolValue>(key);
-    } else if constexpr (std::is_same_v<T, int64_t>) {
-      return Get<T, Int64Value>(key);
-    } else if constexpr (std::is_same_v<T, std::vector<int64_t>> ||
-                         std::is_same_v<T, absl::Span<const int64_t>>) {
-      return Get<T, Int64ListValue>(key);
-    } else if constexpr (std::is_same_v<T, float>) {
-      return Get<T, FloatValue>(key);
+    using ValueType = std::decay_t<T>;
+    using VariantType = std::decay_t<Value>;
+    if constexpr (std::is_same_v<ValueType, VariantType>) {
+      auto it = map_.find(key);
+      if (it == map_.end()) {
+        return absl::NotFoundError(absl::StrCat("Key not found: ", key));
+      }
+      return it->second;
+    } else if constexpr (std::is_same_v<ValueType, std::string> ||
+                         std::is_same_v<ValueType, absl::string_view>) {
+      return Get<ValueType, StringValue>(key);
+    } else if constexpr (std::is_same_v<ValueType, bool>) {
+      return Get<ValueType, BoolValue>(key);
+    } else if constexpr (std::is_same_v<ValueType, int64_t>) {
+      return Get<ValueType, Int64Value>(key);
+    } else if constexpr (std::is_same_v<ValueType, std::vector<int64_t>> ||
+                         std::is_same_v<ValueType, absl::Span<const int64_t>>) {
+      return Get<ValueType, Int64ListValue>(key);
+    } else if constexpr (std::is_same_v<ValueType, float>) {
+      return Get<ValueType, FloatValue>(key);
     } else {
       static_assert(false, "Unsupported type for AttributeMap::Get");
     }
