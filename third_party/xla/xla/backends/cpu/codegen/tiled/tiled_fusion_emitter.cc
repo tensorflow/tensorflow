@@ -113,7 +113,7 @@ absl::StatusOr<std::vector<FlatTiling>> GetTiling(
 }
 
 // We don't currently support sub-byte types in the tiled CPU emitter.
-static bool IsSupportedType(PrimitiveType type) {
+bool IsSupportedTilingType(PrimitiveType type) {
   if (type == PRED) {
     return true;
   }
@@ -144,7 +144,7 @@ static bool IsSupportedShape(const Shape& shape) {
   ShapeUtil::ForEachSubshape(
       shape, [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsArray()) {
-          if (!IsSupportedType(subshape.element_type())) {
+          if (!IsSupportedTilingType(subshape.element_type())) {
             is_supported = false;
           }
         }

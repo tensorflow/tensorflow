@@ -30,6 +30,8 @@ limitations under the License.
 
 namespace xla::cpu {
 
+bool IsSupportedTilingType(PrimitiveType type) { return false; }
+
 absl::StatusOr<std::vector<FlatTiling>> GetTilingIfSupported(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
   return absl::UnimplementedError("not supported for this build configuration");

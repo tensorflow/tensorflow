@@ -1017,7 +1017,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (is_fusion_emitters) {
     bool use_experimental_loop_fusion =
         options::UseExperimentalLoopFusion(module->config());
-    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
+    bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
+    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                    use_tiled_emitter);
   }
 
   AliasInfo alias_info;

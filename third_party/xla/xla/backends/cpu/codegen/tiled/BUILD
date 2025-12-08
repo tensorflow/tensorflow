@@ -34,7 +34,10 @@ cc_library(
         ["tiled_fusion_emitter_stub.cc"],
     ),
     hdrs = ["tiled_fusion_emitter.h"],
-    visibility = ["//xla/backends/cpu/codegen:__pkg__"],
+    visibility = [
+        "//xla/backends/cpu/codegen:__pkg__",
+        "//xla/service/cpu:__pkg__",
+    ],
     deps = [
         "//xla:shape_util",
         "//xla:util",

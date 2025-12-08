@@ -271,7 +271,8 @@ NB_MODULE(_extension, kernel_runner_module) {
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
       [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(true);
+        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
+                                     /*use_tiled_emitter=*/true);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));

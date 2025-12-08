@@ -1097,6 +1097,7 @@ cc_library(
     srcs = ["fusion_wrapper.cc"],
     hdrs = ["fusion_wrapper.h"],
     deps = [
+        "//xla/backends/cpu/codegen/tiled:tiled_fusion_emitter",
         "//xla/codegen/emitters:fusion_wrapper_base",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/strings:string_view",
