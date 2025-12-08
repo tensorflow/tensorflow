@@ -77,7 +77,6 @@ cc_library(
     name = "device_address",
     hdrs = ["device_address.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
     ],
@@ -716,8 +715,6 @@ cc_library(
     name = "kernel",
     hdrs = ["kernel.h"],
     deps = [
-        ":device_address",
-        ":device_memory",
         ":kernel_args",
         ":kernel_metadata",
         ":launch_dim",

@@ -1035,7 +1035,6 @@ xla_cc_test(
         "notsan",
     ],
     deps = [
-        ":compilation_provider",
         ":cuda_compute_capability",
         ":nvjitlink",
         ":nvjitlink_support",

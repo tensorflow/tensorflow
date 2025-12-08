@@ -28,7 +28,6 @@ cc_library(
     deps = [
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@dlpack",
     ],
