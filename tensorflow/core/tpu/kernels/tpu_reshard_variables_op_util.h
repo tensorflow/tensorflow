@@ -19,10 +19,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
