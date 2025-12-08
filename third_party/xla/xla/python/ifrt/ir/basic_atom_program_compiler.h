@@ -45,6 +45,8 @@ class BasicAtomProgramCompiler final : public xla::ifrt::AtomProgramCompiler {
       std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
       xla::CompileOptions options) final;
 
+  bool SupportsMpmdReshard() const { return false; }
+
   absl::StatusOr<xla::ifrt::AtomProgramCompileResult> CompileMpmdReshard(
       std::vector<xla::ifrt::DType> dtypes,
       std::vector<xla::ifrt::Shape> shapes,

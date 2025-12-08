@@ -98,6 +98,7 @@ class ProgramInterpreter {
       xla::ifrt::CallLoadedExecutableOp call_loaded_op);
   absl::StatusOr<OpFn> HandleOp(xla::ifrt::RemapArraysOp remap_op);
   absl::StatusOr<OpFn> HandleOp(xla::ifrt::CopyArraysOp copy_arrays_op);
+  absl::StatusOr<OpFn> HandleOp(xla::ifrt::ReshardOp reshard_op);
   absl::StatusOr<OpFn> HandleOp(mlir::func::ReturnOp return_op);
 
   // Returns a pretty string representation of the op.
