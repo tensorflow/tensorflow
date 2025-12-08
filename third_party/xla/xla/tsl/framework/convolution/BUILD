@@ -34,6 +34,7 @@ cc_library(
     defines = [
         "EIGEN_ALTIVEC_USE_CUSTOM_PACK=0",
     ],
+    deps = ["@eigen_archive//:eigen3"],
 )
 
 # Tensorflow also has an eigen_helpers that is closely related, so maintain the same name.
@@ -45,7 +46,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
-        ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "@eigen_archive//:eigen3",
