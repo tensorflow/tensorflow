@@ -92,7 +92,8 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
   absl::flat_hash_set<HloOpcode> ret{HloOpcode::kAbs, HloOpcode::kCopy};
 
   if (element_type != PrimitiveType::F8E5M2 &&
-      element_type != PrimitiveType::F8E4M3FN) {
+      element_type != PrimitiveType::F8E4M3FN &&
+      element_type != PrimitiveType::F8E8M0FNU) {
     ret.insert(HloOpcode::kNegate);
   }
 

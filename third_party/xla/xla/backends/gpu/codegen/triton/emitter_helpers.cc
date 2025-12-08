@@ -439,8 +439,10 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kNot:
       return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
-      // NegFOp is not supported by Triton.
-      return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
+      if (is_integer) {
+        return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
+      }
+      return ma::NegFOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
       TF_ASSIGN_OR_RETURN(
           Type dst_ty, PrimitiveTypeToMlirType(b, hlo.shape().element_type()));

@@ -40,6 +40,7 @@ void CreateTritonXlaPipeline(
   pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
 
   pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
+  pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();

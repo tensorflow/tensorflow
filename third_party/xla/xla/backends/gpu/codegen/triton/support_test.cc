@@ -123,9 +123,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kNegate:
     case HloOpcode::kIota:
       return type != PRED;
+    case HloOpcode::kNegate:
+      return type != PRED && type != F8E8M0FNU;
     case HloOpcode::kRng:
       return !pu::IsComplexType(type);
     case HloOpcode::kComplex:
