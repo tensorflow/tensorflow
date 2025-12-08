@@ -99,6 +99,14 @@ expand_template(
     template = "include/oneapi/dnnl/dnnl_version_hash.h.in",
 )
 
+config_setting(
+    name = "hermetic_build_with_openmp_enabled",
+    values = {
+        "@compute_library//:openmp_flag": "true",
+        "@rules_ml_toolchain//common:is_hermetic_cc_enabled": "true",
+    },
+)
+
 cc_library(
     name = "mkl_dnn_acl",
     srcs = glob(
@@ -162,7 +170,7 @@ cc_library(
         # the -nodefaultlibs flag, simply passing -fopenmp is insufficient.
         # OpenMP's dependencies must be explicitly linked to ensure correct
         # inclusion, as automatic linking is disabled.
-        "@rules_ml_toolchain//common:is_hermetic_cc_enabled": ["@rules_ml_toolchain//cc/sysroots:openmp"],
+        ":hermetic_build_with_openmp_enabled": ["@rules_ml_toolchain//cc/sysroots:openmp"],
         "//conditions:default": [],
     }),
 )
