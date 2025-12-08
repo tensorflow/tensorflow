@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/tsl/util/byte_swap_array.h"
 
+#include <cstddef>
 #include <cstdint>
 
-#include "xla/tsl/platform/errors.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace tsl {
@@ -46,8 +48,8 @@ absl::Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
     }
     return absl::OkStatus();
   } else {
-    return errors::Unimplemented("Byte-swapping of ", bytes_per_elem,
-                                 "-byte values not supported.");
+    return absl::UnimplementedError(absl::StrCat(
+        "Byte-swapping of ", bytes_per_elem, "-byte values not supported."));
   }
 }
 

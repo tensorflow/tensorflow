@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/xla_data.pb.h"
 
@@ -69,12 +69,12 @@ class ConvolutionThunk final : public Thunk {
                    ConvolutionDimensionNumbers dnums, Window window);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen2DConvolution(
-      const ExecuteParams& params, se::DeviceMemoryBase input,
-      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
+      const ExecuteParams& params, se::DeviceAddressBase input,
+      se::DeviceAddressBase kernel, se::DeviceAddressBase output);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> HandleEigen3DConvolution(
-      const ExecuteParams& params, se::DeviceMemoryBase input,
-      se::DeviceMemoryBase kernel, se::DeviceMemoryBase output);
+      const ExecuteParams& params, se::DeviceAddressBase input,
+      se::DeviceAddressBase kernel, se::DeviceAddressBase output);
 
   Options options_;
   ConvolutionSlices convolution_slices_;

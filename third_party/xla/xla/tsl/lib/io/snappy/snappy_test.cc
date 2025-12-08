@@ -172,7 +172,7 @@ absl::Status TestMultipleWrites(size_t compress_input_buf_size,
     }
 
     if (actual_result != expected_result) {
-      return errors::DataLoss("Actual and expected results don't match.");
+      return absl::DataLossError("Actual and expected results don't match.");
     }
     TF_RETURN_IF_ERROR(in.Reset());
   }
@@ -211,7 +211,7 @@ absl::Status TestMultipleWritesInputStream(
     }
 
     if (actual_result != expected_result) {
-      return errors::DataLoss("Actual and expected results don't match.");
+      return absl::DataLossError("Actual and expected results don't match.");
     }
     TF_RETURN_IF_ERROR(snappy_input_stream.Reset());
   }
@@ -389,7 +389,7 @@ TEST(SnappyBuffers, CorruptBlockLargeInputBuffer) {
     return;
   }
   CHECK_EQ(TestMultipleWrites(10000, 10000, 2000, 10000, 2, true, 1, true),
-           errors::OutOfRange("EOF reached"));
+           absl::OutOfRangeError("EOF reached"));
 }
 
 TEST(SnappyBuffers, CorruptBlockLargeInputStream) {

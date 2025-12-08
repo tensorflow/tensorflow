@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -153,49 +153,49 @@ class GpuCommandBuffer : public CommandBuffer {
           record_fn) override;
 
   absl::StatusOr<const Command*> CreateMemcpyD2D(
-      DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
+      DeviceAddressBase* dst, const DeviceAddressBase& src, uint64_t size,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateMemcpyD2D(const Command* command, DeviceMemoryBase* dst,
-                               const DeviceMemoryBase& src,
+  absl::Status UpdateMemcpyD2D(const Command* command, DeviceAddressBase* dst,
+                               const DeviceAddressBase& src,
                                uint64_t size) override;
 
   absl::StatusOr<const Command*> CreateMemset(
-      DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
+      DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateMemset(const Command* command, DeviceMemoryBase* dst,
+  absl::Status UpdateMemset(const Command* command, DeviceAddressBase* dst,
                             const BitPattern& bit_pattern,
                             size_t num_elements) override;
 
   absl::StatusOr<const Command*> CreateDnnGraphCommand(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands,
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands,
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateDnnGraphCommand(
       const Command*, dnn::DnnGraph&, Stream&,
-      absl::Span<DeviceMemoryBase> operands) override;
+      absl::Span<DeviceAddressBase> operands) override;
 
   absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<int32_t> index, std::vector<CreateCommands> create_branches,
+      DeviceAddress<int32_t> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) override;
 
   absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<bool> index, std::vector<CreateCommands> create_branches,
+      DeviceAddress<bool> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateCase(const Command* command, DeviceMemory<int32_t> index,
+  absl::Status UpdateCase(const Command* command, DeviceAddress<int32_t> index,
                           std::vector<UpdateCommands> update_branches) override;
 
-  absl::Status UpdateCase(const Command* command, DeviceMemory<bool> index,
+  absl::Status UpdateCase(const Command* command, DeviceAddress<bool> index,
                           std::vector<UpdateCommands> update_branches) override;
 
   absl::StatusOr<const Command*> CreateWhile(
-      DeviceMemory<bool> pred, CreateCommands create_cond,
+      DeviceAddress<bool> pred, CreateCommands create_cond,
       CreateCommands create_body,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateWhile(const Command* command, DeviceMemory<bool> pred,
+  absl::Status UpdateWhile(const Command* command, DeviceAddress<bool> pred,
                            UpdateCommands update_cond,
                            UpdateCommands update_body) override;
 
@@ -234,26 +234,26 @@ class GpuCommandBuffer : public CommandBuffer {
   // to 8 conditionals.
   virtual absl::StatusOr<GraphNodeHandle> CreateSetCaseConditionNode(
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default,
       absl::Span<const GraphNodeHandle> dependencies) = 0;
 
   virtual absl::Status UpdateSetCaseConditionNode(
       GraphNodeHandle handle,
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) = 0;
 
   // Launches a kernel that updates the state of the given graph conditional
   // based on the predicate. If the predicate is true, `conditional` is set to
   // 1, otherwise to 0.
   virtual absl::StatusOr<GraphNodeHandle> CreateSetWhileConditionNode(
-      GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+      GraphConditionalHandle conditional, DeviceAddress<bool> predicate,
       absl::Span<const GraphNodeHandle> dependencies) = 0;
 
   virtual absl::Status UpdateSetWhileConditionNode(
       GraphNodeHandle handle, GraphConditionalHandle conditional,
-      DeviceMemory<bool> predicate) = 0;
+      DeviceAddress<bool> predicate) = 0;
 
   //===--------------------------------------------------------------------===//
 
@@ -283,11 +283,11 @@ class GpuCommandBuffer : public CommandBuffer {
 
  private:
   absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<uint8_t> index, bool index_is_bool,
+      DeviceAddress<uint8_t> index, bool index_is_bool,
       std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies);
 
-  absl::Status UpdateCase(const Command* command, DeviceMemory<uint8_t> index,
+  absl::Status UpdateCase(const Command* command, DeviceAddress<uint8_t> index,
                           bool index_is_bool,
                           std::vector<UpdateCommands> update_branches);
 
@@ -321,32 +321,33 @@ class GpuCommandBuffer : public CommandBuffer {
   // Adds a new memset node to the underlying graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, BitPattern bit_pattern,
+      DeviceAddressBase destination, BitPattern bit_pattern,
       size_t num_elements) = 0;
 
   // Updates an existing memset node. Note that `node_handle` needs to refer
   // to a node created by `CreateMemsetNode`.
   virtual absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
-                                        DeviceMemoryBase destination,
+                                        DeviceAddressBase destination,
                                         BitPattern bit_pattern,
                                         size_t num_elements) = 0;
 
   // Adds a new memcpy node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, DeviceMemoryBase source, uint64_t size) = 0;
+      DeviceAddressBase destination, DeviceAddressBase source,
+      uint64_t size) = 0;
 
   virtual absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
-                                           DeviceMemoryBase destination,
-                                           DeviceMemoryBase source,
+                                           DeviceAddressBase destination,
+                                           DeviceAddressBase source,
                                            uint64_t size) = 0;
 
   virtual absl::Status PopulateDnnGraphNode(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) = 0;
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands) = 0;
 
-  virtual absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
-                                          absl::Span<DeviceMemoryBase> operands,
-                                          GraphNodeHandle) = 0;
+  virtual absl::Status UpdateDnnGraphNode(
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands,
+      GraphNodeHandle) = 0;
 
   // Adds a new nested command buffer node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(

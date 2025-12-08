@@ -181,7 +181,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Errors) {
           "Auth Token: fake_token\n"
           "Range: 0-9\n"
           "Timeouts: 5 1 20\n",
-          "Server Not", errors::Unavailable("important HTTP error 308"),
+          "Server Not", absl::UnavailableError("important HTTP error 308"),
           nullptr, {}, 308),
       new FakeHttpRequest(
           "Uri: https://storage.googleapis.com/bucket/random_access.txt\n"
@@ -560,7 +560,7 @@ TEST(GcsFileSystemTest,
 
   std::unique_ptr<RandomAccessFile> file;
   EXPECT_EQ(
-      errors::FailedPrecondition(
+      absl::FailedPreconditionError(
           "Bucket 'bucket' is in 'barfoo' location, allowed locations "
           "are: (us-east1)."),
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
@@ -1127,7 +1127,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
                            "Header Content-Range: bytes 0-16/17\n"
                            "Timeouts: 5 1 30\n"
                            "Put body: content1,content2\n",
-                           "", errors::Unavailable("503"), 503),
+                           "", absl::UnavailableError("503"), 503),
        new FakeHttpRequest("Uri: https://custom/upload/location\n"
                            "Auth Token: fake_token\n"
                            "Timeouts: 5 1 10\n"

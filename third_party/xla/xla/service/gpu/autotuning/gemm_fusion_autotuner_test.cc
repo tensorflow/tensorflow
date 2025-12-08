@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
@@ -655,14 +657,16 @@ ENTRY %e {
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
+      module->mutable_config().mutable_debug_options(),
+      /*force_allow_register_spills=*/false);
+  Compiler::CompileOptions options;
+  options.embed_hlo_module = false;
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
           ->RunBackend(std::move(module), backend().default_stream_executor(),
-                       {/*device_allocator=*/nullptr,
-                        /*thread_pool=*/nullptr,
-                        /*layout_canonicalization_callback=*/{},
-                        /*is_autotuning_compilation=*/true})
+                       /*device_allocator=*/nullptr)
           .value();
   EXPECT_NE(executable, nullptr);
 }
@@ -682,7 +686,7 @@ gemm_fusion {
 ENTRY main {
   p0 = f8e4m3fn[64,6144]{1,0} parameter(0)
   p1 = f8e4m3fn[64,6144]{1,0} parameter(1)
-  ROOT %dot.0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  ROOT %dot.0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -964,7 +968,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"
+// CHECK: "triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {
@@ -1103,7 +1107,7 @@ HloModule module
 ENTRY entry {
   %p0 = f8e5m2[256,256]{1,0} parameter(0)
   %p1 = f8e4m3fn[128,256]{1,0} parameter(1)
-  ROOT r = f8e5m2[256,128]{1,0} fusion(f8e5m2[256,256]{1,0} %p0, f8e4m3fn[128,256]{1,0} %p1), kind=kCustom, calls=%gemm_fusion_dot_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  ROOT r = f8e5m2[256,128]{1,0} fusion(f8e5m2[256,256]{1,0} %p0, f8e4m3fn[128,256]{1,0} %p1), kind=kCustom, calls=%gemm_fusion_dot_computation, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })")
                                                   .value();
   GemmFusionAutotunerImpl::BackendConfigs configs;
@@ -1140,7 +1144,7 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
   ENTRY main {
     %p0 = bf16[1024,1024]{1,0} parameter(0)
     %p1 = bf16[1024,1024]{1,0} parameter(1)
-    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
   })";
 
   std::unique_ptr<VerifiedHloModule> module =
@@ -1182,7 +1186,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesTwoConfigsForUpcastGemmWithPrologue) {
     %p1 = bf16[1,4,16,4096] parameter(1)
     ROOT %gemm_fusion_r = f32[256,4096] fusion(%p0, %p1), kind=kCustom,
     calls=gemm_fusion_r_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
   }
 )";
 
@@ -1228,7 +1232,7 @@ TEST_F(GemmFusionAutotunerTest, GeneratesOneConfigForUpcastGemmWithPrologue) {
     %p1 = bf16[1,4,32,4096] parameter(1)
     ROOT %gemm_fusion_r = f32[256,4096] fusion(%p0, %p1), kind=kCustom,
     calls=gemm_fusion_r_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
   }
 )";
 
@@ -1277,7 +1281,7 @@ TEST_F(GemmFusionAutotunerTest,
     %p1 = bf16[1,4,16,4096] parameter(1)
     ROOT %gemm_fusion_r = bf16[1048576] fusion(%p0, %p1), kind=kCustom,
     calls=gemm_fusion_r_computation,
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
   }
 )";
 
@@ -1565,7 +1569,7 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   ENTRY main {
     %p0 = bf16[1024,1024]{1,0} parameter(0)
     %p1 = bf16[1024,1024]{1,0} parameter(1)
-    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
   }
 )";
 

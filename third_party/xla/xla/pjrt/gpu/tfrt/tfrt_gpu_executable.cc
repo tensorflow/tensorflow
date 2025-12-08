@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/maybe_owning_device_memory.h"
@@ -1216,8 +1215,8 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
       executables_[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
-    memory_stats.peak_memory_in_bytes = peak_memory;
+    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
+                        ComputePeakMemory(*proto));
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       executables_[0]->executable()->GetAllocations());

@@ -287,6 +287,12 @@ class Ffi {
   // Creates an empty binding for the instantiate stage.
   static Binding<ExecutionStage::kInstantiate> BindInstantiate();
 
+  // Creates an empty binding for the prepare stage.
+  static Binding<ExecutionStage::kPrepare> BindPrepare();
+
+  // Creates an empty binding for the initialize stage.
+  static Binding<ExecutionStage::kInitialize> BindInitialize();
+
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
   // handler registration with fully automatic type inference at the cost of
@@ -752,6 +758,14 @@ Binding<stage> Ffi::Bind() {
 
 inline Binding<ExecutionStage::kInstantiate> Ffi::BindInstantiate() {
   return Bind<ExecutionStage::kInstantiate>();
+}
+
+inline Binding<ExecutionStage::kPrepare> Ffi::BindPrepare() {
+  return Bind<ExecutionStage::kPrepare>();
+}
+
+inline Binding<ExecutionStage::kInitialize> Ffi::BindInitialize() {
+  return Bind<ExecutionStage::kInitialize>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1705,7 +1719,11 @@ class Handler : public Ffi {
                    call_frame->args.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs)) {
+      // It is safe to not theck the number of arguments if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs &&
+                                kNumArgs > 0)) {
         return InvalidArgument(
             call_frame->api,
             StrCat("[", call_frame->stage, "] ",
@@ -1735,7 +1753,11 @@ class Handler : public Ffi {
                    call_frame->rets.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets)) {
+      // It is safe to not theck the number of results if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets &&
+                                kNumRets > 0)) {
         return InvalidArgument(
             call_frame->api,
             StrCat("[", call_frame->stage, "] ",
@@ -2246,6 +2268,14 @@ auto DictionaryDecoder(Members... m) {
 
 // Following two APIs are intended for users who want to export XLA FFI handler
 // from a shared library as a C function symbol.
+
+// Declares C function that returns FFI type id.
+#define XLA_FFI_DECLARE_TYPE_ID_SYMBOL(type_id_fn) \
+  extern "C" XLA_FFI_TypeId* type_id_fn()
+
+// Declares C function that returns FFI type info.
+#define XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(type_info_fn) \
+  extern "C" const XLA_FFI_TypeInfo* type_info_fn()
 
 // Declares C function that implements FFI handler.
 #define XLA_FFI_DECLARE_HANDLER_SYMBOL(fn) \

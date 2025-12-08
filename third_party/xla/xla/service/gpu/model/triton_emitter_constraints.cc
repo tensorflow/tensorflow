@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -34,17 +33,14 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
 #include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
-#include "xla/hlo/analysis/indexing_analysis.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -59,7 +55,6 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
-using ::mlir::MLIRContext;
 
 // Triton enforces that all tensors in the program have less than 1048576
 // elements, otherwise it will fail to compile. (See `TRITON_MAX_TENSOR_NUMEL`
@@ -112,90 +107,6 @@ TritonEmitterConstraints::DeriveCustomConstraints(
       }
       continue;
     }
-
-    // Construct custom constraints for parameters of bitcasts and reshapes
-    // within `instructions`.
-    if (hlo->opcode() == HloOpcode::kReshape ||
-        hlo->opcode() == HloOpcode::kBitcast) {
-      MLIRContext* ctx = instruction->symbolic_tile().size_map().getContext();
-
-      // TODO(b/446856820): Remove this once we use SymbolicMap here and
-      // therefore we can get the context directly.
-      IndexingMap reshape_indexing_map =
-          ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
-              .indexing_maps[0]
-              .begin()
-              ->map();
-
-      std::optional<SymbolicTile> reshape_symbolic_tile =
-          SymbolicTile::FromIndexingMap(reshape_indexing_map);
-
-      // Since we managed to create a `SymbolicTiledHloInstruction` for this
-      // instruction, it should never be the case that we fail to derive a
-      // `SymbolicTile`, so we `CHECK`. This is enforced by checks in
-      // `SymbolicTileAnalysis`'s internal function
-      // `ShouldProceedWithSymbolicTileDerivation`.
-      CHECK(reshape_symbolic_tile.has_value());
-
-      ConstraintExpression reshape_constraints =
-          reshape_symbolic_tile->constraints();
-      result.push_back(
-          CustomConstraints{instruction->symbolic_tile().size_map(),
-                            std::move(reshape_constraints)});
-      continue;
-    }
-
-    // Construct emitter-specific constraints for concatenates. This allows
-    // filtering for tile sizes that divide the concatenated dimension for all
-    // the operands exactly.
-    if (hlo->opcode() == HloOpcode::kConcatenate) {
-      AffineMap size_map = instruction->symbolic_tile().size_map();
-      MLIRContext* ctx = size_map.getContext();
-      int concatenate_dimension_index = hlo->concatenate_dimension();
-      AffineExpr concatenate_dimension_map_parameter =
-          mlir::getAffineDimExpr(concatenate_dimension_index, ctx);
-
-      // Check that each operand's concatenation dimension is divisible by the
-      // tile size along this dimension.
-      ConstraintExpression divisibility_constraints =
-          ConstraintExpression::GetAlwaysSatisfied();
-
-      // The last operand of the concat does not require the divisibility
-      // constraint.
-      for (int operand_id = 0; operand_id < hlo->operand_count() - 1;
-           ++operand_id) {
-        const HloInstruction* operand = hlo->operand(operand_id);
-        AffineExpr operand_concat_dimension = mlir::getAffineConstantExpr(
-            operand->shape().dimensions(concatenate_dimension_index), ctx);
-        ConstraintExpression::Constraint divisibility_constraint{
-            operand_concat_dimension % concatenate_dimension_map_parameter,
-            Interval{0, 0}};
-        divisibility_constraints =
-            divisibility_constraints && divisibility_constraint;
-      }
-
-      result.push_back(
-          CustomConstraints{size_map, std::move(divisibility_constraints)});
-
-      AffineMap identity_map =
-          AffineMap::getMultiDimIdentityMap(size_map.getNumDims(), ctx);
-
-      // Check that the offset along the contracting dimension is 0.
-      ConstraintExpression::Constraint offset_constraint{
-          instruction->symbolic_tile().offset_map().getResult(
-              concatenate_dimension_index),
-          Interval{0, 0}};
-      result.push_back(CustomConstraints{
-          identity_map, ConstraintExpression(offset_constraint)});
-
-      // Check that the stride along the contracting dimension is 1.
-      ConstraintExpression::Constraint stride_constraint{
-          instruction->symbolic_tile().stride_map().getResult(
-              concatenate_dimension_index),
-          Interval{1, 1}};
-      result.push_back(CustomConstraints{
-          identity_map, ConstraintExpression(stride_constraint)});
-    }
   }
 
   return result;
@@ -231,12 +142,15 @@ TritonEmitterConstraints::GetBuilder(
     llvm::SmallVector<AffineMap, 4> tile_size_maps(
         unique_tile_size_maps.begin(), unique_tile_size_maps.end());
 
+    std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints =
+        TiledEmitterConstraints::Create(instructions, fusion_adaptor);
+
     return std::unique_ptr<TritonEmitterConstraints>(
         absl::WrapUnique(new TritonEmitterConstraints(
             std::move(tile_size_maps), std::move(root_infos),
             std::move(custom_constraints),
             /*root_shape=*/instructions.back()->hlo()->shape(),
-            device_description)));
+            device_description, std::move(tiled_emitter_constraints))));
   };
 }
 
@@ -345,7 +259,8 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
     }
   }
 
-  return true;
+  return tiled_emitter_constraints_->ParametersSatisfyConstraints(
+      tile_parameters);
 }
 
 }  // namespace gpu

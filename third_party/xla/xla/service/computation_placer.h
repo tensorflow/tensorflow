@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 

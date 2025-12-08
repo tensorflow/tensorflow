@@ -106,7 +106,7 @@ ENTRY entry {
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -165,7 +165,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   HloComputation* fusion_computation = module->entry_computation()
                                            ->root_instruction()
                                            ->fused_instructions_computation();
@@ -284,7 +284,7 @@ ENTRY entry {
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -331,7 +331,7 @@ ENTRY entry {
   ASSERT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 
   const HloInstruction* fusion = nullptr;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
@@ -378,7 +378,7 @@ ENTRY entry {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest,
@@ -413,7 +413,7 @@ ENTRY entry {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, BitcastsCanBeHoistedPastConvertEpilogues) {
@@ -454,7 +454,7 @@ CHECK: f16[3,11]{1,0} fusion(
 )"),
       absl_testing::IsOkAndHolds(true));
 
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 // We cannot hoist bitcasts past transposes, but we don't need to hoist
@@ -493,7 +493,7 @@ ENTRY entry {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, BitcastsKeepElementSizeInBits) {
@@ -537,7 +537,7 @@ ENTRY entry {
   CHECK: ROOT {{.*}} = s8[33]{0:E(4)} bitcast([[fusion]])
 )"),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, TritonFusionEmitterDeviceLegacyTestSample1) {
@@ -573,7 +573,7 @@ ENTRY entry {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, TritonFusionEmitterDeviceLegacyTestSample2) {
@@ -612,7 +612,7 @@ ENTRY entry_computation {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, TritonFusionEmitterDeviceLegacyTestSample3) {
@@ -648,7 +648,7 @@ ENTRY entry_computation {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, BitcastsAreHoistedPastCompare) {
@@ -683,7 +683,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, BitcastsAreHoistedUpThroughBroadcasts) {
@@ -715,7 +715,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 // Broadcast fusion:
@@ -761,7 +761,7 @@ ENTRY e {
   EXPECT_TRUE(NestGemmFusion(device_description_, &mlir_context_)
                   .Run(module.get())
                   .ok());
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
@@ -803,7 +803,7 @@ ENTRY e {
   EXPECT_TRUE(NestGemmFusion(device_description_, &mlir_context_)
                   .Run(module.get())
                   .ok());
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
@@ -846,7 +846,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK: [[p0:[^ ]+]] = f32[15]{0} parameter(0)
@@ -886,7 +886,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            R"(
 // Broadcast fusion:
@@ -937,7 +937,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK: {{.*}} {
@@ -988,7 +988,7 @@ ENTRY entry {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
@@ -1024,7 +1024,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      ROOT transpose
@@ -1061,7 +1061,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      transpose
@@ -1098,7 +1098,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK:      f32[2,3,5]{2,1,0} $0
@@ -1137,7 +1137,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   // Checks that transpose is on rank 3 tensor from hoisting bitcast1, not rank
   // 4 tensor from hoisting bitcast0 first and then failing to hoist bitcast1.
   EXPECT_THAT(
@@ -1176,7 +1176,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      ROOT transpose
@@ -1212,7 +1212,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      ROOT broadcast
@@ -1249,7 +1249,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK:      f32[2,3,5]{2,1,0} $0(dot)
@@ -1284,7 +1284,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK: ROOT dot
@@ -1321,7 +1321,7 @@ ENTRY e {
   EXPECT_THAT(
       NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK: ROOT add = f32[3,5]{1,0} add
@@ -1377,7 +1377,7 @@ CHECK: result = f32[2,7,15,11]{2,1,0,3} fusion
 CHECK: ROOT {{.*}} = f32[15,11,14]{0,2,1} bitcast(result)
 )"),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest,
@@ -1428,7 +1428,7 @@ CHECK: result = f32[3,5,2]{2,1,0} fusion
 CHECK: ROOT {{.*}} = f32[2,3,5]{0,2,1} bitcast(result)
 )"),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest, MultipleBitcastsAreHoistedOut) {
@@ -1468,7 +1468,7 @@ CHECK-NOT: reshape
 CHECK: ENTRY
 )"),
       absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_P(NestGemmFusionReshapeTest,
@@ -1510,7 +1510,7 @@ CHECK-NOT: reshape
         )",
                                             HloOpcodeString(opcode))),
               absl_testing::IsOkAndHolds(true));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(NestGemmFusionReshapeTestSuite,

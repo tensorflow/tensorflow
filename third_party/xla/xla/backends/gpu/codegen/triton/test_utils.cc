@@ -89,7 +89,8 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   if (cc.IsCuda()) {
     return cc.cuda_compute_capability()->IsAtLeast(
         se::CudaComputeCapability::kAmpere);
-  } else if (cc.IsRocm()) {
+  }
+  if (cc.IsRocm()) {
     return cc.rocm_compute_capability()->has_bf16_dtype_support();
   }
   CHECK(false);
@@ -248,10 +249,9 @@ std::string ComputeCapabilityToString(
     const stream_executor::GpuComputeCapability& cc) {
   if (auto* cuda_cc = cc.cuda_compute_capability()) {
     return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
-  } else {
-    CHECK(cc.IsRocm());
-    return "rocm";
   }
+  CHECK(cc.IsRocm());
+  return "rocm";
 }
 
 std::string TritonSupportTestTypeAndDeviceToString(
@@ -304,8 +304,7 @@ namespace {
 // computation whose root is a fusion. Otherwise, creates a new entry
 // computation whose root is a fusion instruction that calls the original entry
 // computation. The new fusion instruction uses the generic Triton backend kind.
-absl::Status ConvertEntryToTritonFusion(HloModule* module,
-                                        bool use_nested_gemm_fusions) {
+absl::Status ConvertEntryToTritonFusion(HloModule* module) {
   if (module->entry_computation()->root_instruction()->opcode() ==
       HloOpcode::kFusion) {
     return absl::OkStatus();
@@ -327,13 +326,8 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module,
       module->entry_computation()));
 
   gpu::GpuBackendConfig gpu_config;
-  if (use_nested_gemm_fusions) {
-    gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonNestedGemmFusionKind));
-  } else {
-    gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonFusionKind));
-  }
+  gpu_config.mutable_fusion_backend_config()->set_kind(
+      kTritonNestedGemmFusionKind);
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   auto new_entry =
@@ -356,14 +350,13 @@ DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
 absl::StatusOr<TritonSupportTestBase::TestedInstruction>
 TritonSupportTestBase::ParseTemplateAndGetInstruction(
     absl::string_view hlo_template, xla::PrimitiveType data_type,
-    xla::HloOpcode opcode, bool use_nested_gemm_fusions) {
+    xla::HloOpcode opcode) {
   const std::string hlo_text = absl::Substitute(
       hlo_template, primitive_util::LowercasePrimitiveTypeName(data_type),
       HloOpcodeString(opcode));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnVerifiedModule(hlo_text));
-  TF_RETURN_IF_ERROR(
-      ConvertEntryToTritonFusion(module.get(), use_nested_gemm_fusions));
+  TF_RETURN_IF_ERROR(ConvertEntryToTritonFusion(module.get()));
   const HloComputation* computation =
       module->GetComputationWithName("triton_computation");
   if (computation == module->entry_computation()) {

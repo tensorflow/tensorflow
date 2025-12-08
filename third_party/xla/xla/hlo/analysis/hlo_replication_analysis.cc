@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 
-#include <unistd.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>

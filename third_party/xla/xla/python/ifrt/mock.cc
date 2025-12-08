@@ -48,6 +48,7 @@ char MockClient::ID = 0;
 char MockCompiler::ID = 0;
 char MockExecutable::ID = 0;
 char MockLoadedExecutable::ID = 0;
+char MockMpmdLoadedExecutable::ID = 0;
 char MockHostCallback::ID = 0;
 char MockLoadedHostCallback::ID = 0;
 char MockSharding::ID = 0;

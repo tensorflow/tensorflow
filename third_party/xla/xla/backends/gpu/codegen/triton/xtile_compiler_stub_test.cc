@@ -28,13 +28,18 @@ namespace {
 
 TEST(TritonStub, CallStubApi) {
   mlir::MLIRContext mlir_context;
+  llvm::LLVMContext llvm_context;
+  llvm::Triple target_triple;
+  std::string data_layout;
 
   LoadMlirDialectsForTriton(mlir_context);
-  EXPECT_FALSE(
-      TritonWrapper({}, nullptr, {}, {}, {}, nullptr, mlir_context).ok());
+  EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, target_triple,
+                             data_layout, llvm_context, mlir_context)
+                   .ok());
   EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, mlir_context).ok());
   EXPECT_FALSE(CompileTritonToLLVM("", HloModule("test", HloModuleConfig()), {},
-                                   {}, {}, nullptr, mlir_context,
+                                   {}, {}, target_triple, data_layout,
+                                   llvm_context, mlir_context,
                                    /*is_xla_fusion=*/true, {})
                    .ok());
 

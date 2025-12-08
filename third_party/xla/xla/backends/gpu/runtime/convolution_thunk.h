@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -52,6 +53,21 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(operand_buffers_.size() + result_buffers_.size() + 1);
+
+    for (const BufferAllocation::Slice& slice : operand_buffers_) {
+      res.push_back(BufferUse::Read(slice));
+    }
+    for (const BufferAllocation::Slice& slice : result_buffers_) {
+      res.push_back(BufferUse::Write(slice));
+    }
+    res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
+                     BufferUse::ContentValidity::kUndefined);
+    return res;
+  }
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(
       ThunkInfo thunk_info, const ConvolutionThunkProto& proto,

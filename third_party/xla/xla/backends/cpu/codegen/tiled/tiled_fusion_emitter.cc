@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/kernel_definition.h"
@@ -62,8 +63,9 @@ namespace xla::cpu {
 
 absl::StatusOr<std::vector<FlatTiling>> GetTiling(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
-      *fusion.fused_instructions_computation(), &context);
+      *fusion.fused_instructions_computation(), &context, constraints_builder);
   if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
     return Internal(
         "Unsupported fusion in EmitGeneric: %s",
@@ -128,6 +130,12 @@ static bool IsSupportedType(PrimitiveType type) {
     return false;
   }
 
+  // Some f8 types are not supported by the emitter, just don't support any of
+  // them for now.
+  if (primitive_util::IsF8Type(type) || primitive_util::IsMXType(type)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -148,14 +156,26 @@ static bool IsSupportedShape(const Shape& shape) {
 static bool IsSupportedInstruction(const HloInstruction& inst) {
   HloOpcode opcode = inst.opcode();
   switch (opcode) {
-    case xla::HloOpcode::kBitcast:
-    case xla::HloOpcode::kIota:
-    case xla::HloOpcode::kReshape:
-    case xla::HloOpcode::kTranspose:
-    case xla::HloOpcode::kParameter:
-    case xla::HloOpcode::kConstant:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kIota:
+    case HloOpcode::kReshape:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kParameter:
       return true;
-    case xla::HloOpcode::kBitcastConvert:
+    case HloOpcode::kConstant:
+      return ShapeUtil::IsEffectiveScalar(inst.shape());
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kMap:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kReal:
+    case HloOpcode::kImag:
+    case HloOpcode::kSign:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kClz:
       return false;
       break;
     default:
@@ -210,8 +230,9 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
                                                           tile_sizes.end());
   }
 
+  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   TF_ASSIGN_OR_RETURN(auto module,
-                      gpu::EmitXTileModule(name, nullptr, &fusion,
+                      gpu::EmitXTileModule(name, constraints_builder, &fusion,
                                            block_level_parameters, context));
   module->setName(absl::StrCat("__compute_module", "_", name));
 

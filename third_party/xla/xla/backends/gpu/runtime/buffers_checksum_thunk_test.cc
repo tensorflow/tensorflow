@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -134,13 +134,13 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   BufferAllocations allocations(
       {executor_->AllocateArray<uint8_t>(kTotalDeviceMemoryBytes)},
       executor_->device_ordinal(), allocator_.get());
-  se::DeviceMemoryBase log_mem = allocations.GetDeviceAddress(log_slice);
-  se::DeviceMemoryBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
-  se::DeviceMemoryBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
+  se::DeviceAddressBase log_mem = allocations.GetDeviceAddress(log_slice);
+  se::DeviceAddressBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
+  se::DeviceAddressBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
   TF_ASSERT_OK_AND_ASSIGN(auto device_log,
                           BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, se::DeviceMemory<uint8_t>(log_mem)));
+                              *stream_, se::DeviceAddress<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
   zeros[123] = 12341234;  // expected checksum for inputs_mem[0]

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -67,12 +68,14 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   // Three allocations: one for each parameter, plus one for the output.
   EXPECT_THAT(assignment->Allocations(), SizeIs(3));
@@ -120,6 +123,8 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -128,7 +133,7 @@ ENTRY main {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
           &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -186,12 +191,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -254,12 +261,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -292,12 +301,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -331,12 +342,14 @@ TEST_F(KernelArgumentsTest, UnmanagedArguments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
   // Input and output buffers are managed.
   EXPECT_THAT(assignment->Allocations(), SizeIs(3));
   auto unmanaged_arguments = std::vector{

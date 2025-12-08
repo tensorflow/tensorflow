@@ -99,6 +99,23 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
     XLA_FFI_ExecutionContext* ctx, void** allocator);
 
+// Returns a pointer to `xla::gpu::CollectiveParams` which allows FFI
+// handlers to access collective execution parameters at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveParams_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_cliques);
+
+// Returns a pointer to `xla::gpu::CollectiveCliqueRequests` which allows
+// FFI handlers to request GPU cliques at run time. Available only for FFI
+// handlers executing at prepare stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique_requests);
+
+// Returns a pointer to `xla::gpu::CollectiveClique` which allows FFI handlers
+// to get access to requested and acquired GPU cliques. Available only for FFI
+// handlers executing at execute stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -122,6 +139,10 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveParams_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveCliques_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

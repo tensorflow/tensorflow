@@ -31,8 +31,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/xla.pb.h"
@@ -46,7 +46,7 @@ struct DeviceConfig {
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
+  se::DeviceAddressAllocator* allocator = nullptr;  // may be null
 };
 
 struct DevicelessConfig {
@@ -67,7 +67,7 @@ class DeviceOrDevicelessConfig {
     return std::get<DeviceConfig>(config_).stream_exec;
   }
 
-  se::DeviceMemoryAllocator* GetAllocator() const {
+  se::DeviceAddressAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     auto& cf = std::get<DeviceConfig>(config_);
     if (cf.allocator != nullptr) {
@@ -102,7 +102,7 @@ class DeviceOrDevicelessConfig {
 
  private:
   std::variant<DeviceConfig, DevicelessConfig> config_;
-  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  mutable std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
 
 class AutotuneConfig {
@@ -158,7 +158,7 @@ class AutotuneConfig {
 
   se::StreamExecutor* GetExecutor() const { return config_.GetExecutor(); }
 
-  se::DeviceMemoryAllocator* GetAllocator() const {
+  se::DeviceAddressAllocator* GetAllocator() const {
     return config_.GetAllocator();
   }
 

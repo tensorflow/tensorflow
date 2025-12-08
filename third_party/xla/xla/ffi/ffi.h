@@ -57,9 +57,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-// TODO(ezhulenev): Remove this once JAX is migrated to the new header.
-#include "xla/backends/gpu/ffi.h"
-
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
@@ -544,6 +541,27 @@ struct CtxDecoding<Context> {
 //===----------------------------------------------------------------------===//
 // Context decoding
 //===----------------------------------------------------------------------===//
+
+namespace internal {
+
+// A helper function to decode context value of type `T` using provided
+// `func` and name for error reporting.
+template <typename T, typename F>
+static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
+                                          XLA_FFI_ExecutionContext* ctx,
+                                          DiagnosticEngine& diagnostic, F func,
+                                          const char* name) {
+  void* result = nullptr;
+  if (XLA_FFI_Error* error = func(ctx, &result); ABSL_PREDICT_FALSE(error)) {
+    diagnostic.Emit("Failed to get ")
+        << name << ": " << internal::GetErrorMessage(api, error);
+    internal::DestroyError(api, error);
+    return std::nullopt;
+  }
+  return reinterpret_cast<T>(result);
+}
+
+}  // namespace internal
 
 template <>
 struct CtxDecoding<DeviceOrdinal> {

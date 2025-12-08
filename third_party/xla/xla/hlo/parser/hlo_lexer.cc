@@ -334,6 +334,10 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
   KEYWORD(ROOT);
+  KEYWORD(FileLocations);
+  KEYWORD(FileNames);
+  KEYWORD(FunctionNames);
+  KEYWORD(StackFrames);
   KEYWORD(maximal);
   KEYWORD(replicated);
   KEYWORD(manual);
@@ -690,6 +694,14 @@ std::string TokKindToString(TokKind kind) {
       return "kw_ENTRY";
     case TokKind::kw_ROOT:
       return "kw_ROOT";
+    case TokKind::kw_FileNames:
+      return "kw_FileNames";
+    case TokKind::kw_FunctionNames:
+      return "kw_FunctionNames";
+    case TokKind::kw_FileLocations:
+      return "kw_FileLocations";
+    case TokKind::kw_StackFrames:
+      return "kw_StackFrames";
     case TokKind::kw_true:
       return "kw_true";
     case TokKind::kw_false:

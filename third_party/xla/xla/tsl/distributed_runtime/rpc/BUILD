@@ -42,10 +42,10 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++_codegen_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
         "@local_tsl//tsl/platform:tstring",
     ],
 )
@@ -66,6 +66,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -85,6 +86,7 @@ cc_library(
     name = "grpc_channel",
     srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
+    tags = ["nofixdeps"],
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
@@ -97,6 +99,7 @@ cc_library(
         "//xla/tsl/protobuf:rpc_options_proto_cc",
         "//xla/tsl/util:device_name_utils",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:numbers",
@@ -115,7 +118,7 @@ tsl_cc_test(
     deps = [
         ":grpc_channel",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",

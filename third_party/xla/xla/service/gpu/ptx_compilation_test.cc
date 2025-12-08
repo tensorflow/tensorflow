@@ -251,10 +251,7 @@ class NVPTXCompilationTests
 
     return compiler.RunBackend(std::move(module),
                                backend().default_stream_executor(),
-                               {/*device_allocator=*/nullptr,
-                                /*thread_pool=*/nullptr,
-                                /*layout_canonicalization_callback=*/{},
-                                /*is_autotuning_compilation=*/false});
+                               /*options=*/{});
   }
 };
 

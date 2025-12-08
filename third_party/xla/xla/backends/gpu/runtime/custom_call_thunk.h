@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -40,11 +41,12 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -153,6 +155,18 @@ class CustomCallThunk : public Thunk {
 
   absl::string_view opaque() const { return opaque_; }
 
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(operands_.size() + results_.size());
+    for (const NullableShapedSlice& shaped_slice : operands_) {
+      if (!shaped_slice.has_value()) {
+        continue;
+      }
+      res.push_back(BufferUse::Read(shaped_slice->slice, shaped_slice->shape));
+    }
+    return res;
+  }
+
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> FromProto(
@@ -185,19 +199,26 @@ class CustomCallThunk : public Thunk {
   xla::ffi::CallOptions BuildCallOptions(
       RunId run_id, se::Stream* absl_nullable stream,
       const BufferAllocations* absl_nullable buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques,
       const ffi::ExecutionContext* absl_nullable execution_context);
 
-  absl::Status ExecuteFfiHandler(RunId run_id, XLA_FFI_Handler* handler,
-                                 XLA_FFI_ExecutionStage stage,
-                                 se::Stream* stream,
-                                 const ffi::ExecutionContext* execution_context,
-                                 const BufferAllocations* buffer_allocations);
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
+      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques);
 
-  absl::Status ExecuteFfiHandler(RunId run_id, xla::ffi::Ffi& handler,
-                                 xla::ffi::ExecutionStage stage,
-                                 se::Stream* stream,
-                                 const ffi::ExecutionContext* execution_context,
-                                 const BufferAllocations* buffer_allocations);
+  absl::Status ExecuteFfiHandler(
+      RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
+      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      const BufferAllocations* buffer_allocations,
+      const CollectiveParams* absl_nullable collective_params,
+      CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      const CollectiveCliques* absl_nullable collective_cliques);
 
   // API version of the custom call. If not set, it means the custom call thunk
   // was initialized from a non-registered function pointer and can't be

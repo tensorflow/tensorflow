@@ -112,6 +112,8 @@ class BatchResourceBaseWithPriorityTest
         "/tensorflow/serving/batching/processed_batch_size_v2");
     padding_size_v2_reader_ = std::make_unique<CellReader<Histogram>>(
         "/tensorflow/serving/batching/padding_size_v2");
+    mixed_priority_policy_reader_ = std::make_unique<CellReader<std::string>>(
+        "/tensorflow/serving/batching/mixed_priority_batching_policy");
     // Create device_.
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
                                        "/job:a/replica:0/task:0");
@@ -166,6 +168,7 @@ class BatchResourceBaseWithPriorityTest
 
   std::unique_ptr<CellReader<int64_t>> processed_batch_size_v2_reader_;
   std::unique_ptr<CellReader<Histogram>> padding_size_v2_reader_;
+  std::unique_ptr<CellReader<std::string>> mixed_priority_policy_reader_;
   std::unique_ptr<Device> device_;
   std::unique_ptr<OpKernel> batch_kernel_;
   Tensor input_tensor_;
@@ -279,6 +282,9 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
         /*forced_warmup_batch_size=*/0));
   }
   blocking_counter.Wait();
+  EXPECT_EQ(
+      mixed_priority_policy_reader_->Read("my_model_name", "my_batch_node"),
+      absl::StrCat(GetParam().mixed_priority_batching_policy));
 
   for (const auto& [batch_size, expected_count] :
        GetParam().expected_batch_size_count) {

@@ -47,6 +47,7 @@ py_test(
     ],
     deps = [
         ":check_contents",
+        ":diff_parser",
         "//build_tools:test_utils",
         "@absl_py//absl/testing:absltest",
     ],

@@ -37,8 +37,14 @@ struct ThreadPoolDevice;
 
 namespace stream_executor {
 class Stream;
-class DeviceMemoryAllocator;
+class DeviceAddressAllocator;
 }  // namespace stream_executor
+
+namespace xla::gpu {
+struct CollectiveParams;
+class CollectiveCliqueRequests;
+class CollectiveCliques;
+}  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -59,7 +65,10 @@ struct XLA_FFI_ExecutionContext {
 
   struct GpuContext {
     stream_executor::Stream* stream = nullptr;
-    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+    stream_executor::DeviceAddressAllocator* allocator = nullptr;
+    const xla::gpu::CollectiveParams* collective_params = nullptr;
+    xla::gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
+    const xla::gpu::CollectiveCliques* collective_cliques = nullptr;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;

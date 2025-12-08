@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -380,7 +379,7 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceFloatTestArray(Client* client,
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
   return client->MakeArrayFromHostBuffer(

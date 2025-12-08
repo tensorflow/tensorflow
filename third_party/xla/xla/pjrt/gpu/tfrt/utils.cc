@@ -77,7 +77,6 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"

@@ -538,6 +538,7 @@ xla_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],

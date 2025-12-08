@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -157,15 +158,13 @@ class TritonSupportTestBase : public HloTestBase {
   // `triton_computation` with the generic Triton emitter. Tests that need
   // the `__triton_gemm` backend kind should provide their own ENTRY
   // computation.
-  //
-  // TODO(b/393299275): remove `use_nested_gemm_fusions` once the migration is
-  // complete.
   absl::StatusOr<TestedInstruction> ParseTemplateAndGetInstruction(
       absl::string_view hlo_template, xla::PrimitiveType data_type,
-      xla::HloOpcode opcode, bool use_nested_gemm_fusions = false);
+      xla::HloOpcode opcode);
 
   llvm::LLVMContext llvm_ctx_;
-  llvm::Module llvm_module_{"module", llvm_ctx_};
+  llvm::Triple target_triple_;
+  std::string data_layout_;
   mlir::MLIRContext mlir_context_;
   TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
 };

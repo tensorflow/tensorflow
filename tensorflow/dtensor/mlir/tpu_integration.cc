@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/APInt.h"

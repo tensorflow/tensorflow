@@ -74,20 +74,16 @@ class HloSharding final
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
-      const Shape& shape) const override;
+  using Sharding::Disassemble;
   absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
   absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
-      const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
-      const Shape& shape) const override;
+  using Sharding::IndexDomains;
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
@@ -101,6 +97,14 @@ class HloSharding final
               xla::HloSharding xla_hlo_sharding);
 
   void Hash(absl::HashState state) const override;
+
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleEven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
+
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> DisassembleUneven(
+      const Shape& shape,
+      SingleDeviceShardSemantics single_device_shard_semantics) const;
 
   xla::HloSharding xla_hlo_sharding_;
 

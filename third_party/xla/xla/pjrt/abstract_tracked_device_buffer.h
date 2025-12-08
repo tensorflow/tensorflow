@@ -50,7 +50,7 @@ class AbstractTrackedDeviceBuffer {
 
   // Returns a raw buffer which aliases the same
   // underlying memory as this AbstractTrackedDeviceBuffer.
-  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer() const {
+  const tsl::RCReference<CommonPjRtRawBuffer>& raw_buffer() const {
     return raw_buffer_;
   }
 

@@ -380,28 +380,6 @@ static xla::Layout ExtractLayout(mlir::Operation* op, int rank,
   return xla::LayoutUtil::MakeDescendingLayout(rank);
 }
 
-// Returns a failure or a valid XLA shape corresponding to the given op's
-// results.
-static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
-  if (auto attr = op->getAttrOfType<mlir::StringAttr>(xla::kXlaShape)) {
-    return *xla::ParseShape(
-        absl::string_view(attr.getValue().data(), attr.getValue().size()));
-  } else {
-    std::vector<xla::Shape> subshapes;
-    for (auto [index, result] : llvm::enumerate(op->getResults())) {
-      subshapes.push_back(xla::TypeToShape(result.getType()));
-      if (subshapes.back().element_type() == xla::PRIMITIVE_TYPE_INVALID) {
-        return op->emitError()
-               << "result #" << index << " type is not supported";
-      }
-    }
-    if (subshapes.size() > 1) {
-      return xla::ShapeUtil::MakeTupleShape(subshapes);
-    }
-    return subshapes[0];
-  }
-}
-
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)               \
   static std::vector<int64_t> Convert_##attribute(           \
       std::optional<mlir::DenseIntElementsAttr> attribute) { \
@@ -1489,7 +1467,8 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return op.emitOpError("failed to get tuple");
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return op.emitOpError("failed to extract XLA shape");
 
   auto all_gather_dim = op.getAllGatherDim();
@@ -2052,7 +2031,8 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return failure();
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return failure();
   if (shape_or->IsTuple()) {
     std::optional<xla::Shape> shape_with_layout = std::nullopt;
@@ -2122,7 +2102,8 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return failure();
   if (shape_or->IsTuple()) {
     std::optional<xla::Layout> layout = std::nullopt;
@@ -3225,7 +3206,8 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return failure();
 
   auto all_gather_dim = op.getAllGatherDim();
@@ -3276,7 +3258,8 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return failure();
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return failure();
   if (shape_or->IsTuple()) {
     std::optional<xla::Shape> shape_with_layout = std::nullopt;
@@ -3304,7 +3287,8 @@ LogicalResult ExportXlaOp(AllToAllOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  mlir::FailureOr<xla::Shape> shape_or =
+      xla::ExtractXlaShape(op.getOperation());
   if (failed(shape_or)) return failure();
   if (shape_or->IsTuple()) {
     std::optional<xla::Layout> layout = std::nullopt;
@@ -5493,7 +5477,7 @@ LogicalResult ConvertToHloModule::PropagateLayouts(
     auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
                       ->mutable_shape();
     // TODO(kramm): merge this with ConvertLayout.
-    mlir::FailureOr<xla::Shape> mlir_shape_or = ExtractXlaShape(inst);
+    mlir::FailureOr<xla::Shape> mlir_shape_or = xla::ExtractXlaShape(inst);
     if (failed(mlir_shape_or)) return failure();
     *shape = mlir_shape_or->ToProto();
   }
@@ -5654,7 +5638,7 @@ LogicalResult ConvertToHloModule::LowerConstant(
         "expected shaped type during constant mhlo -> hlo translation");
   }
 
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
+  mlir::FailureOr<xla::Shape> shape_or = xla::ExtractXlaShape(inst);
   if (failed(shape_or)) return failure();
 
   auto literal_or =

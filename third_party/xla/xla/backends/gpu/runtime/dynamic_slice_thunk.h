@@ -176,6 +176,8 @@ class DynamicSliceThunk : public Thunk {
           absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
           fn) override;
 
+  BufferUses buffer_uses() const override;
+
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   // `buffer_allocations`: the actual buffer allocations; required to parse the
@@ -191,9 +193,8 @@ class DynamicSliceThunk : public Thunk {
   get_offset_function() const {
     if (offset_as_function_of_indvar_metadata_.has_value()) {
       return &offset_as_function_of_indvar_metadata_.value();
-    } else {
-      return std::nullopt;
     }
+    return std::nullopt;
   }
 
  private:

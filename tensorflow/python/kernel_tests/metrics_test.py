@@ -163,7 +163,7 @@ def _assert_metric_variables(test_case, expected):
 
 
 def _test_values(shape):
-  return np.reshape(np.cumsum(np.ones(shape)), newshape=shape)
+  return np.reshape(np.cumsum(np.ones(shape)), shape)
 
 
 class MeanTest(test.TestCase):

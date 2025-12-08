@@ -40,11 +40,13 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -345,9 +347,9 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
 
       TF_ASSIGN_OR_RETURN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-      TF_ASSIGN_OR_RETURN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+      TF_RETURN_IF_ERROR(SingleDeviceSharding::Create(device, MemoryKind())
+                             ->ToProto(*make_array->mutable_sharding(),
+                                       ifrt_serdes_version()));
     }
     TF_ASSIGN_OR_RETURN(auto make_array_response,
                         CallBackend(std::move(ifrt_request)));
@@ -599,9 +601,9 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
     make_array->set_host_buffer_handle(kHostBufferHandle);
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
   }
 
   const Shape expected_shape({5, 3, 4});
@@ -644,9 +646,9 @@ TEST_P(IfrtBackendHandlerTest, MakeStringArrayFromHostBufferSuccess) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -686,13 +688,13 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *req->mutable_dtype() = dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*req->mutable_dtype(), ifrt_serdes_version());
     }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
-    TF_ASSERT_OK_AND_ASSIGN(*req->mutable_sharding(),
-                            SingleDeviceSharding::Create(device, MemoryKind())
-                                ->ToProto(ifrt_serdes_version()));
+    TF_ASSERT_OK(
+        SingleDeviceSharding::Create(device, MemoryKind())
+            ->ToProto(*req->mutable_sharding(), ifrt_serdes_version()));
   }
 
   std::vector<tsl::RCReference<xla::ifrt::MockArray>> single_device_arrays;
@@ -715,8 +717,8 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     }
     if (Version().protocol_version() >=
         protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      *assemble_array_from_single_device_arrays->mutable_dtype() =
-          dtype.ToProto(ifrt_serdes_version());
+      dtype.ToProto(*assemble_array_from_single_device_arrays->mutable_dtype(),
+                    ifrt_serdes_version());
     }
   }
 
@@ -791,9 +793,9 @@ TEST_P(IfrtBackendHandlerTest, CopyToHostSuccessWithStringArray) {
   make_array->set_host_buffer_handle(kHostBufferHandle);
   TF_ASSERT_OK_AND_ASSIGN(auto* device,
                           mock_client_->LookupDevice(DeviceId(1)));
-  TF_ASSERT_OK_AND_ASSIGN(*make_array->mutable_sharding(),
-                          SingleDeviceSharding::Create(device, MemoryKind())
-                              ->ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(
+      SingleDeviceSharding::Create(device, MemoryKind())
+          ->ToProto(*make_array->mutable_sharding(), ifrt_serdes_version()));
 
   const DType expected_dtype = DType(DType::kString);
   const Shape expected_shape({2});
@@ -1347,8 +1349,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   execute_request->set_loaded_executable_handle(handle);
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                           CallBackend(std::move(request)));
@@ -1440,8 +1442,8 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
-                          execute_options.ToProto(ifrt_serdes_version()));
+  TF_ASSERT_OK(execute_options.ToProto(
+      *execute_request->mutable_execute_options(), ifrt_serdes_version()));
 
   auto status_is_err = absl_testing::StatusIs(absl::StatusCode::kInternal,
                                               StrEq("injected error"));
@@ -1706,8 +1708,8 @@ TEST_P(IfrtBackendHandlerTest, GetDefaultPjRtLayoutSuccess) {
 
   auto request = NewIfrtRequest(NewOpId());
   auto* default_layout_request = request->mutable_get_default_layout_request();
-  *default_layout_request->mutable_dtype() =
-      kDType.ToProto(ifrt_serdes_version());
+  kDType.ToProto(*default_layout_request->mutable_dtype(),
+                 ifrt_serdes_version());
   default_layout_request->mutable_dims()->Reserve(kDims.size());
   for (int64_t dim : kDims) {
     default_layout_request->add_dims(dim);
@@ -1721,6 +1723,176 @@ TEST_P(IfrtBackendHandlerTest, GetDefaultPjRtLayoutSuccess) {
       xla::PjRtLayout::Deserialize(
           response->get_default_layout_response().serialized_pjrt_layout()));
   EXPECT_EQ(*layout_got, *kDefaultLayout);
+}
+
+TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadataWithMpmd) {
+  uint64_t handle;
+  std::vector<xla::ifrt::Device*> mesh1_devices_backing = {
+      mock_devices_[0].get()};
+  {
+    auto e = std::make_unique<MockMpmdLoadedExecutable>();
+    MockMpmdLoadedExecutable* executable = e.get();
+
+    ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
+    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
+    auto device_list = BasicDeviceList::Create({});
+    ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
+    ON_CALL(*executable, addressable_devices())
+        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>({})));
+    ON_CALL(*executable, Fingerprint())
+        .WillByDefault(Return("mpmd_fingerprint"));
+    ON_CALL(*executable, GetReadyFuture())
+        .WillByDefault(Return(tsl::Future<>(absl::OkStatus())));
+
+    ON_CALL(*executable, GetParameterShardings())
+        .WillByDefault(Return(std::nullopt));
+    ON_CALL(*executable, GetOutputShardings())
+        .WillByDefault(Return(std::nullopt));
+    ON_CALL(*executable, GetParameterLayouts())
+        .WillByDefault(
+            Return(std::vector<std::shared_ptr<const xla::PjRtLayout>>()));
+    ON_CALL(*executable, GetOutputLayouts())
+        .WillByDefault(
+            Return(std::vector<std::shared_ptr<const xla::PjRtLayout>>()));
+    ON_CALL(*executable, GetOutputMemoryKinds())
+        .WillByDefault(Return(std::vector<std::vector<absl::string_view>>()));
+    ON_CALL(*executable, GetDonatableInputIndices())
+        .WillByDefault(Return(absl::Span<const int>()));
+    ON_CALL(*executable, GetCompiledMemoryStats())
+        .WillByDefault(Return(CompiledMemoryStats()));
+    ON_CALL(*executable, SizeOfGeneratedCodeInBytes()).WillByDefault(Return(0));
+
+    absl::flat_hash_map<std::string, CompiledMemoryStats> stats;
+    stats["mesh1"] = CompiledMemoryStats();
+    EXPECT_CALL(*executable, GetMpmdCompiledMemoryStats())
+        .WillOnce(Return(stats));
+
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  auto request = NewIfrtRequest(NewOpId());
+  LoadedExecutableMpmdMetadataRequest* mpmd_metadata_request =
+      request->mutable_loaded_executable_mpmd_metadata_request();
+  mpmd_metadata_request->set_mpmd_loaded_executable_handle(handle);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                          CallBackend(std::move(request)));
+
+  EXPECT_THAT(response, Pointee(Partially(EquivToProto(R"pb(
+                loaded_executable_mpmd_metadata_response {
+                  mpmd_compiled_memory_stats {
+                    compiled_memory_stats {
+                      key: "mesh1"
+                      value {}
+                    }
+                  }
+                }
+              )pb"))));
+}
+
+TEST_P(IfrtBackendHandlerTest, LoadedExecutableMpmdCostAnalysis) {
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockMpmdLoadedExecutable>();
+    MockMpmdLoadedExecutable* executable = e.get();
+
+    ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
+    ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
+    auto device_list = BasicDeviceList::Create({});
+    ON_CALL(*executable, devices()).WillByDefault(Return(device_list));
+    ON_CALL(*executable, addressable_devices())
+        .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
+    ON_CALL(*executable, Fingerprint())
+        .WillByDefault(Return("mpmd_fingerprint"));
+    ON_CALL(*executable, GetReadyFuture())
+        .WillByDefault(Return(tsl::Future<>(absl::OkStatus())));
+
+    absl::flat_hash_map<std::string, xla::ifrt::AttributeMap> cost_analysis;
+    xla::ifrt::AttributeMap mesh1_attrs(xla::ifrt::AttributeMap::Map{
+        {"cost", xla::ifrt::AttributeMap::FloatValue{1.0f}}});
+    cost_analysis.insert({"mesh1", std::move(mesh1_attrs)});
+
+    EXPECT_CALL(*executable, GetMpmdCostAnalysis())
+        .WillOnce(Return(cost_analysis));
+
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  auto request = NewIfrtRequest(NewOpId());
+  request->mutable_loaded_executable_mpmd_cost_analysis_request()
+      ->set_loaded_executable_handle(handle);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                          CallBackend(std::move(request)));
+
+  EXPECT_THAT(response, Pointee(Partially(EquivToProto(R"pb(
+                loaded_executable_mpmd_cost_analysis_response {
+                  attributes {
+                    attributes {
+                      key: "mesh1"
+                      value {
+                        attributes {
+                          key: "cost"
+                          value { float_value: 1.0 }
+                        }
+                      }
+                    }
+                  }
+                }
+              )pb"))));
+}
+
+TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
+  auto executable = std::make_unique<MockMpmdLoadedExecutable>();
+
+  ON_CALL(*executable, name()).WillByDefault(Return("mpmd_exec"));
+  ON_CALL(*executable, num_devices()).WillByDefault(Return(1));
+  auto empty_device_list = BasicDeviceList::Create({});
+  ON_CALL(*executable, devices()).WillByDefault(Return(empty_device_list));
+  ON_CALL(*executable, addressable_devices())
+      .WillByDefault(Return(absl::Span<xla::ifrt::Device* const>()));
+  ON_CALL(*executable, Fingerprint()).WillByDefault(Return("mpmd_fingerprint"));
+  ON_CALL(*executable, GetReadyFuture())
+      .WillByDefault(Return(tsl::Future<>(absl::OkStatus())));
+
+  std::vector<xla::ifrt::Device*> mesh1_devices = {mock_devices_[0].get()};
+  std::vector<xla::ifrt::Device*> mesh2_devices = {mock_devices_[1].get()};
+
+  absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>
+      mpmd_addressable_devices_map;
+  mpmd_addressable_devices_map["mesh1"] = absl::MakeConstSpan(mesh1_devices);
+  mpmd_addressable_devices_map["mesh2"] = absl::MakeConstSpan(mesh2_devices);
+
+  if (Version().protocol_version() >=
+      protocol_version::kMpmdLoadedExecutableMethods) {
+    EXPECT_CALL(*executable, GetMpmdAddressableDevices())
+        .WillOnce(Return(mpmd_addressable_devices_map));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                          CompileTestLoadedExecutable(std::move(executable)));
+
+  if (Version().protocol_version() >=
+      protocol_version::kMpmdLoadedExecutableMethods) {
+    EXPECT_THAT(response, Partially(EquivToProto(R"pb(
+                  mpmd_addressable_devices {
+                    mpmd_addressable_devices {
+                      key: "mesh1"
+                      value { mpmd_addressable_device_ids: 0 }
+                    }
+                    mpmd_addressable_devices {
+                      key: "mesh2"
+                      value { mpmd_addressable_device_ids: 1 }
+                    }
+                  }
+                )pb")));
+  } else {
+    EXPECT_FALSE(response.has_mpmd_addressable_devices());
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(

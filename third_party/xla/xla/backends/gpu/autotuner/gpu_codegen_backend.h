@@ -78,7 +78,7 @@ class GpuCodegenBackend : public CodegenBackend {
 
     Compiler::CompileOptions options;
     options.gpu_target_config = target_config_;
-    options.is_autotuning_compilation = true;
+    options.embed_hlo_module = false;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
@@ -96,6 +96,7 @@ class GpuCodegenBackend : public CodegenBackend {
   static void AdjustDebugOptionsForAutotuning(
       DebugOptions& debug_options, bool force_allow_register_spills) {
     debug_options.set_xla_enable_dumping(false);
+    debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -106,7 +107,11 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_async_dot(false);
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
+    debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+        false);
+    debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
     debug_options.set_xla_enable_scoped_logging_timers(false);
+    debug_options.set_xla_gpu_executable_embed_debug_info(false);
     // Don't touch the "fail on register spilling" flag if it's already on.
     if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
       debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(
@@ -114,6 +119,10 @@ class GpuCodegenBackend : public CodegenBackend {
               .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
           !force_allow_register_spills);
     }
+    // Avoid dumping compilation steps.
+    debug_options.set_xla_gpu_dump_autotune_results_to("");
+    debug_options.set_xla_gpu_load_autotune_results_from("");
+    debug_options.set_xla_gpu_dump_autotune_logs_to("");
   }
 
  private:

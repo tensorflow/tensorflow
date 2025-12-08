@@ -727,8 +727,8 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       req->add_args_handles(handle.handle);
     }
   }
-  TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(),
-                      options.ToProto(rpc_helper_->ifrt_serdes_version()));
+  TF_RETURN_IF_ERROR(options.ToProto(*req->mutable_execute_options(),
+                                     rpc_helper_->ifrt_serdes_version()));
   if (devices.has_value()) {
     for (const auto* device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());

@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -96,19 +96,19 @@ absl::StatusOr<std::unique_ptr<Event>> TpuExecutor::CreateEvent() {
   return std::move(tpu_event);
 }
 
-DeviceMemoryBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
-  SE_DeviceMemoryBase se_base =
+DeviceAddressBase TpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
+  SE_DeviceAddressBase se_base =
       ExecutorApiFn()->TpuExecutor_AllocateFn(executor_, size, memory_space);
   return ApiConverter::FromC(se_base);
 }
 
-void TpuExecutor::Deallocate(const DeviceMemoryBase& memory) {
-  SE_DeviceMemoryBase se_base = ApiConverter::ToC(memory);
+void TpuExecutor::Deallocate(const DeviceAddressBase& memory) {
+  SE_DeviceAddressBase se_base = ApiConverter::ToC(memory);
   ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
-void TpuExecutor::Deallocate(DeviceMemoryBase* memory) {
-  SE_DeviceMemoryBase se_base = ApiConverter::ToC(*memory);
+void TpuExecutor::Deallocate(DeviceAddressBase* memory) {
+  SE_DeviceAddressBase se_base = ApiConverter::ToC(*memory);
   ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
@@ -167,20 +167,20 @@ absl::Status TpuExecutor::EnqueueInfeed(int32_t infeed_queue_index,
 }
 
 absl::Status TpuExecutor::SynchronousMemcpy(
-    ::stream_executor::DeviceMemoryBase* device_dst, const void* host_src,
+    ::stream_executor::DeviceAddressBase* device_dst, const void* host_src,
     uint64_t size) {
   StatusHelper status;
-  SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
+  SE_DeviceAddressBase se_base = ApiConverter::ToC(*device_dst);
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyFromHostFn(
       executor_, &se_base, host_src, size, status.c_status);
   return status.status();
 }
 
 absl::Status TpuExecutor::SynchronousMemcpy(
-    void* host_dst, const ::stream_executor::DeviceMemoryBase& device_src,
+    void* host_dst, const ::stream_executor::DeviceAddressBase& device_src,
     uint64_t size) {
   StatusHelper status;
-  SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
+  SE_DeviceAddressBase se_base = ApiConverter::ToC(device_src);
   ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
       executor_, host_dst, &se_base, size, status.c_status);
   return status.status();

@@ -94,6 +94,7 @@ cc_library(
     name = "collective_ops_utils",
     srcs = ["collective_ops_utils.cc"],
     hdrs = ["collective_ops_utils.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -414,9 +415,9 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
+        "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:global_device_id",
         "//xla/service:hlo_creation_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",

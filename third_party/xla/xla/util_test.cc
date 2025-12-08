@@ -20,7 +20,6 @@ limitations under the License.
 #include <limits>
 #include <list>
 #include <memory>
-#include <numeric>
 #include <set>
 #include <string>
 #include <utility>
@@ -28,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -391,7 +391,7 @@ void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
 
 TEST(UtilTest, PackInt4) {
   std::vector<char> input(7);
-  std::iota(input.begin(), input.end(), 0);
+  absl::c_iota(input, 0);
 
   std::vector<char> output_ref(CeilOfRatio<int64_t>(input.size(), 2));
   PackInt4(input, absl::MakeSpan(output_ref));

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package xla.ifrt;
+
+option java_multiple_files = true;
+
+// The executable version of an atom executable and the device indexes that
+// it is to be used on.
+message AtomExecutableVersionProto {
+  bytes executable_version = 1;
+  // The original logical device indexes of the devices that the atom
+  // executable was compiled for.
+  repeated int32 logical_device_indexes = 2;
+}
+
+// Proto representation of IfrtIrExecutableVersion.
+message IfrtIrExecutableVersionProto {
+  int32 version_number = 1;
+  // String of the form "major.minor.patch", representing the IFRT IR version.
+  string ifrt_ir_version = 2;
+  // Serialized executable versions of atom executables.
+  repeated AtomExecutableVersionProto executable_versions = 3;
+}

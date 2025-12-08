@@ -62,7 +62,9 @@ enum class RaggedAllToAllImplType {
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
  public:
   RaggedAllToAllTestBase(bool enable_async, RaggedAllToAllImplType impl_type)
-      : CollectiveOpsWithFlagsBase(enable_async, /*enable_p2p_memcpy=*/false),
+      : CollectiveOpsWithFlagsBase(enable_async, /*enable_p2p_memcpy=*/false,
+                                   /*memory_size=*/64 * kMB,
+                                   /*collectives_memory_size=*/0),
         impl_type_(impl_type) {}
 
   // Creates random test data for a ragged-all-to-all.
@@ -337,27 +339,23 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
   ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{1, 1},
                                                      /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
+
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -380,16 +378,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
   ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{1, 1},
@@ -409,11 +403,20 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
       {{s4(2), s4(2)}, {s4(6), s4(6)}, {s4(-1), s4(-1)}, {s4(-1), s4(-1)}});
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  // Check that ragged-all-to-all on S4 was converted to S8.
+  // Skip this check for decomposer test, because there ragged-all-to-all was
+  // lowered to all-to-all.
+  if (std::get<1>(GetParam()) != RaggedAllToAllImplType::kDecomposer) {
+    HloInstruction* ragged_all_to_all = FindInstruction(
+        execution_result.optimized_module, HloOpcode::kRaggedAllToAll);
+    ASSERT_NE(ragged_all_to_all, nullptr);
+    EXPECT_EQ(ragged_all_to_all->shape().element_type(), S8);
+  }
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -435,27 +438,22 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
   ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{8, 5},
                                                      /*replica_1=*/{4, 3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -477,27 +475,22 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{4, 12},
                                                      /*replica_1=*/{5, 11}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -519,13 +512,11 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+  HloModuleConfig config = GetModuleConfigForTest(kNumReplicas);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
@@ -535,11 +526,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
                                      /*replica_1=*/{{3, 1}, {1, 1}}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -562,27 +552,22 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{4, 7},
                                                      /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
@@ -605,27 +590,22 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{1},
                                                      /*replica_1=*/{3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -648,16 +628,12 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   auto ragged_all_to_all =
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
@@ -668,11 +644,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
                                                      /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
@@ -696,27 +671,22 @@ TEST_P(RaggedAllToAllTest,
   })";
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   TF_ASSERT_OK(CreateRandomTestData(module.get(),
                                     /*input_sizes=*/{/*replica_0=*/{1, 1},
                                                      /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
@@ -739,19 +709,14 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   })";
 
   const int64_t kNumReplicas = 8;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 4;
-  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << hlo_runner_->device_count()
-                 << " available)";
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
@@ -760,11 +725,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -790,19 +754,17 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
 
   const int64_t kNumReplicas = 8;
   const int64_t kNumReplicasPerGroup = 2;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 16;
-  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << hlo_runner_->device_count()
-                 << " available)";
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
   }
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
@@ -811,11 +773,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -841,19 +802,17 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
 
   const int64_t kNumReplicas = 8;
   const int64_t kNumReplicasPerGroup = 4;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 8;
-  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << hlo_runner_->device_count()
-                 << " available)";
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
   }
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
@@ -862,11 +821,10 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -941,14 +899,13 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
                        num_input_rows, num_output_rows);
 
   const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 16;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas * kNumPartitions)
-      << "Test requires at least " << kNumReplicas * kNumPartitions
-      << " devices (" << hlo_runner_->device_count() << " available)";
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
 
   config.mutable_debug_options()
       .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(1);
@@ -963,11 +920,10 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -996,22 +952,18 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
                        num_input_rows, num_output_rows);
 
   const int64_t kNumReplicas = 8;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 4;
-  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << hlo_runner_->device_count()
-                 << " available)";
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
-  config.mutable_debug_options()
+  module->mutable_config()
+      .mutable_debug_options()
       .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(4);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
@@ -1020,11 +972,10 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {
@@ -1055,22 +1006,18 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
 
   const int64_t kNumReplicas = 8;
   const int64_t kNumReplicasPerGroup = 4;
-  const int64_t kNumPartitions = 1;
   const int64_t kNumUpdatesPerReplica = 8;
-  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << hlo_runner_->device_count()
-                 << " available)";
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
 
-  config.mutable_debug_options()
+  module->mutable_config()
+      .mutable_debug_options()
       .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(4);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
   Array<int64_t> input_sizes(
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
@@ -1079,11 +1026,10 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
   TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                        /*device_assignment=*/nullptr,
-                        /*num_replicas=*/kNumReplicas,
-                        /*run_hlo_passes=*/true));
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   for (int i = 0; i < kNumReplicas; ++i) {

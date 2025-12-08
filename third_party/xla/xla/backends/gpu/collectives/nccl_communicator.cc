@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -327,7 +327,7 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
 }
 
 absl::Status NcclCommunicator::RegisterBufferOnce(
-    se::DeviceMemoryBase buffer_range, int device_ordinal,
+    se::DeviceAddressBase buffer_range, int device_ordinal,
     bool use_symmetric_buffer) {
   bool need_reg = false;
   {
@@ -335,16 +335,16 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
     if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
       need_reg = true;
     } else {
-      VLOG(5) << "[" << device_ordinal
-              << "] Buffer range: " << buffer_range.opaque()
-              << " with size: " << buffer_range.size()
-              << " is already registered.";
+      XLA_VLOG_DEVICE(5, device_ordinal)
+          << "Buffer range: " << buffer_range.opaque()
+          << " with size: " << buffer_range.size() << " is already registered.";
     }
   }
   if (need_reg) {
-    VLOG(5) << "[" << device_ordinal << "] Registering "
-            << buffer_range.opaque() << " with size: " << buffer_range.size()
-            << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+    XLA_VLOG_DEVICE(5, device_ordinal)
+        << "Registering " << buffer_range.opaque()
+        << " with size: " << buffer_range.size()
+        << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
     // Symmetric buffer registration is a collective operation,
     // we need to do that before locking on a global.
     TF_ASSIGN_OR_RETURN(
@@ -358,7 +358,7 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
 }
 
 absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
-NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
+NcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
                                  int device_ordinal,
                                  bool use_symmetric_buffer) {
 #if (NCCL_VERSION_CODE >= 21901)
@@ -428,8 +428,8 @@ Future<> NcclCommunicator::GroupExecute(
   });
 }
 
-Future<> NcclCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
+Future<> NcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
+                                     se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      ReductionKind reduction_kind,
                                      const Communicator::Executor& executor) {
@@ -440,8 +440,8 @@ Future<> NcclCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
+Future<> NcclCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
+                                     se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      RankId root, const Executor& executor) {
   return Execute(
@@ -451,8 +451,8 @@ Future<> NcclCommunicator::Broadcast(se::DeviceMemoryBase send_buffer,
       });
 }
 
-Future<> NcclCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                         se::DeviceMemoryBase recv_buffer,
+Future<> NcclCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
+                                         se::DeviceAddressBase recv_buffer,
                                          PrimitiveType dtype, size_t count,
                                          ReductionKind reduction_kind,
                                          const Executor& executor) {
@@ -463,8 +463,8 @@ Future<> NcclCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
+Future<> NcclCommunicator::AllGather(se::DeviceAddressBase send_buffer,
+                                     se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      const Executor& executor) {
   return Execute([send_buffer, recv_buffer, dtype, count, &executor, this]() {
@@ -473,8 +473,8 @@ Future<> NcclCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
 }
 
 Future<> NcclCommunicator::AllToAll(
-    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   return Execute([send_buffers, recv_buffers, dtype, count, &executor, this]() {
     return LaunchAllToAll(send_buffers, recv_buffers, dtype, count, executor);
@@ -482,7 +482,7 @@ Future<> NcclCommunicator::AllToAll(
 }
 
 Future<> NcclCommunicator::CollectivePermute(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   std::vector<RankId> owned_target_ranks(target_ranks.begin(),
@@ -495,7 +495,7 @@ Future<> NcclCommunicator::CollectivePermute(
   });
 }
 
-Future<> NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
+Future<> NcclCommunicator::Send(se::DeviceAddressBase send_buffer,
                                 PrimitiveType dtype, size_t count, RankId peer,
                                 const Executor& executor) {
   return Execute([send_buffer, dtype, count, peer, &executor, this]() {
@@ -503,7 +503,7 @@ Future<> NcclCommunicator::Send(se::DeviceMemoryBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::Recv(se::DeviceMemoryBase recv_buffer,
+Future<> NcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
                                 PrimitiveType dtype, size_t count, RankId peer,
                                 const Executor& executor) {
   return Execute([recv_buffer, dtype, count, peer, &executor, this]() {
@@ -535,7 +535,7 @@ absl::Status NcclCommunicator::GroupEnd() {
 }
 
 absl::Status NcclCommunicator::LaunchAllReduce(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
   if (canceling_.load()) {
@@ -545,11 +545,11 @@ absl::Status NcclCommunicator::LaunchAllReduce(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL AllReduce operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), comm_, stream);
+      count, reduction_kind, comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
@@ -563,11 +563,9 @@ absl::Status NcclCommunicator::LaunchAllReduce(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchBroadcast(se::DeviceMemoryBase send_buffer,
-                                               se::DeviceMemoryBase recv_buffer,
-                                               PrimitiveType dtype,
-                                               size_t count, RankId root,
-                                               const Executor& executor) {
+absl::Status NcclCommunicator::LaunchBroadcast(
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
+    PrimitiveType dtype, size_t count, RankId root, const Executor& executor) {
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
@@ -593,7 +591,7 @@ absl::Status NcclCommunicator::LaunchBroadcast(se::DeviceMemoryBase send_buffer,
 }
 
 absl::Status NcclCommunicator::LaunchReduceScatter(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Executor& executor) {
   if (canceling_.load()) {
@@ -603,11 +601,11 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL ReduceScatter operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), comm_, stream);
+      count, reduction_kind, comm_, stream);
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
@@ -621,11 +619,9 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchAllGather(se::DeviceMemoryBase send_buffer,
-                                               se::DeviceMemoryBase recv_buffer,
-                                               PrimitiveType dtype,
-                                               size_t count,
-                                               const Executor& executor) {
+absl::Status NcclCommunicator::LaunchAllGather(
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
+    PrimitiveType dtype, size_t count, const Executor& executor) {
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
@@ -650,15 +646,15 @@ absl::Status NcclCommunicator::LaunchAllGather(se::DeviceMemoryBase send_buffer,
 }
 
 absl::Status NcclCommunicator::LaunchAllToAll(
-    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   if (canceling_.load()) {
     return absl::FailedPreconditionError("NcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
-  auto buffer_formatter = [](std::string* out, se::DeviceMemoryBase buffer) {
+  auto buffer_formatter = [](std::string* out, se::DeviceAddressBase buffer) {
     absl::StrAppendFormat(out, "%p", buffer.opaque());
   };
 
@@ -689,8 +685,8 @@ absl::Status NcclCommunicator::LaunchAllToAll(
 
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < send_buffers.size(); ++i) {
-    se::DeviceMemoryBase send_buffer = send_buffers[i];
-    se::DeviceMemoryBase recv_buffer = recv_buffers[i];
+    se::DeviceAddressBase send_buffer = send_buffers[i];
+    se::DeviceAddressBase recv_buffer = recv_buffers[i];
 
     XLA_NCCL_RETURN_IF_ERROR(
         ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype, i,
@@ -705,7 +701,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
 }
 
 absl::Status NcclCommunicator::LaunchCollectivePermute(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   if (canceling_.load()) {
@@ -752,7 +748,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchSend(se::DeviceMemoryBase send_buffer,
+absl::Status NcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
                                           PrimitiveType dtype, size_t count,
                                           RankId peer,
                                           const Executor& executor) {
@@ -779,7 +775,7 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceMemoryBase send_buffer,
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchRecv(se::DeviceMemoryBase recv_buffer,
+absl::Status NcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
                                           PrimitiveType dtype, size_t count,
                                           RankId peer,
                                           const Executor& executor) {

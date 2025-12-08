@@ -39,9 +39,9 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
@@ -531,6 +531,40 @@ TEST(HasDuplicateSourcesOrTargetsTest, DuplicateTargets) {
   SourceTargetPairs pairs =
       SourceTargetPairs::FromString("{{0, 1}, {2, 1}, {4, 5}}").value();
   EXPECT_TRUE(HasDuplicateSourcesOrTargets(pairs));
+}
+
+TEST(CollectiveOpsUtilsTest, GetCustomCallLatencyMetadata) {
+  HloComputation::Builder builder("GetCustomCallLatencyMetadata");
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {}), "param"));
+  HloInstruction* custom_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
+  EXPECT_FALSE(GetCustomCallLatencyMetadata(custom_call).has_value());
+
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["latency_metadata"] = "12345";
+  custom_call->set_frontend_attributes(attributes);
+  std::optional<double> latency = GetCustomCallLatencyMetadata(custom_call);
+  ASSERT_TRUE(latency.has_value());
+  EXPECT_EQ(*latency, 12.345);
+}
+
+TEST(CollectiveOpsUtilsDeathTest, GetCustomCallLatencyMetadataInvalid) {
+  HloComputation::Builder builder("GetCustomCallLatencyMetadataInvalid");
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {}), "param"));
+  HloInstruction* custom_call =
+      builder.AddInstruction(HloInstruction::CreateCustomCall(
+          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())["latency_metadata"] = "invalid";
+  custom_call->set_frontend_attributes(attributes);
+  EXPECT_DEATH(
+      { GetCustomCallLatencyMetadata(custom_call); },
+      "Failed to parse latency from custom call");
 }
 
 }  // namespace

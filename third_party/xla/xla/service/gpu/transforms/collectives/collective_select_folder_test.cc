@@ -245,19 +245,19 @@ TEST_F(CollectiveSelectFolderTest, CommutativeCompare) {
 TEST_F(CollectiveSelectFolderTest, MoreThanOnePair_NotTransformed) {
   // The cp contains sources 0 and 1, and therefore doesn't match
   // equal(1) and not equal(1)
-  TF_ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
-                                     /*expect_change=*/false,
-                                     {{"$device_id_constant", "1"},
-                                      {"$direction", "EQ"},
-                                      {"$pairs", "{{0,1},{1,2}}"}}));
+  ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                                  /*expect_change=*/false,
+                                  {{"$device_id_constant", "1"},
+                                   {"$direction", "EQ"},
+                                   {"$pairs", "{{0,1},{1,2}}"}}));
 
   // The cp contains sources 0 and 1, and therefore doesn't match
   // not_equal(1) and not not_equal(1)
-  TF_ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
-                                     /*expect_change=*/false,
-                                     {{"$device_id_constant", "1"},
-                                      {"$direction", "NE"},
-                                      {"$pairs", "{{0,1},{1,2}}"}}));
+  ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                                  /*expect_change=*/false,
+                                  {{"$device_id_constant", "1"},
+                                   {"$direction", "NE"},
+                                   {"$pairs", "{{0,1},{1,2}}"}}));
 }
 
 const char* kSelectNoBroadcast = R"(
@@ -302,7 +302,7 @@ TEST_F(CollectiveSelectFolderTest, NegatedPredicate_NotTransformed) {
           source_target_pairs={{3,0}}, channel_id=1
     }
   )";
-  TF_ASSERT_OK(ExpectNoTranform(kHlo));
+  ASSERT_OK(ExpectNoTranform(kHlo));
 }
 
 TEST_F(CollectiveSelectFolderTest, ReplicaIdChannelIdMismatch_NotTransformed) {
@@ -320,7 +320,7 @@ TEST_F(CollectiveSelectFolderTest, ReplicaIdChannelIdMismatch_NotTransformed) {
           source_target_pairs={{0,1}}
     }
   )";
-  TF_ASSERT_OK(ExpectNoTranform(hlo));
+  ASSERT_OK(ExpectNoTranform(hlo));
 }
 
 TEST_F(CollectiveSelectFolderTest, PartIdChannelIdMismatch_NotTransformed) {
@@ -338,7 +338,7 @@ TEST_F(CollectiveSelectFolderTest, PartIdChannelIdMismatch_NotTransformed) {
           source_target_pairs={{0,1}}
     }
   )";
-  TF_ASSERT_OK(ExpectNoTranform(hlo));
+  ASSERT_OK(ExpectNoTranform(hlo));
 }
 
 TEST_F(CollectiveSelectFolderTest, WrongNesting_NotTransformed) {
@@ -357,7 +357,7 @@ TEST_F(CollectiveSelectFolderTest, WrongNesting_NotTransformed) {
           source_target_pairs={{0,1}}
     }
   )";
-  TF_ASSERT_OK(ExpectNoTranform(hlo));
+  ASSERT_OK(ExpectNoTranform(hlo));
 }
 
 // This select predicate operates on `replica-id` while the two collectives are
@@ -389,7 +389,7 @@ TEST_F(CollectiveSelectFolderTest,
           cp.forward)
     }
   )";
-  TF_ASSERT_OK(ExpectNoTranform(kHlo));
+  ASSERT_OK(ExpectNoTranform(kHlo));
 }
 
 // This select predicate operates on `partition-id` with collectives in the same

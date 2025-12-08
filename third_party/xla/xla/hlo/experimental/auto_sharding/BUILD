@@ -253,7 +253,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
-        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -484,6 +483,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

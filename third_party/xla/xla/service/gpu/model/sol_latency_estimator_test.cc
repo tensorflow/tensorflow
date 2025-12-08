@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -322,8 +324,6 @@ ENTRY e {
     kind=kCustom,
     calls=comp,
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "fusion_backend_config": {
         "kind":"__triton_gemm",
         "triton_gemm_config":{
@@ -354,8 +354,6 @@ ENTRY e {
   ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
     custom_call_target="__cublas$gemm",
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "gemm_backend_config":{
         "alpha_real":1,
         "beta":1,
@@ -384,8 +382,6 @@ ENTRY e {
   ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "gemm_backend_config":{
         "alpha_real":1,
         "beta":1,
@@ -414,8 +410,6 @@ ENTRY e {
   ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "gemm_backend_config":{
         "alpha_real":1,
         "beta":1,
@@ -444,8 +438,6 @@ ENTRY e {
   ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "gemm_backend_config":{
         "alpha_real":1,
         "beta":1,
@@ -474,8 +466,6 @@ ENTRY e {
   ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
-      "operation_queue_id":"0",
-      "wait_on_operation_queues":[],
       "gemm_backend_config":{
         "alpha_real":1,
         "beta":1,
@@ -514,6 +504,22 @@ ENTRY e {
       /*expected_latency=*/absl::Microseconds(8),
   };
 
+  EstimatorTestCase pallas_custom_call = {
+      /*test_name=*/"pallas_custom_call",
+      /*module_string=*/R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[128,128] parameter(0)
+  ROOT _ =  bf16[128,128] custom-call(p0),
+    custom_call_target="mosaic_gpu_v2",
+    frontend_attributes={latency_metadata="30000"}
+})",
+      /*opcode_to_find=*/HloOpcode::kCustomCall,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(30),
+  };
+
   EstimatorTestCase noop = {
       /*test_name=*/"noop",
       /*module_string=*/R"(
@@ -537,6 +543,7 @@ ENTRY e {
           triton_matmul_bf16_batch1_1024_1024_1024,
           cublas_matmul_bf16_batch1_1024_1024_1024,
           simple_fusion_elementwise,
+          pallas_custom_call,
           noop};
 }
 

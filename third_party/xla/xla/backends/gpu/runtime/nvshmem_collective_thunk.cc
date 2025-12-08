@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -45,7 +47,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
                               Thunk::Kind reduction_op) {
@@ -91,12 +92,11 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
 
 absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params != nullptr);
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
-      GetGpuCliqueKey(collectives, *params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      GetAsyncStreamKind(), /*use_nccl= */ false));
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, GetAsyncStreamKind(),
+                      /*include_participant_groups=*/false));
   return params.clique_requests->RequestClique(clique_key);
 }
 

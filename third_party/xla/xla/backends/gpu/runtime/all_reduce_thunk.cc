@@ -37,12 +37,13 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -85,14 +86,14 @@ AllReduceConfig GetAllReduceConfigInst(
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm,
+                          se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal << "] Performing all-reduce";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-reduce";
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
                                           use_symmetric_buffer));
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future =
       gpu_comm->GroupExecute([reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
@@ -105,7 +106,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
         return absl::OkStatus();
       });
   TF_RETURN_IF_ERROR(future.Await());
-  VLOG(3) << "[" << device_ordinal << "] Done performing all-reduce";
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-reduce";
   return absl::OkStatus();
 }
 
@@ -162,8 +163,8 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -171,7 +172,7 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
 
   TF_ASSIGN_OR_RETURN(bool use_collective_kernel,
                       collective_kernel_thunk_->IsSupported(
-                          comm_handle.clique_key, params.collective_cliques));
+                          clique_key, params.collective_cliques));
 
   if (use_collective_kernel) {
     TF_RETURN_IF_ERROR(collective_kernel_thunk_->ExecuteOnStream(params));
@@ -180,7 +181,7 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
   }
 
   TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
-                                  stream, comm_handle.comm,
+                                  stream, comm,
                                   config_.config.use_symmetric_buffer));
   return true;
 }
@@ -206,30 +207,30 @@ ReduceScatterStartThunk::ReduceScatterStartThunk(
 }
 
 absl::StatusOr<bool> ReduceScatterStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   TF_RETURN_IF_ERROR(RunReduceScatter(config_.reduction_kind, device_buffers,
-                                      stream, comm_handle.comm,
+                                      stream, comm,
                                       config_.config.use_symmetric_buffer));
   return true;
 }
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, Communicator* comm,
+                              se::Stream& stream, Communicator& comm,
                               bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal << "] Performing reduce-scatter";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Performing reduce-scatter";
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
                                           use_symmetric_buffer));
 
-  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
+  TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future =
       gpu_comm->GroupExecute([num_ranks, reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
@@ -248,7 +249,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
         return absl::OkStatus();
       });
   TF_RETURN_IF_ERROR(future.Await());
-  VLOG(3) << "[" << device_ordinal << "] Done performing reduce-scatter";
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing reduce-scatter";
   return absl::OkStatus();
 }
 

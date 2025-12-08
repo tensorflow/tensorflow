@@ -19,11 +19,18 @@ set -e
 set -x
 
 SCRIPT_DIR=$(realpath $(dirname $0))
-TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),gpu,requires-gpu-amd,,-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
+TAG_FILTERS=$($SCRIPT_DIR/rocm_tag_filters.sh),-skip_rocprofiler_sdk,-no_oss,-oss_excluded,-oss_serial
 
-if [ ! -d /tf/pkg ]; then
-	mkdir -p /tf/pkg
-fi
+mkdir -p /tf/pkg
+
+for arg in "$@"; do
+    if [[ "$arg" == "--config=ci_multi_gpu" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},multi_gpu"
+    fi
+    if [[ "$arg" == "--config=ci_single_gpu" ]]; then
+        TAG_FILTERS="${TAG_FILTERS},gpu,-multi_gpu"
+    fi
+done
 
 SCRIPT_DIR=$(dirname $0)
 bazel --bazelrc="$SCRIPT_DIR/rocm_xla_ci.bazelrc" test \

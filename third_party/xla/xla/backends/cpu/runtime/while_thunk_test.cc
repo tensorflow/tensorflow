@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -115,7 +115,7 @@ class CondThunk : public Thunk {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase predicate_mem,
+        se::DeviceAddressBase predicate_mem,
         params.buffer_allocations->GetDeviceAddress(pred_slice_));
     bool* predicate = reinterpret_cast<bool*>(predicate_mem.opaque());
 
@@ -146,7 +146,7 @@ class BodyThunk : public Thunk {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase counter_mem,
+        se::DeviceAddressBase counter_mem,
         params.buffer_allocations->GetDeviceAddress(counter_slice_));
 
     int32_t* counter = reinterpret_cast<int32_t*>(counter_mem.opaque());

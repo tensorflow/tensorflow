@@ -33,7 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/env.h"
 
 namespace tsl {

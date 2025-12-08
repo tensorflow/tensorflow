@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 82
+#define PJRT_API_MINOR 83
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -966,6 +966,31 @@ struct PJRT_Buffer_MemoryLayout {
   PJRT_Buffer_MemoryLayout_Type type;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout, type);
+
+struct PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+
+  PJRT_AsyncHostToDeviceTransferManager* transfer_manager;
+  int buffer_index;
+  const void* data;
+
+  // Shape fields.
+  const int64_t* shape_dims;
+  size_t shape_num_dims;
+  PJRT_Buffer_Type shape_element_type;
+  PJRT_Buffer_MemoryLayout* shape_layout;
+
+  PJRT_Event* done_with_h2d_transfer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args,
+    done_with_h2d_transfer);
+
+// Asynchronously copies a host literal to a buffer managed by a transfer
+// manager.
+typedef PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args* args);
 
 struct PJRT_Client_CreateUninitializedBuffer_Args {
   size_t struct_size;
@@ -2708,11 +2733,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateErrorBuffer);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateErrorBuffer)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
+      PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_TransferLiteral)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

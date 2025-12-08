@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -354,6 +355,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
       VLOG(2) << stderr_output;
     }
   }
+  ModuleStats module_stats = ExtractModuleStatsFromLog(stderr_output);
 
   // Read in the result of compilation and return it as a byte vector.
   std::string cubin;
@@ -364,7 +366,8 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
   if (dump_compilation_log) {
     maybe_compilation_error_log = std::move(stderr_output);
   }
-  return cuda::Assembly{cubin_vector, maybe_compilation_error_log};
+  return cuda::Assembly{cubin_vector, maybe_compilation_error_log,
+                        std::move(module_stats)};
 }
 
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(

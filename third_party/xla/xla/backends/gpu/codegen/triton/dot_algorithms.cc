@@ -37,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -51,8 +50,7 @@ limitations under the License.
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
-namespace gpu {
-namespace triton {
+namespace xtile {
 
 namespace {
 
@@ -104,7 +102,7 @@ absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
 
 namespace {
 
-absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
+absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
                                 ScaledDotOperands& operands) {
   TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
                       internal::GetScaleDotElemType(operands.lhs.getType()));
@@ -136,8 +134,9 @@ absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
 
 namespace {
 
-Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
-                             Value acc, PrecisionSpec precision_spec) {
+Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
+                             Value rhs, Value acc,
+                             PrecisionSpec precision_spec) {
   auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
   auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
 
@@ -172,14 +171,16 @@ Value EmitStableHloDotAndAdd(EmitterLocOpBuilder b, Value lhs, Value rhs,
 
 }  // namespace
 
-absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
+absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                 const HloDotInstruction& dot) {
-  TF_ASSIGN_OR_RETURN(Type lhs_type,
-                      TritonType(b, dot.operand(0)->shape().element_type()));
-  TF_ASSIGN_OR_RETURN(Type rhs_type,
-                      TritonType(b, dot.operand(1)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type lhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type rhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
   TF_ASSIGN_OR_RETURN(Type accumulator_type,
-                      TritonType(b, dot.shape().element_type()));
+                      PrimitiveTypeToMlirType(b, dot.shape().element_type()));
 
   // The code below assumes that lhs and rhs have the same type. However
   // this may not always be the case with f8 matmuls, e.g. e4m3×e5m2 is
@@ -204,7 +205,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
 // the operands do not already conform to any of them. Returns `std::nullopt` if
 // no casting is a priori needed.
 absl::StatusOr<std::optional<Type>> GetForceOperandsType(
-    EmitterLocOpBuilder b, const HloDotInstruction& dot,
+    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot,
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
@@ -219,7 +220,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
   std::vector<Type> allowed_operands_types;
   allowed_operands_types.reserve(allowed_operands_primitive_types.size());
   for (PrimitiveType primitive_type : allowed_operands_primitive_types) {
-    TF_ASSIGN_OR_RETURN(Type type, TritonType(b, primitive_type));
+    TF_ASSIGN_OR_RETURN(Type type, PrimitiveTypeToMlirType(b, primitive_type));
     allowed_operands_types.push_back(type);
   }
 
@@ -229,23 +230,20 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     // If there is a single allowed operand type, we force the operands to use
     // this type.
     return allowed_operands_types.front();
-
-  } else {
-    // If there are several allowed operand types, we just check that the
-    // operands have the same type, and that this type is one of the allowed
-    // ones. Raise an error otherwise.
-    if (lhs_type != rhs_type ||
-        !absl::c_linear_search(allowed_operands_types, lhs_type)) {
-      std::string allowed_operands_types_str = absl::StrJoin(
-          allowed_operands_types, ", ", [&](std::string* out, Type type) {
-            absl::StrAppend(out, MlirToString(type));
-          });
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Expected dot operands to both have the same type, and for this type "
-          "to be one of the following types: ",
-          allowed_operands_types_str, " but got ", MlirToString(lhs_type),
-          " and ", MlirToString(rhs_type)));
-    }
+  }  // If there are several allowed operand types, we just check that the
+  // operands have the same type, and that this type is one of the allowed
+  // ones. Raise an error otherwise.
+  if (lhs_type != rhs_type ||
+      !absl::c_linear_search(allowed_operands_types, lhs_type)) {
+    std::string allowed_operands_types_str = absl::StrJoin(
+        allowed_operands_types, ", ", [&](std::string* out, Type type) {
+          absl::StrAppend(out, MlirToString(type));
+        });
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Expected dot operands to both have the same type, and for this type "
+        "to be one of the following types: ",
+        allowed_operands_types_str, " but got ", MlirToString(lhs_type),
+        " and ", MlirToString(rhs_type)));
   }
 
   return std::nullopt;
@@ -253,7 +251,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 
 }  // namespace
 
-absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
+absl::StatusOr<Type> GetDotAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                            const HloDotInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
@@ -264,10 +262,10 @@ absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
 
   TF_ASSIGN_OR_RETURN(PrimitiveType accumulator_type,
                       algorithm_util::GetDotAccumulatorType(algorithm));
-  return TritonType(b, accumulator_type);
+  return PrimitiveTypeToMlirType(b, accumulator_type);
 }
 
-absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
+absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
                                         const HloDotInstruction& dot,
                                         DotOperands dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
@@ -314,11 +312,10 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
 }
 
 absl::StatusOr<Value> EmitSingleTileScaledDot(
-    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    mlir::ImplicitLocOpBuilder& b, const HloScaledDotInstruction& scaled_dot,
     ScaledDotOperands dot_operands) {
   return ScaledDot(b, dot_operands);
 }
 
-}  // namespace triton
-}  // namespace gpu
+}  // namespace xtile
 }  // namespace xla

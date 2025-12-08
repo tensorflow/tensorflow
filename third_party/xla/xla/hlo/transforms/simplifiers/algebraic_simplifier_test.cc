@@ -5315,20 +5315,17 @@ TEST_F(AlgebraicSimplifierTest, SliceWithReshape) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(module.get()).value());
 
   auto* root = module->entry_computation()->root_instruction();
-  LOG(INFO) << module->ToString();
+  VLOG(2) << module->ToString();
 
   // Expected: Reshape(Slice(Arg))
   // AlgebraicSimplifier merges the two reshapes.
-  ASSERT_EQ(root->opcode(), HloOpcode::kReshape);
-  ASSERT_EQ(root->operand_count(), 1);
-  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kSlice);
-  ASSERT_EQ(root->operand(0)->operand_count(), 1);
-  ASSERT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
+  const HloInstruction* slice;
+  EXPECT_THAT(root, GmockMatch(m::Reshape(
+                        m::Slice(&slice, m::Parameter(0)))));
 
-  auto* slice = root->operand(0);
-  EXPECT_EQ(slice->slice_strides()[3], 2);
-  EXPECT_EQ(slice->slice_starts()[3], 1);
-  EXPECT_EQ(slice->slice_limits()[3], 128);
+  EXPECT_EQ(slice->slice_strides(3), 2);
+  EXPECT_EQ(slice->slice_starts(3), 1);
+  EXPECT_EQ(slice->slice_limits(3), 128);
   EXPECT_EQ(slice->shape().dimensions(3), 64);
 }
 
@@ -5352,16 +5349,13 @@ TEST_F(AlgebraicSimplifierTest, SmallSliceWithReshape) {
 
   // Expected: Reshape(Slice(Arg))
   // AlgebraicSimplifier merges the two reshapes.
-  ASSERT_EQ(root->opcode(), HloOpcode::kReshape);
-  ASSERT_EQ(root->operand_count(), 1);
-  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kSlice);
-  ASSERT_EQ(root->operand(0)->operand_count(), 1);
-  ASSERT_EQ(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
+  const HloInstruction* slice;
+  EXPECT_THAT(root, GmockMatch(m::Reshape(
+                        m::Slice(&slice, m::Parameter(0)))));
 
-  auto* slice = root->operand(0);
-  EXPECT_EQ(slice->slice_strides()[0], 1);
-  EXPECT_EQ(slice->slice_starts()[0], 0);
-  EXPECT_EQ(slice->slice_limits()[0], 1);
+  EXPECT_EQ(slice->slice_strides(0), 1);
+  EXPECT_EQ(slice->slice_starts(0), 0);
+  EXPECT_EQ(slice->slice_limits(0), 1);
   EXPECT_EQ(slice->shape().dimensions(0), 1);
 }
 
@@ -13112,6 +13106,48 @@ ENTRY main {
   TF_EXPECT_OK(VerifyHloModule(m.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/true));
+}
+
+TEST_F(AlgebraicSimplifierTest, ConditionalWithConvert) {
+  const char* kModuleStr = R"(
+    HloModule test
+    branch_false {
+      p0 = f32[] parameter(0)
+      ROOT r0 = f32[] copy(p0)
+    }
+    branch_true {
+      p1 = f32[] parameter(0)
+      ROOT r1 = f32[] copy(p1)
+    }
+    ENTRY main {
+      %p = pred[] parameter(0)
+      cond_val = s32[] convert(%p)
+      val_false = f32[] constant(10.0)
+      val_true = f32[] constant(20.0)
+
+      ROOT conditional = f32[] conditional(cond_val, val_false, val_true),
+        branch_computations={branch_false, branch_true}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_conditional_simplification(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  // The simplified Boolean Conditional should be:
+  // conditional(pred, true_arg, false_arg)
+  //
+  // We expect:
+  // True Arg  -> val_true (20.0)  [Originally Index 1]
+  // False Arg -> val_false (10.0) [Originally Index 0]
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Conditional(
+                  m::Parameter(0),
+                  m::ConstantEffectiveScalar(20.0),  // Expected True Slot
+                  m::ConstantEffectiveScalar(10.0)   // Expected False Slot
+                  )));
 }
 
 }  // namespace

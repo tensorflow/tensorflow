@@ -39,6 +39,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
+        "//xla/backends/gpu/codegen/triton:tiled_emitter_constraints",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:mlir_kernel_source",

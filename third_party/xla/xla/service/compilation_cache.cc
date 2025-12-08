@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/service/compilation_cache.h"
 
+#include <cstdint>
+#include <memory>
 #include <utility>
 
-#include "xla/types.h"
+#include "absl/base/const_init.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/service/executable.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/strcat.h"
 
 namespace xla {
 
@@ -60,11 +65,10 @@ absl::StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
   if (cache_.count(key) == 0) {
     VLOG(2) << "cache key not found: " << key;
     return InvalidArgumentStrCat("can not find executable with handle ", key);
-  } else {
-    auto& result = cache_.at(key);
-    VLOG(2) << "hit executable: " << result->module().name();
-    return result;
   }
+  auto& result = cache_.at(key);
+  VLOG(2) << "hit executable: " << result->module().name();
+  return result;
 }
 
 }  // namespace xla

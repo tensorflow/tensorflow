@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -292,6 +293,64 @@ void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
   frontend_attributes.mutable_map()->insert(
       {kXlaComputeTypeAttr, kXlaComputeTypeHost});
   host_instruction.set_frontend_attributes(frontend_attributes);
+}
+
+bool IsMoveToHostWithDynamicUpdateSlice(const HloInstruction* instr) {
+  if (!instr->IsCustomCall(kMoveToHostCustomCallTarget)) {
+    return false;
+  }
+
+  std::vector<const HloInstruction*> to_check = {instr};
+  absl::flat_hash_set<const HloInstruction*> visited;
+
+  while (!to_check.empty()) {
+    const HloInstruction* current = to_check.back();
+    to_check.pop_back();
+
+    auto [_, inserted] = visited.insert(current);
+    if (!inserted) {
+      continue;
+    }
+    for (const HloInstruction* user : current->users()) {
+      if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        return true;
+      }
+      if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBroadcast,
+                           HloOpcode::kTranspose>(user)) {
+        to_check.push_back(user);
+      }
+    }
+  }
+  return false;
+}
+
+bool IsMoveToDeviceWithDynamicSlice(const HloInstruction* instr) {
+  if (!instr->IsCustomCall(kMoveToDeviceCustomCallTarget)) {
+    return false;
+  }
+
+  std::vector<const HloInstruction*> to_check = {instr};
+  absl::flat_hash_set<const HloInstruction*> visited;
+
+  while (!to_check.empty()) {
+    const HloInstruction* current = to_check.back();
+    to_check.pop_back();
+
+    auto [_, inserted] = visited.insert(current);
+    if (!inserted) {
+      continue;
+    }
+    for (const HloInstruction* operand : current->operands()) {
+      if (operand->opcode() == HloOpcode::kDynamicSlice) {
+        return true;
+      }
+      if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBroadcast,
+                           HloOpcode::kTranspose>(operand)) {
+        to_check.push_back(operand);
+      }
+    }
+  }
+  return false;
 }
 
 }  // namespace host_offload_utils

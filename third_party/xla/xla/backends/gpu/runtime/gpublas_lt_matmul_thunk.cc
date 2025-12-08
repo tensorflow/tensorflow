@@ -26,11 +26,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+<<<<<<< HEAD
 #include "xla/hlo/ir/hlo_instruction.h"
+=======
+#include "xla/runtime/buffer_use.h"
+>>>>>>> upstream/master
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -129,7 +133,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
 
-  se::DeviceMemoryBase bias, a_scale, b_scale, c_scale, d_scale, d_amax, aux,
+  se::DeviceAddressBase bias, a_scale, b_scale, c_scale, d_scale, d_amax, aux,
       workspace;
   if (bias_.allocation() != nullptr) {
     bias = allocs.GetDeviceAddress(bias_);
@@ -196,6 +200,17 @@ absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
     return absl::InternalError("Failed to initialize BLASLT support");
   }
   return absl::OkStatus();
+}
+
+Thunk::BufferUses CublasLtMatmulThunk::buffer_uses() const {
+  return {
+      BufferUse::Read(a_),       BufferUse::Read(b_),
+      BufferUse::Read(c_),       BufferUse::Write(d_),
+      BufferUse::Read(bias_),    BufferUse::Write(aux_),
+      BufferUse::Read(a_scale_), BufferUse::Read(b_scale_),
+      BufferUse::Read(c_scale_), BufferUse::Read(d_scale_),
+      BufferUse::Write(d_amax_),
+  };
 }
 
 absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {

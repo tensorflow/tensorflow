@@ -63,8 +63,8 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -740,6 +740,36 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
       args->transfer_manager->transfer_manager->TransferRawDataToSubBuffer(
           args->buffer_index, args->data, args->offset, args->transfer_size,
           args->is_last_transfer, std::move(on_done_with_d2h_transfer)));
+  args->done_with_h2d_transfer = new PJRT_Event{std::move(future)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args",
+      PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  auto literal = std::make_unique<xla::BorrowingLiteral>(
+      static_cast<const char*>(args->data), shape);
+  xla::BorrowingLiteral* literal_ptr = literal.get();
+
+  auto [promise, future] = xla::Future<>::MakePromise();
+  absl::AnyInvocable<void() &&> on_done_with_d2h_transfer =
+      [promise = std::move(promise), literal = std::move(literal)]() mutable {
+        promise.Set();
+      };
+
+  PJRT_RETURN_IF_ERROR(
+      args->transfer_manager->transfer_manager->TransferLiteralToBuffer(
+          args->buffer_index, *literal_ptr,
+          std::move(on_done_with_d2h_transfer)));
   args->done_with_h2d_transfer = new PJRT_Event{std::move(future)};
   return nullptr;
 }
@@ -3149,6 +3179,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
       /*PJRT_Client_CreateErrorBuffer=*/
       pjrt::PJRT_Client_CreateErrorBuffer,
+      /*PJRT_AsyncHostToDeviceTransferManager_TransferLiteral=*/
+      pjrt::PJRT_AsyncHostToDeviceTransferManager_TransferLiteral,
   };
 }
 

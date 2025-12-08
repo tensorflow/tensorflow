@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -105,11 +105,11 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
   const se::ThreadDim thread_dim(
       executor->GetDeviceDescription().threads_per_block_limit(), 1, 1);
 
-  se::DeviceMemory<uint8_t> log_ptr(
+  se::DeviceAddress<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
   se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry> buffer_debug_log =
       se::gpu::BufferDebugLog<
-          BufferDebugFloatCheckEntry>::FromDeviceMemoryUnchecked(log_ptr);
+          BufferDebugFloatCheckEntry>::FromDeviceAddressUnchecked(log_ptr);
   const uint32_t execution_id = execution_count_.fetch_add(1);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
@@ -124,12 +124,12 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
     const BufferDebugLogEntryId entry_id = metadata_store_->AssignId(metadata);
 
     PrimitiveType buffer_type = buffer.element_type();
-    se::DeviceMemoryBase device_buffer =
+    se::DeviceAddressBase device_buffer =
         params.buffer_allocations->GetDeviceAddress(buffer);
     if (buffer_type == PrimitiveType::F32) {
       VLOG(1) << "F32 buffer detected with id: " << entry_id
               << " and size: " << device_buffer.size();
-      se::DeviceMemory<float> f32_buffer(device_buffer);
+      se::DeviceAddress<float> f32_buffer(device_buffer);
       TF_RETURN_IF_ERROR(kernels->f32.Launch(
           thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
           f32_buffer, f32_buffer.size(), buffer_debug_log.GetDeviceHeader(),
@@ -137,7 +137,7 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
     } else if (buffer_type == PrimitiveType::BF16) {
       VLOG(1) << "BF16 buffer detected with id: " << entry_id
               << " and size: " << device_buffer.size();
-      se::DeviceMemory<Eigen::bfloat16> bf16_buffer(device_buffer);
+      se::DeviceAddress<Eigen::bfloat16> bf16_buffer(device_buffer);
       TF_RETURN_IF_ERROR(kernels->bf16.Launch(
           thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
           bf16_buffer, bf16_buffer.size(), buffer_debug_log.GetDeviceHeader(),

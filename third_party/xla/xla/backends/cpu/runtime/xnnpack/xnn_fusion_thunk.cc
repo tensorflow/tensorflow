@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -66,8 +66,8 @@ std::ostream& operator<<(std::ostream& os, XnnFusionThunk::XnnFusionKind kind) {
 struct XnnFusionThunk::XnnExecutable {
   tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> Invoke(
       const XnnThreadpool& threadpool,
-      absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results,
+      absl::Span<se::DeviceAddressBase> arguments,
+      absl::Span<se::DeviceAddressBase> results,
       absl::FunctionRef<bool(size_t)> is_captured_argument);
 
   // Resets XNNPACK runtime and subgraph.
@@ -80,13 +80,14 @@ struct XnnFusionThunk::XnnExecutable {
   // captured argument, and this is not correct as we can have multiple
   // arguments allocated to the heap address. This is work in progress, and will
   // be migrated to a buffer identity passed to XLA by the client (PjRt).
-  std::vector<se::DeviceMemoryBase> captured_arguments;
+  std::vector<se::DeviceAddressBase> captured_arguments;
 };
 
 tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent>
 XnnFusionThunk::XnnExecutable::Invoke(
-    const XnnThreadpool& threadpool, absl::Span<se::DeviceMemoryBase> arguments,
-    absl::Span<se::DeviceMemoryBase> results,
+    const XnnThreadpool& threadpool,
+    absl::Span<se::DeviceAddressBase> arguments,
+    absl::Span<se::DeviceAddressBase> results,
     absl::FunctionRef<bool(size_t)> is_captured_argument) {
   // Create external values for all arguments and results.
   absl::InlinedVector<xnn_external_value, 8> external_values;
@@ -95,14 +96,14 @@ XnnFusionThunk::XnnExecutable::Invoke(
   // External tensor id for arguments and results.
   uint32_t id = 0;
 
-  for (const se::DeviceMemoryBase& argument : arguments) {
+  for (const se::DeviceAddressBase& argument : arguments) {
     xnn_external_value value{id++, argument.opaque()};
     if (!is_captured_argument(value.id)) {
       external_values.push_back(value);
     }
   }
 
-  for (const se::DeviceMemoryBase& result : results) {
+  for (const se::DeviceAddressBase& result : results) {
     xnn_external_value value{id++, result.opaque()};
     external_values.push_back(value);
   }
@@ -128,7 +129,7 @@ absl::Status XnnFusionThunk::XnnExecutable::Reset() {
 absl::StatusOr<XnnFusionThunk::XnnExecutable>
 XnnFusionThunk::CreateXnnExecutable(
     const XnnThreadpool& threadpool,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   bool capturing = !captured_arguments_ids_.empty();
   VLOG(3) << absl::StreamFormat(
       "Create %s XNN executable for `%s` operation: num_created=%d",
@@ -165,7 +166,7 @@ XnnFusionThunk::CreateXnnExecutable(
 
 absl::Status XnnFusionThunk::UpdateXnnExecutable(
     const XnnThreadpool& threadpool, XnnExecutable& executable,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   DCHECK(capturing_builder_) << "XNN executable is not capturing arguments";
   DCHECK_EQ(executable.captured_arguments.size(),
             captured_arguments_ids_.size())
@@ -206,9 +207,9 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
   return absl::OkStatus();
 }
 
-std::vector<se::DeviceMemoryBase> XnnFusionThunk::CaptureArguments(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  std::vector<se::DeviceMemoryBase> captured_arguments_ids;
+std::vector<se::DeviceAddressBase> XnnFusionThunk::CaptureArguments(
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
+  std::vector<se::DeviceAddressBase> captured_arguments_ids;
   captured_arguments_ids.reserve(captured_arguments_ids_.size());
   for (int64_t i = 0; i < captured_arguments_ids_.size(); ++i) {
     int32_t arg_index = captured_arguments_ids_[i];
@@ -298,7 +299,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   }
 
   // Resolve device memory for arguments.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments_buffers;
   arguments_buffers.resize(arguments_.size());
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
@@ -314,7 +315,7 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   }
 
   // Resolve device memory for results.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results_buffers;
   results_buffers.resize(results_.size());
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];

@@ -24,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -89,6 +90,7 @@ class AttributeMap {
 
   explicit AttributeMap(Map map) : map_(std::move(map)) {}
 
+  ABSL_DEPRECATED("map() is not thread-safe. Use Get() function instead.")
   const Map& map() const { return map_; }
 
   template <typename T>
@@ -113,9 +115,17 @@ class AttributeMap {
   // Deserializes `AttributeMapProto` into `AttributeMap`.
   static absl::StatusOr<AttributeMap> FromProto(const AttributeMapProto& proto);
 
-  // Serializes `AttributeMap` into `AttributeMapProto`.
-  AttributeMapProto ToProto(
+  // Converts the attribute map to a protobuf.
+  void ToProto(
+      AttributeMapProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  AttributeMapProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    AttributeMapProto proto;
+    ToProto(proto, version);
+    return proto;
+  }
 
   std::string DebugString(size_t max_string_length = 64,
                           size_t max_int64_list_size = 16) const;
@@ -124,6 +134,8 @@ class AttributeMap {
   friend void AbslStringify(Sink& sink, const AttributeMap& attribute_map) {
     sink.Append(attribute_map.DebugString());
   }
+
+  bool IsEmpty() const { return map_.empty(); }
 
  private:
   template <typename T, typename V>

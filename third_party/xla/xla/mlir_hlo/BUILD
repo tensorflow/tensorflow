@@ -980,6 +980,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
+    visibility = internal_visibility(["//learning/brain/mlir:stablehlo_friends"]),
     deps = [
         ":shape_component_analysis",
         ":stablehlo_extension_base",

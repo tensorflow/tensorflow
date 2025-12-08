@@ -14,9 +14,4 @@ def repo():
         sha256 = GUTIL_SHA256,
         strip_prefix = "gutil-{commit}".format(commit = GUTIL_COMMIT),
         urls = tf_mirror_urls("https://github.com/google/gutil/archive/{commit}.tar.gz".format(commit = GUTIL_COMMIT)),
-        repo_mapping = {
-            "@absl-cpp": "@com_google_absl",
-            "@google_benchmark": "@com_google_benchmark",
-            "@googletest": "@com_google_googletest",
-        },
     )

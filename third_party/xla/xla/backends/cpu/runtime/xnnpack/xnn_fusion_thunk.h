@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -85,7 +85,7 @@ class XnnFusionThunk : public Thunk {
   // constant, i.e. convolution filters and one of the dot arguments).
   using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<XnnSubgraph>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
+      absl::Span<const se::DeviceAddressBase> arguments_buffers)>;
 
   static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> Create(
       Options options, Info info, std::vector<Argument> arguments,
@@ -138,17 +138,17 @@ class XnnFusionThunk : public Thunk {
   // Creates XnnExecutable for the fusion operation using one of the builders.
   absl::StatusOr<XnnExecutable> CreateXnnExecutable(
       const XnnThreadpool& threadpool,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Updates XnnExecutable to the XNN subgraph constructed with the given
   // arguments buffers.
   absl::Status UpdateXnnExecutable(
       const XnnThreadpool& threadpool, XnnExecutable& executable,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Returns the list of captured arguments buffers.
-  std::vector<se::DeviceMemoryBase> CaptureArguments(
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+  std::vector<se::DeviceAddressBase> CaptureArguments(
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   XnnFusionKind xnn_fusion_kind_;
   Options options_;
@@ -170,7 +170,7 @@ class XnnFusionThunk : public Thunk {
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of XNNPACK executables to avoid data races.
   using XnnExecutablePool = ObjectPool<XnnExecutable, const XnnThreadpool&,
-                                       absl::Span<const se::DeviceMemoryBase>>;
+                                       absl::Span<const se::DeviceAddressBase>>;
   XnnExecutablePool xnn_executable_pool_;
 
   // The number of XNNPACK executables created for capturing graphs.

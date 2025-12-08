@@ -309,14 +309,6 @@ ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
   return metadata_list_proto;
 }
 
-absl::StatusOr<GpuCollectives* absl_nonnull> Thunk::GetGpuCollectives(
-    const CollectiveParams& params) {
-  if (params.collectives == nullptr) {
-    return Internal("Collectives API is not provided");
-  }
-  return params.collectives;
-}
-
 ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);

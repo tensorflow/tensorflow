@@ -1304,8 +1304,20 @@ TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
 static constexpr auto kMyDataWithAutoTypeIdTypeInfo =
     MakeTypeInfo<MyDataWithAutoTypeId>();
 
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
-                      &kMyDataWithAutoTypeIdTypeInfo);
+// Test that XLA FFI macro works.
+XLA_FFI_DECLARE_TYPE_ID_SYMBOL(my_data_type_id);
+XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(my_data_type_info);
+
+extern "C" XLA_FFI_TypeId* my_data_type_id() {
+  return &MyDataWithAutoTypeId::id;
+}
+
+extern "C" const XLA_FFI_TypeInfo* my_data_type_info() {
+  return &kMyDataWithAutoTypeIdTypeInfo;
+}
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", my_data_type_id(),
+                      my_data_type_info());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -61,6 +62,13 @@ class DeviceToDeviceCopyThunk : public Thunk {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_),
+        BufferUse::Write(destination_buffer_),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -118,6 +126,13 @@ class CopyThunk : public Thunk {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_),
+        BufferUse::Write(destination_buffer_),
+    };
+  }
 
   bool operator==(const CopyThunk& other) const {
     return source() == other.source() && destination() == other.destination() &&
@@ -284,6 +299,13 @@ class DynamicMemcpyThunk : public Thunk {
   }
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_),
+        BufferUse::Write(destination_buffer_),
+    };
+  }
 
  private:
   const BufferAllocation::Slice source_buffer_;

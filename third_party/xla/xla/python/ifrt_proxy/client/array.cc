@@ -224,10 +224,10 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
   // Reuse the host_buffer_handle as also the client-generated
   // array_handle.
   req->set_array_handle(host_buffer_handle);
-  *req->mutable_dtype() = dtype.ToProto(rpc_helper->ifrt_serdes_version());
-  *req->mutable_shape() = shape.ToProto(rpc_helper->ifrt_serdes_version());
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(),
-                      sharding->ToProto(rpc_helper->ifrt_serdes_version()));
+  dtype.ToProto(*req->mutable_dtype(), rpc_helper->ifrt_serdes_version());
+  shape.ToProto(*req->mutable_shape(), rpc_helper->ifrt_serdes_version());
+  TF_RETURN_IF_ERROR(sharding->ToProto(*req->mutable_sharding(),
+                                       rpc_helper->ifrt_serdes_version()));
   if (byte_strides.has_value()) {
     *req->mutable_byte_strides() = ToByteStridesProto(*byte_strides);
   }
@@ -320,10 +320,10 @@ Array::MakeArraysFromHostBufferShards(
 
       MakeArraysFromHostBufferShardsRequest::HostBuffer* host_buffer_proto =
           spec_proto->add_host_buffers();
-      *host_buffer_proto->mutable_dtype() =
-          host_buffer.dtype.ToProto(rpc_helper->ifrt_serdes_version());
-      *host_buffer_proto->mutable_shape() =
-          host_buffer.shape.ToProto(rpc_helper->ifrt_serdes_version());
+      host_buffer.dtype.ToProto(*host_buffer_proto->mutable_dtype(),
+                                rpc_helper->ifrt_serdes_version());
+      host_buffer.shape.ToProto(*host_buffer_proto->mutable_shape(),
+                                rpc_helper->ifrt_serdes_version());
       host_buffer_proto->set_host_buffer_handle(
           host_buffer_handles_for_specs[spec_idx][buffer_idx]);
       if (host_buffer.byte_strides.has_value()) {
@@ -331,9 +331,8 @@ Array::MakeArraysFromHostBufferShards(
             ToByteStridesProto(*host_buffer.byte_strides);
       }
     }
-    TF_ASSIGN_OR_RETURN(
-        *spec_proto->mutable_array_spec(),
-        spec.array_spec.ToProto(rpc_helper->ifrt_serdes_version()));
+    TF_RETURN_IF_ERROR(spec.array_spec.ToProto(
+        *spec_proto->mutable_array_spec(), rpc_helper->ifrt_serdes_version()));
 
     if (!GetGlobalClientFlags()->synchronous_host_buffer_store) {
       uint64_t arr_handle;
@@ -389,8 +388,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
   for (const ArraySpec& array_spec : array_specs) {
     const uint64_t array_handle = rpc_helper->NextHandle();
     req->add_array_handles(array_handle);
-    TF_ASSIGN_OR_RETURN(*req->add_array_specs(),
-                        array_spec.ToProto(rpc_helper->ifrt_serdes_version()));
+    TF_RETURN_IF_ERROR(array_spec.ToProto(*req->add_array_specs(),
+                                          rpc_helper->ifrt_serdes_version()));
     arr_handles.push_back(ArrayHandle{array_handle});
   }
 
@@ -550,13 +549,13 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::AssembleArrayFromSingleDeviceArrays(
         "AssembleArrayFromSingleDeviceArrays() called with empty arrays list");
   }
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
-  *req->mutable_shape() = shape.ToProto(rpc_helper->ifrt_serdes_version());
-  TF_ASSIGN_OR_RETURN(*req->mutable_sharding(),
-                      sharding->ToProto(rpc_helper->ifrt_serdes_version()));
+  shape.ToProto(*req->mutable_shape(), rpc_helper->ifrt_serdes_version());
+  TF_RETURN_IF_ERROR(sharding->ToProto(*req->mutable_sharding(),
+                                       rpc_helper->ifrt_serdes_version()));
   req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
-  *req->mutable_dtype() = dtype.ToProto(rpc_helper->ifrt_serdes_version());
+  dtype.ToProto(*req->mutable_dtype(), rpc_helper->ifrt_serdes_version());
   for (const xla::ifrt::ArrayRef& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
@@ -616,8 +615,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
 
   auto req = std::make_unique<RemapArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
-  TF_ASSIGN_OR_RETURN(*req->mutable_plan(),
-                      plan.ToProto(rpc_helper->ifrt_serdes_version()));
+  TF_RETURN_IF_ERROR(
+      plan.ToProto(*req->mutable_plan(), rpc_helper->ifrt_serdes_version()));
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
   for (int i = 0; i < num_inputs; ++i) {
     const xla::ifrt::ArrayRef& rcref = arrays[i];

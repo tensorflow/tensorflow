@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 
 namespace xla {
 namespace cpu {
@@ -175,7 +175,7 @@ class CpuExecutable : public Executable {
   //  - buffers_to_free: buffers whose ownership was donated by the caller that
   //    are to be freed by the caller.
   absl::StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
       absl::Span<ExecutionInput const> arguments);
 
   // Creates an Execution output holding ScopedShapedBuffer for holding the

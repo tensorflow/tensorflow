@@ -60,7 +60,7 @@ absl::StatusOr<GpuSemaphore> LaunchDelayKernel(Stream* stream) {
   // multiple GpuTimer objects.
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      (TypedKernelFactory<DeviceMemory<GpuSemaphoreState>,
+      (TypedKernelFactory<DeviceAddress<GpuSemaphoreState>,
                           GpuSemaphoreState>::Create(executor, "DelayKernel",
                                                      reinterpret_cast<void*>(
                                                          DelayKernel))));

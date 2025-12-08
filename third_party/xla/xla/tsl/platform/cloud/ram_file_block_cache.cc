@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
@@ -204,9 +206,9 @@ absl::Status RamFileBlockCache::Read(const std::string& filename, size_t offset,
       // happen if `offset` is not block-aligned, and the read returns the last
       // block in the file, which does not extend all the way out to `offset`.
       *bytes_transferred = total_bytes_transferred;
-      return errors::OutOfRange("EOF at offset ", offset, " in file ", filename,
-                                " at position ", pos, "with data size ",
-                                data.size());
+      return absl::OutOfRangeError(
+          absl::StrCat("EOF at offset ", offset, " in file ", filename,
+                       " at position ", pos, "with data size ", data.size()));
     }
     auto begin = data.begin();
     if (offset > pos) {

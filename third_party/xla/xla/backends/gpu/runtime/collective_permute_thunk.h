@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -119,8 +120,9 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm_handle) override;
+                                     Communicator& comm) override;
 
  private:
   const P2PConfig config_;
@@ -138,7 +140,7 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 absl::Status RunCollectivePermute(
     P2PConfig::SourceTargetMapEntry source_target,
     const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator* comm, absl::string_view device_string, int64_t current_id,
+    Communicator& comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy = false,
     const CollectivePermuteStartThunk::RecvPtrMap* recv_ptr_map = nullptr,
     bool use_symmetric_buffer = false);

@@ -124,7 +124,8 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
              SerDesVersion::current().version_number().value());
     *metadata.mutable_version() = response.version();
   }
-  *metadata.mutable_initialization_data() = options.initialization_data.ToProto(
+  options.initialization_data.ToProto(
+      *metadata.mutable_initialization_data(),
       SerDesAnyVersionAccessor::Get(SerDesVersionNumber(
           metadata.version().ifrt_serdes_version_number())));
 

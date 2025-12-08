@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -200,7 +201,7 @@ class Block::Iter : public Iterator {
   void CorruptionError() {
     current_ = restarts_;
     restart_index_ = num_restarts_;
-    status_ = errors::DataLoss("bad entry in block");
+    status_ = absl::DataLossError("bad entry in block");
     key_.clear();
     value_ = absl::string_view();
   }
@@ -237,7 +238,7 @@ class Block::Iter : public Iterator {
 
 Iterator* Block::NewIterator() {
   if (size_ < sizeof(uint32_t)) {
-    return NewErrorIterator(errors::DataLoss("bad block contents"));
+    return NewErrorIterator(absl::DataLossError("bad block contents"));
   }
   const uint32_t num_restarts = NumRestarts();
   if (num_restarts == 0) {

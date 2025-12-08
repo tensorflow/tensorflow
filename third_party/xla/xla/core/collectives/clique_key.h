@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 
 namespace xla {
 

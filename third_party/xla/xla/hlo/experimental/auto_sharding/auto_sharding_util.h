@@ -331,7 +331,7 @@ inline std::string ToStringSimple(const HloSharding& spec) {
   if (spec.IsReplicated()) {
     return "R";
   }
-  return ToString(spec.tile_assignment().dimensions());
+  return ToString(spec.dimensions());
 }
 
 // Insert a copy of the operand to force the sharding of the operand.
@@ -349,7 +349,7 @@ inline void ForceOperandSharding(HloInstruction* inst, int operand_num,
 
 // Return whether the sharding is fully tiled.
 inline bool IsFullyTiled(const HloSharding& sharding) {
-  return sharding.NumTiles() == sharding.tile_assignment().num_elements();
+  return sharding.NumTiles() == sharding.num_devices();
 }
 
 // The sharding is replicated or the total number of tiles is over or equal to

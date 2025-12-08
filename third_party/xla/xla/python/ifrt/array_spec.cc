@@ -58,22 +58,23 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
   };
 }
 
-absl::StatusOr<ArraySpecProto> ArraySpec::ToProto(SerDesVersion version) const {
+absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
+                                SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ArraySpec serialization"));
   }
 
-  ArraySpecProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
-  *proto.mutable_dtype() = dtype.ToProto(version);
-  *proto.mutable_shape() = shape.ToProto(version);
+  dtype.ToProto(*proto.mutable_dtype(), version);
+  shape.ToProto(*proto.mutable_shape(), version);
   TF_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
   if (layout != nullptr) {
     proto.set_layout(layout->Serialize());
   }
-  return proto;
+  return absl::OkStatus();
 }
 
 std::string ArraySpec::DebugString() const {

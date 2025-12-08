@@ -2102,10 +2102,6 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CompileCpuExecutable(std::move(module), thunk_emitter_options,
                            std::move(ir_compiler)));
 
-  AliasInfo alias_info;
-  cpu_executable->set_debug_info(
-      cpu_executable->buffer_assignment().StatsString(&alias_info));
-
   VLOG(1) << "Compilation finished";
   cpu_executable->Finalize();
 
@@ -2356,10 +2352,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   // Run buffer allocation on the HLO graph.
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   return BufferAssigner::Run(
       &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
       BufferSizeBytesFunction(), &alias_info, memory_alignment,
-      /*allocate_buffers_for_constants=*/true);
+      std::move(opts));
 }
 
 }  // namespace cpu

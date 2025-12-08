@@ -72,12 +72,11 @@ namespace proxy {
 namespace {
 
 std::string device_summary(Device* device) {
-  auto it = device->Attributes().map().find("slice_index");
-  int slice_index =
-      (it != device->Attributes().map().end() &&
-       std::holds_alternative<AttributeMap::Int64Value>(it->second))
-          ? std::get<AttributeMap::Int64Value>(it->second).value
-          : 0;
+  int64_t slice_index = 0;
+  auto slice_index_attr = device->Attributes().Get<int64_t>("slice_index");
+  if (slice_index_attr.ok()) {
+    slice_index = *slice_index_attr;
+  }
   return absl::StrCat(device->Kind(), "s", slice_index);
 }
 
@@ -462,7 +461,7 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
     }
   }
 
-  *req->mutable_dtype() = dtype.ToProto(rpc_helper_->ifrt_serdes_version());
+  dtype.ToProto(*req->mutable_dtype(), rpc_helper_->ifrt_serdes_version());
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
     req->add_dims(dim);

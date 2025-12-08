@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"

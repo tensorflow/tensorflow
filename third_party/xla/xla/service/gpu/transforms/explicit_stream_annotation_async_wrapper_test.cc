@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -60,7 +61,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, AnnotatedOpIsWrapped) {
   // CHECK: %call-start = ((f32[]), f32[]) call-start(%lhs.1), to_apply=%sub, frontend_attributes={_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done = f32[] call-done(%call-start), frontend_attributes={_xla_stream_annotation="1"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false
   )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
 
   ASSERT_TRUE(mutated);
@@ -107,7 +108,7 @@ TEST_F(ExplicitStreamAnnotationAsyncWrapperTest, OverlappingGemms) {
   // CHECK: %call-start.1 = ((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) call-start(%x, %y), to_apply=%gemm2, frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}
   // CHECK: ROOT %call-done.1 = f32[2048,2048]{1,0} call-done(%call-start.1), frontend_attributes={_scheduling_group_id="1",_xla_stream_annotation="1"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false
   )");
-  TF_ASSERT_OK(filecheck_result.status());
+  ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(*filecheck_result);
   for (auto name : {"call-start", "call-done"}) {
     EXPECT_EQ(FindInstruction(module.get(), name)

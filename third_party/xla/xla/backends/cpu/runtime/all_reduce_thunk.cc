@@ -72,9 +72,9 @@ tsl::AsyncValueRef<AllReduceThunk::ExecuteEvent> AllReduceThunk::Execute(
 
   VLOG(3) << absl::StreamFormat(
       "AllReduce: #source_buffers=%d, #destination_buffers=%d, "
-      "reduction_kind=%s, single_replica=%v",
-      data.source.size(), data.destination.size(),
-      ReductionKindToString(reduction_kind_), single_replica_);
+      "reduction_kind=%v, single_replica=%v",
+      data.source.size(), data.destination.size(), reduction_kind_,
+      single_replica_);
 
   for (int i = 0; i < data.source.size(); ++i) {
     VLOG(3) << absl::StreamFormat(

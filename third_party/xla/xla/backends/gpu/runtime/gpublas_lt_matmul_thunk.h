@@ -57,6 +57,8 @@ class CublasLtMatmulThunk : public Thunk {
     return workspace_;
   }
 
+  BufferUses buffer_uses() const override;
+
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
       Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,

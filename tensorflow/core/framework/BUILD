@@ -712,6 +712,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,

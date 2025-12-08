@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -62,24 +63,24 @@ CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
 }
 
 absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
-  TF_RETURN_IF_ERROR(::xla::gpu::RunCollectiveBroadcast(device_buffers, stream,
-                                                        comm_handle.comm));
+  TF_RETURN_IF_ERROR(
+      ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm));
   return true;
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm) {
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+                                    se::Stream& stream, Communicator& comm) {
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {
-          se::DeviceMemoryBase src_addr = buffer.source_buffer;
-          se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
+          se::DeviceAddressBase src_addr = buffer.source_buffer;
+          se::DeviceAddressBase dest_addr = buffer.destination_buffer;
           TF_RETURN_IF_ERROR(comm->LaunchBroadcast(
               // Always use rank 0 since we always broadcast from the first id
               // in replica_groups

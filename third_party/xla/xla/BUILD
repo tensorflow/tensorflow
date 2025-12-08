@@ -20,6 +20,10 @@ package(
 )
 
 exports_files([
+    "sh_test_with_runfiles.py",
+])
+
+exports_files([
     "lit.cfg.py",
 ] + if_google(["lit_google_cfg.py"]))
 
@@ -354,6 +358,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -664,6 +669,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:byte_swap_array",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -704,6 +710,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/random",

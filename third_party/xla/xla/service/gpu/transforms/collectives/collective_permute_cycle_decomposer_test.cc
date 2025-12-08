@@ -79,7 +79,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, NoCycle_NotTransformed) {
         source_target_pairs={{0,0}}
     }
   )";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(kHlo, Decomposer(0), false));
+  ASSERT_OK(RunAndCheckHloRewrite(kHlo, Decomposer(0), false));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, HonorsThreshold) {
@@ -95,9 +95,9 @@ TEST_F(CollectivePermuteCycleDecomposerTest, HonorsThreshold) {
     }
   )";
 
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(33), false));
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(32), true));
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(16), true));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(33), false));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(32), true));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(16), true));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {

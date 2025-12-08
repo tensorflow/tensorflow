@@ -6923,15 +6923,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
         if (i == slice_rank - 1) {
           // Continue if we are slicing exactly one element from the last
           // dimension.
-          if (slice->slice_limits()[i] - slice->slice_starts()[i] == 1 &&
-              slice->slice_strides()[i] == 1) {
+          if (slice->slice_limits(i) - slice->slice_starts(i) == 1) {
             continue;
           }
         } else {
           // Continue if we are not slicing any other dimension.
-          if (slice->slice_starts()[i] == 0 &&
-              slice->slice_limits()[i] == reshape_shape.dimensions(i) &&
-              slice->slice_strides()[i] == 1) {
+          if (slice->slice_starts(i) == 0 &&
+              slice->slice_limits(i) == reshape_shape.dimensions(i) &&
+              slice->slice_strides(i) == 1) {
             continue;
           }
         }
@@ -6950,9 +6949,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
         // Last dim of input 128 is multiple of 2.
         if (!input_shape.dimensions().empty()) {
           int64_t last_dim = input_shape.dimensions(input_rank - 1);
-          if (last_dim % K == 0 && last_dim / K > 1 &&
-              ShapeUtil::ElementsIn(reshape_shape) ==
-                  ShapeUtil::ElementsIn(input_shape)) {
+          if (last_dim % K == 0 && last_dim / K > 1) {
             // It matches!
             DimensionVector starts(input_rank, 0);
             DimensionVector limits(input_shape.dimensions().begin(),
@@ -10136,6 +10133,32 @@ absl::StatusOr<bool> AlgebraicSimplifier::RunImpl(
     }
   }
   return changed;
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleConditional(
+    HloInstruction* conditional) {
+  // TODO: b/427635449 - Investigate TPU regression and re-enable this pass for
+  // TPU.
+  if (!options_.enable_conditional_simplification()) {
+    return absl::OkStatus();
+  }
+  HloInstruction* pred = conditional->mutable_operand(0);
+
+  // conditional(convert(pred), a, b) => conditional(pred, a, b)
+  if (pred->opcode() == HloOpcode::kConvert &&
+      pred->operand(0)->shape().element_type() == PRED &&
+      conditional->branch_computations().size() == 2) {
+    return ReplaceWithNewInstruction(
+        conditional,
+        HloInstruction::CreateConditional(
+            conditional->shape(), pred->mutable_operand(0),
+            conditional->mutable_operand(2),          // True Op (Branch 1)
+            conditional->branch_computations()[1],    // True Comp (Branch 1)
+            conditional->mutable_operand(1),          // False Op (Branch 0)
+            conditional->branch_computations()[0]));  // False Comp (Branch 0)
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace xla

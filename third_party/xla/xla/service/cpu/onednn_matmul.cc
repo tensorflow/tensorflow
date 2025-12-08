@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -68,7 +67,7 @@ void TransposeIfNecessary(
     return;
   }
   std::vector<int> permutation(mem_desc.get_ndims());
-  std::iota(permutation.begin(), permutation.end(), 0);
+  absl::c_iota(permutation, 0);
   int counter = 0;
   for (auto it = dimensions.begin(); it != dimensions.end(); it++) {
     permutation[*it - 1] = counter++;

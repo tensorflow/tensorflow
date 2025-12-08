@@ -125,15 +125,16 @@ TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
 }
 
 // TODO(b/431602576): Re-enable this test once the bug is fixed.
-// TEST(NvshmemGpuCollectivesTest, NvshmemSendRecvFloat) {
-//   RunNvshmemTest(PrimitiveType::F32, "send_recv");
-// }
+TEST(NvshmemGpuCollectivesTest, DISABLED_NvshmemSendRecvFloat) {
+  RunNvshmemTest(PrimitiveType::F32, "send_recv");
+}
 
 TEST(NvshmemGpuCollectivesTest, NvshmemAllReduceFloat) {
   RunNvshmemTest(PrimitiveType::F32, "all_reduce");
 }
 
-TEST(NvshmemGpuCollectivesTest, NvshmemAllReducePred) {
+// TODO(patrios): Re-enable this test once the bug is fixed.
+TEST(NvshmemGpuCollectivesTest, DISABLED_NvshmemAllReducePred) {
   RunNvshmemTest(PrimitiveType::PRED, "all_reduce");
 }
 

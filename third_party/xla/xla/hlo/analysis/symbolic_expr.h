@@ -83,8 +83,7 @@ class SymbolicExpr {
                               int64_t num_dims) const;
   SymbolicExpr ReplaceDimsAndSymbols(
       absl::Span<const SymbolicExpr> dim_replacements,
-      absl::Span<const SymbolicExpr> symbol_replacements,
-      int64_t num_dims) const;
+      absl::Span<const SymbolicExpr> symbol_replacements) const;
 
   SymbolicExpr Canonicalize() const;
 

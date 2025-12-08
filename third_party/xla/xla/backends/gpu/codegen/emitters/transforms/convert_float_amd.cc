@@ -221,9 +221,8 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
       }
       if (v.getType() != f32_ty) {
         return arith::TruncFOp::create(b, f32_ty, v);
-      } else {
-        return v;
       }
+      return v;
     });
 
     mlir::StringAttr cvtIntr = b.getStringAttr(

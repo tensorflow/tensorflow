@@ -859,7 +859,7 @@ ENTRY main {
   p0 = f32[8,8]{1,0} parameter(0)
   p1 = f32[128]{0} parameter(1)
   p2 = f32[256]{0} parameter(2)
-  ROOT %address_computation = (f32[8]{0}, (f32[128]{0}, f32[256]{0})) fusion(p0, p1, p2), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation","kernel_index":0}},"force_earliest_schedule":false,"reification_cost":[]}
+  ROOT %address_computation = (f32[8]{0}, (f32[128]{0}, f32[256]{0})) fusion(p0, p1, p2), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation","kernel_index":0}},"force_earliest_schedule":false,"reification_cost":[]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,

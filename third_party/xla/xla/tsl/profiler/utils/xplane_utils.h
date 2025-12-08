@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -135,18 +134,25 @@ std::vector<Event> GetSortedEvents(Plane& plane,
                                    absl::Span<const int64_t> line_ids = {}) {
   std::vector<Event> events;
   plane.ForEachLine([&events, include_derived_events, line_ids](auto line) {
-    if (!include_derived_events && IsDerivedThreadId(line.Id())) return;
-    if (!line_ids.empty() && std::find(line_ids.begin(), line_ids.end(),
-                                       line.Id()) == line_ids.end())
+    if (!include_derived_events && IsDerivedThreadId(line.Id())) {
       return;
+    }
+    if (!line_ids.empty() &&
+        absl::c_find(line_ids, line.Id()) == line_ids.end()) {
+      return;
+    }
     line.ForEachEvent(
         [&events](auto event) { events.emplace_back(std::move(event)); });
   });
   std::sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
     const tsl::profiler::Timespan a_span = a.GetTimespan();
     const tsl::profiler::Timespan b_span = b.GetTimespan();
-    if (a_span.begin_ps() < b_span.begin_ps()) return true;
-    if (a_span.begin_ps() > b_span.begin_ps()) return false;
+    if (a_span.begin_ps() < b_span.begin_ps()) {
+      return true;
+    }
+    if (a_span.begin_ps() > b_span.begin_ps()) {
+      return false;
+    }
     return a_span.duration_ps() < b_span.duration_ps();
   });
   return events;

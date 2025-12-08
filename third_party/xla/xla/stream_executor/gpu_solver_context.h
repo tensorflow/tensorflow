@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,38 +46,38 @@ class GpuSolverContext {
   // `as` is a list of pointers to the batch_size individual n x n matrices
   // that make up the input array.
   virtual absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                                    DeviceMemory<float*> as, int lda,
-                                    DeviceMemory<int> lapack_info,
+                                    DeviceAddress<float*> as, int lda,
+                                    DeviceAddress<int> lapack_info,
                                     int batch_size) = 0;
   virtual absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                                    DeviceMemory<double*> as, int lda,
-                                    DeviceMemory<int> lapack_info,
+                                    DeviceAddress<double*> as, int lda,
+                                    DeviceAddress<int> lapack_info,
                                     int batch_size) = 0;
   virtual absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                                    DeviceMemory<std::complex<float>*> as,
-                                    int lda, DeviceMemory<int> lapack_info,
+                                    DeviceAddress<std::complex<float>*> as,
+                                    int lda, DeviceAddress<int> lapack_info,
                                     int batch_size) = 0;
   virtual absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                                    DeviceMemory<std::complex<double>*> as,
-                                    int lda, DeviceMemory<int> lapack_info,
+                                    DeviceAddress<std::complex<double>*> as,
+                                    int lda, DeviceAddress<int> lapack_info,
                                     int batch_size) = 0;
 
   virtual absl::Status Potrf(blas::UpperLower uplo, int n,
-                             DeviceMemory<float> a, int lda,
-                             DeviceMemory<int> lapack_info,
-                             DeviceMemory<float> workspace) = 0;
+                             DeviceAddress<float> a, int lda,
+                             DeviceAddress<int> lapack_info,
+                             DeviceAddress<float> workspace) = 0;
   virtual absl::Status Potrf(blas::UpperLower uplo, int n,
-                             DeviceMemory<double> a, int lda,
-                             DeviceMemory<int> lapack_info,
-                             DeviceMemory<double> workspace) = 0;
+                             DeviceAddress<double> a, int lda,
+                             DeviceAddress<int> lapack_info,
+                             DeviceAddress<double> workspace) = 0;
   virtual absl::Status Potrf(blas::UpperLower uplo, int n,
-                             DeviceMemory<std::complex<float>> a, int lda,
-                             DeviceMemory<int> lapack_info,
-                             DeviceMemory<std::complex<float>> workspace) = 0;
+                             DeviceAddress<std::complex<float>> a, int lda,
+                             DeviceAddress<int> lapack_info,
+                             DeviceAddress<std::complex<float>> workspace) = 0;
   virtual absl::Status Potrf(blas::UpperLower uplo, int n,
-                             DeviceMemory<std::complex<double>> a, int lda,
-                             DeviceMemory<int> lapack_info,
-                             DeviceMemory<std::complex<double>> workspace) = 0;
+                             DeviceAddress<std::complex<double>> a, int lda,
+                             DeviceAddress<int> lapack_info,
+                             DeviceAddress<std::complex<double>> workspace) = 0;
 
   // Returns the max size of the `workspace` required by Potrf and PotrfBatched,
   // in number of elements of `type`.

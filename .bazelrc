@@ -299,11 +299,11 @@ common:cuda --@local_config_cuda//:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-common:cuda --@cuda_driver//:include_cuda_umd_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-common:cuda_wheel --@cuda_driver//:include_cuda_umd_libs=false
+
+common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -683,6 +683,8 @@ common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
+# Update UMD version when RBE CUDA driver is updated.
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc

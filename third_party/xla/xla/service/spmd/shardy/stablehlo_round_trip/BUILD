@@ -147,6 +147,7 @@ xla_cc_test(
     deps = [
         ":stablehlo_import",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -170,7 +171,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:CallOpInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

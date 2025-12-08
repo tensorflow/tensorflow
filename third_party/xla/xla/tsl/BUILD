@@ -588,15 +588,17 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
-        "//third_party/compute_library:build_defs_bzl",
-        "//xla/tsl/mkl:build_defs_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
+        # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        "@rules_cc//cc/common",
+        "@rules_python//python:py_library_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
-        "@local_config_rocm//rocm:build_defs_bzl",
+        "//xla/tsl/mkl:build_defs_bzl",
+        "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
         "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
-        "@rules_cc//cc/common",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "//third_party/compute_library:build_defs_bzl",
     ],
 )
 

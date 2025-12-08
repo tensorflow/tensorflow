@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <variant>
 
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"

@@ -171,7 +171,6 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_value",
         "//xla/service:change_op_data_type",

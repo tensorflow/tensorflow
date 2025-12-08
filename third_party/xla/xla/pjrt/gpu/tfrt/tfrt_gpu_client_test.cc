@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -29,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/future.h"
@@ -550,7 +551,7 @@ TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
   EXPECT_TRUE(staging_client->should_stage_host_to_device_transfers());
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 10);
+  absl::c_iota(data, 10);
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -575,7 +576,7 @@ TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
   EXPECT_FALSE(staging_client->should_stage_host_to_device_transfers());
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 10);
+  absl::c_iota(data, 10);
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -898,7 +899,7 @@ TEST(TfrtGpuClientTest, FromHostAsync) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.push_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -971,7 +972,7 @@ TEST(TfrtGpuClientTest, FromHostAsyncPinnedHost) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -1086,7 +1087,7 @@ TEST(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.push_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -1409,6 +1410,7 @@ TEST(TfrtGpuClientTest, ExecutePinnedHostOutputTest) {
                           executable->GetCompiledMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
+  EXPECT_GT(memory_stats.peak_memory_in_bytes, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           result_buffers[0]->ToLiteralSync());
@@ -1794,7 +1796,7 @@ TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
     GTEST_SKIP() << "Test requires at least two addressable devices.";
   }
 
-  size_t test_length = 0.5l * 1024 * 1024;
+  size_t test_length = 512 * 1024;
   std::vector<int32_t> data(test_length);
   for (int32_t i = 0; i < test_length; ++i) {
     data[i] = i;

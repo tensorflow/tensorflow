@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/stream.h"
@@ -40,8 +40,8 @@ HostStream::HostStream(StreamExecutor* executor) : StreamCommon(executor) {}
 
 HostStream::~HostStream() { parent()->DeallocateStream(this); }
 
-absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status HostStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   void* dst_mem = gpu_dst->opaque();
   void* src_mem = const_cast<void*>(gpu_src.opaque());
@@ -49,28 +49,29 @@ absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst,
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status HostStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   void* src_mem = const_cast<void*>(gpu_src.opaque());
   memcpy(host_dst, src_mem, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status HostStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   void* dst_mem = gpu_dst->opaque();
   memcpy(dst_mem, host_src, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status HostStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   void* gpu_mem = location->opaque();
   memset(gpu_mem, pattern, size);
   return absl::OkStatus();
 }
 
-absl::Status HostStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status HostStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   void* gpu_mem = location->opaque();
   memset(gpu_mem, 0, size);
   return absl::OkStatus();

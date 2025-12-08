@@ -199,7 +199,7 @@ absl::Status SnappyOutputBuffer::Deflate() {
   }
   std::string output;
   if (!port::Snappy_Compress(next_in_, avail_in_, &output)) {
-    return errors::DataLoss("Snappy_Compress failed");
+    return absl::DataLossError("Snappy_Compress failed");
   }
 
   // Write length of compressed block to output buffer.

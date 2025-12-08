@@ -40,9 +40,9 @@ namespace stream_executor::gpu {
 //
 //   struct MyKernelTrait {
 //     using KernelType =
-//         stream_executor::TypedKernel<stream_executor::DeviceMemoryBase,
+//         stream_executor::TypedKernel<stream_executor::DeviceAddressBase,
 //                                      size_t, size_t,
-//                                      stream_executor::DeviceMemoryBase>;
+//                                      stream_executor::DeviceAddressBase>;
 //   };
 //
 // The registry is thread-safe. Registered kernels are immutable and cannot be

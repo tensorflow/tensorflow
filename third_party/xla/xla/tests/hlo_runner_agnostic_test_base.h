@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
@@ -194,7 +195,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // successful.
   ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
   // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
@@ -202,7 +204,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
       const tsl::protobuf::Message* backend_config = nullptr,
-      bool use_random_data = true);
+      bool use_random_data = true,
+      BufferAssignmentProto* buffer_assignment_proto = nullptr);
 
   // Same as below, except that it requires all the options to be passed.
   ::testing::AssertionResult RunAndCompareTwoModulesReplicated(

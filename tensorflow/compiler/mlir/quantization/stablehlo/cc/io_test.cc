@@ -28,8 +28,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status_matchers.h"
-#include "xla/tsl/platform/types.h"
 
 namespace stablehlo::quantization::io {
 namespace {

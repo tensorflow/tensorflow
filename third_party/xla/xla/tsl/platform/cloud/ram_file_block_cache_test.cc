@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
@@ -500,7 +501,7 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
     }
     if (!notification.WaitForNotificationWithTimeout(absl::Seconds(10))) {
       // This avoids having the test time out, which is harder to debug.
-      return errors::FailedPrecondition("desired concurrency not reached");
+      return absl::FailedPreconditionError("desired concurrency not reached");
     }
     memset(buffer, 'x', n);
     *bytes_transferred = n;

@@ -68,9 +68,8 @@ ReduceScatterThunk::Execute(const ExecuteParams& params) {
 
   VLOG(3) << absl::StreamFormat(
       "ReduceScatter: #source_buffers=%d, #destination_buffers=%d, "
-      "reduction_kind=%s",
-      data.source.size(), data.destination.size(),
-      ReductionKindToString(reduction_kind_));
+      "reduction_kind=%v",
+      data.source.size(), data.destination.size(), reduction_kind_);
 
   for (int i = 0; i < data.source.size(); ++i) {
     VLOG(3) << absl::StreamFormat(

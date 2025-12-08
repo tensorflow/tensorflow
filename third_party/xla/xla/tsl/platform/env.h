@@ -18,25 +18,25 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
 
 // Delete leaked Windows definitions.
 #ifdef PLATFORM_WINDOWS
@@ -665,7 +665,7 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
 inline absl::Status WriteTextProto(Env* /* env */,
                                    const std::string& /* fname */,
                                    const protobuf::MessageLite& /* proto */) {
-  return errors::Unimplemented("Can't write text protos with protolite.");
+  return absl::UnimplementedError("Can't write text protos with protolite.");
 }
 absl::Status WriteTextProto(Env* env, const std::string& fname,
                             const protobuf::Message& proto);
@@ -675,7 +675,7 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
 inline absl::Status ReadTextProto(Env* /* env */,
                                   const std::string& /* fname */,
                                   protobuf::MessageLite* /* proto */) {
-  return errors::Unimplemented("Can't parse text protos with protolite.");
+  return absl::UnimplementedError("Can't parse text protos with protolite.");
 }
 absl::Status ReadTextProto(Env* env, const std::string& fname,
                            protobuf::Message* proto);

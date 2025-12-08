@@ -109,8 +109,9 @@ absl::Status SnappyInputStream::Inflate() {
   absl::Status s =
       input_stream_->ReadNBytes(compressed_block_length, &compressed_block);
   if (absl::IsOutOfRange(s)) {
-    return errors::DataLoss("Failed to read ", compressed_block_length,
-                            " bytes from file. Possible data corruption.");
+    return absl::DataLossError(
+        absl::StrCat("Failed to read ", compressed_block_length,
+                     " bytes from file. Possible data corruption."));
   }
   TF_RETURN_IF_ERROR(s);
 
@@ -118,7 +119,7 @@ absl::Status SnappyInputStream::Inflate() {
   if (!port::Snappy_GetUncompressedLength(compressed_block.data(),
                                           compressed_block_length,
                                           &uncompressed_length)) {
-    return errors::DataLoss("Parsing error in Snappy_GetUncompressedLength");
+    return absl::DataLossError("Parsing error in Snappy_GetUncompressedLength");
   }
 
   DCHECK_EQ(avail_out_, 0);
@@ -132,7 +133,7 @@ absl::Status SnappyInputStream::Inflate() {
   next_out_ = output_buffer_.get();
   if (!port::Snappy_Uncompress(compressed_block.data(), compressed_block_length,
                                output_buffer_.get())) {
-    return errors::DataLoss("Snappy_Uncompress failed.");
+    return absl::DataLossError("Snappy_Uncompress failed.");
   }
   avail_out_ += uncompressed_length;
 

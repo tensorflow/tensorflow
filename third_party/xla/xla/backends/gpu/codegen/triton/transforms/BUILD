@@ -60,7 +60,6 @@ cc_library(
         "//xla/backends/gpu/codegen/triton:dot_algorithms",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-        "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",

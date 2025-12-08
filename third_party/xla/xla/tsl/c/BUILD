@@ -82,10 +82,9 @@ tsl_cc_test(
     name = "tsl_status_test",
     srcs = ["tsl_status_test.cc"],
     deps = [
-        ":tsl_status",
+        ":tsl_status",  # buildcleaner: keep
         ":tsl_status_internal",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
@@ -103,7 +102,6 @@ tsl_gpu_library(
     hdrs = ["tsl_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tsl_status",
         ":tsl_status_internal",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",

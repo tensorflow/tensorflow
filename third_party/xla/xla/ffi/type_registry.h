@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_FFI_TYPE_REGISTRY_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
@@ -61,9 +62,17 @@ class TypeRegistry {
   // Pointers to functions that allow XLA runtime to manipulate external types.
   struct TypeInfo {
     using Deleter = void (*)(void*);
+    using Serializer = absl::StatusOr<std::string> (*)(const void*);
+    using Deserializer = absl::StatusOr<void*> (*)(absl::string_view);
 
     Deleter deleter = nullptr;
+    Serializer serializer = nullptr;
+    Deserializer deserializer = nullptr;
   };
+
+  // Returns type name for a given type id. Returns an error if type id is not
+  // registered. Works for both external and internal type ids.
+  static absl::StatusOr<absl::string_view> GetTypeName(TypeId type_id);
 
   // Returns type id for a given type name. Returns an error if type is
   // not registered. Works for both external and internal type ids.
