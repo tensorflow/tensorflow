@@ -55,8 +55,7 @@ namespace interpreter {
 
 InterpreterExecutableBase::InterpreterExecutableBase(
     std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
-                 /*hlo_profile_index_map=*/nullptr) {}
+    : Executable(std::move(hlo_module)) {}
 
 absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,

@@ -62,8 +62,6 @@ class CpuExecutable : public Executable {
       std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
       TargetMachineOptions target_machine_options);
 
   ~CpuExecutable() override;
@@ -246,8 +244,6 @@ class CpuExecutable : public Executable {
   std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                 std::unique_ptr<BufferAssignment> assignment,
                 TargetMachineOptions target_machine_options);
   CpuExecutable(const CpuExecutable&) = delete;
