@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 
 #include <cstdint>
 #include <optional>
@@ -25,33 +25,29 @@ limitations under the License.
 
 namespace xla {
 
-stream_executor::DeviceAddressBase MaybeOwningDeviceMemory::AsDeviceMemoryBase()
-    const {
+se::DeviceAddressBase MaybeOwningDeviceAddress::AsDeviceAddress() const {
   if (HasOwnership()) {
-    return *std::get<stream_executor::ScopedDeviceAddress<uint8_t>>(mem_);
+    return *std::get<se::ScopedDeviceAddress<uint8_t>>(mem_);
   }
-  return std::get<stream_executor::DeviceAddressBase>(mem_);
+  return std::get<se::DeviceAddressBase>(mem_);
 }
 
-bool MaybeOwningDeviceMemory::HasOwnership() const {
-  return std::holds_alternative<stream_executor::ScopedDeviceAddress<uint8_t>>(
-      mem_);
+bool MaybeOwningDeviceAddress::HasOwnership() const {
+  return std::holds_alternative<se::ScopedDeviceAddress<uint8_t>>(mem_);
 }
 
-std::optional<stream_executor::ScopedDeviceAddress<uint8_t>>
-MaybeOwningDeviceMemory::Release() {
+std::optional<se::ScopedDeviceAddress<uint8_t>>
+MaybeOwningDeviceAddress::Release() {
   if (!HasOwnership()) {
     return {};
   }
-  return std::move(
-      std::get<stream_executor::ScopedDeviceAddress<uint8_t>>(mem_));
+  return std::move(std::get<se::ScopedDeviceAddress<uint8_t>>(mem_));
 }
 
-const stream_executor::ScopedDeviceAddress<uint8_t>*
-MaybeOwningDeviceMemory::AsOwningDeviceMemory() const {
-  return HasOwnership()
-             ? &std::get<stream_executor::ScopedDeviceAddress<uint8_t>>(mem_)
-             : nullptr;
+const se::ScopedDeviceAddress<uint8_t>*
+MaybeOwningDeviceAddress::AsScopedDeviceAddress() const {
+  return HasOwnership() ? &std::get<se::ScopedDeviceAddress<uint8_t>>(mem_)
+                        : nullptr;
 }
 
 }  // namespace xla

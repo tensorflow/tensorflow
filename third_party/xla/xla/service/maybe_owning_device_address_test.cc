@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -21,13 +21,14 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using MaybeOwningDeviceMemoryTest = ::testing::Test;
+using MaybeOwningDeviceAddressTest = ::testing::Test;
 
-TEST(MaybeOwningDeviceMemoryTest, DefaultConstructed) {
-  MaybeOwningDeviceMemory memory;
+TEST(MaybeOwningDeviceAddressTest, DefaultConstructed) {
+  MaybeOwningDeviceAddress memory;
   EXPECT_FALSE(memory.HasOwnership());
-  EXPECT_EQ(memory.AsDeviceMemoryBase().opaque(), nullptr);
-  EXPECT_EQ(memory.AsDeviceMemoryBase().size(), 0);
+
+  EXPECT_EQ(memory.AsDeviceAddress().opaque(), nullptr);
+  EXPECT_EQ(memory.AsDeviceAddress().size(), 0);
 }
 
 //===-----------------------------------------------------------------------===/
@@ -36,7 +37,7 @@ TEST(MaybeOwningDeviceMemoryTest, DefaultConstructed) {
 
 void BM_DefaultConstructed(benchmark::State& state) {
   for (auto s : state) {
-    MaybeOwningDeviceMemory memory;
+    MaybeOwningDeviceAddress memory;
     benchmark::DoNotOptimize(memory);
   }
 }
