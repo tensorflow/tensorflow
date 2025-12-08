@@ -42,15 +42,15 @@ class GpuCliqueRendezvous {
   static absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> Join(
       const GpuCliqueKey& clique_key, RankId rank, std::any data);
 
-  // Returns the clique key associated with this data.
+  // Returns the clique key associated with this rendezvous object.
   const GpuCliqueKey& clique_key() const { return clique_key_; }
 
-  // Returns the state associated with the given rank. If state type is not
-  // the same as `T`, returns an error.
+  // Returns the value at the given rank. If value type is not the same as `T`,
+  // returns an error.
   template <typename T>
-  absl::StatusOr<std::reference_wrapper<const T>> state(RankId rank) const {
-    auto it = state_.find(rank);
-    if (it == state_.end()) {
+  absl::StatusOr<std::reference_wrapper<const T>> at(RankId rank) const {
+    auto it = values_.find(rank);
+    if (it == values_.end()) {
       return NotFound("Data not found for rank %d", rank.value());
     }
 
@@ -64,10 +64,10 @@ class GpuCliqueRendezvous {
 
  private:
   GpuCliqueRendezvous(GpuCliqueKey clique_key,
-                      absl::btree_map<RankId, std::any> state);
+                      absl::btree_map<RankId, std::any> values);
 
   GpuCliqueKey clique_key_;
-  absl::btree_map<RankId, std::any> state_;
+  absl::btree_map<RankId, std::any> values_;
 };
 
 }  // namespace xla::gpu

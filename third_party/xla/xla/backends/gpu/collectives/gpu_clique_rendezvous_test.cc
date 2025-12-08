@@ -48,8 +48,8 @@ TEST(GpuCliqueRendezvousTest, TwoParticipants) {
 
       GpuCliqueRendezvous& data = **rendezvous;
       ASSERT_EQ(data.clique_key(), key);
-      ASSERT_EQ(*data.state<int32_t>(RankId(0)), 0);
-      ASSERT_EQ(*data.state<int32_t>(RankId(1)), 1);
+      ASSERT_EQ(*data.at<int32_t>(RankId(0)), 0);
+      ASSERT_EQ(*data.at<int32_t>(RankId(1)), 1);
     };
   };
 

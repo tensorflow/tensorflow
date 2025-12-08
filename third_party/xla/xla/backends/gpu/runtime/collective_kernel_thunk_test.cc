@@ -394,7 +394,7 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
   for (absl::StatusOr<se::DeviceAddressBase> result :
        RunCollectiveKernelThunkOnDevices(metadata,
                                          /*emulate_multiprocess=*/true)) {
-    EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented));
+    EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
   }
 }
 

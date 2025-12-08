@@ -2010,6 +2010,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_clique_rendezvous",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
