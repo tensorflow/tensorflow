@@ -247,7 +247,8 @@ class GpuExecutable : public Executable {
       std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
       std::vector<ConstantInfo> constants,
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-      bool enable_debug_info_manager, ModuleStats module_stats);
+      bool enable_debug_info_manager, ModuleStats module_stats,
+      absl::StatusOr<ThunkProto> thunk_proto);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -369,6 +370,10 @@ class GpuExecutable : public Executable {
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
+
+  // Stores the thunk graph as a proto from before running the thunk pass.
+  // Might contain an error if the given thunk graph is not serializable.
+  absl::StatusOr<ThunkProto> thunk_proto_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

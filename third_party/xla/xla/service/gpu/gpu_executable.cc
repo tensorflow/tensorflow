@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -238,6 +239,10 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
 
+  // TODO(b/461380690): Remove this once we have a better way to distinguish
+  // between compiler-generated and runtime-loaded GPU executables.
+  absl::StatusOr<ThunkProto> thunk_proto = params.executable->ToProto();
+
   TF_RETURN_IF_ERROR(RunThunkPasses(
       params.debug_options, params.device_description, params.executable.get(),
       params.debug_module.get(), allocator));
@@ -251,7 +256,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(allocator.MutableAllocations()), std::move(params.alias_info),
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
-      std::move(params.module_stats)));
+      std::move(params.module_stats), std::move(thunk_proto)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -268,7 +273,8 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
     std::vector<ConstantInfo> constants,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-    bool enable_debug_info_manager, ModuleStats module_stats)
+    bool enable_debug_info_manager, ModuleStats module_stats,
+    absl::StatusOr<ThunkProto> thunk_proto)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -288,7 +294,8 @@ GpuExecutable::GpuExecutable(
           debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(constants)),
       output_info_(std::move(output_info)),
-      enable_debug_info_manager_(enable_debug_info_manager) {
+      enable_debug_info_manager_(enable_debug_info_manager),
+      thunk_proto_(std::move(thunk_proto)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1230,7 +1237,10 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   *proto.mutable_gpu_compute_capability() = gpu_version_.ToProto();
 
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunks_->ToProto());
+  // TODO(b/461380690): Generate the proto on-the-fly once we have a better way
+  // to distinguish between compiler-generated and runtime-loaded GPU
+  // executables.
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunk_proto_);
 
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
