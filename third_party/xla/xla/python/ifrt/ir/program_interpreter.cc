@@ -615,6 +615,9 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   };
   state.remap_is_donated = remap_op.getDonated();
 
+  TF_RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
+  TF_RETURN_IF_ERROR(state.remap_plan.Validate());
+
   for (const auto output : remap_op.getOutputs()) {
     const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
     state.output_handles.push_back(handle);
