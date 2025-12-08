@@ -95,15 +95,19 @@ class AttributeMap {
 
   template <typename T>
   absl::StatusOr<T> Get(const std::string& key) const {
-    if constexpr (std::is_same_v<T, std::string> ||
-                  std::is_same_v<T, absl::string_view>) {
+    if constexpr (std::is_same_v<T, Value>) {
+      auto it = map_.find(key);
+      if (it == map_.end()) {
+        return absl::NotFoundError(absl::StrCat("Key not found: ", key));
+      }
+      return it->second;
+    } else if constexpr (std::is_same_v<T, std::string>) {
       return Get<T, StringValue>(key);
     } else if constexpr (std::is_same_v<T, bool>) {
       return Get<T, BoolValue>(key);
     } else if constexpr (std::is_same_v<T, int64_t>) {
       return Get<T, Int64Value>(key);
-    } else if constexpr (std::is_same_v<T, std::vector<int64_t>> ||
-                         std::is_same_v<T, absl::Span<const int64_t>>) {
+    } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {
       return Get<T, Int64ListValue>(key);
     } else if constexpr (std::is_same_v<T, float>) {
       return Get<T, FloatValue>(key);
