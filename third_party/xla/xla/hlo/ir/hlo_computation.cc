@@ -593,6 +593,36 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   return absl::OkStatus();
 }
 
+absl::Status HloComputation::PermuteParameters(
+    absl::Span<const int64_t> permutation) {
+  if (permutation.size() != num_parameters()) {
+    return absl::InvalidArgumentError(
+        "Permutation size must match the number of parameters.");
+  }
+  if (permutation.size() == 1) {
+    return absl::OkStatus();
+  }
+
+  std::vector<std::unique_ptr<HloInstruction>> new_param_instructions(
+      num_parameters());
+  for (int64_t i = 0; i < num_parameters(); ++i) {
+    int64_t new_param_number = permutation[i];
+    new_param_instructions[new_param_number] = HloInstruction::CreateParameter(
+        new_param_number, param_instructions_[i]->shape(),
+        param_instructions_[i]->name());
+  }
+
+  for (int64_t i = 0; i < num_parameters(); ++i) {
+    ReplaceParameter(i, std::move(new_param_instructions[permutation[i]]));
+  }
+
+  absl::c_sort(param_instructions_,
+               [](const HloInstruction* a, const HloInstruction* b) {
+                 return a->parameter_number() < b->parameter_number();
+               });
+  return absl::OkStatus();
+}
+
 bool HloComputation::IsSafelyRemovable(
     const HloInstruction* instruction, bool ignore_control_dependency,
     std::optional<

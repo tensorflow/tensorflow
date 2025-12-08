@@ -1588,6 +1588,10 @@ class HloFusionInstruction : public HloCallableInstruction {
   // If multiple operands are the same instruction, keeps only one of them.
   absl::Status DeduplicateFusionOperands();
 
+  // Permutes the operands computation according to the provided permutation.
+  // The fusion computation is also adjusted accordingly.
+  absl::Status PermuteFusionOperands(absl::Span<const int64_t> permutation);
+
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion;
   }

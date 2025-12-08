@@ -2597,6 +2597,33 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   return absl::OkStatus();
 }
 
+absl::Status HloFusionInstruction::PermuteFusionOperands(
+    absl::Span<const int64_t> permutation) {
+  if (permutation.size() != operand_count()) {
+    return absl::InvalidArgumentError(
+        "Permutation size must match the number of operands.");
+  }
+  std::vector<bool> seen(permutation.size(), false);
+  for (int64_t i = 0; i < permutation.size(); ++i) {
+    if (permutation[i] < 0 || permutation[i] >= operand_count() ||
+        seen[permutation[i]]) {
+      return absl::InvalidArgumentError(
+          "Argument is not a permutation of operand indices.");
+    }
+    seen[permutation[i]] = true;
+  }
+
+  TF_RETURN_IF_ERROR(
+      fused_instructions_computation()->PermuteParameters(permutation));
+  InstructionVector new_operands(operand_count());
+  for (int64_t i = 0; i < operand_count(); ++i) {
+    new_operands[permutation[i]] = mutable_operand(i);
+  }
+  RemoveAllOperands();
+  AppendOperands(new_operands);
+  return absl::OkStatus();
+}
+
 HloCallInstruction::HloCallInstruction(const Shape& shape,
                                        HloInstruction* called_computation_root)
     : HloCallableInstruction(HloOpcode::kCall, shape) {
