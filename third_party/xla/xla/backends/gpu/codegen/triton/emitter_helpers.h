@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -195,10 +196,6 @@ mlir::Value ConstLike(mlir::ImplicitLocOpBuilder& b, mlir::Value like,
 
 inline mlir::Value ZerosLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
   return ConstLike(b, x, 0);
-}
-
-inline mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Value x) {
-  return ConstLike(b, x, 1);
 }
 
 bool IsFp8Type(mlir::Type t);
