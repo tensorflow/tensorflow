@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/init_main.h"
 
 namespace xla::gpu::nvptx {
