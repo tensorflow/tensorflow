@@ -61,7 +61,8 @@ def constant(
       compatible with `dtype`.
     dtype: The type of elements for the returned `RaggedTensor`.  If not
       specified, then a default is chosen based on the scalar values in
-      `pylist`.
+      `pylist`. If there are no scalar values in `pylist`, then the default
+      is `tf.float32`.
     ragged_rank: An integer specifying the ragged rank of the returned
       `RaggedTensor`.  Must be nonnegative and less than `K`. Defaults to
       `max(0, K - 1)` if `inner_shape` is not specified.  Defaults to
