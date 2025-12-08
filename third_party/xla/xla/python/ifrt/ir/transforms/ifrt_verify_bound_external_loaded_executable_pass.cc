@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -130,50 +131,49 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
       }
 
       auto func_type = loaded_exec_op.getFunctionType();
-      if (!exec_it->second->GetParameterShardings().has_value()) {
+      std::optional<std::vector<xla::OpSharding>> parameter_shardings;
+      if (loaded_exec_op.getDevices().size() == 1) {
+        parameter_shardings.emplace(func_type.getNumInputs());
+      } else {
+        parameter_shardings = exec_it->second->GetParameterShardings();
+      }
+      if (!parameter_shardings.has_value()) {
         return loaded_exec_op.emitOpError()
                << "cannot be bound to an executable without parameter "
                   "shardings";
       }
-      if (!exec_it->second->GetOutputShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without output shardings";
+      std::optional<std::vector<xla::OpSharding>> output_shardings;
+      if (loaded_exec_op.getDevices().size() == 1) {
+        output_shardings.emplace(func_type.getNumResults());
+      } else {
+        output_shardings = exec_it->second->GetOutputShardings();
       }
-      if (func_type.getNumInputs() !=
-          exec_it->second->GetParameterShardings()->size()) {
+      if (!output_shardings.has_value()) {
+        return loaded_exec_op.emitOpError()
+               << "cannot be bound to a multi-device executable without output "
+                  "shardings";
+      }
+      if (func_type.getNumInputs() != parameter_shardings->size()) {
         return loaded_exec_op.emitOpError()
                << "expects an executable with " << func_type.getNumInputs()
                << " inputs, but was bound to an executable with "
-               << exec_it->second->GetParameterShardings()->size() << " inputs";
+               << parameter_shardings->size() << " inputs";
       }
-      if (func_type.getNumResults() !=
-          exec_it->second->GetOutputShardings()->size()) {
+      if (func_type.getNumResults() != output_shardings->size()) {
         return loaded_exec_op.emitOpError()
                << "expects an executable with " << func_type.getNumResults()
                << " results, but was bound to an executable with "
-               << exec_it->second->GetOutputShardings()->size() << " results";
+               << output_shardings->size() << " results";
       }
       // Verify that the input and output shardings of the LoadedExecutableOp
       // are the same as the shardings of the bound executable.
-      if (!exec_it->second->GetParameterShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without parameter "
-                  "shardings";
-      }
-      if (!exec_it->second->GetOutputShardings().has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without output "
-                  "shardings";
-      }
       auto sharding_equal_status = VerifyShardingsEqual(
-          func_type.getInputs(), *exec_it->second->GetParameterShardings(),
-          "input");
+          func_type.getInputs(), *parameter_shardings, "input");
       if (!sharding_equal_status.ok()) {
         return loaded_exec_op.emitOpError() << sharding_equal_status.message();
       }
-      sharding_equal_status = VerifyShardingsEqual(
-          func_type.getResults(), *exec_it->second->GetOutputShardings(),
-          "output");
+      sharding_equal_status = VerifyShardingsEqual(func_type.getResults(),
+                                                   *output_shardings, "output");
       if (!sharding_equal_status.ok()) {
         return loaded_exec_op.emitOpError() << sharding_equal_status.message();
       }
