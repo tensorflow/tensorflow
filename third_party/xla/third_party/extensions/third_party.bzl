@@ -1,5 +1,6 @@
 """Module extension for third party dependencies."""
 
+load("//third_party:repo.bzl", "tf_vendored")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
@@ -76,6 +77,10 @@ def _third_party_ext_impl(mctx):  # @unused
     triton()
     uv()
     xnnpack()
+    tf_vendored(
+        name = "com_google_googletest",
+        path = "third_party/xla_googletest_wrapper",
+    )
 
 third_party_ext = module_extension(
     implementation = _third_party_ext_impl,
