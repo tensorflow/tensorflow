@@ -2916,10 +2916,6 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
-        ],
     },
     backends = [
         "gpu",
@@ -2971,9 +2967,6 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "nvgpu_any": [
-            "no_oss",
-        ],
     },
     backends = ["gpu"],
     deps = [
@@ -3016,10 +3009,6 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
-        ],
     },
     backends = [
         "gpu",
@@ -3042,10 +3031,6 @@ xla_test(
     backend_tags = {
         "gpu": [
             "multi_gpu",
-        ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
         ],
     },
     backends = [

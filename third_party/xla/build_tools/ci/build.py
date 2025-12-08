@@ -273,6 +273,17 @@ def _tag_filters_for_compute_capability(
   return tag_filters
 
 
+nvidia_gpu_filters = (
+    "-no_oss",
+    "requires-gpu-nvidia",
+    "gpu",
+    "-rocm-only",
+    "-oneapi-only",
+)
+
+single_nvidia_gpu_filters = nvidia_gpu_filters + ("-multi_gpu",)
+
+
 def nvidia_gpu_build_with_compute_capability(
     *,
     type_: BuildType,
@@ -285,21 +296,8 @@ def nvidia_gpu_build_with_compute_capability(
       repo="openxla/xla",
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      test_tag_filters=(
-          "-no_oss",
-          "requires-gpu-nvidia",
-          "gpu",
-          "-rocm-only",
-          "-oneapi-only",
-      )
-      + extra_gpu_tags,
-      build_tag_filters=(
-          "-no_oss",
-          "requires-gpu-nvidia",
-          "gpu",
-          "-rocm-only",
-          "-oneapi-only",
-      ),
+      test_tag_filters=single_nvidia_gpu_filters + extra_gpu_tags,
+      build_tag_filters=single_nvidia_gpu_filters,
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
           "//xla/tsl:ci_build": True,
@@ -510,21 +508,9 @@ Build(
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -542,21 +528,9 @@ Build(
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -575,21 +549,9 @@ Build(
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -607,21 +569,9 @@ Build(
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -640,21 +590,9 @@ Build(
     repo="openxla/xla",
     configs=(),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
@@ -675,21 +613,9 @@ Build(
     repo="openxla/xla",
     configs=(),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    )
+    test_tag_filters=single_nvidia_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=(
-        "-no_oss",
-        "requires-gpu-nvidia",
-        "gpu",
-        "-rocm-only",
-        "-oneapi-only",
-    ),
+    build_tag_filters=single_nvidia_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
@@ -932,11 +858,7 @@ Build(
 Build(
     type_=BuildType.TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
-    configs=(
-        "release_gpu_linux",
-        "rbe_linux_cuda",
-        "hermetic_cuda_umd"
-    ),
+    configs=("release_gpu_linux", "rbe_linux_cuda", "hermetic_cuda_umd"),
     target_patterns=(
         "//tensorflow/compiler/...",
         "-//tensorflow/compiler/tf2tensorrt/...",

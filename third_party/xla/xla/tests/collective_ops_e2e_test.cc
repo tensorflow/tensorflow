@@ -2396,6 +2396,14 @@ class AllReduceTest
                                    /*memory_size=*/32 * kMB,
                                    /*collectives_memory_size=*/0) {}
 
+  void SetUp() override {
+    CollectiveOpsE2ETestBase::SetUp();
+    if (!IsAmpereAndHigher()) {
+      GTEST_SKIP() << "Test requires Ampere or newer architecture since it's "
+                      "using triton.";
+    }
+  }
+
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
