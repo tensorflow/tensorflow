@@ -277,10 +277,10 @@ typedef struct XLA_Literal {
   XLA_Shape shape;
 } XLA_Literal;
 
-typedef struct XLA_MaybeOwningDeviceMemoryShapeTree {
+typedef struct XLA_MaybeOwningDeviceAddressShapeTree {
   XLA_Shape shape;
   SE_MaybeOwningDeviceMemory* buffers;
-} XLA_MaybeOwningDeviceMemoryShapeTree;
+} XLA_MaybeOwningDeviceAddressShapeTree;
 
 typedef struct XLA_ShapeIndex {
   int64_t indices[8];
@@ -288,7 +288,7 @@ typedef struct XLA_ShapeIndex {
 } XLA_ShapeIndex;
 
 typedef struct SE_ExecutionInput {
-  XLA_MaybeOwningDeviceMemoryShapeTree shape_tree;
+  XLA_MaybeOwningDeviceAddressShapeTree shape_tree;
   XLA_ShapeIndex* unowned_indices;
   int unowned_indices_size;
   XLA_Shape dynamic_shape;

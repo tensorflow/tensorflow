@@ -550,7 +550,7 @@ cc_library(
         "//xla/service:hlo_execution_profile",
         "//xla/service:hlo_profile_printer_data_cc",
         "//xla/service:hlo_value",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service:xla_debug_info_manager",
         "//xla/stream_executor:device_address",

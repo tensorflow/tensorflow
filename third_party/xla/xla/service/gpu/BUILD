@@ -712,7 +712,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_value",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:rendezvous",
         "//xla/service:shaped_buffer",
         "//xla/service:stream_pool",

@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -62,7 +62,7 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
     // Our executable doesn't have input-output aliasing, so we can pass
     // unowned input buffers.
     inputs.back().SetUnownedBuffer(
-        /*index=*/{}, MaybeOwningDeviceMemory(/*unowned=*/buffers.at(i)));
+        /*index=*/{}, MaybeOwningDeviceAddress(/*unowned=*/buffers.at(i)));
   }
   return inputs;
 }

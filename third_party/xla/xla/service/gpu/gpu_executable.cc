@@ -72,7 +72,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -937,8 +937,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
-      MaybeOwningDeviceMemory* maybe_owning_memory =
-          [&]() -> xla::MaybeOwningDeviceMemory* {
+      MaybeOwningDeviceAddress* maybe_owning_memory =
+          [&]() -> xla::MaybeOwningDeviceAddress* {
         // ScopedBuffer is never an owned buffer.
         if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
                 arguments)) {

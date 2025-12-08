@@ -496,7 +496,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:ir_emission_utils",

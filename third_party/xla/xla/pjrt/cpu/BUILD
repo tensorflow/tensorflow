@@ -202,7 +202,7 @@ cc_library(
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:cpu_executable_run_options",

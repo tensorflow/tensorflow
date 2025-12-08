@@ -124,7 +124,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:local_service",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service:source_map_util",
         "//xla/service:stream_pool",

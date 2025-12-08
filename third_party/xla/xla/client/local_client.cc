@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/source_map_util.h"
@@ -319,7 +319,7 @@ absl::StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 }
 
 static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
-    const ShapeTree<MaybeOwningDeviceMemory>& tree, int device_ordinal) {
+    const ShapeTree<MaybeOwningDeviceAddress>& tree, int device_ordinal) {
   ShapedBuffer result(tree.shape(), device_ordinal);
   auto it = tree.begin();
   auto out_it = result.buffers().begin();

@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -158,14 +158,14 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   return xla_shaped_buffer;
 }
 
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
+SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceAddress& mem,
                                bool aliased) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.owned = mem.HasOwnership();
-  se_mem.memory = ApiConverter::ToC(mem.AsDeviceMemoryBase());
+  se_mem.memory = ApiConverter::ToC(mem.AsDeviceAddress());
   if (mem.HasOwnership()) {
-    const stream_executor::OwningDeviceAddress* owned =
-        mem.AsOwningDeviceMemory();
+    const stream_executor::ScopedDeviceAddress<uint8_t>* owned =
+        mem.AsScopedDeviceAddress();
     se_mem.device_ordinal = owned->device_ordinal();
     se_mem.allocator = ApiConverter::ToC(owned->allocator());
     if (!aliased) {
@@ -180,15 +180,15 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
   return se_mem;
 }
 
-xla::MaybeOwningDeviceMemory FromC(
+xla::MaybeOwningDeviceAddress FromC(
     SE_MaybeOwningDeviceMemory* se_mem,
     stream_executor::DeviceAddressAllocator* allocator) {
   if (se_mem->owned) {
-    return xla::MaybeOwningDeviceMemory(stream_executor::OwningDeviceAddress(
+    return xla::MaybeOwningDeviceAddress(stream_executor::OwningDeviceAddress(
         ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
         allocator));
   } else {
-    return xla::MaybeOwningDeviceMemory(ApiConverter::FromC(se_mem->memory));
+    return xla::MaybeOwningDeviceAddress(ApiConverter::FromC(se_mem->memory));
   }
 }
 

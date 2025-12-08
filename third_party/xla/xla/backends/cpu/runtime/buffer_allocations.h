@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 
@@ -40,7 +40,8 @@ class BufferAllocations {
 
   explicit BufferAllocations(Buffers buffers);
   explicit BufferAllocations(absl::Span<const se::DeviceAddressBase> buffers);
-  explicit BufferAllocations(absl::Span<const MaybeOwningDeviceMemory> buffers);
+  explicit BufferAllocations(
+      absl::Span<const MaybeOwningDeviceAddress> buffers);
 
   // Returns the device address of buffer at the given index. Returns an error
   // if the index is out of range.
@@ -80,7 +81,7 @@ inline BufferAllocations::BufferAllocations(
       num_buffers_(buffers_.size()) {}
 
 inline BufferAllocations::BufferAllocations(
-    absl::Span<const MaybeOwningDeviceMemory> buffers)
+    absl::Span<const MaybeOwningDeviceAddress> buffers)
     : buffers_(buffers.size()),
       buffers_data_(buffers_.data()),
       num_buffers_(buffers_.size()) {

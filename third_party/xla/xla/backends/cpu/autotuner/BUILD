@@ -46,7 +46,7 @@ cc_library(
         "//xla/backends/autotuner:profiler",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service/cpu:cpu_executable",
         "//xla/tsl/platform:errors",

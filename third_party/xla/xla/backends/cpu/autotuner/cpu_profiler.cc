@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
@@ -94,7 +94,7 @@ absl::StatusOr<ProfileResult> CpuProfiler::Profile(
 }
 
 absl::Status CpuProfiler::Execute(
-    Executable* executable, absl::Span<const MaybeOwningDeviceMemory> buffers,
+    Executable* executable, absl::Span<const MaybeOwningDeviceAddress> buffers,
     ExecutionProfile* profile) {
   ExecutableRunOptions run_options;
   run_options.set_execution_profile(profile);
