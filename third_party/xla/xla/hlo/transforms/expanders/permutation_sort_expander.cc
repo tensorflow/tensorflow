@@ -127,13 +127,6 @@ absl::StatusOr<HloInstruction*> PermutationSortExpander::ExpandInstruction(
       instruction->AddInstruction(HloInstruction::CreateBroadcast(
           update_shape, zero, /*broadcast_dimensions=*/{}));
 
-  // Construct the updates operand of scatter.
-  for (int64_t i = 0; i < rank; ++i) {
-    ShapeUtil::AppendMinorDimension(1, &update_shape);
-  }
-  HloInstruction* scatter_updates = instruction->AddInstruction(
-      HloInstruction::CreateReshape(update_shape, values));
-
   // Construct the updates computation, which simply replaces the operand
   // values with the update values.
   HloComputation::Builder b("update_replace_computation");
@@ -149,12 +142,12 @@ absl::StatusOr<HloInstruction*> PermutationSortExpander::ExpandInstruction(
   ScatterDimensionNumbers dim_numbers;
   dim_numbers.set_index_vector_dim(rank);
   for (int64_t i = 0; i < rank; ++i) {
-    dim_numbers.add_update_window_dims(rank + i);
+    dim_numbers.add_inserted_window_dims(i);
     dim_numbers.add_scatter_dims_to_operand_dims(i);
   }
   HloInstruction* scatter =
       instruction->AddInstruction(HloInstruction::CreateScatter(
-          values->shape(), scatter_operand, scatter_indices, scatter_updates,
+          update_shape, scatter_operand, scatter_indices, values,
           update_replace_computation, dim_numbers,
           /*indices_are_sorted=*/false, /*unique_indices=*/true));
   return instruction->AddInstruction(HloInstruction::CreateTuple(

@@ -63,11 +63,14 @@ TEST_F(PermutationSortExpanderTest, ReplacePermutationSortWithScatter) {
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(true));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::Tuple(op::Iota(),
-                        op::Scatter(op::Broadcast(op::Constant()),
-                                    op::Concatenate(op::Iota(), op::Reshape()),
-                                    op::Reshape())));
+  EXPECT_THAT(
+      root, op::Tuple(op::Iota(),
+                      op::Scatter(
+                          op::Broadcast(op::Constant()),
+                          op::Concatenate(op::Iota(),
+                                          op::Reshape(op::GetTupleElement(
+                                              op::Sort(), /*tuple_index=*/1))),
+                          op::Iota())));
 }
 
 TEST_F(PermutationSortExpanderTest, DontReplaceIfWrongComparisonDirection) {
