@@ -1,6 +1,7 @@
 tensorflow/compiler/xla/backends/cpu/nanort/package_groups.bzl:
 tensorflow/compiler/xla/backends/cpu/package_groups.bzl:
 tensorflow/compiler/xla/internal/package_groups.bzl:
+tensorflow/compiler/xla/megascale/package_groups.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
