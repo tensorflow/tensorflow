@@ -2536,6 +2536,13 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
   SwitchToKernelContext();
   TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));
 
+  if (hint_fully_delegated_to_single_delegate && !IsFullyDelegated()) {
+    ReportError(
+        "Hint fully delegated to single delegate is set, but the graph is not "
+        "fully delegated.");
+    return kTfLiteApplicationError;
+  }
+
   // STEP 3: Leave graph in consistent state based on delegate & previous state.
   // ===========================================================================
 
