@@ -603,6 +603,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
+  TF_RET_CHECK(device_assignment != nullptr) << "device_assignment is null";
   TF_RET_CHECK(device_assignment->computation_count() == 1)
       << "Only single-computation execution is supported.";
   return ExecuteReplicatedImpl(
