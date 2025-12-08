@@ -97,6 +97,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
+#include "xla/hlo/transforms/expanders/permutation_sort_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
 #include "xla/hlo/transforms/expanders/ragged_dot_rewriter.h"
 #include "xla/hlo/transforms/expanders/real_imag_expander.h"
@@ -606,6 +607,11 @@ absl::Status RunOptimizationPasses(
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
   pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
+
+  // Replaces sort with scatter where possible. Needs to run before
+  // SortRewriter, as this rewrite is even more efficient than what SortRewriter
+  // would do.
+  pipeline.AddPass<PermutationSortExpander>();
 
   // SortRewriter needs to ask the device how much scratch space is needed,
   // which isn't feasible if we don't have a device.
