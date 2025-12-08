@@ -118,15 +118,17 @@ std::string DynamicSliceThunk::SliceDef::ToString() const {
 
   // embedded_thunk_argument
   if (embedded_thunk_argument.has_value()) {
-    result += "embedded_thunk_argument:" + embedded_thunk_argument->ToString();
+    absl::StrAppend(&result, "embedded_thunk_argument:",
+                    embedded_thunk_argument->ToString());
   } else {
-    result += "embedded_thunk_argument:null";
+    absl::StrAppend(&result, "embedded_thunk_argument:null");
   }
 
   // offsets
   if (offsets.has_value()) {
-    result += ", offsets:[";
-    result +=
+    absl::StrAppend(&result, ", offsets:[");
+    absl::StrAppend(
+        &result,
         absl::StrJoin(*offsets, ", ", [](std::string* out, const auto& offset) {
           std::visit(
               [out](const auto& value) {
@@ -141,34 +143,34 @@ std::string DynamicSliceThunk::SliceDef::ToString() const {
                 }
               },
               offset);
-        });
-    result += "]";
+        }));
+    absl::StrAppend(&result, "]");
   } else {
-    result += ", offsets:null";
+    absl::StrAppend(&result, ", offsets:null");
   }
 
   // orig_shape
   if (orig_shape.has_value()) {
-    result += ", orig_shape:" + orig_shape->ToString();
+    absl::StrAppend(&result, ", orig_shape:", orig_shape->ToString());
   } else {
-    result += ", orig_shape:null";
+    absl::StrAppend(&result, ", orig_shape:null");
   }
 
   // sliced_shape
   if (sliced_shape.has_value()) {
-    result += ", sliced_shape:" + sliced_shape->ToString();
+    absl::StrAppend(&result, ", sliced_shape:", sliced_shape->ToString());
   } else {
-    result += ", sliced_shape:null";
+    absl::StrAppend(&result, ", sliced_shape:null");
   }
 
   // offset_byte_size
   if (offset_byte_size.has_value()) {
-    result += ", offset_byte_size:" + absl::StrCat(*offset_byte_size);
+    absl::StrAppend(&result, ", offset_byte_size:", *offset_byte_size);
   } else {
-    result += ", offset_byte_size:null";
+    absl::StrAppend(&result, ", offset_byte_size:null");
   }
 
-  result += "}";
+  absl::StrAppend(&result, "}");
   return result;
 }
 
@@ -243,7 +245,7 @@ absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params) {
         HloEvaluator()
             .Evaluate(
                 /*module=*/*offset_as_function_of_indvar_metadata_->indvar_init,
-                /*arg_literals=*/{})
+                /*args=*/{})
             .value();
     VLOG(2) << "Indvar init module: "
             << offset_as_function_of_indvar_metadata_->indvar_init->ToString();
