@@ -399,7 +399,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   Shape f32a100x10_ = ShapeUtil::MakeShape(F32, {100, 10});
   Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
   Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
-  const AliasInfo alias_info_;
+  AliasInfo alias_info_;
 };
 
 // Returns true if the buffers assigned to instructions in "a" are distinct
