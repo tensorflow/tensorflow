@@ -1248,13 +1248,13 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       SymbolicTileAnalysis::AnalyzeComputation(
           *computation, ctx,
           TritonEmitterConstraints::GetBuilder(device_description));
-  if (std::holds_alternative<FusionDecision>(analysis_or)) {
+
+  if (const auto* fusion_decision = std::get_if<FusionDecision>(&analysis_or)) {
     std::unique_ptr<HloModule> extracted_computation_module =
         ExtractInstructionIntoNewModule(*computation->FusionInstruction());
-    return absl::InternalError(
-        absl::StrCat("Failed to analyze the computation (",
-                     std::get<FusionDecision>(analysis_or).Explain(),
-                     "): ", extracted_computation_module->ToString()));
+    return absl::InternalError(absl::StrCat(
+        "Failed to analyze the computation (", fusion_decision->Explain(),
+        "):\n", extracted_computation_module->ToString()));
   }
 
   auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
