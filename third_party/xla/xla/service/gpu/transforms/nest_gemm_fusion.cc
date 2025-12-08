@@ -679,6 +679,12 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
       indices.push_back(index);
     };
 
+    if (indices.empty()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot hoist bitcast across ", transpose->ToString(),
+                       " because size-1 dims in bitcasts are not yet supported "
+                       "(b/466065483)."));
+    }
     if (indices.back() - indices.front() >= transpose_to - transpose_from ||
         !absl::c_is_sorted(indices)) {
       return absl::InvalidArgumentError(
