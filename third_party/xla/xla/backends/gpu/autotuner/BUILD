@@ -40,7 +40,6 @@ xla_cc_test(
     srcs = ["gpu_codegen_backend_test.cc"],
     deps = [
         ":gpu_codegen_backend",
-        "//xla:xla_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -225,7 +224,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -573,7 +571,6 @@ xla_test(
         ":native_emitter",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -607,7 +604,6 @@ cc_library(
         ":fission_backend",
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:compiler",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
