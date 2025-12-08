@@ -442,3 +442,19 @@ xla_cc_test(
         "@local_tsl//tsl/platform:platform_port",
     ],
 )
+
+xla_cc_test(
+    name = "cpu_copy_test",
+    srcs = ["cpu_copy_test.cc"],
+    deps = [
+        ":cpu_codegen_test_main",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)

@@ -486,7 +486,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitConvolutionThunk(instruction);
 
     case HloOpcode::kCopy: {
-      if (options_.compile_copy_as_llvm_kernel) {
+      // The copy thunk does not support sub-byte data types.
+      bool has_byte_strides =
+          ShapeUtil::ByteStrides(instruction->shape()).has_value();
+      if (!has_byte_strides || options_.compile_copy_as_llvm_kernel) {
         return EmitElementalKernelThunk(instruction);
       }
       return EmitCopyThunk(instruction);
