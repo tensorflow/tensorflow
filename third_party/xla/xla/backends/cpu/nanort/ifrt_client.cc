@@ -511,7 +511,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     OwnedDataPtr owned_data(
         tsl::port::AlignedMalloc(std::max<size_t>(size, Align()), Align()),
         [](void* ptr) { tsl::port::AlignedFree(ptr); });
-    if (ABSL_PREDICT_FALSE(owned_data.get() == nullptr)) {
+    if (ABSL_PREDICT_FALSE(owned_data == nullptr)) {
       return Internal("Failed to allocate memory for NanoArray. Errno: %s",
                       strerror(errno));
     }

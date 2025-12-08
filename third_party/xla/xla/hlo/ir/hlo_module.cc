@@ -1751,7 +1751,7 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     std::optional<OriginalArray>* new_original_array =
         new_inst->original_value()->mutable_original_array(shape_index);
     if (!*new_original_array) {
-      if (recovery_computation->get() == nullptr) {
+      if (*recovery_computation == nullptr) {
         // If the recovery computation is a nullptr, it means this is an
         // identity computation and we can just pass through the original array.
         new_original_array->emplace(*old_original_array);
