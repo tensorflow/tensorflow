@@ -758,6 +758,16 @@ cc_library(
 
 cc_library(
     name = "triton_configs",
+    srcs = ["triton_configs.cc"],
     hdrs = ["triton_configs.h"],
-    deps = ["//xla/service/gpu:matmul_utils"],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla/service/gpu:matmul_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
 )
