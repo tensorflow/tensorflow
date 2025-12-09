@@ -119,14 +119,6 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result,
       Execute(std::move(module), {&operand, &scatter_indices, &updates}));
-<<<<<<< HEAD
-  Literal expected_option_one =
-      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {4, 5, 6}, {7, 8, 9}});
-  Literal expected_option_two =
-      LiteralUtil::CreateR2<int32_t>({{70, 80, 90}, {4, 5, 6}, {7, 8, 9}});
-      std::cerr << result << std::endl;
-  EXPECT_TRUE(result == expected_option_one || result == expected_option_two);
-=======
   auto data = result.data<int32_t>();
   // The first row is written twice, so it is not deterministic which of the two
   // writes "wins".
@@ -134,7 +126,6 @@ ENTRY main {
   EXPECT_TRUE(data[1] == 20 || data[1] == 80);
   EXPECT_TRUE(data[2] == 30 || data[2] == 90);
   EXPECT_EQ(data.subspan(3), (std::vector<int32_t>{4, 5, 6, 7, 8, 9}));
->>>>>>> upstream/master
 }
 
 TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {

@@ -434,11 +434,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     GTEST_SKIP() << "TmaPTX cannot run on ROCm.";
   }
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-<<<<<<< HEAD
-                          se::PlatformManager::PlatformWithName("rocm"));
-=======
                           se::PlatformManager::PlatformWithName(name));
->>>>>>> upstream/master
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,

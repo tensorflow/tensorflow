@@ -26,11 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-<<<<<<< HEAD
-#include "xla/hlo/ir/hlo_instruction.h"
-=======
 #include "xla/runtime/buffer_use.h"
->>>>>>> upstream/master
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"

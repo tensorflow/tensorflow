@@ -44,13 +44,9 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
-<<<<<<< HEAD
-#include "tensorflow/core/util/tensor_format.h"
 #if TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_dnn.h"
 #endif
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

@@ -61,15 +61,6 @@ template <typename T>
 __global__ void xla_fp_comparison(T* buffer_a, T* buffer_b,
                                   float rel_error_threshold,
                                   uint64_t buffer_length, int* mismatch_count) {
-<<<<<<< HEAD
-
-  int idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx >= buffer_length) {
-    return;
-  }
-  auto elem_a = Canonicalize(buffer_a[idx]);
-  auto elem_b = Canonicalize(buffer_b[idx]);
-=======
   const uint64_t block_dim_x = static_cast<uint64_t>(blockDim.x),
                  stride = block_dim_x * gridDim.x;
   for (uint64_t idx = threadIdx.x + blockIdx.x * block_dim_x;
@@ -86,7 +77,6 @@ __global__ void xla_fp_comparison(T* buffer_a, T* buffer_b,
     if (elem_a == elem_b) {
       continue;
     }
->>>>>>> upstream/master
 
     float rel_error = Eigen::numext::abs(elem_a - elem_b) /
                       (Eigen::numext::maxi(Eigen::numext::abs(elem_a),
