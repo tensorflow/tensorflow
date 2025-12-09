@@ -118,7 +118,7 @@ struct TpuEmbeddingEngineParametersData {
 std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
 
 xla::MaybeOwningDeviceAddress FromC(
-    SE_MaybeOwningDeviceMemory* se_mem,
+    SE_MaybeOwningDeviceAddress* se_mem,
     stream_executor::DeviceAddressAllocator* allocator);
 
 // DeviceAddressAllocator
@@ -128,12 +128,12 @@ stream_executor::DeviceAddressAllocator* FromC(
     const SE_DeviceAddressAllocator& c_allocator);
 
 // OwningDeviceAddress
-SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceAddress* mem);
+SE_MaybeOwningDeviceAddress ToC(stream_executor::OwningDeviceAddress* mem);
 // mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
 // released. 'aliased' should be true in this case. 'aliased' has no effect if
 // 'mem' is unowned.
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceAddress& mem,
-                               bool aliased);
+SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
+                                bool aliased);
 
 // HloModule
 XLA_HloModule ToC(const xla::HloModule& module);

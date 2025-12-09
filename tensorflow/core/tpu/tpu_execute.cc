@@ -474,7 +474,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
           << device_ordinal;
 
-  SE_DeviceMemoryBase* device_memory_addrs = nullptr;
+  SE_DeviceAddressBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
       absl::MakeCleanup([device_memory_addrs, device_ordinal]() {
@@ -501,7 +501,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   for (int i = 0; i < device_memory_addrs_count; ++i) {
     xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
         xla::ShapeUtil::MakeOpaqueShape());
-    const SE_DeviceMemoryBase& addr = device_memory_addrs[i];
+    const SE_DeviceAddressBase& addr = device_memory_addrs[i];
     VLOG(2) << absl::StrFormat("Device memory addr[%i] = {%p, %llu, %llu}", i,
                                addr.opaque, addr.size, addr.payload);
     *tree.mutable_element({}) = ApiConverter::FromC(addr);

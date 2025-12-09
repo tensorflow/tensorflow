@@ -212,7 +212,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   std::vector<se::DeviceAddressBase> memory_bases;
   memory_bases.reserve(arguments.size());
   for (auto& argument : arguments) {
-    memory_bases.push_back(argument.Buffer({}).AsDeviceMemoryBase());
+    memory_bases.push_back(argument.Buffer({}).AsDeviceAddress());
   }
   se::Stream* stream = run_options->stream();
 
@@ -240,16 +240,16 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       // data from fast memory instead of fresh data in large memory.
       auto it = arguments[parameter].MutableBuffers()->find({index});
       CHECK(it != arguments[parameter].MutableBuffers()->end());
-      CHECK(!it->second.AsDeviceMemoryBase().is_null());
+      CHECK(!it->second.AsDeviceAddress().is_null());
       CHECK(offset);
       bool is_prefetch_output_alias =
           absl::c_any_of(result.Result().buffers(), [&](auto index_addr_pair) {
             return index_addr_pair.second.IsSameAs(
-                it->second.AsDeviceMemoryBase());
+                it->second.AsDeviceAddress());
           });
       cross_program_prefetch_addrs.emplace_back(
           is_prefetch_output_alias ? stream_executor::DeviceAddressBase()
-                                   : it->second.AsDeviceMemoryBase());
+                                   : it->second.AsDeviceAddress());
       cross_program_prefetch_offsets.emplace_back(
           is_prefetch_output_alias ? std::numeric_limits<uint32_t>::max()
                                    : *offset);

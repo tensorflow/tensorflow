@@ -158,9 +158,9 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   return xla_shaped_buffer;
 }
 
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceAddress& mem,
-                               bool aliased) {
-  SE_MaybeOwningDeviceMemory se_mem;
+SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
+                                bool aliased) {
+  SE_MaybeOwningDeviceAddress se_mem;
   se_mem.owned = mem.HasOwnership();
   se_mem.memory = ApiConverter::ToC(mem.AsDeviceAddress());
   if (mem.HasOwnership()) {
@@ -181,7 +181,7 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceAddress& mem,
 }
 
 xla::MaybeOwningDeviceAddress FromC(
-    SE_MaybeOwningDeviceMemory* se_mem,
+    SE_MaybeOwningDeviceAddress* se_mem,
     stream_executor::DeviceAddressAllocator* allocator) {
   if (se_mem->owned) {
     return xla::MaybeOwningDeviceAddress(stream_executor::OwningDeviceAddress(
@@ -244,8 +244,8 @@ stream_executor::DeviceAddressAllocator* FromC(
       c_allocator.ctx);
 }
 
-SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceAddress* mem) {
-  SE_MaybeOwningDeviceMemory se_mem;
+SE_MaybeOwningDeviceAddress ToC(stream_executor::OwningDeviceAddress* mem) {
+  SE_MaybeOwningDeviceAddress se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
   se_mem.memory = ApiConverter::ToC(mem->Release());
   se_mem.allocator = ApiConverter::ToC(mem->allocator());

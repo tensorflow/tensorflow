@@ -125,7 +125,7 @@ absl::Status SetExecutorStructFn(
   TFTPU_SET_FN(executor_fn, TpuCompiler_DefaultDeviceShapeRepresentation);
   TFTPU_SET_FN(executor_fn, TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_SET_FN(executor_fn, TpuExecutable_FreeXlaShapeIndexArray);
-  TFTPU_SET_FN(executor_fn, TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
+  TFTPU_SET_FN(executor_fn, TpuExecutable_FreeMaybeOwningDeviceAddressArray);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Fingerprint);
   TFTPU_SET_FN(executor_fn, TpuExecutable_Serialize);
   TFTPU_SET_FN(executor_fn, TpuExecutableSerialize_GetByteSize);

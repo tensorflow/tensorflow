@@ -308,7 +308,7 @@ TEST(XlaHloModule, ToAndFromC) {
 }
 
 // TODO(b/290654348): SE_DeviceAddressBase, SE_DeviceAddressAllocator,
-// SE_MaybeOwningDeviceMemory
+// SE_MaybeOwningDeviceAddress
 
 }  // namespace
 
