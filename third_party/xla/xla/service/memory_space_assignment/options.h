@@ -443,6 +443,10 @@ struct Options {
   absl::flat_hash_map<HloPosition, std::vector<CustomCallPrefetchDetails>>
       hlo_position_to_custom_call_prefetch_details;
 
+  std::function<bool(const HloInstruction*)>
+      is_instruction_window_prefetchable_fn =
+          [](const HloInstruction*) { return false; };
+
   std::string ToString() const;
 };
 
