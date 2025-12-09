@@ -251,9 +251,10 @@ HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
 HloSharding ReplicateAllDataDims(const HloSharding& sharding,
                                  int64_t data_rank = -1);
 
-// Returns a sharding the removes given tile dimensions.
+// Returns a sharding that removes given sharding dimensions.
 //
-// Precondition: if not tile maximal, the size of each tile dimension must be 1.
+// Precondition: if not tile maximal, the size of each sharding dimension must
+// be 1.
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,
                                   absl::Span<const int64_t> dims_to_remove);
 
@@ -264,12 +265,13 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src);
 
-// Given a `source_sharding`, preserve the tiles along the `source_dims` and
-// replicate the rest. The `target_dims` are used to determine the order of the
-// dimensions in the resulting sharding. If `source_dims` and `target_dims` are
-// in the different order (i.e., different ArgSort results), we need to
-// transpose the tile assignment.
+// Given a `source_sharding`, preserve the dimensions along the `source_dims`
+// and replicate the rest. The `target_dims` are used to determine the order of
+// the dimensions in the resulting sharding.
 //
+// [For tiled sharding format] If `source_dims` and `target_dims` are in the
+// different order (i.e., different ArgSort results), we need to transpose the
+// tile assignment.
 // Given the following input,
 //   * source_sharding = {devices=[2,3,5,7,11]<=[2310]}
 //   * source_dims = [2, 4, 1]
@@ -277,6 +279,16 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 //   * target_shape_rank = 5
 // The result shoule be {devices=[1,11,5,3,1,14]<=[2,3,5,7,11]T(4,2,1,0,3)
 // last_tile_dim_replicate}.
+//
+// [For named sharding format]
+// Given the following input,
+//   * mesh = Mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+//   * source_sharding = NamedSharding(mesh, {{"a"}, {"b"}, {"c"}, {"d"},
+//   {"e"}})
+//   * source_dims = [2, 4, 1]
+//   * target_dims = [2, 1, 3]
+//   * target_shape_rank = 5
+// The result shoule be NamedSharding(mesh, {{}, {"e"}, {"c"}, {"b"}, {}})
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
     absl::Span<const int64_t> target_dims, int64_t target_shape_rank);

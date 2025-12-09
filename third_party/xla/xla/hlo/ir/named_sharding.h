@@ -64,8 +64,6 @@ class NamedSharding {
     return !(*this == other);
   }
 
-  const Mesh& mesh() const { return mesh_; }
-
   // TODO(b/456212087): Add validation checks
   explicit NamedSharding(Mesh mesh,
                          absl::Span<const DimensionSharding> dim_shardings = {},
@@ -77,6 +75,14 @@ class NamedSharding {
         replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
         unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
         metadata_(metadata.begin(), metadata.end()) {}
+
+  const Mesh& mesh() const { return mesh_; }
+  absl::Span<const DimensionSharding> dim_shardings() const {
+    return dim_shardings_;
+  }
+  absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
+  absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
+  absl::Span<const OpMetadata> metadata() const { return metadata_; }
 
  private:
   friend class HloSharding;

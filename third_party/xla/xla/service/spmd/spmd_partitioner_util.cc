@@ -3053,7 +3053,7 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsForReplication(
 std::optional<Mesh> GetMeshFromSharding(const HloSharding& sharding) {
   // For V3 shardings, use the mesh associated with the named sharding.
   if (sharding.UseNamedShardingLeaf()) {
-    return sharding.named_sharding()->mesh();
+    return sharding.named_sharding().mesh();
   }
 
   // For V2 shardings, create the mesh from the tile assignment.
