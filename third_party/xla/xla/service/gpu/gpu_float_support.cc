@@ -131,8 +131,10 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         return compute_capability_.IsCuda();
       }
       return false;
+    case HloOpcode::kAbs:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kNegate:
       if (LowPrecisionType() == BF16) {
         auto* cuda_compute_capability =
             compute_capability_.cuda_compute_capability();

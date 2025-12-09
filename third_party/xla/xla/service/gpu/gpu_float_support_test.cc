@@ -432,6 +432,35 @@ ENTRY main {
       se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
 }
 
+class Bf16UnaryOpTest : public FloatSupportTest,
+                        public ::testing::WithParamInterface<HloOpcode> {};
+
+TEST_P(Bf16UnaryOpTest, IsOnlyNormalizedPreAmpere) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(R"(
+entry {
+  a = bf16[] parameter(0)
+  r = bf16[] $0(a)
+})",
+                                               HloOpcodeString(GetParam()))));
+  EXPECT_FALSE(
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
+                BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(),
+                se::GpuComputeCapability{se::CudaComputeCapability::Ampere()},
+                BF16, F32));
+  EXPECT_TRUE(Normalize(
+      module.get(),
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()}, BF16, F32));
+}
+
+INSTANTIATE_TEST_SUITE_P(Bf16UnaryOps, Bf16UnaryOpTest,
+                         ::testing::Values(HloOpcode::kNegate,
+                                           HloOpcode::kAbs));
+
 TEST_F(FloatSupportTest,
        BF16ReductionOnHopperIsOnlyNormalizedIfReducerIsUnsupported) {
   auto cc = se::CudaComputeCapability::Hopper();
