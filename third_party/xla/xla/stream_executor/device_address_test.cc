@@ -13,21 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_MAYBE_OWNING_DEVICE_MEMORY_H_
-#define XLA_SERVICE_MAYBE_OWNING_DEVICE_MEMORY_H_
+#include "xla/stream_executor/device_address.h"
 
-#include "absl/base/macros.h"
-#include "xla/service/maybe_owning_device_address.h"
-#include "xla/stream_executor/device_address.h"  // IWYU pragma: keep
-#include "xla/stream_executor/device_address_allocator.h"  // IWYU pragma: keep
-#include "xla/stream_executor/device_memory.h"  // IWYU pragma: keep
-#include "xla/stream_executor/device_memory_allocator.h"  // IWYU pragma: keep
+#include <cstdint>
 
-namespace xla {
+#include <gtest/gtest.h>
 
-using MaybeOwningDeviceMemory ABSL_DEPRECATE_AND_INLINE() =
-    MaybeOwningDeviceAddress;
+namespace stream_executor {
+namespace {
 
+TEST(DeviceAddressTest, NullptrComparisons) {
+  {
+    DeviceAddressBase null_ptr;
+    EXPECT_FALSE(null_ptr);
+    EXPECT_TRUE(null_ptr == nullptr);
+  }
+
+  {
+    DeviceAddress<int32_t> null_ptr;
+    EXPECT_FALSE(null_ptr);
+    EXPECT_TRUE(null_ptr == nullptr);
+  }
 }
 
-#endif  // XLA_SERVICE_MAYBE_OWNING_DEVICE_MEMORY_H_
+}  // namespace
+}  // namespace stream_executor

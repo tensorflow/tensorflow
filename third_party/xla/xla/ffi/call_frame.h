@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -76,12 +76,12 @@ class CallFrameBuilder {
 
   CallFrame Build();
 
-  void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
+  void AddBufferArg(se::DeviceAddressBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
   void AddTokenArg();
 
-  void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
+  void AddBufferRet(se::DeviceAddressBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
   void AddTokenRet();
@@ -117,16 +117,16 @@ class CallFrame {
   // array (buffer) arguments and results are known at compile time. Instead of
   // rebuilding the call frame from scratch on every execution, we can just
   // update the arguments and results with new pointers to device memory.
-  absl::Status UpdateWithBuffers(absl::Span<const se::DeviceMemoryBase> args,
-                                 absl::Span<const se::DeviceMemoryBase> rets);
+  absl::Status UpdateWithBuffers(absl::Span<const se::DeviceAddressBase> args,
+                                 absl::Span<const se::DeviceAddressBase> rets);
 
   // Creates a copy of the call frame.
   CallFrame Copy() const;
 
   // Creates a copy of the call frame with updated arguments and results.
   absl::StatusOr<CallFrame> CopyWithBuffers(
-      absl::Span<const se::DeviceMemoryBase> args,
-      absl::Span<const se::DeviceMemoryBase> rets) const;
+      absl::Span<const se::DeviceAddressBase> args,
+      absl::Span<const se::DeviceAddressBase> rets) const;
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
