@@ -418,7 +418,7 @@ class PjRtClient final
   // If true, the backend implements the cross-host transfer APIs.
   bool pjrt_supports_cross_host_transfers_ = false;
 
-  absl::Status WatchGlobalProcessInfo(tsl::CoordinationServiceAgent& agent);
+  absl::Status WatchGlobalProcessInfo(xla::CoordinationServiceAgent& agent);
 
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::DistributedRuntimeClient> distributed_client_;

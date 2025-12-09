@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -90,7 +91,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -869,7 +869,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   // Start a background thread to monitor the status of all processes.
   if (client->distributed_client_) {
-    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+    absl::StatusOr<xla::CoordinationServiceAgent*> agent =
         client->distributed_client_->GetCoordinationServiceAgent();
     if (agent.ok()) {
       client->global_process_info_thread_.reset(
@@ -1497,7 +1497,7 @@ CrossHostTransferKey PjRtClient::CreateNewTransferKey() {
 }
 
 absl::Status PjRtClient::WatchGlobalProcessInfo(
-    tsl::CoordinationServiceAgent& agent) {
+    xla::CoordinationServiceAgent& agent) {
   TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
   VLOG(3) << "Watching global process info for task "
           << task.ShortDebugString();
@@ -1763,7 +1763,7 @@ PjRtClient::Incarnations() const {
   if (!distributed_client_) {
     return absl::FailedPreconditionError("missing distributed client");
   }
-  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+  TF_ASSIGN_OR_RETURN(xla::CoordinationServiceAgent * agent,
                       distributed_client_->GetCoordinationServiceAgent());
   return agent->Incarnations();
 }
