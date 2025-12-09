@@ -416,7 +416,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
-  opts.set_xla_enable_command_buffers_during_profiling(true);
+  // TODO(b/355487968): Remove this flag once all data will be presented in
+  // xprof with command buffers.
+  opts.set_xla_enable_command_buffers_during_profiling(false);
 
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
 
