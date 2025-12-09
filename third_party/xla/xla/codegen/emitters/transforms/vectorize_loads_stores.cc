@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace emitters {

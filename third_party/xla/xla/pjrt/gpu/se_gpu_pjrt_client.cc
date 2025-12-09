@@ -1970,7 +1970,7 @@ StreamExecutorGpuClient::RunAsync(
         const int64_t buffer_size = allocation.size();
         if (buffer_size > 0) {
           TF_ASSIGN_OR_RETURN(
-              se::OwningDeviceMemory owning_buffer,
+              se::ScopedDeviceAddress<uint8_t> owning_buffer,
               memory_allocator->Allocate(device_ordinal, buffer_size,
                                          /*retry_on_failure=*/true,
                                          /*memory_space=*/allocation.color()));
@@ -2035,7 +2035,7 @@ StreamExecutorGpuClient::RunAsync(
                "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(gpu_exec->result_shape(), index));
-        absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
+        absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());

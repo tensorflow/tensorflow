@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/attribute_map.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -47,7 +47,7 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 struct CallFrameBuilder::Buffer {
-  se::DeviceMemoryBase memory;
+  se::DeviceAddressBase memory;
   PrimitiveType type;
   absl::InlinedVector<int64_t, 4> dims;
 };
@@ -84,7 +84,7 @@ CallFrameBuilder::CallFrameBuilder(size_t num_args, size_t num_rets) {
 
 CallFrameBuilder::~CallFrameBuilder() = default;
 
-void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
+void CallFrameBuilder::AddBufferArg(se::DeviceAddressBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   DCHECK(args_.capacity() > args_.size())
@@ -95,10 +95,10 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
 void CallFrameBuilder::AddTokenArg() {
   DCHECK(args_.capacity() > args_.size())
       << "CallFrame builder `num_args` argument was too small";
-  args_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
+  args_.push_back(Buffer{se::DeviceAddressBase(), PrimitiveType::TOKEN, {}});
 }
 
-void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
+void CallFrameBuilder::AddBufferRet(se::DeviceAddressBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   DCHECK(rets_.capacity() > rets_.size())
@@ -109,7 +109,7 @@ void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
 void CallFrameBuilder::AddTokenRet() {
   DCHECK(rets_.capacity() > rets_.size())
       << "CallFrame builder `num_rets` argument was too small";
-  rets_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
+  rets_.push_back(Buffer{se::DeviceAddressBase(), PrimitiveType::TOKEN, {}});
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {
@@ -557,8 +557,8 @@ std::unique_ptr<CallFrame::Attributes> CallFrame::FixUpAttrs(
 //===----------------------------------------------------------------------===//
 
 absl::Status CallFrame::UpdateWithBuffers(
-    absl::Span<const se::DeviceMemoryBase> args,
-    absl::Span<const se::DeviceMemoryBase> rets) {
+    absl::Span<const se::DeviceAddressBase> args,
+    absl::Span<const se::DeviceAddressBase> rets) {
   if (ABSL_PREDICT_FALSE(args.size() != arguments_->args.size())) {
     return InvalidArgument("Invalid number of updated arguments: %d vs %d",
                            args.size(), arguments_->args.size());
@@ -587,8 +587,8 @@ CallFrame CallFrame::Copy() const {
 }
 
 absl::StatusOr<CallFrame> CallFrame::CopyWithBuffers(
-    absl::Span<const se::DeviceMemoryBase> args,
-    absl::Span<const se::DeviceMemoryBase> rets) const {
+    absl::Span<const se::DeviceAddressBase> args,
+    absl::Span<const se::DeviceAddressBase> rets) const {
   CallFrame clone(CopyArgs(*arguments_), CopyRets(*results_), attributes_);
   TF_RETURN_IF_ERROR(clone.UpdateWithBuffers(args, rets));
   return clone;
