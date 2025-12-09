@@ -47,6 +47,12 @@ namespace {
 
 static const char kDelegatedNodesSuffix[] = "_dnodes";
 
+#if defined(_WIN32)
+static const char kPathSeparator = '\\';
+#else
+static const char kPathSeparator = '/';
+#endif  // defined(_WIN32)
+
 // Farmhash Fingerprint
 inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
   // Murmur-inspired hashing.
@@ -63,7 +69,8 @@ inline uint64_t CombineFingerprints(uint64_t l, uint64_t h) {
 
 inline std::string JoinPath(const std::string& path1,
                             const std::string& path2) {
-  return (path1.back() == '/') ? (path1 + path2) : (path1 + "/" + path2);
+  return (path1.back() == kPathSeparator) ? (path1 + path2)
+                                          : (path1 + kPathSeparator + path2);
 }
 
 inline std::string GetFilePath(const std::string& cache_dir,
