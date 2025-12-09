@@ -40,10 +40,6 @@ class CoordinationServiceRpcHandler {
                       tensorflow::HeartbeatResponse* response,
                       tsl::StatusCallback done);
 
-  void WaitForAllTasksAsync(const tensorflow::WaitForAllTasksRequest* request,
-                            tensorflow::WaitForAllTasksResponse* response,
-                            tsl::StatusCallback done);
-
   void ShutdownTaskAsync(const tensorflow::ShutdownTaskRequest* request,
                          tensorflow::ShutdownTaskResponse* response,
                          tsl::StatusCallback done);

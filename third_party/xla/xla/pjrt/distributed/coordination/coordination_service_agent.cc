@@ -349,35 +349,6 @@ void CoordinationServiceAgent::PollForErrorAsync(tsl::StatusCallback done) {
       });
 }
 
-absl::Status CoordinationServiceAgent::WaitForAllTasks(
-    const DeviceInfo& local_devices) {
-  absl::Status agent_running_status = ValidateRunningAgent();
-  if (!agent_running_status.ok()) {
-    return agent_running_status;
-  }
-  WaitForAllTasksRequest request;
-  *request.mutable_source_task() = task_;
-  *request.mutable_device_info() = local_devices;
-  VLOG(3) << "WaitForAllTasksRequest: " << request.DebugString();
-  WaitForAllTasksResponse response;
-  absl::Status status;
-  absl::Notification n;
-  leader_client_->WaitForAllTasksAsync(&request, &response,
-                                       [&](const absl::Status& s) {
-                                         status = s;
-                                         n.Notify();
-                                       });
-  n.WaitForNotification();
-  if (!status.ok()) {
-    VLOG(3) << "WaitForAllTasksResponse: " << status;
-    SetError(status);
-    return status;
-  }
-  VLOG(3) << "WaitForAllTasksResponse: " << response.DebugString();
-  cluster_devices_ = response.device_info();
-  return absl::OkStatus();
-}
-
 const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
   return cluster_devices_;
 }

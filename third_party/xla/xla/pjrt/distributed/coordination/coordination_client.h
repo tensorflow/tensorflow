@@ -54,8 +54,6 @@ using tensorflow::ShutdownTaskRequest;
 using tensorflow::ShutdownTaskResponse;
 using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
-using tensorflow::WaitForAllTasksRequest;
-using tensorflow::WaitForAllTasksResponse;
 using tensorflow::WatchJobStateRequest;
 using tensorflow::WatchJobStateResponse;
 
@@ -74,10 +72,6 @@ class CoordinationClient {
                               const HeartbeatRequest* request,
                               HeartbeatResponse* response,
                               tsl::StatusCallback done) = 0;
-
-  virtual void WaitForAllTasksAsync(const WaitForAllTasksRequest* request,
-                                    WaitForAllTasksResponse* response,
-                                    tsl::StatusCallback done) = 0;
 
   virtual void ShutdownTaskAsync(tsl::CallOptions* call_opts,
                                  const ShutdownTaskRequest* request,

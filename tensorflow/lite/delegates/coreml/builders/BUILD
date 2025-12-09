@@ -76,6 +76,7 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],

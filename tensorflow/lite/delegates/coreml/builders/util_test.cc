@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/types/half.h"
 
 using tflite::delegates::coreml::IsBinaryOpSupported;
 
@@ -127,18 +127,42 @@ TEST_F(IsBinaryOpSupportedTest, NotSupportNonConstFloat16InputTest) {
 }
 
 TEST(UtilTest, GetScalarFloatFromTensorTest) {
-  std::vector<Eigen::half> half{Eigen::half{-535.54f}};
-  std::vector<float> float32{-535.54f};
+  std::vector<tflite::half> half_val{tflite::half{-535.54f}};
+  std::vector<float> float32_val{-535.54f};
   TfLiteTensor tensor;
   tensor.type = kTfLiteFloat16;
-  tensor.data.data = reinterpret_cast<uint16_t*>(half.data());
+  tensor.data.data = reinterpret_cast<uint16_t*>(half_val.data());
   EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
               testing::FloatNear(-535.54f, 0.1f));
 
   tensor.type = kTfLiteFloat32;
-  tensor.data.data = float32.data();
+  tensor.data.data = float32_val.data();
   EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
-              testing::FloatNear(-535.54f, 0.f));
+              testing::FloatEq(-535.54f));
+
+  // Test 0.0f
+  half_val[0] = tflite::half{0.0f};
+  float32_val[0] = 0.0f;
+  tensor.type = kTfLiteFloat16;
+  tensor.data.data = reinterpret_cast<uint16_t*>(half_val.data());
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatEq(0.0f));
+  tensor.type = kTfLiteFloat32;
+  tensor.data.data = float32_val.data();
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatEq(0.0f));
+
+  // Test 1.0f
+  half_val[0] = tflite::half{1.0f};
+  float32_val[0] = 1.0f;
+  tensor.type = kTfLiteFloat16;
+  tensor.data.data = reinterpret_cast<uint16_t*>(half_val.data());
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatEq(1.0f));
+  tensor.type = kTfLiteFloat32;
+  tensor.data.data = float32_val.data();
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatEq(1.0f));
 }
 
 }  // namespace

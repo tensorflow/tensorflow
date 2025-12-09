@@ -296,20 +296,42 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   CHECK_EQ(instr->opcode(), HloOpcode::kConvolution);
   const HloConvolutionInstruction* conv =
       Cast<HloConvolutionInstruction>(instr);
+
+  ConvolutionDimensionNumbers conv_dimensions =
+      conv->convolution_dimension_numbers();
+  Window window = conv->window();
+
+  if (conv->batch_group_count() != 1) {
+    return false;
+  }
+
+  // Only support 2D convolution.
+  if (window.dimensions_size() != 2) {
+    return false;
+  }
+
   // Stores tuple of allowed (input, output) dtypes.
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
-      kAllowedTypes({{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
+      kAllowedTypesNonGrouped(
+          {{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
+
+  static const absl::NoDestructor<absl::flat_hash_set<
+      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
+      kAllowedTypesGrouped({{F32, F32, F32}, {BF16, BF16, F32}});
 
   PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
   PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
   PrimitiveType out_dtype = conv->shape().element_type();
-  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+  if (conv->feature_group_count() == 1 &&
+      !kAllowedTypesNonGrouped->contains({lhs_dtype, rhs_dtype, out_dtype})) {
     return false;
   }
 
-  ConvolutionDimensionNumbers conv_dimensions =
-      conv->convolution_dimension_numbers();
+  if (conv->feature_group_count() > 1 &&
+      !kAllowedTypesGrouped->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+    return false;
+  }
 
   // Make sure that this layout is supported.
   if (conv_dimensions.input_feature_dimension() != 3 ||
@@ -334,13 +356,6 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
       conv_dimensions.kernel_spatial_dimensions(1) != 1 ||
       conv_dimensions.output_spatial_dimensions(0) != 1 ||
       conv_dimensions.output_spatial_dimensions(1) != 2) {
-    return false;
-  }
-
-  Window window = conv->window();
-
-  // Only support 2D convolution.
-  if (window.dimensions_size() != 2) {
     return false;
   }
 

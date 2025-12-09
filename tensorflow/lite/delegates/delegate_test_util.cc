@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -389,7 +389,7 @@ void TestFP16Delegation::SetUp() {
   interpreter_->SetInputs({0});
   interpreter_->SetOutputs({12});
 
-  float16_const_ = Eigen::half(2.f);
+  float16_const_ = half(2.f);
 
   // TENSORS.
   TfLiteQuantizationParams quant;

@@ -670,31 +670,6 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
   done(error);
 }
 
-void CoordinationService::WaitForAllTasks(const CoordinatedTask& task,
-                                          const DeviceInfo& devices,
-                                          tsl::StatusCallback done) {
-  {
-    absl::MutexLock l(state_mu_);
-    if (ServiceHasStopped()) {
-      done(MakeCoordinationError(absl::InternalError(
-          "Coordination service has stopped. WaitForAllTasks() failed.")));
-      return;
-    }
-    const auto& task_state = cluster_state_.find(GetTaskName(task));
-    // Collect task device info for the first time that task
-    // has called WaitForAllTasks(). This will be aggregated when the barrier
-    // passes.
-    if (task_state != cluster_state_.end() &&
-        !task_state->second->DeviceInfoIsCollected()) {
-      task_state->second->CollectDeviceInfo(devices);
-    }
-  }
-  BarrierAsync(device_propagation_barrier_id_, kUniqueBarrierCounter,
-               kDevicePropagationTimeout, task, {},
-               [done = std::move(done)](const absl::Status& s,
-                                        int64_t unused_counter) { done(s); });
-}
-
 void CoordinationService::ShutdownTaskAsync(const CoordinatedTask& task,
                                             tsl::StatusCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked ShutdownTaskAsync()";
@@ -1278,7 +1253,6 @@ void CoordinationService::BarrierAsyncLocked(
       task.recoverable() && counter == 0 &&
       // Not a special once-only barrier.
       barrier_id != kClusterRegisterBarrierId &&
-      barrier_id != device_propagation_barrier_id_ &&
       barrier_id != shutdown_barrier_id_) {
     should_initialize_new_instance = true;
     // Use the service's counter to initialize the new barrier.
@@ -1415,9 +1389,6 @@ void CoordinationService::PassBarrier(BarrierState* barrier,
   LOG(INFO) << "Barrier(" << BarrierName(*barrier)
             << ") has passed with status: " << result;
   // Special hook for device propagation barrier to set global device ids.
-  if (barrier->id == device_propagation_barrier_id_) {
-    AggregateClusterDevices();
-  }
   for (const auto& task_at_barrier : barrier->tasks_at_barrier) {
     // Clean up task state (used as error hooks).
     const CoordinatedTask& task = task_at_barrier.first;
@@ -1737,33 +1708,6 @@ void CoordinationService::ReachBarrier(BarrierState* barrier,
     }
   }
 };
-
-void CoordinationService::AggregateClusterDevices() {
-  assert(cluster_devices_.device_size() == 0);
-  std::vector<CoordinatedTask> ordered_tasks;
-  // Sort by task name to set deterministic order for cluster devices.
-  ordered_tasks.reserve(cluster_state_.size());
-  for (const auto& task : cluster_state_) {
-    ordered_tasks.push_back(GetTaskFromName(task.first));
-  }
-  std::sort(ordered_tasks.begin(), ordered_tasks.end(),
-            [](const CoordinatedTask& task1, const CoordinatedTask& task2) {
-              if (task1.job_name() != task2.job_name()) {
-                return task1.job_name() < task2.job_name();
-              }
-              return task1.task_id() < task2.task_id();
-            });
-
-  // Aggregate to global device list.
-  for (const auto& task : ordered_tasks) {
-    cluster_devices_.MergeFrom(
-        cluster_state_[GetTaskName(task)]->GetDeviceInfo());
-  }
-
-  if (post_aggregate_device_fn_ != nullptr) {
-    cluster_devices_ = post_aggregate_device_fn_(cluster_devices_);
-  }
-}
 
 void CoordinationService::DisconnectAllNonRecoverableTasks() {
   for (const auto& [task_name, state] : cluster_state_) {

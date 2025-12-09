@@ -252,11 +252,8 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/testing:util",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
-        "@eigen_archive//:eigen3",
-        "@flatbuffers",
     ],
 )
 

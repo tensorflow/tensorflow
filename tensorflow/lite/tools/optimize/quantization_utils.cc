@@ -23,7 +23,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "Eigen/Core"  // from @eigen_archive
+// #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace optimize {
@@ -586,7 +587,7 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
             reinterpret_cast<uint8_t*>(float_vector.data()));
 
   // Transform float data to float16.
-  std::vector<Eigen::half> quantized_buffer;
+  std::vector<half> quantized_buffer;
   quantized_buffer.resize(num_elements);
   constexpr float kMaxFloat16Value = 65504.f;
   constexpr float kMinFloat16Value = -65504.f;
@@ -594,12 +595,12 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
                  quantized_buffer.begin(), [=](float a) {
                    float clamped = std::min(std::max(a, kMinFloat16Value),
                                             kMaxFloat16Value);
-                   return static_cast<Eigen::half>(clamped);
+                   return static_cast<half>(clamped);
                  });
 
   char* half_buffer = reinterpret_cast<char*>(quantized_buffer.data());
   model->buffers[tensor->buffer]->data.assign(
-      half_buffer, half_buffer + sizeof(Eigen::half) * num_elements);
+      half_buffer, half_buffer + sizeof(half) * num_elements);
 
   // Update the tensor type.
   tensor->type = TensorType_FLOAT16;
