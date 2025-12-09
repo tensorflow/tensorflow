@@ -150,9 +150,11 @@ cc_library(
         ],
         ":multiple_rocm_paths": [
             "-Wl,-rpath=%{rocm_lib_paths}",
+            "-Lexternal/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
         "//conditions:default": [
             "-Wl,-rpath,/opt/rocm/lib",
+            "-Lexternal/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -548,9 +550,12 @@ cc_library(
         ":build_hermetic": [
             "-lamd_comgr_loader",
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            "-lamd_comgr",
+        ],
     }),
     strip_include_prefix = "%{rocm_root}",
+    visibility = ["//visibility:public"],
     deps = [
         ":rocm_config",
         ":rocm_rpath",
