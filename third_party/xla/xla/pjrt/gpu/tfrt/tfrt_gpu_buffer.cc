@@ -57,9 +57,9 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
@@ -583,7 +583,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
       promise.Set(device_buffer->definition_event().GetError());
       return;
     }
-    se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
+    se::DeviceAddressBase device_memory = device_buffer->buffer()->buffer();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
       LOG(ERROR) << "Copy raw buffer called on buffer size "
@@ -596,7 +596,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
       return;
     }
 
-    se::DeviceMemoryBase sub_buffer;
+    se::DeviceAddressBase sub_buffer;
     if (transfer_size < device_memory.size()) {
       sub_buffer = device_memory.GetByteSlice(offset, transfer_size);
     } else {
@@ -824,7 +824,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 
         auto stream = dst_device->stream();
 
-        se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
+        se::DeviceAddressBase dst(allocated_dst_buffer->buffer());
         VLOG(3) << "D2D copy: " << src_buffer->buffer().opaque() << " -> "
                 << dst.opaque() << " (" << src_buffer->buffer().size()
                 << " bytes)";

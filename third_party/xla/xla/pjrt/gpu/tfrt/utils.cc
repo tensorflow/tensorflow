@@ -83,10 +83,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -307,7 +307,7 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
 class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  public:
   TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
-                            se::DeviceMemoryBase dst,
+                            se::DeviceAddressBase dst,
                             tsl::AsyncValueRef<std::unique_ptr<se::Event>> done)
       : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
         channel_id_(channel_id),
@@ -343,7 +343,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       return Future<>(done_.GetError());
     }
 
-    se::DeviceMemoryBase dst(
+    se::DeviceAddressBase dst(
         reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
         dst_.size() - current_bytes_);
 
@@ -387,7 +387,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  private:
   int64_t channel_id_;
   se::Stream* stream_;
-  se::DeviceMemoryBase dst_;
+  se::DeviceAddressBase dst_;
 
   // Async value will become available after we'll submit the last memcpy
   // operation, and the event will be recorded on the stream.
@@ -401,7 +401,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   // Check if we have callbacks registered for the given replica.
   if (replica >= options.send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
-                     const se::DeviceMemoryBase&,
+                     const se::DeviceAddressBase&,
                      const absl::flat_hash_map<std::string, std::string>&) {
       return Internal(
           "Don't send a buffer to the channel_id=%d, there was no send "
@@ -415,7 +415,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
 
   return [callbacks, thread_pool](
              int64_t channel_id, se::Stream* stream, const Shape& shape,
-             const se::DeviceMemoryBase& src,
+             const se::DeviceAddressBase& src,
              const absl::flat_hash_map<std::string, std::string>&)
              -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(4) << "Send " << src.size() << " bytes to channel #" << channel_id
@@ -490,7 +490,7 @@ RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   // Check if we have callbacks registered for the given replica.
   if (replica >= options.send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
-                     se::DeviceMemoryBase*,
+                     se::DeviceAddressBase*,
                      const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
@@ -503,7 +503,7 @@ RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     se::DeviceMemoryBase* dst,
+                     se::DeviceAddressBase* dst,
                      const absl::flat_hash_map<std::string, std::string>&)
              -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(4) << "Recv from channel #" << channel_id
@@ -650,7 +650,7 @@ absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
   }
 }
 
-absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
+absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     LocalClient* xla_client, const GpuAllocatorConfig& allocator_config,
     const std::vector<std::unique_ptr<TfrtGpuDevice>>& devices) {
   if (allocator_config.kind == GpuAllocatorConfig::Kind::kPlatform) {
@@ -660,7 +660,7 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
           << "collective_memory_size is non-zero, but allocator kind is set "
              "to \"platform\". Collective memory will not be allocated.";
     }
-    return MaybeOwning<se::DeviceMemoryAllocator>(
+    return MaybeOwning<se::DeviceAddressAllocator>(
         xla_client->backend().memory_allocator());
   }
 
@@ -697,7 +697,7 @@ absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
         /*memory_space=*/static_cast<int>(se::MemoryType::kHost),
         executor->device_ordinal(), executor->GetPlatform());
   }
-  return MaybeOwning<se::DeviceMemoryAllocator>(
+  return MaybeOwning<se::DeviceAddressAllocator>(
       std::make_unique<se::MultiDeviceAdapter>(xla_client->platform(),
                                                std::move(allocators)));
 }

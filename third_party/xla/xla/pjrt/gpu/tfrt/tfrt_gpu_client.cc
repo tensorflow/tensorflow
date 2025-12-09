@@ -94,9 +94,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -148,7 +148,7 @@ TfrtGpuClient::TfrtGpuClient(
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
     bool abort_collectives_on_failure,
-    MaybeOwning<se::DeviceMemoryAllocator> allocator,
+    MaybeOwning<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
@@ -437,7 +437,7 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* device = memory_space->devices().front();
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  se::DeviceMemoryBase device_memory(device_ptr, byte_size);
+  se::DeviceAddressBase device_memory(device_ptr, byte_size);
   auto non_owning_buffer = GpuDeviceMemory(device_memory);
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
@@ -972,7 +972,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     });
     auto stream = device->stream();
 
-    se::DeviceMemoryBase dest = gpu_buffer->buffer();
+    se::DeviceAddressBase dest = gpu_buffer->buffer();
     VLOG(3) << "H2D copy: " << src_buf << " -> " << dest.opaque() << " ("
             << packed_size << " bytes) on device " << device->DebugString();
 

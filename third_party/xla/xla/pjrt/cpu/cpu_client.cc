@@ -117,7 +117,7 @@ limitations under the License.
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -1275,7 +1275,7 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
 
   } else if (allocation.is_constant() &&
              allocation.index() < constants.size()) {
-    se::DeviceMemoryBase constant =
+    se::DeviceAddressBase constant =
         constants[allocation.index()].AsDeviceMemoryBase();
     buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(
         constant.opaque(), constant.size());
@@ -1624,8 +1624,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       buffer_device_mem.reserve(buffer_table.size());
       for (const auto& buffer_info : buffer_table) {
         buffer_device_mem.emplace_back(
-            se::DeviceMemoryBase(buffer_info.buffer->untyped_data(),
-                                 buffer_info.buffer->size_bytes()));
+            se::DeviceAddressBase(buffer_info.buffer->untyped_data(),
+                                  buffer_info.buffer->size_bytes()));
       }
 
       cpu::BufferAllocations allocations(buffer_device_mem);
@@ -1768,8 +1768,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
             buffer_device_mem.reserve(buffer_table.size());
             for (const auto& buffer_info : buffer_table) {
               buffer_device_mem.emplace_back(
-                  se::DeviceMemoryBase(buffer_info.buffer->untyped_data(),
-                                       buffer_info.buffer->size_bytes()));
+                  se::DeviceAddressBase(buffer_info.buffer->untyped_data(),
+                                        buffer_info.buffer->size_bytes()));
             }
 
             cpu::BufferAllocations allocations(buffer_device_mem);

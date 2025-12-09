@@ -43,8 +43,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -53,11 +53,11 @@ namespace xla {
 
 class RawSEDeviceMemory {
  public:
-  explicit RawSEDeviceMemory(se::DeviceMemoryBase value) : value_(value) {}
+  explicit RawSEDeviceMemory(se::DeviceAddressBase value) : value_(value) {}
 
   virtual ~RawSEDeviceMemory() = default;
 
-  const se::DeviceMemoryBase& mem() const { return value_; }
+  const se::DeviceAddressBase& mem() const { return value_; }
 
   void* opaque() const { return value_.opaque(); }
 
@@ -70,10 +70,10 @@ class RawSEDeviceMemory {
                               const Shape& on_device_shape) const;
 
   static tsl::AsyncValueRef<RawSEDeviceMemory> Create(
-      se::DeviceMemoryBase value, LocalDeviceState* local_device,
-      se::DeviceMemoryAllocator* allocator);
+      se::DeviceAddressBase value, LocalDeviceState* local_device,
+      se::DeviceAddressAllocator* allocator);
   static tsl::AsyncValueRef<RawSEDeviceMemory> CreateForeign(
-      se::DeviceMemoryBase value,
+      se::DeviceAddressBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
 
   // Returns a definition event (or nullptr if the definition is known to be in
@@ -84,7 +84,7 @@ class RawSEDeviceMemory {
   }
 
  private:
-  se::DeviceMemoryBase value_;
+  se::DeviceAddressBase value_;
 };
 
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it
@@ -124,7 +124,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
       ShapeTree<MaybeOwningDeviceAddress>::iterator* iterator,
       const ShapeTree<MaybeOwningDeviceAddress>::iterator& end,
       ExecutionInput* execution_input,
-      se::DeviceMemoryAllocator* allocator) const;
+      se::DeviceAddressAllocator* allocator) const;
 
   const absl::InlinedVector<BufferSequencingEventRef, 2>& definition_events()
       const {

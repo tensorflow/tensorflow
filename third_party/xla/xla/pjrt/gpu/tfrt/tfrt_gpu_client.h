@@ -63,7 +63,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -119,7 +119,7 @@ class TfrtGpuClient final : public PjRtClient {
                 std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
                 bool should_stage_host_to_device_transfers,
                 bool abort_collectives_on_failure,
-                MaybeOwning<se::DeviceMemoryAllocator> allocator,
+                MaybeOwning<se::DeviceAddressAllocator> allocator,
                 std::unique_ptr<tsl::Allocator> host_memory_allocator,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<KeyValueStoreInterface> kv_store,
@@ -156,7 +156,7 @@ class TfrtGpuClient final : public PjRtClient {
 
   xla::LocalClient* xla_client() const { return xla_client_; }
 
-  se::DeviceMemoryAllocator* allocator() { return allocator_.get_mutable(); }
+  se::DeviceAddressAllocator* allocator() { return allocator_.get_mutable(); }
 
   bool should_stage_host_to_device_transfers() const {
     return should_stage_host_to_device_transfers_;
@@ -337,7 +337,7 @@ class TfrtGpuClient final : public PjRtClient {
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to
   // complete.
-  MaybeOwning<se::DeviceMemoryAllocator> allocator_;
+  MaybeOwning<se::DeviceAddressAllocator> allocator_;
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 

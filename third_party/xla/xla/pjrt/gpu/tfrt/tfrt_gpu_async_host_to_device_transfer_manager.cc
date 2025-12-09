@@ -54,9 +54,9 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -275,7 +275,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
     staging_buffer = host_memory_allocator->Allocate(transfer_size);
   }
 
-  se::DeviceMemoryBase sub_buffer;
+  se::DeviceAddressBase sub_buffer;
   {
     absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffer_ptrs_.size());

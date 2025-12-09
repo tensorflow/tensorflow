@@ -92,7 +92,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -510,7 +510,7 @@ static absl::Status MemsetFromValue(
   uint32_t pattern;
   std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->device_memory();
+  se::DeviceAddressBase base = result->device_memory();
   return stream->Memset32(&base, pattern, base.size());
 }
 
@@ -559,7 +559,7 @@ static absl::Status MemsetFromAttr(
   uint32_t pattern;
   std::memcpy(&pattern, &attr, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->device_memory();
+  se::DeviceAddressBase base = result->device_memory();
   return stream->Memset32(&base, pattern, base.size());
 }
 

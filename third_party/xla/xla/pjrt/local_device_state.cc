@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -177,7 +177,7 @@ absl::Status LocalDeviceState::SynchronizeAllActivity() {
 
 absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
-    se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
+    se::DeviceAddressBase src_buffer, se::DeviceAddressBase dst_buffer) {
   // The default implementation simply calls MemcpyD2D, and assumes that
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.

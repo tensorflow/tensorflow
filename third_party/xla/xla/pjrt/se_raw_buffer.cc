@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -136,7 +136,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                                     local_device = local_device_, stream, src,
                                     offset, transfer_size,
                                     buf = tsl::FormRef(this)]() mutable {
-    se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
+    se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
@@ -196,7 +196,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
                                     local_device = local_device_, stream, dst,
                                     offset, transfer_size,
                                     buf = tsl::FormRef(this)]() mutable {
-    se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
+    se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
@@ -248,7 +248,7 @@ ShapedBuffer PjRtStreamExecutorRawBuffer::AsShapedBuffer(
   auto* device = memory_space()->devices()[0];
   ShapedBuffer shaped_buffer(shape, device->local_device_id().value(),
                              device->local_hardware_id().value());
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
+  ShapeTree<se::DeviceAddressBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   if (device_buffer_) {
     CHECK(iterator != shaped_buffer.buffers().end());

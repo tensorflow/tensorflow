@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/pjrt/semaphore.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
