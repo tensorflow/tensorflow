@@ -82,6 +82,15 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "device_address_test",
+    srcs = ["device_address_test.cc"],
+    deps = [
+        ":device_address",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "device_address_handle",
     srcs = ["device_address_handle.cc"],
