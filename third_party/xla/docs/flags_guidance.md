@@ -79,8 +79,7 @@ data-parallel collectives (`xla_gpu_enable_pipelined_all_gather`,
 (`xla_gpu_enable_while_loop_double_buffering`), latency hiding scheduling
 (`xla_gpu_enable_latency_hiding_scheduler`), and SOL latency estimator on
 Hopper/Blackwell (`xla_gpu_enable_analytical_sol_latency_estimator`). See
-[GPU Optimization Levels](https://openxla.org/xla/gpu_optimization_levels) for
-details.
+[GPU Effort Levels](https://openxla.org/xla/effort_levels) for details.
 
 | Flag | Type | Notes |
 | :---- | :---- | :----- |
