@@ -106,7 +106,7 @@ void RunSelectKTest() {
   std::vector<T> h_data_in(batch * n);
   for (int j = 0; j < batch; ++j) {
     std::shuffle(topk.begin(), topk.end(), gen);
-    std::copy(topk.begin(), topk.end(), h_data_in.begin() + j * n);
+    absl::c_copy(topk, h_data_in.begin() + j * n);
   }
 
   // Compute golden Top-K values for verification

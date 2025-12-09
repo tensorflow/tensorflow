@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/triton_tiling_propagation.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -260,7 +259,9 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
 
     // We should not remove the only fragment in a dimension, because if it is
     // removed, the dimension will be removed from the TensorIterationSpec.
-    if (dim_spec.size() <= 1) continue;
+    if (dim_spec.size() <= 1) {
+      continue;
+    }
 
     TensorIterationSpec::DimIterationSpec filtered_dim_spec;
     absl::c_copy_if(dim_spec, std::back_inserter(filtered_dim_spec),
@@ -575,9 +576,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
     std::vector<int>& dst = dst_dim_fragment_orders[dim_index];
     dst.reserve(dim_sequence.size());
     for (const int src : dim_sequence) {
-      std::copy(src_to_dst[&src_fragments_order[src]].cbegin(),
-                src_to_dst[&src_fragments_order[src]].cend(),
-                std::back_inserter(dst));
+      absl::c_copy(src_to_dst[&src_fragments_order[src]],
+                   std::back_inserter(dst));
     }
   }
 

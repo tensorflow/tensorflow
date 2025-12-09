@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -66,9 +65,9 @@ static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
   dst->size = src.size();
   if (dst->size > TPU_C_API_MAX_INLINED) {
     dst->heap = new Dst[dst->size];
-    std::copy(src.begin(), src.end(), dst->heap);
+    absl::c_copy(src, dst->heap);
   } else {
-    std::copy(src.begin(), src.end(), dst->inlined);
+    absl::c_copy(src, dst->inlined);
   }
 }
 

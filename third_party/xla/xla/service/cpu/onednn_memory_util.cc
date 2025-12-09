@@ -59,8 +59,7 @@ MemrefInfoHandler CreateMemrefFromShape(const Shape& shape, const void* buf) {
   result->dtype = shape.element_type();
   result->rank = shape.dimensions().size();
   auto dimensions = shape.dimensions();
-  std::copy(dimensions.begin(), dimensions.end(),
-            absl::MakeSpan(result->dims).begin());
+  absl::c_copy(dimensions, absl::MakeSpan(result->dims).begin());
 
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
