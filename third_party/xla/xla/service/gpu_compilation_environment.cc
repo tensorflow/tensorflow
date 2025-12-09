@@ -132,9 +132,9 @@ ProcessNewGpuCompilationEnvironment(
 }  // namespace xla
 
 static bool InitModule() {
-  xla::CompilationEnvironments::RegisterProcessNewEnvFn(
-      xla::GpuCompilationEnvironment::descriptor(),
-      xla::ProcessNewGpuCompilationEnvironment);
+  // xla::CompilationEnvironments::RegisterProcessNewEnvFn(
+  //     xla::GpuCompilationEnvironment::descriptor(),
+  //     xla::ProcessNewGpuCompilationEnvironment);
   return true;
 }
 static bool module_initialized = InitModule();
