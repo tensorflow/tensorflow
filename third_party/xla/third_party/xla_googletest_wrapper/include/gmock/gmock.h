@@ -62,7 +62,7 @@ limitations under the License.
   ASSERT_THAT(expression, ::xla_testing::internal::IsOk())
 
 #define ASSERT_OK_AND_ASSIGN(lhs, rexpr)                            \
-  TF_ASSERT_OK_AND_ASSIGN_IMPL(                                     \
+  ASSERT_OK_AND_ASSIGN_IMPL(                                        \
       XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), \
       lhs, rexpr);
 
