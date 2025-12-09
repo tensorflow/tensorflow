@@ -661,6 +661,7 @@ lit_test_suite_for_gpus(
             "slice_to_dynamic.hlo",
             "sorting.hlo",
             "sub_byte_collectives.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
             "zero_clamp_abs_index.hlo",
         ],
@@ -673,10 +674,12 @@ lit_test_suite_for_gpus(
     disabled_on_gpus = {
         "v100": [
             "kernel_reuse.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
         ],
         "p100": [
             "kernel_reuse.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
         ],
         "mi200": [

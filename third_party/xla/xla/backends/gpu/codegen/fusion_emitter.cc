@@ -266,9 +266,14 @@ absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
           .getCallee();
   llvm::Function* new_function = static_cast<llvm::Function*>(inserted);
 
-  new_function->setCallingConv(impl_fn->getCallingConv());
   new_function->copyMetadata(impl_fn, 0);
   new_function->setAttributes(impl_fn->getAttributes());
+
+  // Set the correct calling convention for the target GPU.
+  // Triton generates PTX_Kernel CC even for AMD, so we need to use
+  // AnnotateFunctionAsGpuKernel to set the correct CC based on target triple.
+  llvm::IRBuilder<> builder(llvm_module->getContext());
+  AnnotateFunctionAsGpuKernel(llvm_module, new_function, &builder);
 
   new_function->splice(new_function->begin(), impl_fn);
 
