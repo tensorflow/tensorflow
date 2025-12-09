@@ -48,6 +48,7 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute:checkpointing_test_2gpu \
 //tensorflow/python/distribute:collective_all_reduce_strategy_test_2gpu \
 //tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
+//tensorflow/python/distribute:combinations_test_2gpu  \
 //tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
 //tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
 //tensorflow/python/distribute:distribute_utils_test_2gpu \
@@ -55,6 +56,7 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute:input_lib_type_spec_test_2gpu \
 //tensorflow/python/distribute:metrics_v1_test_2gpu \
 //tensorflow/python/distribute:mirrored_variable_test_2gpu \
+//tensorflow/python/distribute:moving_averages_test_2gpu  \
 //tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
 //tensorflow/python/distribute:values_test_2gpu \
 //tensorflow/python/distribute:ps_values_test_2gpu \
@@ -67,8 +69,10 @@ test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/python/distribute/v1:cross_device_ops_test_2gpu \
 //tensorflow/python/distribute:cross_device_ops_test_2gpu \
 //tensorflow/python/distribute:mirrored_strategy_test_2gpu \
+//tensorflow/python/framework:config_vgpu_test_2gpu   \
 //tensorflow/python/kernel_tests:collective_ops_test_2gpu \
 //tensorflow/python/ops:collective_ops_gpu_test_2gpu \
+//tensorflow/python/ops:compiled_collective_ops_gpu_test_2gpu \
 //tensorflow/python/ops:nccl_ops_test_2gpu \
 //tensorflow/dtensor/python/tests:multi_client_test_2gpus \
 //tensorflow/dtensor/python/tests:multi_client_test_nccl_2gpus \
