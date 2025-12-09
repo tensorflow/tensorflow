@@ -4113,6 +4113,8 @@ cc_library(
     hdrs = ["maybe_owning_device_memory.h"],
     deps = [
         ":maybe_owning_device_address",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/base:core_headers",

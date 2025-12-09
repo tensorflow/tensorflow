@@ -91,8 +91,8 @@ struct PjRtStreamExecutorExecutionOutput {
   // Donated inputs which must be freed.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
   // For PjRtStreamExecutorClient implementations that
-  // use OwningDeviceMemory for donated inputs.
-  std::vector<se::OwningDeviceMemory> se_to_be_released;
+  // use ScopedDeviceAddress for donated inputs.
+  std::vector<se::ScopedDeviceAddress<uint8_t>> se_to_be_released;
 };
 
 class PjRtStreamExecutorDevice : public PjRtDevice {

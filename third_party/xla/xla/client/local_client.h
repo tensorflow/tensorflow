@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -183,7 +183,7 @@ class LocalClient : public Client {
   // device is used.
   absl::StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const LiteralSlice& literal, int device_ordinal,
-      se::DeviceMemoryAllocator* allocator = nullptr);
+      se::DeviceAddressAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
   absl::StatusOr<GlobalDataHandle> TransferToLocalServer(

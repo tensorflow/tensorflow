@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "absl/base/macros.h"
 #include "xla/service/maybe_owning_device_address.h"
+#include "xla/stream_executor/device_address.h"  // IWYU pragma: keep
+#include "xla/stream_executor/device_address_allocator.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_memory.h"  // IWYU pragma: keep
 #include "xla/stream_executor/device_memory_allocator.h"  // IWYU pragma: keep
 
