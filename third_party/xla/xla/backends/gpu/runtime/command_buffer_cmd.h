@@ -118,6 +118,8 @@ std::string CommandBufferCmdString(CommandBufferCmdType type);
 // CommandBufferCmd
 //===----------------------------------------------------------------------===//
 
+using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
+
 // Command is a Thunk counterpart that instead of launching operations directly
 // on the underlying device records them into command buffers.
 //
@@ -127,9 +129,41 @@ std::string CommandBufferCmdString(CommandBufferCmdType type);
 //
 // Commands must be thread safe as they can be recorded into multiple command
 // buffers concurrently on different stream executors.
-
-using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
-
+//
+// IMPORTANT: In contrast to GPU thunks, commands MUST be stateless. Thunk state
+// typically belongs to the Thunk instance itself, and tends to be kept in
+// synchronized hash maps keyed by `se::StreamExecutor*` pointer. Commands on
+// the other hand should attach state to the underlying command buffer, and
+// because the number of command buffers that can be instantiated from a command
+// sequence is unbounded (as we have an eviction policy for command buffers),
+// keeping a state in a map inside the command will lead to memory leaks.
+//
+// Commands have an external state manager, which is responsible for managing
+// the lifetime of command state. See `State` and `StateManager` classes below.
+//
+// To make command stateful, it needs a `params.state` indirection:
+//
+//   class MyCommand : public CommandBufferCmd {
+//     public:
+//
+//     // Container for mutable state required for command execution.
+//     struct MyState : CommandBufferCmd::State {
+//       ...
+//     };
+//
+//     absl::StatusOr<Command*> Record(...) override {
+//       // Attach a new instance of `MyState` to the `command_buffer`. When
+//       // command buffer will be destroyed, the state will be destroyed as
+//       // well automatically by XLA runtime. If this command will be recorded
+//       // into another command buffer, the state will be re-created
+//       // automatically using the provided callback.
+//       MyState* my_state = record_params.state.GetOrCreate<MyState>(this,
+//         command_buffer, [&] { // create MyState for a `command_buffer` });
+//       ...
+//     }
+//
+//   };
+//
 class CommandBufferCmd {
  public:
   explicit CommandBufferCmd(
@@ -156,6 +190,8 @@ class CommandBufferCmd {
   // Externally managed state (owned and synchronized by CommandBufferThunk)
   // allows commands to attach a piece of information to command buffer in a
   // safe and performant way.
+  //
+  // See example above next to `CommandBufferCmd` definition.
   class State {
    public:
     virtual ~State() = default;
