@@ -314,7 +314,8 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
         absl::StrCat("Autotuner could not find any supported configs for HLO: ",
                      instr->ToString()));
   }
-  VLOG(1) << "Found " << supported_configs.size() << " supported configs.";
+  VLOG(1) << "Found total of " << supported_configs.size()
+          << " supported configs.";
 
   std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables =
       CompileAll(instr, supported_configs);
@@ -411,8 +412,13 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
     absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
         per_backend_configs = codegen_backend->GetSupportedConfigs(*instr);
     if (!per_backend_configs.ok()) {
+      VLOG(3) << "Failed to get supported configs for backend "
+              << codegen_backend->name() << ": "
+              << per_backend_configs.status();
       continue;
     }
+    VLOG(3) << "Found of " << per_backend_configs->size()
+            << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
