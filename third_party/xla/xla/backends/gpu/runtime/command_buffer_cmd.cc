@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -1369,7 +1370,7 @@ CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() const {
 // MemzeroCmd
 //===----------------------------------------------------------------------===//
 
-MemzeroCmd::MemzeroCmd(BufferAllocation::Slice dst)
+MemzeroCmd::MemzeroCmd(ShapedSlice dst)
     : CommandBufferCmd(CommandBufferCmdType::kMemzeroCmd), dst_(dst) {}
 
 absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
@@ -1377,12 +1378,12 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase dst =
-      execute_params.buffer_allocations->GetDeviceAddress(dst_);
+      execute_params.buffer_allocations->GetDeviceAddress(dst_.slice);
 
   VLOG(5) << "MemzeroCmd:";
   VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
 
-  if (dst_.size() == 0) {
+  if (dst_.slice.size() == 0) {
     VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
     return nullptr;
   }
@@ -1391,17 +1392,17 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemset(&dst, uint8_t{0},
-                                            /*num_elements=*/dst_.size(),
+                                            /*num_elements=*/dst_.slice.size(),
                                             dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateMemset(command, &dst, uint8_t{0},
-                                            /*num_elements=*/dst_.size());
+                                            /*num_elements=*/dst_.slice.size());
       });
 }
 
 CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() const {
-  return {BufferUse::Write(dst_)};
+  return {BufferUse::Write(dst_.slice, dst_.shape)};
 }
 
 //===----------------------------------------------------------------------===//

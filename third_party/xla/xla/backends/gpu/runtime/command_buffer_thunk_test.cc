@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -222,6 +224,7 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42
   se::DeviceAddress<int32_t> a =
@@ -234,7 +237,7 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemzeroCmd>(slice_a);
+  commands.Emplace<MemzeroCmd>(ShapedSlice{slice_a, shape});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

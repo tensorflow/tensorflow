@@ -191,7 +191,7 @@ message DynamicSliceThunkProto {
 }
 
 message MemzeroThunkProto {
-  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+  ShapedSliceProto dest_buffer = 1;
 }
 
 message Memset32BitValueThunkProto {

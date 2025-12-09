@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
@@ -721,6 +724,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   // Prepare device memory for three buffers.
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
+
   se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length);
   se::DeviceAddress<int32_t> b =
@@ -763,7 +768,7 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   CommandBufferCmdSequence outer_seq;
   outer_seq.Emplace<ChildCmd>(std::move(middle_executor));
   // Add a couple more commands at the outer level that still don't affect `c`.
-  outer_seq.Emplace<MemzeroCmd>(slice_b);
+  outer_seq.Emplace<MemzeroCmd>(ShapedSlice{slice_b, shape});
   outer_seq.Emplace<EmptyCmd>();
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor outer_executor,
