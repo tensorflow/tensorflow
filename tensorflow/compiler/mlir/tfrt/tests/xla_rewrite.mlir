@@ -27,7 +27,14 @@ func.func @xla_launch(%arg: tensor<i32>, %v0: tensor<*x!tf_type.resource>, %v1: 
       device = "/device:GPU:0", executor_type = "", f = @callee}
       : (tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource>, tensor<i32>, tensor<*x!tf_type.resource>) -> tensor<i32>
 
-  func.return %r2 : tensor<i32>
+  // CHECK: tf.XlaLaunchV2
+  // CHECK-SAME: constants = [0, 3]
+  // CHECK-SAME: resources = [2, 4]
+  %r3 = "tf.PartitionedCall"(%c0, %r2, %v0, %c1, %v1) {_XlaMustCompile = true, config = "", config_proto = "",
+      device = "/device:CPU:0", executor_type = "", f = @callee}
+      : (tensor<i32>, tensor<i32>, tensor<*x!tf_type.resource>, tensor<i32>, tensor<*x!tf_type.resource>) -> tensor<i32>
+
+  func.return %r3 : tensor<i32>
 }
 
 func.func @callee(%c0: tensor<i32>, %arg: tensor<i32>, %v0: tensor<*x!tf_type.resource>, %c1: tensor<i32>, %v1: tensor<*x!tf_type.resource>) -> (tensor<i32>) {
