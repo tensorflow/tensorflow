@@ -26,11 +26,10 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -140,6 +139,20 @@ class AttributeMap {
   }
 
   bool IsEmpty() const { return map_.empty(); }
+
+  // Invokes `f` for each key-value pair in the attribute map.
+  void ForEach(
+      absl::FunctionRef<void(const std::string&, const Value&)> f) const {
+    for (const auto& [key, value] : map_) {
+      f(key, value);
+    }
+  }
+
+  bool operator==(const AttributeMap& other) const {
+    return map_ == other.map_;
+  }
+
+  size_t size() const { return map_.size(); }
 
  private:
   template <typename T, typename V>

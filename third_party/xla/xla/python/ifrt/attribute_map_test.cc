@@ -45,14 +45,14 @@ TEST(AttributeMapTest, MapElements) {
       {"float", AttributeMap::FloatValue(1.23f)},
   });
 
-  EXPECT_EQ(map.map(), AttributeMap::Map({
-                           {"string", AttributeMap::StringValue("value")},
-                           {"bool", AttributeMap::BoolValue(true)},
-                           {"int64", AttributeMap::Int64Value(123)},
-                           {"int64_list", AttributeMap::Int64ListValue(
-                                              {int64_t{1}, int64_t{2}})},
-                           {"float", AttributeMap::FloatValue(1.23f)},
-                       }))
+  EXPECT_EQ(map, AttributeMap({
+                     {"string", AttributeMap::StringValue("value")},
+                     {"bool", AttributeMap::BoolValue(true)},
+                     {"int64", AttributeMap::Int64Value(123)},
+                     {"int64_list",
+                      AttributeMap::Int64ListValue({int64_t{1}, int64_t{2}})},
+                     {"float", AttributeMap::FloatValue(1.23f)},
+                 }))
       << map.DebugString();
 }
 
@@ -101,7 +101,7 @@ TEST_P(AttributeMapSerDesTest, ToFromProto) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto map_copy,
                           AttributeMap::FromProto(map.ToProto(version())));
-  EXPECT_EQ(map_copy.map(), map.map()) << map_copy.DebugString();
+  EXPECT_EQ(map_copy, map) << map_copy.DebugString();
 }
 
 INSTANTIATE_TEST_SUITE_P(
