@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
 
+#include <cstdint>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -80,6 +85,16 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* mlir_context,
     const se::DeviceDescription& device_description);
+
+// Returns the start indices of consecutive non-overlapping subsequences of `a`
+// and `b` with the same product (see `CommonFactors` from `util.h`) grouping
+// ranges having product of 1 with neighbors.
+//
+// For example, if a=[2, 5, 1, 3] and b=[1, 10, 3, 1], the result will be
+// {{0, 0}, {2, 2}, {4, 4}}, grouping [2,5] with [1,10] and [1,3] with [3,1].
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8>
+CommonFactorsMergingTrivialRanges(absl::Span<const int64_t> a,
+                                  absl::Span<const int64_t> b);
 
 }  // namespace detail
 

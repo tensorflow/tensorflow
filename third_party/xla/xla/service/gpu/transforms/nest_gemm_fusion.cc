@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -658,8 +659,11 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
   // Maps logical operand dimension index to the physical dimension index.
   llvm::SmallVector<int64_t> operand_inv_layout =
       GetInversePermutation(operand_shape.layout().minor_to_major());
-  auto factors = CommonFactors(GetPhysicalDimensions(result_shape),
-                               GetPhysicalDimensions(transpose_shape));
+
+  const absl::InlinedVector<std::pair<int64_t, int64_t>, 8> factors =
+      ::xla::gpu::detail::CommonFactorsMergingTrivialRanges(
+          GetPhysicalDimensions(result_shape),
+          GetPhysicalDimensions(transpose_shape));
   for (int64_t i = 1; i < factors.size(); ++i) {
     auto [result_from, transpose_from] = factors[i - 1];
     auto [result_to, transpose_to] = factors[i];
@@ -1346,6 +1350,33 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
 
   return absl::InternalError(absl::StrCat(
       "Couldn't find output tile sizes that satisfy ", tiled_dot.ToString()));
+}
+
+absl::InlinedVector<std::pair<int64_t, int64_t>, 8>
+CommonFactorsMergingTrivialRanges(absl::Span<const int64_t> a,
+                                  absl::Span<const int64_t> b) {
+  // CommonFactors does what we need but it also creates empty groups with
+  // product of 1, e.g. `[1] -> []` or `[] -> [1]`. We remove the bounds of
+  // such ranges to merge them with neighbors. There are many different ways
+  // to do this, here we continously append ranges to the start of the next
+  // group unless it is the very last range.
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds =
+      CommonFactors(a, b);
+  for (size_t i = 0; i + 1 < bounds.size() && bounds.size() > 2;) {
+    auto [a_start, b_start] = bounds[i];
+    auto [a_end, b_end] = bounds[i + 1];
+    if (a_start != a_end && b_start != b_end) {
+      i++;
+      continue;
+    }
+    if (i + 2 == bounds.size()) {
+      // Very last range - append it to the previous one.
+      bounds.erase(bounds.begin() + i);
+    } else {
+      bounds.erase(bounds.begin() + i + 1);
+    }
+  }
+  return bounds;
 }
 
 }  // namespace detail
