@@ -93,7 +93,7 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(
     XLA_FFI_ExecutionContext* ctx, void** stream);
 
-// Returns a pointer to device memory allocator (`se::DeviceAddressAllocator`
+// Returns a pointer to device memory allocator (`se::DeviceMemoryAllocator`
 // pointer) which allows to allocate memory inside a custom call from the same
 // allocator as XLA (i.e. it allows to construct scratch memory allocator).
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(

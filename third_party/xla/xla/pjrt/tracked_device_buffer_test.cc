@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/tracked_device_buffer.h"
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -91,7 +90,7 @@ absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
-            se::ScopedDeviceAddress<uint8_t> device_memory,
+            se::OwningDeviceMemory device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,
                 client->backend().transfer_manager()->GetByteSizeRequirement(

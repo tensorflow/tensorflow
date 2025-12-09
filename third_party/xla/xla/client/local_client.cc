@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -512,7 +512,7 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
 
 absl::StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
     const LiteralSlice& literal, int device_ordinal,
-    se::DeviceAddressAllocator* allocator) {
+    se::DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }

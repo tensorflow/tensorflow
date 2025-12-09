@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -113,7 +113,7 @@ class BufferDonationTest : public HloTestBase {
         run_options, backend_->StreamBorrowerWithPriority());
 
     std::vector<ExecutionInput> args;
-    std::vector<ShapeTree<se::DeviceAddressBase>> inputs_buffers;
+    std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;
 
     CHECK_EQ(argument_literals.size(), donate_arguments.size());
 
@@ -130,7 +130,7 @@ class BufferDonationTest : public HloTestBase {
       ShapedBuffer shaped_buffer = scoped_shaped_buffer.release();
       CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
           stream.get(), argument_literal, shaped_buffer));
-      ShapeTree<se::DeviceAddressBase> input_buffers = shaped_buffer.buffers();
+      ShapeTree<se::DeviceMemoryBase> input_buffers = shaped_buffer.buffers();
       inputs_buffers.push_back(input_buffers);
       ShapeTree<MaybeOwningDeviceAddress> owned_buffers(
           argument_literal.shape());
@@ -138,7 +138,7 @@ class BufferDonationTest : public HloTestBase {
           [&](const ShapeIndex& index,
               MaybeOwningDeviceAddress* device_memory) {
             if (donate_argument) {
-              *device_memory = se::ScopedDeviceAddress<uint8_t>(
+              *device_memory = se::OwningDeviceMemory(
                   input_buffers.element(index), executor_->device_ordinal(),
                   &memory_allocator);
             } else {
@@ -162,7 +162,7 @@ class BufferDonationTest : public HloTestBase {
     }
     ExecutionOutput output = std::move(output_status).value();
 
-    se::DeviceAddressBase result_root_buffer = output.Result().root_buffer();
+    se::DeviceMemoryBase result_root_buffer = output.Result().root_buffer();
     LOG(INFO) << "result allocation = " << result_root_buffer.opaque()
               << "             size = " << result_root_buffer.size();
 

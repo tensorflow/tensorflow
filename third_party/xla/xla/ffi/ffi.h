@@ -50,7 +50,7 @@ limitations under the License.
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -137,8 +137,8 @@ class AnyBuffer {
     return reinterpret_cast<T*>(buf_->data);
   }
 
-  se::DeviceAddressBase device_memory() const {
-    return se::DeviceAddressBase(untyped_data(), size_bytes());
+  se::DeviceMemoryBase device_memory() const {
+    return se::DeviceMemoryBase(untyped_data(), size_bytes());
   }
 
  private:
@@ -182,9 +182,9 @@ class Buffer {
     return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
   }
 
-  se::DeviceAddress<internal::NativeType<dtype>> device_memory() const {
-    return se::DeviceAddress<internal::NativeType<dtype>>(
-        se::DeviceAddressBase(untyped_data(), size_bytes()));
+  se::DeviceMemory<internal::NativeType<dtype>> device_memory() const {
+    return se::DeviceMemory<internal::NativeType<dtype>>(
+        se::DeviceMemoryBase(untyped_data(), size_bytes()));
   }
 
  private:

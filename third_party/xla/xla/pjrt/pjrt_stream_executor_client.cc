@@ -1156,7 +1156,7 @@ MakeTupleHelper(PjRtStreamExecutorClient* client,
 
   se::Stream* stream = local_device->host_to_device_stream();
   TF_ASSIGN_OR_RETURN(
-      se::ScopedDeviceAddress<uint8_t> owned_root_table_memory,
+      se::OwningDeviceMemory owned_root_table_memory,
       allocator->Allocate(
           device_ordinal,
           transfer_manager->GetByteSizeRequirement(tupled_parameter_shape)));
@@ -1673,7 +1673,7 @@ PjRtStreamExecutorClient::RunAsync(
     auto it = tmp.MutableBuffers()->begin();
     for (auto& v : input) {
       if (v.second.is_donated) {
-        it->second = MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
+        it->second = MaybeOwningDeviceAddress(se::OwningDeviceMemory(
             v.second.buf->mem(), device->local_device_id().value(),
             run_options.allocator()));
         tmp.SetUnownedIndex(it->first);

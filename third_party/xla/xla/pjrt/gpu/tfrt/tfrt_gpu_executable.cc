@@ -775,20 +775,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                 tuple_buffer.buffers().mutable_element({});
             VLOG(3) << "untuple: output_buffers[" << i
                     << "].emplace: " << elem->opaque();
-            output_buffers[i].emplace(
-                stream_executor::ScopedDeviceAddress<uint8_t>(
-                    *elem, device->local_device_id().value(),
-                    client->allocator()));
+            output_buffers[i].emplace(stream_executor::OwningDeviceMemory(
+                *elem, device->local_device_id().value(), client->allocator()));
             *elem = se::DeviceAddressBase();
           }
         } else {
           CHECK_EQ(output_buffers.size(), 1);
           auto* elem = output.buffers().mutable_element({});
           VLOG(3) << "output_buffers[0].emplace: " << elem->opaque();
-          output_buffers.front().emplace(
-              stream_executor::ScopedDeviceAddress<uint8_t>(
-                  *elem, device->local_device_id().value(),
-                  client->allocator()));
+          output_buffers.front().emplace(stream_executor::OwningDeviceMemory(
+              *elem, device->local_device_id().value(), client->allocator()));
           *elem = se::DeviceAddressBase();
         }
 
@@ -913,11 +909,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                     << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {i},
-                  MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
-                      tracked_buffers[i]->buffer()->buffer(),
-                      device->local_hardware_id().value(),
-                      client->allocator())));
+                  {i}, MaybeOwningDeviceAddress(se::OwningDeviceMemory(
+                           tracked_buffers[i]->buffer()->buffer(),
+                           device->local_hardware_id().value(),
+                           client->allocator())));
             } else {
               input.SetBuffer({i}, MaybeOwningDeviceAddress(
                                        tracked_buffers[i]->buffer()->buffer()));
@@ -933,7 +928,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             ExecutionInput& input = inputs.back();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {}, MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
+                  {}, MaybeOwningDeviceAddress(se::OwningDeviceMemory(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
                           client->allocator())));

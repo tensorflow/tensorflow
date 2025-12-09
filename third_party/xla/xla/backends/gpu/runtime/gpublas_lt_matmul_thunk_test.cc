@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -183,7 +182,7 @@ class GpuBlasLtThunkBuilder {
   se::StreamExecutorMemoryAllocator allocator_;
   se::GpuComputeCapability gpu_comp_;
   std::deque<BufferAllocation> allocs_;
-  std::vector<se::ScopedDeviceAddress<uint8_t>> mem_buffers_;
+  std::vector<se::OwningDeviceMemory> mem_buffers_;
 };
 
 void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
