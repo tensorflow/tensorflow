@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_utils.h"
-#include "tsl/platform/strcat.h"
 
 // Undef DeleteFile macro defined in wndows.h.
 #ifdef PLATFORM_WINDOWS
@@ -1497,9 +1496,9 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
            "path%2Frandom_access.txt?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
            "Timeouts: 5 1 10\n",
-           strings::StrCat("{\"size\": \"", content.size(), "\"",
-                           ", \"generation\": \"1\"",
-                           ", \"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+           absl::StrCat("{\"size\": \"", content.size(), "\"",
+                        ", \"generation\": \"1\"",
+                        ", \"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
            absl::StrCat("Uri: https://storage.googleapis.com/bucket/"
                         "path%2Frandom_access.txt\n"
@@ -4383,12 +4382,12 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithoutCompose) {
                             "location"}}),
       // Uploads entire file again.
       new FakeHttpRequest(
-          strings::StrCat("Uri: https://custom/upload/location\n"
-                          "Auth Token: fake_token\n"
-                          "Header Content-Range: bytes 0-26/27\n"
-                          "Timeouts: 5 1 30\n"
-                          "Put body: ",
-                          contents[0], contents[1], contents[2], "\n"),
+          absl::StrCat("Uri: https://custom/upload/location\n"
+                       "Auth Token: fake_token\n"
+                       "Header Content-Range: bytes 0-26/27\n"
+                       "Timeouts: 5 1 30\n"
+                       "Put body: ",
+                       contents[0], contents[1], contents[2], "\n"),
           ""),
       new FakeHttpRequest(
           "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
@@ -4399,15 +4398,14 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithoutCompose) {
           "Timeouts: 5 1 10\n",
           "", {{"Location", "https://custom/upload/location"}}),
       // Uploads entire file again.
-      new FakeHttpRequest(
-          strings::StrCat("Uri: https://custom/upload/location\n"
-                          "Auth Token: fake_token\n"
-                          "Header Content-Range: bytes 0-35/36\n"
-                          "Timeouts: 5 1 30\n"
-                          "Put body: ",
-                          contents[0], contents[1], contents[2], contents[3],
-                          "\n"),
-          ""),
+      new FakeHttpRequest(absl::StrCat("Uri: https://custom/upload/location\n"
+                                       "Auth Token: fake_token\n"
+                                       "Header Content-Range: bytes 0-35/36\n"
+                                       "Timeouts: 5 1 30\n"
+                                       "Put body: ",
+                                       contents[0], contents[1], contents[2],
+                                       contents[3], "\n"),
+                          ""),
   });
   GcsFileSystem fs(
       std::unique_ptr<AuthProvider>(new FakeAuthProvider),
