@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,18 +39,21 @@ class BuffersDebugFloatCheckThunk : public Thunk {
  public:
   explicit BuffersDebugFloatCheckThunk(
       ThunkInfo info, const ThunkInfo& checked_thunk_info,
-      BufferAllocation::Slice log_slice,
+      BufferAllocation::Slice log_slice, BufferAllocation::Slice tmp_slice,
       absl::flat_hash_map<size_t, BufferAllocation::Slice>
           checked_thunk_buffers,
       std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
       : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
         log_slice_(log_slice),
+        tmp_slice_(tmp_slice),
         checked_thunk_info_(checked_thunk_info),
         checked_thunk_buffers_(std::move(checked_thunk_buffers)),
         metadata_store_(std::move(metadata_store)) {}
 
-  absl::Status Initialize(const InitializeParams& params) override;
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override
+      ABSL_LOCKS_EXCLUDED(kernels_mutex_);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override
+      ABSL_LOCKS_EXCLUDED(kernels_mutex_);
 
   std::string ToString(int indent) const override;
 
@@ -67,6 +71,8 @@ class BuffersDebugFloatCheckThunk : public Thunk {
   struct Kernels {
     stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType f32;
     stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType bf16;
+    stream_executor::gpu::BufferDebugAppendReducedFloatCheckResultsKernel::
+        KernelType reduce;
   };
   absl::Mutex kernels_mutex_;
   // Each loaded kernel is associated with a specific device (represented by its
@@ -79,6 +85,7 @@ class BuffersDebugFloatCheckThunk : public Thunk {
       kernels_ ABSL_GUARDED_BY(kernels_mutex_);
 
   BufferAllocation::Slice log_slice_;
+  BufferAllocation::Slice tmp_slice_;
   ThunkInfo checked_thunk_info_;
   absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers_;
   std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store_;

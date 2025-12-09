@@ -54,6 +54,25 @@ static_assert(sizeof(BufferDebugLogEntry) == sizeof(uint32_t) * 2);
 static_assert(offsetof(BufferDebugLogEntry, entry_id) == 0);
 static_assert(offsetof(BufferDebugLogEntry, value) == sizeof(uint32_t));
 
+struct FloatCheckResult {
+  uint32_t nan_count;
+  uint32_t inf_count;
+  uint32_t zero_count;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const FloatCheckResult& result) {
+    absl::Format(&sink, "{nan_count: %u, inf_count: %u, zero_count: %u}",
+                 result.nan_count, result.inf_count, result.zero_count);
+  }
+};
+
+// The struct layout must match on both host and device.
+static_assert(_Alignof(FloatCheckResult) == _Alignof(uint32_t));
+static_assert(sizeof(FloatCheckResult) == sizeof(uint32_t) * 3);
+static_assert(offsetof(FloatCheckResult, nan_count) == 0);
+static_assert(offsetof(FloatCheckResult, inf_count) == sizeof(uint32_t));
+static_assert(offsetof(FloatCheckResult, zero_count) == sizeof(uint32_t) * 2);
+
 struct BufferDebugFloatCheckEntry {
   // An ID that uniquely identifies a log entry within a HLO module execution.
   BufferDebugLogEntryId entry_id;
