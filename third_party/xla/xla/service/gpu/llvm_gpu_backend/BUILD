@@ -171,7 +171,9 @@ cc_library(
         "HAS_SUPPORT_FOR_EMBEDDED_LIB_DEVICE=1",
     ]),
     tags = [
+        "gpu",
         "nofixdeps",  # This target crashes build_cleaner ¯\_(ツ)_/¯
+        "rocm-only",
     ],
     deps = [
         ":llvm_gpu_backend",
@@ -210,6 +212,8 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
+        "@local_config_rocm//rocm:amd_comgr",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:traceme",

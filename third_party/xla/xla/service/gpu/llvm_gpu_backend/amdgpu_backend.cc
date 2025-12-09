@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "amd_comgr/amd_comgr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -318,14 +320,151 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     }
   }
 
-  // Read HSACO.
+  // Read HSACO file into memory (used for both metadata extraction and return)
   std::ifstream hsaco_file(hsaco_path, std::ios::binary | std::ios::ate);
+  if (!hsaco_file) {
+    return xla::Internal("Failed to open HSACO file: %s", hsaco_path);
+  }
   std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
-
   std::vector<uint8_t> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(hsaco.data()), hsaco_file_size);
   hsaco_file.close();
+
+  // Check for register spilling using HSACO metadata
+  // Use amd_comgr library for fast in-process metadata extraction
+  VLOG(2) << "Checking for register spilling in: "
+          << module->getModuleIdentifier();
+
+  bool has_spilling = false;
+  int sgpr_spill_count = 0;
+  int vgpr_spill_count = 0;
+  int private_segment_size = 0;
+
+  // Use already-loaded HSACO data for amd_comgr parsing
+  {
+    // Create amd_comgr data object from HSACO
+    amd_comgr_data_t comgr_data;
+    amd_comgr_status_t status =
+        amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &comgr_data);
+
+    if (status == AMD_COMGR_STATUS_SUCCESS) {
+      status = amd_comgr_set_data(comgr_data, hsaco.size(),
+                                  reinterpret_cast<const char*>(hsaco.data()));
+
+      if (status == AMD_COMGR_STATUS_SUCCESS) {
+        // Get metadata from the executable
+        amd_comgr_metadata_node_t metadata;
+        status = amd_comgr_get_data_metadata(comgr_data, &metadata);
+
+        if (status == AMD_COMGR_STATUS_SUCCESS) {
+          // Helper lambda to lookup integer value from metadata map
+          auto lookup_int_value = [](amd_comgr_metadata_node_t root,
+                                     const char* key) -> int {
+            amd_comgr_metadata_node_t value_node;
+            amd_comgr_status_t s =
+                amd_comgr_metadata_lookup(root, key, &value_node);
+            if (s != AMD_COMGR_STATUS_SUCCESS) {
+              return 0;
+            }
+
+            size_t size = 0;
+            s = amd_comgr_get_metadata_string(value_node, &size, nullptr);
+            if (s != AMD_COMGR_STATUS_SUCCESS || size == 0) {
+              amd_comgr_destroy_metadata(value_node);
+              return 0;
+            }
+
+            std::string str_value(size, '\0');
+            s = amd_comgr_get_metadata_string(value_node, &size,
+                                              str_value.data());
+            amd_comgr_destroy_metadata(value_node);
+
+            if (s != AMD_COMGR_STATUS_SUCCESS) {
+              return 0;
+            }
+
+            // Parse the integer value
+            try {
+              return std::stoi(str_value);
+            } catch (...) {
+              return 0;
+            }
+          };
+
+          // Navigate to amdhsa.kernels array and check each kernel
+          amd_comgr_metadata_node_t kernels_node;
+          if (amd_comgr_metadata_lookup(metadata, "amdhsa.kernels",
+                                        &kernels_node) ==
+              AMD_COMGR_STATUS_SUCCESS) {
+            size_t kernel_count = 0;
+            amd_comgr_get_metadata_list_size(kernels_node, &kernel_count);
+
+            for (size_t i = 0; i < kernel_count; ++i) {
+              amd_comgr_metadata_node_t kernel_node;
+              if (amd_comgr_index_list_metadata(kernels_node, i,
+                                                &kernel_node) ==
+                  AMD_COMGR_STATUS_SUCCESS) {
+                // Get spill counts for this kernel
+                int kernel_sgpr_spill =
+                    lookup_int_value(kernel_node, ".sgpr_spill_count");
+                int kernel_vgpr_spill =
+                    lookup_int_value(kernel_node, ".vgpr_spill_count");
+                int kernel_private_size = lookup_int_value(
+                    kernel_node, ".private_segment_fixed_size");
+
+                // Aggregate max values across all kernels
+                sgpr_spill_count =
+                    std::max(sgpr_spill_count, kernel_sgpr_spill);
+                vgpr_spill_count =
+                    std::max(vgpr_spill_count, kernel_vgpr_spill);
+                private_segment_size =
+                    std::max(private_segment_size, kernel_private_size);
+
+                amd_comgr_destroy_metadata(kernel_node);
+              }
+            }
+            amd_comgr_destroy_metadata(kernels_node);
+          }
+
+          amd_comgr_destroy_metadata(metadata);
+        } else {
+          VLOG(2) << "Could not get HSACO metadata via amd_comgr";
+        }
+      }
+      amd_comgr_release_data(comgr_data);
+    } else {
+      VLOG(2) << "Could not create amd_comgr data object";
+    }
+
+    if (sgpr_spill_count > 0 || vgpr_spill_count > 0 ||
+        private_segment_size > 0) {
+      has_spilling = true;
+    }
+  }
+
+  if (has_spilling) {
+    VLOG(0) << "====== REGISTER SPILLING DETECTED ======";
+    VLOG(0) << "Module: " << module->getModuleIdentifier();
+    VLOG(0) << "SGPR spill count: " << sgpr_spill_count;
+    VLOG(0) << "VGPR spill count: " << vgpr_spill_count;
+    VLOG(0) << "Private segment size: " << private_segment_size << " bytes";
+    VLOG(0) << "Performance may be degraded due to register pressure";
+    VLOG(0) << "========================================";
+
+    // Filter out kernels with register spilling during autotuning
+    // This matches NVIDIA's behavior in ptx_compiler_impl.cc
+    // TODO: remove ptx from xla_gpu_fail_ptx_compilation_on_register_spilling
+    // to make the flag more general
+    if (debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
+      return xla::Cancelled(
+          "Compilation result discarded due to register spilling");
+    }
+  } else {
+    VLOG(2) << "No register spilling detected";
+  }
+
+  // Clean up temp files
   if (!keep_tempfiles) {
     remove(ir_path.c_str());
     remove(isabin_path.c_str());
@@ -562,6 +701,34 @@ std::vector<std::string> GetAMDGPUBackendOptions(
                            backend_extra_llvm_opts.cbegin(),
                            backend_extra_llvm_opts.cend());
 
+  // Manually add LLVM debug options for register usage analysis
+  // Note: The disassembly-based spilling detection is now the primary method.
+  // These options are mainly useful for debugging the compiler itself.
+
+  // Uncomment if you want to see LLVM compilation details:
+
+  // Option 1: Enable LLVM statistics (aggregate stats, not per-kernel)
+  // backend_llvm_opts.push_back("-stats");
+
+  // Option 2: Print final machine code (very verbose)
+  // backend_llvm_opts.push_back("-print-after-all");
+
+  // Option 3: Print after register allocation (shows register assignments)
+  // backend_llvm_opts.push_back("-print-after=regallocfast");
+  // backend_llvm_opts.push_back("-print-after=regallocgreedy");
+
+  // Option 4: Enable pass timing (shows compilation time breakdown)
+  // backend_llvm_opts.push_back("-time-passes");
+
+  // Log the final LLVM options
+  if (!backend_llvm_opts.empty()) {
+    LOG(INFO) << "AMDGPU backend LLVM options (" << backend_llvm_opts.size()
+              << "):";
+    for (const auto& opt : backend_llvm_opts) {
+      LOG(INFO) << "  " << opt;
+    }
+  }
+
   return backend_llvm_opts;
 }
 
@@ -576,6 +743,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
   absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
                   rocdl_dir_path);
   auto llvm_opts = GetAMDGPUBackendOptions(debug_options);
+
+  VLOG(2) << "CompileToHsaco called for module: "
+          << module->getModuleIdentifier();
+
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
   std::vector<uint8_t> hsaco;
