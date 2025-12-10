@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -82,12 +84,16 @@ class TraceMeProducer : public TraceMe {
   explicit TraceMeProducer(NameT&& name,
                            ContextType context_type = ContextType::kGeneric,
                            std::optional<uint64> context_id = std::nullopt,
-                           int level = tsl::profiler::TraceMeLevel::kCritical)
+                           int level = tsl::profiler::TraceMeLevel::kCritical,
+                           std::optional<int32_t> pid = std::nullopt)
       : TraceMe(std::forward<NameT>(name), level),
         context_id_(context_id.has_value() ? context_id.value()
                                            : TraceMe::NewActivityId()) {
     AppendMetadata([&] {
-      return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
+      return TraceMeEncode(
+          {{"_pt", context_type},
+           {"_p", context_id_},
+           {"_ppid", pid.value_or(tsl::Env::Default()->GetProcessId())}});
     });
   }
 
@@ -101,10 +107,14 @@ class TraceMeConsumer : public TraceMe {
  public:
   template <typename NameT>
   TraceMeConsumer(NameT&& name, ContextType context_type, uint64 context_id,
-                  int level = tsl::profiler::TraceMeLevel::kCritical)
+                  int level = tsl::profiler::TraceMeLevel::kCritical,
+                  std::optional<uint64> pid = std::nullopt)
       : TraceMe(std::forward<NameT>(name), level) {
     AppendMetadata([&] {
-      return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
+      return TraceMeEncode(
+          {{"_ct", context_type},
+           {"_c", context_id},
+           {"_cpid", pid.value_or(tsl::Env::Default()->GetProcessId())}});
     });
   }
 
