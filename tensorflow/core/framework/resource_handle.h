@@ -19,6 +19,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_index.h"
