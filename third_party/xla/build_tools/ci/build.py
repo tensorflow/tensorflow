@@ -111,6 +111,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
@@ -281,7 +282,9 @@ nvidia_gpu_filters = (
     "-oneapi-only",
 )
 
-single_nvidia_gpu_filters = nvidia_gpu_filters + ("-multi_gpu",)
+nvidia_single_gpu_filters = nvidia_gpu_filters + ("-multi_gpu",)
+
+nvidia_only_multi_gpu_filters = nvidia_gpu_filters + ("multi_gpu",)
 
 
 def nvidia_gpu_build_with_compute_capability(
@@ -289,15 +292,19 @@ def nvidia_gpu_build_with_compute_capability(
     type_: BuildType,
     configs: Tuple[str, ...],
     compute_capability: int,
+    multi_gpu: bool = False,
 ) -> Build:
   extra_gpu_tags = _tag_filters_for_compute_capability(compute_capability)
+  filter_tags = (
+      nvidia_only_multi_gpu_filters if multi_gpu else nvidia_single_gpu_filters
+  )
   return Build(
       type_=type_,
       repo="openxla/xla",
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      test_tag_filters=single_nvidia_gpu_filters + extra_gpu_tags,
-      build_tag_filters=single_nvidia_gpu_filters,
+      test_tag_filters=filter_tags + extra_gpu_tags,
+      build_tag_filters=filter_tags,
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
           "//xla/tsl:ci_build": True,
@@ -434,6 +441,14 @@ nvidia_gpu_build_with_compute_capability(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     compute_capability=75,
+    multi_gpu=False,
+)
+
+nvidia_gpu_build_with_compute_capability(
+    type_=BuildType.XLA_LINUX_X86_GPU_8X_H100_GITHUB_ACTIONS,
+    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
+    compute_capability=90,
+    multi_gpu=True,
 )
 
 oneapi_build_tag_filter = (
@@ -508,9 +523,9 @@ Build(
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -528,9 +543,9 @@ Build(
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -549,9 +564,9 @@ Build(
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -569,9 +584,9 @@ Build(
     repo="openxla/xla",
     configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
@@ -590,9 +605,9 @@ Build(
     repo="openxla/xla",
     configs=(),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
@@ -613,9 +628,9 @@ Build(
     repo="openxla/xla",
     configs=(),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    test_tag_filters=single_nvidia_gpu_filters
+    test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
-    build_tag_filters=single_nvidia_gpu_filters,
+    build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
