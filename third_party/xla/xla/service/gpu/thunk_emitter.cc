@@ -1564,12 +1564,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and
     // outputs is the same.
-    TF_RET_CHECK(
-        LayoutUtil::LayoutsInShapesEqual(keys_shape, sort->operand(i)->shape(),
-                                         Layout::Equal().IgnoreMemorySpace()));
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        keys_shape, sort->operand(i)->shape(),
+        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
     TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
         keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
-        Layout::Equal().IgnoreMemorySpace()));
+        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
 
     BufferAllocation::Slice destination_buffer;
     BufferAllocation::Slice source_address;
