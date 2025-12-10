@@ -123,6 +123,7 @@ xla_cc_test(
     srcs = ["execution_state_test.cc"],
     deps = [
         ":execution_state",
+        ":execution_state_proto_cc",
         ":type_registry",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
