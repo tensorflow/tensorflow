@@ -773,7 +773,9 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_for_dense_layers=(
+              self._experimental_disable_per_channel_quantization_for_dense_layers
+          ),
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
@@ -785,7 +787,9 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
+          disable_per_channel_quantization_for_dense_layers=(
+              self._experimental_disable_per_channel_quantization_for_dense_layers
+          ),
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -1118,7 +1122,8 @@ class TFLiteConverterBase:
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metadata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+          conversion_metadata_fb.ModelOptimizationMode
+          .QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
