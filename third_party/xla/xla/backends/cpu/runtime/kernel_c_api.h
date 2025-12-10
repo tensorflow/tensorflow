@@ -72,6 +72,7 @@ typedef struct XLA_CPU_KernelCallFrame {
 
   size_t num_args;
   const XLA_CPU_KernelArg* args;
+  size_t batch_size;
 } XLA_CPU_KernelCallFrame;
 
 // Error reporting for host kernels. NULL means success.

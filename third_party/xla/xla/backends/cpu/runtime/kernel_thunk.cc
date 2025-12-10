@@ -223,7 +223,7 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   // Use a fast path if kernel called just once.
   if (ABSL_PREDICT_TRUE(call_once_)) {
-    TF_RETURN_IF_ERROR(kernel->CallOnce(kernel_args));
+    TF_RETURN_IF_ERROR(kernel->CallOnce(kernel_args, params.batch_size));
     return OkExecuteEvent();
   }
 

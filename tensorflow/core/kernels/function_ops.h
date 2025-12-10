@@ -38,6 +38,7 @@ class ArgOp : public OpKernel {
  private:
   int index_;
   DataType dtype_;
+  bool is_batch_;
 
   ArgOp(const ArgOp&) = delete;
   void operator=(const ArgOp&) = delete;

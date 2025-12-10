@@ -470,6 +470,15 @@ absl::Status Encapsulator::Subgraph::RecordArg(
     DataType dtype = edge->dst()->input_type(edge->dst_input());
     builder.Attr("T", dtype);
     builder.Attr("index", arg_index);
+    AttrSlice attrs = src_node->attrs();
+    auto shape_attr = attrs.FindByString("_output_shapes");
+    if (shape_attr && shape_attr->has_list()) {
+      const TensorShapeProto& shape = shape_attr->list().shape(src_slot);
+      if (shape.dim_size() >= 1 && shape.dim(0).size() == -1) {
+        VLOG(1) << "[Joey] Found Dynamic dimension in " << src_node->name() << ":" <<src_slot;
+        builder.Attr("_is_batch", true);
+      }
+    }
     absl::Status s = builder.Finalize(&arg_def);
     if (!s.ok()) return s;
 

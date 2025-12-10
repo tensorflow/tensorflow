@@ -42,6 +42,7 @@ static constexpr const char* const kGradientOp =
 ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("_is_batch", &is_batch_));
 }
 
 void ArgOp::Compute(OpKernelContext* ctx) {
@@ -59,15 +60,52 @@ void ArgOp::Compute(OpKernelContext* ctx) {
     }
   };
 
+  Tensor t;
   if (frame->CanConsumeArg(index_)) {
-    Tensor val;
-    frame->ConsumeArg(index_, &val);
-    OP_REQUIRES_OK(ctx, validate_type(val));
-    ctx->set_output(0, std::move(val));
+    frame->ConsumeArg(index_, &t);
+    OP_REQUIRES_OK(ctx, validate_type(t));
+    ctx->set_output(0, std::move(t));
+    val = &t;
   } else {
     OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
     OP_REQUIRES_OK(ctx, validate_type(*val));
     ctx->set_output(0, *val);
+  }
+  if (is_batch_) {
+    SessionState * ss = ctx->session_state();
+    if (ss) {
+      int64_t cur_val = ss->GetBatchSize();
+      // Current batch size in the Session state can have 3 conditions:
+      // == 0: initial value. Can be set to the newly found batch size
+      // >0: previously set batch size exist.
+      // < 0: conflict detected already. Do nothing
+      // Batch size conflict is detected if in the same session but different
+      // Arg operators get different batch sizes. To be conservtive once
+      // conflict is detected the session batch size will always be -1
+      if (cur_val == 0) {
+        int64_t batch_size = val->dim_size(0);
+        ss->SetBatchSize(batch_size);
+        ctx->set_batch_size(batch_size);
+        VLOG(4) << "Setting batch size of SessionState to " << batch_size;
+      }
+      else if (cur_val > 0) {
+        int64_t batch_size = val->dim_size(0);
+        int64_t ctx_batch_size = ctx->batch_size();
+        LOG(INFO) << "Context batch_size: " << ctx_batch_size << " new batch size: " << batch_size;
+        if (ctx_batch_size == 0 || batch_size == ctx_batch_size) {
+          ss->SetBatchSize(batch_size);
+          ctx->set_batch_size(batch_size);
+          VLOG(4) << "Setting batch size of SessionState to " << batch_size;
+        }
+        else {
+          // In this case batch size of the same context don't agree. We cannot
+          // Assume any batch size
+          ss->SetBatchSize(-1);
+          VLOG(4) << "Conflict detected. Setting batch size of SessionState to " << -1;
+        }
+      }
+      // else if cur_val < 0: do nothing
+    }
   }
 }
 

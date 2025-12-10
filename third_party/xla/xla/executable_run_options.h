@@ -195,6 +195,13 @@ class ExecutableRunOptions {
     return *this;
   }
 
+  ExecutableRunOptions& set_batch_size(int64_t batch_size) {
+    batch_size_ = batch_size;
+    return *this;
+  }
+
+  int64_t batch_size() const { return batch_size_; }
+
   int32_t launch_id() const { return launch_id_; }
 
   ExecutableRunOptions& set_run_id(RunId id);
@@ -265,6 +272,7 @@ class ExecutableRunOptions {
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
   int32_t launch_id_ = 0;
+  int64_t batch_size_ = 0;
   stream_executor::Stream* device_to_host_stream_ = nullptr;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;

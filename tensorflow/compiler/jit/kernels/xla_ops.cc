@@ -953,6 +953,11 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 
   xla::ExecutableRunOptions run_options;
 
+  if (auto s = ctx->session_state()) {
+    run_options.set_batch_size(s->GetBatchSize());
+    VLOG(1) << "run_options.batch_size is set to: " << run_options.batch_size();
+  }
+
   // Host callbacks used for HLO send/recv.
   xla::SendDeviceMemoryFunction send_function =
       GetSendDeviceMemoryFunction(ctx, key);

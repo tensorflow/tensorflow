@@ -43,11 +43,16 @@ class SessionState {
 
   static const char* kTensorHandleResourceTypeName;
 
+  int64_t GetBatchSize(void) { return batch_size_; }
+  void SetBatchSize(int64_t bs) { batch_size_ = bs; }
+
  private:
   mutex state_lock_;
 
   // For generating unique ids for tensors stored in the session.
   int64_t tensor_id_ = 0;
+
+  int64_t batch_size_ = 0;
 
   // The live tensors in the session. A map from tensor handle to tensor.
   std::unordered_map<string, Tensor> tensors_;

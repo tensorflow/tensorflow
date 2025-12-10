@@ -318,7 +318,8 @@ absl::Status CpuExecutable::ExecuteThunks(
       intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
-      &custom_call_execute_params};
+      &custom_call_execute_params,
+      run_options->batch_size()};
 
   auto executed_event = thunks_->Execute(execute_params);
   tsl::BlockUntilReady(executed_event);
