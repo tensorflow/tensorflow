@@ -58,6 +58,7 @@ tsl_cc_test(
     deps = [
         ":xla_op_utils",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
