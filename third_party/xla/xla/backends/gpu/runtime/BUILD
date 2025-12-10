@@ -1949,7 +1949,9 @@ cc_library(
     hdrs = ["outfeed_thunk.h"],
     deps = [
         ":shaped_slice",
+        ":shaped_slice_proto_cc",
         ":thunk",
+        ":thunk_proto_cc",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
