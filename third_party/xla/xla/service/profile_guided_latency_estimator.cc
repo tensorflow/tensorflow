@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/latency_hiding_scheduler.h"
+#include "xla/xla.pb.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {

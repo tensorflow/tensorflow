@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/space_to_batch_converter.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
