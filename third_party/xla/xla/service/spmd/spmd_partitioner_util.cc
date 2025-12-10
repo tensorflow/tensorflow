@@ -536,6 +536,15 @@ std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithIota(
                               processed_device_groups.iota()->transpose_perm());
 }
 
+// Expand the device groups, given a mesh-axes partition group list.
+// NOLINTNEXTLINE(clang-diagnostic-unused-function)
+std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithMeshAxes(
+    const DeviceGroupTileAssignment& device_groups,
+    MeshAxesReplicaGroupList* partition_group_list) {
+  return ExpandDeviceGroupsWithIota(
+      device_groups, partition_group_list->ToIotaReplicaGroupList());
+}
+
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
     const DeviceGroupTileAssignment& device_groups) {
