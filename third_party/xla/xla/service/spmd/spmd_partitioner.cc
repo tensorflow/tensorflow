@@ -1343,26 +1343,17 @@ PartitionedHlo PartitionedHlo::Replicate() const {
 HloInstruction* PartitionedHlo::ReplicatePartial(
     absl::Span<const int64_t> dims) const {
   CHECK(!sharding().IsTileMaximal());
-  const Shape& shard_shape = hlo()->shape();
-  Shape final_result_shape = shard_shape;
-  Shape ag_result_shape = shard_shape;
+  Shape ag_result_shape = hlo()->shape();
   std::vector<int64_t> broadcast_dims;
-  std::vector<int64_t> dus_ar_dims;
   std::vector<int64_t> ag_dims;
   // Find dimensions that can be replicated with Broadcast() (shard size 1) and
-  // others that need all-gather. dus_ar_dims is a generalization of
-  // broadcast_dims where the full size is less than half of allgather size, and
-  // we will use dus->allreduce on them.
+  // others that need all-gather.
   for (int64_t i : dims) {
-    int64_t partitions = sharding().dimension(i);
-    if (partitions == 1) {
+    if (sharding().dimension(i) == 1) {
       continue;
     }
-    final_result_shape.set_dimensions(i, base_shape().dimensions(i));
-    if (base_shape().dimensions(i) == shard_shape.dimensions(i)) {
+    if (base_shape().dimensions(i) == hlo()->shape().dimensions(i)) {
       broadcast_dims.push_back(i);
-    } else if (base_shape().dimensions(i) <= partitions / 2) {
-      dus_ar_dims.push_back(i);
     } else {
       ag_result_shape.set_dimensions(i, base_shape().dimensions(i));
       ag_dims.push_back(i);
@@ -1386,14 +1377,14 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         state(), grouped.device_groups, state().b);
     auto partial_replicate_hlo =
-        PartitionedHlo(hlo_, shard_shape, per_group_partitioner_state)
+        PartitionedHlo(hlo_, base_shape(), per_group_partitioner_state)
             .Broadcast();
     hlo_->set_sharding(original_sharding);
     partial_replicate_hlo.hlo()->clear_sharding();
     broadcast = partial_replicate_hlo.hlo();
   }
 
-  if (ag_dims.empty() && dus_ar_dims.empty()) {
+  if (ag_dims.empty()) {
     return broadcast;
   }
 
@@ -1410,48 +1401,6 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
                                     ag_result_shape.dimensions(), strides));
   }
 
-  if (!dus_ar_dims.empty()) {
-    auto zero = state_.b->AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::Zero(shard_shape.element_type())));
-    std::vector<int64_t> masking_dims;
-    for (int64_t dim : dus_ar_dims) {
-      if (shard_shape.dimensions(dim) * sharding().dimension(dim) !=
-          base_shape().dimensions(dim)) {
-        // DUS will be out-of-bound and offset will be clamped, so we need to
-        // mask this dim with 0.
-        masking_dims.push_back(dim);
-      }
-    }
-    if (!masking_dims.empty()) {
-      std::vector<int64_t> skipped_dims;
-      for (int64_t i = 0; i < base_shape().dimensions().size(); ++i) {
-        if (!absl::c_linear_search(masking_dims, i)) {
-          skipped_dims.push_back(i);
-        }
-      }
-      result->copy_sharding(hlo_);
-      result = PartitionedHlo(result, final_result_shape, state_)
-                   .PadWithValue(zero,
-                                 /*left_padded_dims=*/{},
-                                 /*skipped_dims=*/skipped_dims)
-                   .hlo();
-    }
-    auto zero_bcast = state_.b->AddInstruction(
-        HloInstruction::CreateBroadcast(final_result_shape, zero, {}));
-    auto offsets = MakePartitionOffsets(
-        final_result_shape,
-        hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
-            sharding(), dus_ar_dims),
-        state_.partition_id, state_.b, dus_ar_dims);
-    auto dus =
-        state_.b->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-            final_result_shape, zero_bcast, result, offsets));
-    HloComputation* reduction =
-        MakeBinaryAdd(shard_shape.element_type(), state_.module);
-    result = state_.partitioner->AllReduceAlongShardingDims(
-        state_.b, dus, sharding(), state_.next_channel_id, dus_ar_dims,
-        state_.collective_ops_creator, reduction);
-  }
   return result;
 }
 
