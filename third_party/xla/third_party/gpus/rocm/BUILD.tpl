@@ -537,7 +537,7 @@ cc_library(
 cc_library(
     name = "amd_comgr",
     hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
-    srcs = glob([
+    data = glob([
         "%{rocm_root}/lib/libamd_comgr_loader.so*",
         "%{rocm_root}/lib/libamd_comgr.so*",
         "%{rocm_root}/lib/llvm/lib/libLLVM.so*",
@@ -549,10 +549,11 @@ cc_library(
     linkopts = select({
         ":build_hermetic": [
             "-lamd_comgr_loader",
+            "-lamd_comgr",
         ],
         "//conditions:default": [
             "-lamd_comgr",
-	],
+        ],
     }),
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
