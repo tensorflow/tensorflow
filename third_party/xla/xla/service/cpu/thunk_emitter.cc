@@ -770,6 +770,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       /*supported_types=*/
       {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
+#ifdef XLA_YNNPACK
+  const bool use_ynn = absl::c_linear_search(
+      hlo_module_config_.debug_options().xla_cpu_experimental_ynn_fusion_type(),
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
+  if (use_ynn) {
+    if (IsConvolutionOpSupportedByYnn(instruction)) {
+      return EmitYnnFusionThunk(instruction);
+    }
+  }
+#endif  // XLA_YNNPACK
+
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*instruction,
@@ -1564,6 +1575,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
     if (capture_rhs) {
       captured_arguments_ids = kCapturedIds;
     }
+  } else if (instruction->opcode() == HloOpcode::kConvolution) {
+    const HloConvolutionInstruction* conv =
+        Cast<HloConvolutionInstruction>(instruction);
+    // Construct YNNPACK subgraph builder from the convolution instruction.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnConvolutionBuilder(conv));
   } else {
     auto* fusion = Cast<HloFusionInstruction>(instruction);
     const HloComputation* computation =

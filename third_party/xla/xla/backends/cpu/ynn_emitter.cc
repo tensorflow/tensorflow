@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
@@ -368,6 +369,30 @@ static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
                         YNN_INVALID_VALUE_ID, &output_id, /*flags=*/0);
 }
 
+static ynn_status DefineConvolution(
+    ynn_subgraph_t subgraph, uint32_t input1_id, uint32_t input2_id,
+    uint32_t output_id, const std::vector<int32_t>& stencil_axes,
+    const std::vector<int32_t> new_axes,
+    const std::vector<size_t>& stencil_dims,
+    const std::vector<size_t>& stencil_strides,
+    const std::vector<size_t>& stencil_dilations) {
+  uint32_t padding_id = YNN_INVALID_VALUE_ID;
+  uint32_t stencil_id = YNN_INVALID_VALUE_ID;
+
+  // Make a stenciled view of the input [n, h, w, ci] -> [n, h, w, kh, kw, ci].
+  ynn_status status = ynn_define_stencil_copy(
+      subgraph, /*num_stencils=*/stencil_dims.size(), stencil_axes.data(),
+      new_axes.data(), stencil_dims.data(), stencil_strides.data(),
+      stencil_dilations.data(), input1_id, padding_id, &stencil_id,
+      /*flags=*/0);
+  if (status != ynn_status_success) {
+    return status;
+  }
+  return ynn_define_dot(subgraph, /*num_k_dims=*/stencil_dims.size() + 1,
+                        stencil_id, input2_id, YNN_INVALID_VALUE_ID, &output_id,
+                        /*flags=*/0);
+}
+
 static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
     const HloDotInstruction* dot,
     std::vector<std::unique_ptr<Literal>>& literals,
@@ -442,6 +467,92 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   return subgraph;
 }
 
+static absl::StatusOr<YnnSubgraph> EmitYnnConvolutionSubgraph(
+    const HloConvolutionInstruction* conv,
+    std::vector<std::unique_ptr<Literal>>& literals,
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
+  TF_ASSIGN_OR_RETURN(
+      YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
+        return ynn_create_subgraph(
+            /*external_value_ids=*/3,
+            YnnFlags(conv->GetModule()->config().debug_options()), subgraph);
+      }));
+
+  uint32_t lhs_id = 0;
+  uint32_t rhs_id = 1;
+  uint32_t out_id = 2;
+
+  const HloInstruction* lhs = conv->operand(0);
+  const HloInstruction* rhs = conv->operand(1);
+
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
+  const Shape& out_shape = conv->shape();
+
+  auto dims = [](absl::Span<const int64_t> dims) -> std::vector<size_t> {
+    return {dims.begin(), dims.end()};
+  };
+
+  std::vector<size_t> lhs_dims = dims(lhs_shape.dimensions());
+  std::vector<size_t> rhs_dims = dims(rhs_shape.dimensions());
+  std::vector<size_t> out_dims = dims(out_shape.dimensions());
+
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_lhs_type, YnnType(lhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_rhs_type, YnnType(rhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
+
+  const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), ynn_lhs_type, lhs_dims.size(), lhs_dims.data(),
+      /*data=*/nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
+
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), ynn_rhs_type, rhs_dims.size(), rhs_dims.data(),
+      /*data=*/nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
+
+  const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
+  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+      subgraph.get(), ynn_out_type, out_dims.size(), out_dims.data(),
+      /*data=*/nullptr,
+      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+      /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));
+
+  Window conv_window = conv->window();
+  int conv_window_dims_size = conv_window.dimensions_size();
+
+  ConvolutionDimensionNumbers conv_dimensions =
+      conv->convolution_dimension_numbers();
+
+  std::vector<int32_t> stencil_axes(conv_window_dims_size);
+  std::vector<int32_t> new_axes(conv_window_dims_size);
+  std::vector<size_t> stencil_dims(conv_window_dims_size);
+  std::vector<size_t> stencil_strides(conv_window_dims_size);
+  std::vector<size_t> stencil_dilations(conv_window_dims_size);
+
+  for (size_t i = 0; i < conv_window.dimensions_size(); ++i) {
+    stencil_axes[i] = conv_dimensions.input_spatial_dimensions(i);
+    stencil_dims[i] = conv_window.dimensions(i).size();
+    stencil_strides[i] = conv_window.dimensions(i).stride();
+    stencil_dilations[i] = 1;
+  }
+
+  std::iota(new_axes.begin(), new_axes.end(), lhs_dims.size() - 1);
+
+  YNN_RETURN_IF_ERROR(DefineConvolution(subgraph.get(), lhs_id, rhs_id, out_id,
+                                        stencil_axes, new_axes, stencil_dims,
+                                        stencil_strides, stencil_dilations));
+
+  ynn_status status = ynn_optimize_subgraph(
+      subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);
+  TF_RETURN_IF_ERROR(YnnStatusToStatus(status));
+
+  return subgraph;
+}
+
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
     absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnFusionBuilder(const HloComputation* computation) {
@@ -475,6 +586,16 @@ EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs) {
           absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
         return EmitYnnDotSubgraph(dot, literals, arguments_buffers,
                                   capture_rhs);
+      };
+}
+
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
+EmitYnnConvolutionBuilder(const HloConvolutionInstruction* conv) {
+  return
+      [conv, literals = std::vector<std::unique_ptr<Literal>>()](
+          absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
+        return EmitYnnConvolutionSubgraph(conv, literals, arguments_buffers);
       };
 }
 

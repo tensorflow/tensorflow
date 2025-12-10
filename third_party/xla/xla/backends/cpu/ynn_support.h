@@ -71,6 +71,9 @@ bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
 // Returns true if the reduce op will be offloaded to YNNPACK.
 bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
 
+// Returns true if the convolution op is supported by YNNPACK.
+bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);
+
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);
 

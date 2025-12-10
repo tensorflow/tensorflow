@@ -273,6 +273,79 @@ bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
   }
 }
 
+bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
+  CHECK_EQ(instr->opcode(), HloOpcode::kConvolution);
+  const HloConvolutionInstruction* conv =
+      Cast<HloConvolutionInstruction>(instr);
+  // Stores tuple of allowed (input, output) dtypes.
+  static const absl::NoDestructor<absl::flat_hash_set<
+      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
+      kAllowedTypes({
+          {F32, F32, F32},
+      });
+
+  PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
+  PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
+  PrimitiveType out_dtype = conv->shape().element_type();
+  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+    return false;
+  }
+
+  ConvolutionDimensionNumbers conv_dimensions =
+      conv->convolution_dimension_numbers();
+
+  // Make sure that this layout is supported.
+  if (conv_dimensions.input_feature_dimension() != 3 ||
+      conv_dimensions.output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.kernel_input_feature_dimension() != 2 ||
+      conv_dimensions.kernel_output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions_size() != 2 ||
+      conv_dimensions.kernel_spatial_dimensions_size() != 2 ||
+      conv_dimensions.output_spatial_dimensions_size() != 2) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions(0) != 1 ||
+      conv_dimensions.input_spatial_dimensions(1) != 2 ||
+      conv_dimensions.kernel_spatial_dimensions(0) != 0 ||
+      conv_dimensions.kernel_spatial_dimensions(1) != 1 ||
+      conv_dimensions.output_spatial_dimensions(0) != 1 ||
+      conv_dimensions.output_spatial_dimensions(1) != 2) {
+    return false;
+  }
+
+  Window window = conv->window();
+
+  // Only support 2D convolution.
+  if (window.dimensions_size() != 2) {
+    return false;
+  }
+
+  // Only VALID padding for now.
+  if ((window.dimensions(0).padding_low() != 0) ||
+      (window.dimensions(0).padding_high() != 0) ||
+      (window.dimensions(1).padding_low() != 0) ||
+      (window.dimensions(1).padding_high() != 0)) {
+    return false;
+  }
+
+  // No dilation for now.
+  if ((window.dimensions(0).window_dilation() != 1) ||
+      (window.dimensions(1).window_dilation() != 1) ||
+      (window.dimensions(0).base_dilation() != 1) ||
+      (window.dimensions(1).base_dilation() != 1)) {
+    return false;
+  }
+
+  return true;
+}
+
 uint32_t YnnFlags(const DebugOptions& debug_options) {
   uint32_t flags = 0;
   if (!debug_options.xla_cpu_enable_platform_dependent_math()) {

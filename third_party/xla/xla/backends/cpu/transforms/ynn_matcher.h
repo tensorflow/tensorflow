@@ -43,7 +43,8 @@ class YnnMatcher : public LibraryMatcher {
     static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
         kSupportedOps{[]() {
           absl::flat_hash_set<HloOpcode> supported_ops{
-              HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kConstant};
+              HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kConstant,
+              HloOpcode::kConvolution};
           for (const auto& [op, _] : GetYnnUnaryOpMap()) {
             supported_ops.insert(op);
           }
@@ -64,6 +65,9 @@ class YnnMatcher : public LibraryMatcher {
     }
     if (instr->opcode() == HloOpcode::kReduce) {
       return IsReduceOpOffloadedToYnn(instr);
+    }
+    if (instr->opcode() == HloOpcode::kConvolution) {
+      return IsConvolutionOpSupportedByYnn(instr);
     }
     if (instr->IsConstant()) {
       return IsConstantSupportedByYnn(instr);
