@@ -344,6 +344,10 @@ xla_cc_test(
 cc_library(
     name = "memory_allocation",
     hdrs = ["memory_allocation.h"],
+    deps = [
+        ":device_address",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 cc_library(
@@ -529,6 +533,7 @@ cc_library(
     name = "generic_memory_allocation",
     hdrs = ["generic_memory_allocation.h"],
     deps = [
+        ":device_address",
         ":memory_allocation",
         "@com_google_absl//absl/functional:any_invocable",
     ],
