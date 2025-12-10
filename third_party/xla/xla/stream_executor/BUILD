@@ -824,7 +824,10 @@ cc_library(
     name = "allocator_stats",
     srcs = ["allocator_stats.cc"],
     hdrs = ["allocator_stats.h"],
-    deps = ["@com_google_absl//absl/strings:str_format"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:numbers",
+    ],
 )
 
 cc_library(
