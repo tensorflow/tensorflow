@@ -3106,6 +3106,7 @@ cc_library(
     srcs = ["ragged_all_to_all_multi_host_decomposer.cc"],
     hdrs = ["ragged_all_to_all_multi_host_decomposer.h"],
     deps = [
+        "//xla:array",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
