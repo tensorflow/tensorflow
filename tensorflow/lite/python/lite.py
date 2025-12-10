@@ -668,7 +668,7 @@ class TFLiteConverterBase:
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
     # experimental_new_quantizer is on.
-    self.experimental_new_dynamic_range_quantizer = True
+    self.experimental_new_dynamic_range_quantizer = False
     # Experimental flag to enable low-bit QAT in 8 bit.
     self._experimental_low_bit_qat = False
     # Experimental flag to add all TF ops (including custom TF ops) to the
