@@ -867,6 +867,7 @@ xla_cc_test(
     deps = [
         ":test_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep

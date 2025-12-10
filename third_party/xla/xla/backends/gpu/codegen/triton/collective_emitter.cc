@@ -72,17 +72,11 @@ using ::xla::xtile::TensorValue;
 using ::xla::xtile::TileInfo;
 
 namespace ttir = ::mlir::triton;
-namespace mtx = ::mlir::triton::xla;
-namespace arith = ::mlir::arith;
 
 // The main memory space on a device (HBM).
 static constexpr auto kGlobalAddressSpace =
     static_cast<std::underlying_type_t<mlir::NVVM::NVVMMemorySpace>>(
         mlir::NVVM::NVVMMemorySpace::Global);
-
-// Metadata arguments for the collective emitter.
-// device_rank, signal_value, signal_buffers.
-static constexpr int32_t kNumCollectiveMetadataArgs = 3;
 
 struct AllReduceInfo {
   ReductionKind reduction_kind;
@@ -181,155 +175,6 @@ GetBlockLevelFusionConfigForAllReduce(
     output_tile->add_sizes(llvm::PowerOf2Ceil(tile_size));
   }
   return block_level_config;
-}
-
-absl::StatusOr<TensorValue> EmitAllReduce(
-    mlir::ImplicitLocOpBuilder& b, const HloComputation* computation,
-    const HloAllReduceInstruction& all_reduce,
-    const TiledHloInstruction& tiled_hlo_reduce,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(computation->root_instruction()->shape());
-  const TiledHloInstruction* tiled_input_hlo = tiled_hlo_reduce.operand(0);
-  TensorValue input_tile = values[tiled_input_hlo];
-
-  // Variadics are not supported yet so we can fix inputs to 1.
-  // Which means 2 arguments for input/output one for scratch buffers and 3
-  // metadata arguments. Plus 1 for the tile index for a total of 7.
-  const int32_t num_input_output_args = computation->num_parameters() * 2;
-  const int32_t num_scratch_buffers = computation->num_parameters();
-  static constexpr int32_t kNumTileIndexArgs = 1;
-  TF_RET_CHECK(fn.getNumArguments() ==
-               (num_input_output_args + num_scratch_buffers +
-                kNumCollectiveMetadataArgs + kNumTileIndexArgs));
-  // Opaque arguments start after the input/output arguments.
-  const int32_t start_idx = num_input_output_args;
-  mlir::Value device_rank = fn.getArgument(start_idx);
-  TF_RET_CHECK(device_rank.getType().isInteger(32));
-  mlir::Value signal_value = fn.getArgument(start_idx + 1);
-  TF_RET_CHECK(signal_value.getType().isInteger(32));
-  // !tt.ptr<!tt.ptr<i32>>
-  mlir::Value signal_buffers = fn.getArgument(start_idx + 2);
-  // !tt.ptr<!tt.ptr<i64>>
-  mlir::Value remote_input_buffers = fn.getArgument(start_idx + 3);
-
-  TF_ASSIGN_OR_RETURN(
-      TileInfo tile_info,
-      TileInfo::Construct(b, pid, /*runtime_values=*/{}, *tiled_input_hlo));
-
-  // 1. Scatter phase: Copy local tile to the remote buffer of the current rank.
-  const auto ptr_to_i64_type =
-      ttir::PointerType::get(b.getI64Type(), kGlobalAddressSpace);
-  auto remote_input_buffers_i64 =
-      ttir::BitcastOp::create(b, ptr_to_i64_type, remote_input_buffers);
-
-  const mlir::Type i64_type = b.getI64Type();
-  const mlir::Type elem_type = input_tile.getType().getElementType();
-  const mlir::Type elem_storage_type = xtile::StorageType(elem_type);
-  const auto ptr_to_elem_type =
-      ttir::PointerType::get(elem_storage_type, kGlobalAddressSpace);
-  constexpr int32_t kBitsPerByte = 8;
-  const int64_t remote_buffer_size =
-      num_elements * (elem_storage_type.getIntOrFloatBitWidth() / kBitsPerByte);
-  Value buffer_index = arith::AndIOp::create(
-      b, i64_type, arith::ExtSIOp::create(b, i64_type, signal_value),
-      arith::ConstantOp::create(b, i64_type, b.getI64IntegerAttr(1)));
-  Value buffer_offset = arith::MulIOp::create(
-      b, i64_type, buffer_index,
-      arith::ConstantOp::create(b, i64_type,
-                                b.getI64IntegerAttr(remote_buffer_size)));
-  // Helper function to get the buffer pointer for a given signal value.
-  const auto get_buffer_ptr = [&](mlir::Value buffer_ptr_base) -> mlir::Value {
-    return ttir::AddPtrOp::create(b, ptr_to_elem_type, buffer_ptr_base,
-                                  buffer_offset);
-  };
-
-  mlir::ArrayRef<int64_t> remote_shape = tile_info.original_shape();
-  const mlir::MemRefType remote_memref_type =
-      mlir::MemRefType::get(remote_shape, elem_storage_type);
-  // Scoped to reuse variable names during reduction phase.
-  {
-    Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-        b, ptr_to_i64_type, remote_input_buffers_i64, device_rank);
-    Value remote_buf_i64 =
-        ttir::LoadOp::create(b, remote_buf_ptr_addr,
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             false);                        // isVolatile
-    Value remote_buf_ptr_base = ttir::IntToPtrOp::create(
-        b, ptr_to_elem_type, remote_buf_i64,
-        llvm::ArrayRef<mlir::NamedAttribute>{xtile::GetDivisibilityAttr(b)});
-    Value remote_buf_ptr = get_buffer_ptr(remote_buf_ptr_base);
-    mlir::Value remote_buf_memref =
-        mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
-    // Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // The parameter extraction casts the storage type to the logical type.
-    // But for copying to the remote buffer we need to cast it back to the
-    // storage type. Downstream passes should be able to optimize this away.
-    TensorValue storage_tile = input_tile;
-    if (elem_storage_type != elem_type) {
-      storage_tile = mlir::cast<TensorValue>(
-          xtile::Cast(b, input_tile, elem_storage_type));
-    }
-    xtile::InsertTileOp::create(
-        b, storage_tile, remote_buf_memref, tile_info.offsets(),
-        tile_info.padded_tile_sizes(), tile_info.tile_strides());
-  }
-
-  // 2. Synchronization phase: Wait for all ranks to complete the scatter.
-  int64_t world_size = all_reduce.device_list().num_devices_per_group();
-  mtx::BlockBarrierOp::create(b, signal_buffers, device_rank, signal_value,
-                              b.getI32IntegerAttr(world_size));
-
-  // 3. Reduce phase: Load tiles from all ranks and reduce them.
-  HloComputation* reduction_computation = all_reduce.to_apply();
-  llvm::SmallVector<const HloInstruction*> to_emit;
-  // There is really only one non-parameter instruction in the computation.
-  for (const HloInstruction* instr : reduction_computation->instructions()) {
-    if (instr->opcode() != HloOpcode::kParameter) {
-      to_emit.push_back(instr);
-    }
-  }
-
-  const auto load_tile_for_rank = [&](int64_t rank) {
-    Value rank_idx =
-        arith::ConstantOp::create(b, b.getI64Type(), b.getI64IntegerAttr(rank));
-    Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
-        b, ptr_to_i64_type, remote_input_buffers_i64, rank_idx);
-    Value remote_buf_i64 =
-        ttir::LoadOp::create(b, remote_buf_ptr_addr,
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             false);                        // isVolatile
-    Value remote_buf_ptr_base =
-        ttir::IntToPtrOp::create(b, ptr_to_elem_type, remote_buf_i64);
-    Value remote_buf_ptr = get_buffer_ptr(remote_buf_ptr_base);
-    Value remote_buf_memref =
-        mtx::PtrToMemrefOp::create(b, remote_memref_type, remote_buf_ptr);
-    TensorValue next_tile =
-        EmitParameterExtract(b, tile_info, remote_buf_memref);
-    // # Workaround(i1_to_i8_workaround) as in fusion_emitter.
-    // See fusion emitter for more details.
-    if (elem_storage_type != elem_type) {
-      next_tile = mlir::cast<TensorValue>(xtile::Cast(b, next_tile, elem_type));
-    }
-    return next_tile;
-  };
-  TensorValue accumulator = load_tile_for_rank(0);
-  for (int rank = 1; rank < world_size; ++rank) {
-    TensorValue next_tile = load_tile_for_rank(rank);
-    absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
-    region_values[reduction_computation->parameter_instruction(0)] =
-        accumulator;
-    region_values[reduction_computation->parameter_instruction(1)] = next_tile;
-    TF_ASSIGN_OR_RETURN(accumulator,
-                        xtile::EmitScope(b,
-                                         /*instructions=*/to_emit,
-                                         /*values=*/region_values));
-  }
-  return accumulator;
 }
 
 absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
@@ -441,25 +286,6 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
   }
   // num_metadata_args =
   return hlo_computation->num_parameters() + kNumCollectiveMetadataArgs;
-}
-
-absl::StatusOr<TensorValue> EmitCollective(
-    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_reduce,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
-  const HloComputation* computation = fusion->fused_instructions_computation();
-  const HloInstruction* root = computation->root_instruction();
-  switch (root->opcode()) {
-    case HloOpcode::kAllReduceStart:
-      return EmitAllReduce(
-          b, computation, *xla::Cast<HloAllReduceInstruction>(root),
-          tiled_hlo_reduce, block_level_parameters, fn, pid, values);
-    default:
-      return absl::UnimplementedError(
-          absl::StrCat("Unsupported collective fusion: ", root->ToString()));
-  }
 }
 
 }  // namespace xla::gpu
