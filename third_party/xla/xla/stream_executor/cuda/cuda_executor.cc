@@ -783,8 +783,9 @@ absl::StatusOr<FabricInfo> GetDeviceFabricInfo(nvmlDevice_t device) {
 
   if (fabricInfo.state == NVML_GPU_FABRIC_STATE_NOT_SUPPORTED) {
     std::string error_message =
-        "NVML doesn't support extracting fabric info or NVLink is not used by "
-        "the device.";
+        "[Ignore this message unless multi-node NVLink is used] "
+        "CUDA driver version is too low for extracting fabric info (550+ "
+        "required), or multi-node NVLink is not available.";
     VLOG(2) << error_message;
     return absl::InternalError(error_message);
   }
@@ -1836,11 +1837,6 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     if (fabric_info.ok()) {
       info.cluster_uuid = fabric_info->cluster_uuid;
       info.clique_id = fabric_info->clique_id;
-    } else {
-      if (cc.IsAtLeastHopper() && p2p_link_count.ok() && *p2p_link_count) {
-        LOG(WARNING) << "GPU interconnect information not available: "
-                     << fabric_info.status();
-      }
     }
     desc.set_device_interconnect_info(info);
   }
