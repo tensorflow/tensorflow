@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "tensorflow/lite/types/fp16.h"
 #include "tensorflow/lite/util.h"
 #include "tsl/platform/logging.h"
 
