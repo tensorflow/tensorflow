@@ -122,11 +122,13 @@ class half {
 
  public:
   half() = default;
-  half(float x) : bits_(fp16_ieee_from_fp32_value(x)) {}  // NOLINT
+  half(float x) : bits_(tflite::fp16_ieee_from_fp32_value(x)) {}  // NOLINT
   explicit half(int x)
-      : bits_(fp16_ieee_from_fp32_value(static_cast<float>(x))) {}
+      : bits_(tflite::fp16_ieee_from_fp32_value(static_cast<float>(x))) {}
 
-  operator float() const { return fp16_ieee_to_fp32_value(bits_); }  // NOLINT
+  operator float() const {
+    return tflite::fp16_ieee_to_fp32_value(bits_);
+  }  // NOLINT
 
   static constexpr half from_bits(uint16_t bits) {
     half result{zero_initializer{}};
