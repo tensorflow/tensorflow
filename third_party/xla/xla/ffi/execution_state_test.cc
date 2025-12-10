@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -85,22 +87,26 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
   EXPECT_EQ(data, value);
 }
 
-TEST(ExecutionStateTest, Serialization) {
-  struct MyState {
-    std::string value;
-  };
+struct MyState {
+  std::string value;
+};
 
-  TypeRegistry::TypeInfo type_info = {
-      /*deleter=*/
-      [](void* ptr) { delete static_cast<MyState*>(ptr); },
-      /*serializer=*/
-      [](const void* ptr) -> absl::StatusOr<std::string> {
-        return static_cast<const MyState*>(ptr)->value;
-      },
-      /*deserializer=*/
-      [](absl::string_view state) -> absl::StatusOr<void*> {
-        return new MyState{std::string(state)};
-      }};
+template <>
+struct TypeRegistry::SerDes<MyState> : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(const MyState& value) {
+    return value.value;
+  }
+  static absl::StatusOr<std::unique_ptr<MyState>> Deserialize(
+      absl::string_view data) {
+    auto state = std::make_unique<MyState>();
+    state->value = data;
+    return state;
+  }
+};
+
+TEST(ExecutionStateTest, Serialization) {
+  TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<MyState>();
+
   TF_ASSERT_OK_AND_ASSIGN(
       TypeRegistry::TypeId type_id,
       TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
