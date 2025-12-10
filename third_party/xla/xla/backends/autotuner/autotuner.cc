@@ -332,6 +332,17 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
     }
   }
 
+  if (autotune_config_.exclude_cublas_config) {
+    executable_candidates.erase(
+        std::remove_if(executable_candidates.begin(),
+                       executable_candidates.end(),
+                       [](const ExecutableCandidate& candidate) {
+                         return candidate.config.codegen_backend->name() ==
+                                "Cublas_fission";
+                       }),
+        executable_candidates.end());
+  }
+
   if (executable_candidates.empty()) {
     return absl::InternalError(
         absl::StrCat("Autotuner could not compile any configs for HLO: ",
@@ -502,15 +513,6 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
-  if (autotune_config_.exclude_cublas_config) {
-    results.erase(
-        std::remove_if(results.begin(), results.end(),
-                       [](const ConfigResult& result) {
-                         return result.config.codegen_backend->name() ==
-                                "Cublas_fission";
-                       }),
-        results.end());
-  }
 
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
