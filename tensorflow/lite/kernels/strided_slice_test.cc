@@ -22,10 +22,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -154,7 +152,7 @@ class StridedSliceOpModel : public SingleOpModel {
 template <typename T>
 class StridedSliceOpTest : public ::testing::Test {};
 
-using DataTypes = ::testing::Types<float, half, Eigen::bfloat16, uint8_t,
+using DataTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16, uint8_t,
                                    uint32_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
@@ -349,9 +347,7 @@ TYPED_TEST(StridedSliceOpTest, In1D_Int32End) {
       continue;
     }
     std::vector<TypeParam> values(32768);
-    for (int i = 0; i < 32768; ++i) {
-      values[i] = static_cast<TypeParam>(i);
-    }
+    std::iota(values.begin(), values.end(), TypeParam(0));
 
     StridedSliceOpModel<TypeParam> m({32768}, {1}, {1}, {1}, values, {0},
                                      {32768}, {1}, 0, 0, 0, 0, 0,

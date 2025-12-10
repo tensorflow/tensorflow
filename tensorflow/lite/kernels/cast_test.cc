@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -414,10 +413,11 @@ TEST(CastOpModel, CastFloatToFloat16) {
   m.PopulateTensor<float>(m.input(), {100.f, 1.0f, 0.f, 0.4f, 1.999f, 1.1f});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
-      m.ExtractVector<half>(m.output()),
-      ElementsAreArray({static_cast<half>(100.f), static_cast<half>(1.0f),
-                        static_cast<half>(0.f), static_cast<half>(0.4f),
-                        static_cast<half>(1.999f), static_cast<half>(1.1f)}));
+      m.ExtractVector<Eigen::half>(m.output()),
+      ElementsAreArray(
+          {static_cast<Eigen::half>(100.f), static_cast<Eigen::half>(1.0f),
+           static_cast<Eigen::half>(0.f), static_cast<Eigen::half>(0.4f),
+           static_cast<Eigen::half>(1.999f), static_cast<Eigen::half>(1.1)}));
 }
 
 TEST(CastOpModel, CastFloatToBFloat16) {
@@ -435,10 +435,11 @@ TEST(CastOpModel, CastFloatToBFloat16) {
 
 TEST(CastOpModel, CastFloat16ToFloat) {
   CastOpModel m({TensorType_FLOAT16, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
-  m.PopulateTensor<half>(m.input(),
-                         {static_cast<half>(100.f), static_cast<half>(1.0f),
-                          static_cast<half>(0.f), static_cast<half>(0.4f),
-                          static_cast<half>(1.999f), static_cast<half>(1.1f)});
+  m.PopulateTensor<Eigen::half>(
+      m.input(),
+      {static_cast<Eigen::half>(100.f), static_cast<Eigen::half>(1.0f),
+       static_cast<Eigen::half>(0.f), static_cast<Eigen::half>(0.4f),
+       static_cast<Eigen::half>(1.999f), static_cast<Eigen::half>(1.1f)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear(
