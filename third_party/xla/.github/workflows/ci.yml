@@ -108,6 +108,13 @@ jobs:
             name: "TensorFlow Linux x86 GPU L4",
             repo: "tensorflow/tensorflow",
           },
+          {
+            pool: "linux-x86-a4-224-b200-1gpu",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU B200",
+            repo: "openxla/xla",
+            # skip_on_pr: true,
+          }
         ]
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
@@ -116,6 +123,7 @@ jobs:
       run:
         shell: bash
     timeout-minutes: 60
+    # if: github.event_name != 'pull_request' || matrix.job_info.skip_on_pr != true
     steps:
       - name: "Checking out openxla/xla"
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
