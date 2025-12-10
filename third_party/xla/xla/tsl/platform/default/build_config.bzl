@@ -6,6 +6,7 @@
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:python_rules.bzl", "py_grpc_library")
 load("@com_google_protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_test.bzl", _cc_test = "cc_test")
@@ -228,7 +229,7 @@ def tf_proto_library(
         name_sans_proto = name[:-6]
     else:
         name_sans_proto = name
-    native.proto_library(
+    proto_library(
         name = name,
         srcs = srcs,
         deps = deps + protodeps + [
