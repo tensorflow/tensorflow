@@ -32,10 +32,16 @@ func.func @test_cast_ui8(%arg0: tensor<1x256x256x3x!quant.uniform<u8:f32, 0.0156
 // ----
 
 // CHECK-LABEL: test_error_tosa_ops
-func.func @test_error_tosa_ops(%arg0: tensor<5x10xi8>) -> tensor<5x10xi8> {
+func.func @test_error_tosa_ops(%arg0: tensor<5x10xi8>) -> (tensor<5x10xi8>, none) {
+
+  // Dummy use to TFL dialect to load TFL dialect in MLIR context
+  %0 = "tfl.no_value"() <{value}> : () -> none
+
   // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl}}
   %cst1 = "tosa.const"() <{values = dense<1> : tensor<5x10xi8>}> : () -> tensor<5x10xi8>
   // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl}}
   %1 = "tosa.add"(%arg0, %cst1) : (tensor<5x10xi8>, tensor<5x10xi8>) -> tensor<5x10xi8>
-  func.return %1 : tensor<5x10xi8>
+
+
+  func.return %1, %0 : tensor<5x10xi8>, none
 }

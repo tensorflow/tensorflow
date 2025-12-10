@@ -357,7 +357,8 @@ void ConvertUint8ToInt8::runOnOperation() {
   mlir::func::FuncOp func = getOperation();
 
   func.walk([&](Operation *op) {
-    if (op->getDialect()->getNamespace() == "tosa"){
+    if (isa<TosaOp>(op)){
+      // Run this before calling convert_graph_uint8_tensor as rescaling introduces tosa ops
       op->emitError("tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl");
     }
   });
