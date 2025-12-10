@@ -1397,28 +1397,17 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     return broadcast;
   }
 
-  HloInstruction* result = nullptr;
-  if (state_.collective_ops_creator.create_cross_partition_all_gather) {
-    result = state_.partitioner->AllGatherShards(
-        state_.b, broadcast, sharding(), state_.next_channel_id, ag_dims,
-        state_.collective_ops_creator);
-  }
-
-  if (result == nullptr) {
-    // We do not create all-gather instructions.
-    dus_ar_dims.insert(dus_ar_dims.end(), ag_dims.begin(), ag_dims.end());
-    result = broadcast;
-  } else {
-    // We create all-gather instructions, which may contain padding. Add a slice
-    // to remove the padding.
-    if (!ShapeUtil::Compatible(result->shape(), ag_result_shape)) {
-      std::vector<int64_t> start_indices(ag_result_shape.dimensions().size(),
-                                         0);
-      std::vector<int64_t> strides(ag_result_shape.dimensions().size(), 1);
-      result = state_.b->AddInstruction(
-          HloInstruction::CreateSlice(ag_result_shape, result, start_indices,
-                                      ag_result_shape.dimensions(), strides));
-    }
+  HloInstruction* result = state_.partitioner->AllGatherShards(
+      state_.b, broadcast, sharding(), state_.next_channel_id, ag_dims,
+      state_.collective_ops_creator);
+  // We create all-gather instructions, which may contain padding. Add a slice
+  // to remove the padding.
+  if (!ShapeUtil::Compatible(result->shape(), ag_result_shape)) {
+    std::vector<int64_t> start_indices(ag_result_shape.dimensions().size(), 0);
+    std::vector<int64_t> strides(ag_result_shape.dimensions().size(), 1);
+    result = state_.b->AddInstruction(
+        HloInstruction::CreateSlice(ag_result_shape, result, start_indices,
+                                    ag_result_shape.dimensions(), strides));
   }
 
   if (!dus_ar_dims.empty()) {
