@@ -1887,6 +1887,33 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_ScanOp: MHLO_ShapedInterfaceOp<"scan", [
+      RecursiveMemoryEffects,
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferTensorType,
+    ]> {
+  let summary = "Scan operation";
+  let description = [{
+    Applies a reduction function `body` to `init` and `input` along the
+    `dimension` and produces result `carry` and `output` tensors.
+
+    See:
+    https://www.tensorflow.org/xla/operation_semantics#scan
+  }];
+  let arguments = (ins
+    MHLO_Tensor:$init,
+    MHLO_Tensor:$input,
+    ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse
+  );
+
+  let results = (outs MHLO_Tensor:$result_carry, MHLO_Tensor:$result_output);
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//

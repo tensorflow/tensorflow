@@ -85,7 +85,7 @@ absl::StatusOr<DeviceAddress<uint8_t>> RedzoneAllocator::AllocateBytes(
 
   int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
   TF_ASSIGN_OR_RETURN(
-      OwningDeviceAddress allocated_buffer,
+      ScopedDeviceAddress<uint8_t> allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
                                   byte_size + 2 * redzone_size_ + rhs_slop,
                                   /*retry_on_failure=*/false));
@@ -277,13 +277,13 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
 
   DeviceAddressHandle out_param(executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(
-      stream_->MemZero(out_param.memory_ptr(), sizeof(uint64_t)));
+      stream_->MemZero(out_param.address_ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
-                               DeviceAddress<uint64_t>(out_param.memory()),
+                               DeviceAddress<uint64_t>(out_param.address()),
                                kernel, buf_and_size.second, redzone_size_,
                                redzone_pattern_));
     if (!redzone_status.ok()) {

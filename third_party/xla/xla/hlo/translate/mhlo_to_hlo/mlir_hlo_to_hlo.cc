@@ -2962,6 +2962,8 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
   return mlir::success();
 }
 
+// ScanOp is not yet supported in StableHLO.
+
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaComputationId update_computation;
@@ -4827,6 +4829,32 @@ LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
     return success();
   }
   return failure();
+}
+
+LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputationId body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
+    return failure();
+  }
+
+  xla::XlaOp init;
+  if (failed(GetXlaOp(op.getInit(), value_map, &init, op))) {
+    return failure();
+  }
+  xla::XlaOp input;
+  if (failed(GetXlaOp(op.getInput(), value_map, &input, op))) {
+    return failure();
+  }
+  if (op.getNumResults() != 2) {
+    return failure();
+  }
+
+  xla::XlaOp result =
+      xla::Scan(init, input, body, op.getDimension(), op.getIsReverse());
+  value_map[op.getResultCarry()] = xla::GetTupleElement(result, 0);
+  value_map[op.getResultOutput()] = xla::GetTupleElement(result, 1);
+  return success();
 }
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {

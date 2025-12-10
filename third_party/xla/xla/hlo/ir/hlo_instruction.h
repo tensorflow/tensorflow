@@ -951,6 +951,10 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
       absl::Span<HloInstruction* const> init_values, const Window& window,
       HloComputation* reduce_computation);
 
+  static std::unique_ptr<HloInstruction> CreateScan(
+      const Shape& shape, HloInstruction* init, HloInstruction* input,
+      HloComputation* to_apply, int64_t scan_dimension, bool is_reverse);
+
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
       const Shape& shape, HloInstruction* operand, HloInstruction* scale,
@@ -2878,6 +2882,7 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kScan:
     case HloOpcode::kCustomCall:
       return true;
     default:

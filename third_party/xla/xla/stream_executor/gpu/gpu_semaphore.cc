@@ -35,6 +35,6 @@ DeviceAddress<GpuSemaphoreState> GpuSemaphore::device() {
   // This assumes unified addressing, as we do not explicitly translate the
   // host pointer into a device pointer.
   return DeviceAddress<GpuSemaphoreState>::MakeFromByteSize(
-      ptr_->opaque(), sizeof(GpuSemaphoreState));
+      ptr_->address().opaque(), sizeof(GpuSemaphoreState));
 }
 }  // namespace stream_executor

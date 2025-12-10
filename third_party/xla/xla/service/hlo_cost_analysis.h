@@ -510,6 +510,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleSort(const HloInstruction* sort) override;
   absl::Status HandleParameter(const HloInstruction* parameter) override;
   absl::Status HandleReduce(const HloInstruction* reduce) override;
+  absl::Status HandleScan(const HloInstruction* scan) override;
   absl::Status HandleBatchNormTraining(
       const HloInstruction* batch_norm_training) override;
   absl::Status HandleBatchNormInference(

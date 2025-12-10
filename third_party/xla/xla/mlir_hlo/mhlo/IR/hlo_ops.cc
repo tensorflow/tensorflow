@@ -4385,6 +4385,54 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// ScanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScanOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ScanOp::Adaptor adaptor(operands, attributes, properties, regions);
+  auto initType = cast<ShapedType>(adaptor.getInit().getType());
+  if (initType.hasRank()) {
+    inferredReturnShapes.emplace_back(initType.getShape(),
+                                      initType.getElementType());
+  } else {
+    inferredReturnShapes.emplace_back(initType.getElementType());
+  }
+
+  if (regions.empty() || regions.front()->empty()) {
+    return emitOptionalError(location, "ScanOp region is empty");
+  }
+  auto terminator = regions.front()->front().getTerminator();
+  if (terminator->getNumOperands() != 2) {
+    return emitOptionalError(
+        location, "ScanOp body must return 2 values (carry, output)");
+  }
+  Type outputElemType =
+      getElementTypeOrSelf(terminator->getOperand(1).getType());
+  auto inputType = cast<ShapedType>(adaptor.getInput().getType());
+  inferredReturnShapes.emplace_back(inputType.getShape(), outputElemType);
+  return success();
+}
+
+LogicalResult ScanOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  ScanOp::Adaptor adaptor(operands);
+  if (failed(hlo::deriveShapeFromOperand(
+          &builder, getOperation(), adaptor.getInit(), &reifiedReturnShapes))) {
+    return failure();
+  }
+  if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(),
+                                         adaptor.getInput(),
+                                         &reifiedReturnShapes))) {
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 

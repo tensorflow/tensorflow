@@ -42,8 +42,8 @@ using GetPointerMemorySpaceTest = GpuExecutorTest;
 TEST_F(GetPointerMemorySpaceTest, Host) {
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr->opaque()));
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_space, executor->GetPointerMemorySpace(
+                                                 host_ptr->address().opaque()));
   EXPECT_EQ(memory_space, MemorySpace::kHost);
 }
 
@@ -82,8 +82,9 @@ TEST_F(HostMemoryAllocateTest, Numa) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> host_ptr,
                             executor->HostMemoryAllocate(kSize));
     ASSERT_TRUE(host_ptr);
-    EXPECT_NE(host_ptr->opaque(), nullptr);
-    const int numa_node = tsl::port::NUMAGetMemAffinity(host_ptr->opaque());
+    EXPECT_NE(host_ptr->address().opaque(), nullptr);
+    const int numa_node =
+        tsl::port::NUMAGetMemAffinity(host_ptr->address().opaque());
     if (numa_node == tsl::port::kNUMANoAffinity) {
       // Could be because `executor` could not determine its own NUMA node, in
       // which case numa_node() will be -1 or 0, depending on the failure mode.
