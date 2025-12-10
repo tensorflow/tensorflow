@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
