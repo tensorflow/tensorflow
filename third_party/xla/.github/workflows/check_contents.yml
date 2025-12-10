@@ -46,7 +46,7 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
 
