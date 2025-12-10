@@ -609,6 +609,34 @@ static LogicalResult prepareMatchAndRewriteComparison(
   }
 
   if (!output_is_qtype && !input_x_is_qtype && !input_y_is_qtype) {
+    auto input_x_elem_type = input_x_type.getElementType();
+    auto input_y_elem_type = input_y_type.getElementType();
+
+    if (input_x_elem_type != input_y_elem_type) {
+      auto input_x_int = dyn_cast<IntegerType>(input_x_elem_type);
+      auto input_y_int = dyn_cast<IntegerType>(input_y_elem_type);
+
+      if (input_x_int && input_y_int) {
+        unsigned int target_width =
+            std::max(input_x_int.getWidth(), input_y_int.getWidth());
+        auto target_elem_type =
+            IntegerType::get(op->getContext(), target_width);
+
+        auto widenOperand = [&](Value operand,
+                                ShapedType operand_type) -> Value {
+          if (operand_type.getElementType() == target_elem_type) {
+            return operand;
+          }
+          auto widened_type = operand_type.clone(target_elem_type);
+          return CreateOpAndInfer<tosa::CastOp>(rewriter, op->getLoc(),
+                                                widened_type, operand);
+        };
+
+        x = widenOperand(x, input_x_type);
+        y = widenOperand(y, input_y_type);
+      }
+    }
+
     newOperands.push_back(x);
     newOperands.push_back(y);
     return success();
