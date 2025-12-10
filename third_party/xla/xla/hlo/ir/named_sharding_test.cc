@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/named_sharding.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/xla_data.pb.h"
@@ -23,6 +24,7 @@ namespace xla {
 namespace {
 
 using DimensionSharding = NamedSharding::DimensionSharding;
+using ::testing::ElementsAre;
 
 TEST(NamedShardingTest, CanonicalizedDimShardings) {
   Mesh mesh_abcd({2, 4}, {"a", "b"});
@@ -149,6 +151,24 @@ TEST(NamedShardingTest, Dimension) {
 
   NamedSharding empty_sharding(mesh, /*dim_shardings=*/{});
   EXPECT_EQ(empty_sharding.num_dimensions(), 0);
+}
+
+TEST(NamedShardingTest, Dimensions) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1, {2, 2});
+  AxisRef axis_c(2);
+  AxisRef axis_d(3, {4, 2});
+
+  DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+  DimensionSharding ds_dc({axis_d, axis_c}, /*is_closed=*/true);
+
+  NamedSharding sharding(mesh, /*dim_shardings=*/{ds_ab, ds_dc});
+  EXPECT_THAT(sharding.dimensions(), ElementsAre(2 * 2, 2 * 3));
+
+  NamedSharding empty_sharding(mesh, /*dim_shardings=*/{});
+  EXPECT_THAT(empty_sharding.dimensions(), ElementsAre());
 }
 
 TEST(NamedShardingTest, NumDevices) {
