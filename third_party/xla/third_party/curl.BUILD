@@ -54,6 +54,7 @@ cc_library(
         "lib/cf-socket.h",
         "lib/cfilters.c",
         "lib/cfilters.h",
+        "lib/config-mac.h",
         "lib/config-os400.h",
         "lib/config-plan9.h",
         "lib/config-riscos.h",
