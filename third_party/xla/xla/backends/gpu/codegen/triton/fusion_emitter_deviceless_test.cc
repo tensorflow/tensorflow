@@ -48,7 +48,6 @@ class WarpSpecializationTritonEmitterTest : public TritonEmitterDevicelessTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         TritonEmitterDevicelessTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     debug_options.set_xla_gpu_experimental_enable_triton_warp_specialization(
         true);
     return debug_options;

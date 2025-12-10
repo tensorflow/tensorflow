@@ -96,7 +96,6 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
   }
 
   DebugOptions debug_options_;

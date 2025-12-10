@@ -46,14 +46,10 @@ class TritonDotFusionSearchSpace {
   // If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
   //
-  // If true, `autotune_tma` and `autotune_warp_specialization` extend the
-  // search space with TMA parameterization and warp specialization
-  // respectively. Setting 'autotune_warp_specialization' to true also requires
-  // `autotune_tma` to be true, given that warp specialization is probably not
-  // useful without TMA.
+  // If true, `autotune_warp_specialization` extends the search space with warp
+  // specialization support.
   std::vector<TritonGemmConfig> GenerateConfigs(
       std::optional<int64_t> force_contracting_split = std::nullopt,
-      bool autotune_tma = false,
       bool autotune_warp_specialization = false) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.

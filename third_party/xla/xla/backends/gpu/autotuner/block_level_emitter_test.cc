@@ -72,9 +72,7 @@ class TritonBlockLevelFusionEmitterBackendTest
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_,
-                 compiler_.ShapeSizeBytesFunction(), &target_config_) {
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-  }
+                 compiler_.ShapeSizeBytesFunction(), &target_config_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;

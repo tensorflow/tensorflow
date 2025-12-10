@@ -72,6 +72,28 @@ config { block_m: 64 block_n: 32 block_k: 64 split_k: 64 num_stages: 3 num_warps
 config { block_m: 64 block_n: 64 block_k: 128 split_k: 8 num_stages: 1 num_warps: 8 num_ctas: 1 }
 config { block_m: 64 block_n: 64 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 }
 config { block_m: 64 block_n: 64 block_k: 16 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 }
+config { block_m: 128 block_n: 128 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 128 block_k: 64 split_k: 1 num_stages: 1 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 16 block_k: 32 split_k: 16 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 16 block_k: 64 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 256 block_k: 64 split_k: 1 num_stages: 4 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 64 block_k: 64 split_k: 1 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 64 block_k: 64 split_k: 16 num_stages: 4 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 16 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 32 block_k: 64 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 256 block_n: 128 block_k: 64 split_k: 1 num_stages: 3 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 256 block_n: 16 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 256 block_n: 32 block_k: 32 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 16 block_k: 32 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 16 block_k: 64 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 16 block_k: 64 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 128 block_k: 16 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 128 block_k: 64 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 32 block_k: 128 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 32 block_k: 32 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 16 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
 )";
 
 constexpr absl::string_view kDefaultCudaTritonConfigs = R"(
@@ -118,7 +140,7 @@ config { block_m: 16 block_n: 16 block_k: 256 split_k: 1 num_stages: 1 num_warps
 config { block_m: 16 block_n: 128 block_k: 32 split_k: 16 num_stages: 1 num_warps: 4 num_ctas: 1 }
 )";
 
-constexpr absl::string_view kHopperAmpereTritonConfigs = R"(
+constexpr absl::string_view kAmpereTritonConfigs = R"(
 config { block_m: 16 block_n: 16 block_k: 64 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 }
 config { block_m: 16 block_n: 16 block_k: 128 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
 config { block_m: 16 block_n: 16 block_k: 128 split_k: 128 num_stages: 4 num_warps: 2 num_ctas: 1 }
@@ -157,6 +179,72 @@ config { block_m: 128 block_n: 256 block_k: 64 split_k: 1 num_stages: 4 num_warp
 config { block_m: 64 block_n: 8 block_k: 128 split_k: 2 num_stages: 3 num_warps: 4 num_ctas: 1 }
 )";
 
+constexpr absl::string_view kHopperTritonConfigs = R"(
+config { block_m: 16 block_n: 16 block_k: 64 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 128 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 16 num_stages: 1 num_warps: 2 num_ctas: 1 }
+config { block_m: 16 block_n: 256 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 }
+config { block_m: 32 block_n: 32 block_k: 128 split_k: 16 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 32 block_n: 256 block_k: 32 split_k: 1 num_stages: 3 num_warps: 4 num_ctas: 1 }
+config { block_m: 32 block_n: 256 block_k: 32 split_k: 16 num_stages: 3 num_warps: 8 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 32 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 32 split_k: 16 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 64 split_k: 1 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 64 split_k: 4 num_stages: 3 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 64 split_k: 16 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 128 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 16 block_k: 128 split_k: 16 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 32 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 32 block_k: 64 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 32 block_k: 128 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 32 block_k: 128 split_k: 128 num_stages: 2 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 64 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 64 block_k: 64 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 64 block_k: 64 split_k: 4 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 64 block_k: 128 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 64 block_k: 256 split_k: 16 num_stages: 4 num_warps: 8 num_ctas: 1 }
+config { block_m: 64 block_n: 128 block_k: 16 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 64 block_n: 128 block_k: 64 split_k: 1 num_stages: 3 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 128 block_k: 128 split_k: 8 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 64 block_n: 256 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 }
+config { block_m: 128 block_n: 16 block_k: 32 split_k: 8 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 128 block_n: 16 block_k: 64 split_k: 16 num_stages: 3 num_warps: 2 num_ctas: 1 }
+config { block_m: 128 block_n: 16 block_k: 64 split_k: 16 num_stages: 1 num_warps: 4 num_ctas: 1 }
+config { block_m: 128 block_n: 32 block_k: 32 split_k: 8 num_stages: 4 num_warps: 2 num_ctas: 1 }
+config { block_m: 128 block_n: 128 block_k: 32 split_k: 8 num_stages: 4 num_warps: 8 num_ctas: 1 }
+config { block_m: 128 block_n: 256 block_k: 32 split_k: 1 num_stages: 4 num_warps: 8 num_ctas: 1 }
+config { block_m: 128 block_n: 256 block_k: 64 split_k: 1 num_stages: 4 num_warps: 8 num_ctas: 1 }
+config { block_m: 64 block_n: 8 block_k: 128 split_k: 2 num_stages: 3 num_warps: 4 num_ctas: 1 }
+config { block_m: 16 block_n: 16 block_k: 64 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 16 block_k: 128 split_k: 16 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 16 block_n: 256 block_k: 16 split_k: 1 num_stages: 1 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 32 block_k: 128 split_k: 16 num_stages: 1 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 256 block_k: 32 split_k: 1 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 32 block_n: 256 block_k: 32 split_k: 16 num_stages: 3 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 32 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 32 split_k: 16 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 64 split_k: 1 num_stages: 1 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 64 split_k: 16 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 128 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 16 block_k: 128 split_k: 16 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 32 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 32 block_k: 64 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 32 block_k: 128 split_k: 1 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 64 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 128 split_k: 16 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 64 block_k: 256 split_k: 16 num_stages: 4 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 128 block_k: 16 split_k: 1 num_stages: 4 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 128 block_k: 64 split_k: 1 num_stages: 3 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 64 block_n: 256 block_k: 32 split_k: 1 num_stages: 4 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 16 block_k: 64 split_k: 16 num_stages: 3 num_warps: 2 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 16 block_k: 64 split_k: 16 num_stages: 1 num_warps: 4 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 256 block_k: 32 split_k: 1 num_stages: 4 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+config { block_m: 128 block_n: 256 block_k: 64 split_k: 1 num_stages: 4 num_warps: 8 num_ctas: 1 is_tma_allowed: true }
+)";
+
 absl::flat_hash_map<TritonConfigsPlatform, std::vector<TritonGemmConfig>>
 LoadTritonConfigs() {
   absl::flat_hash_map<TritonConfigsPlatform, std::vector<TritonGemmConfig>>
@@ -181,10 +269,11 @@ LoadTritonConfigs() {
   const std::initializer_list<
       std::pair<TritonConfigsPlatform, absl::string_view>>
       kConfigsMap = {
+          {TritonConfigsPlatform::kAmpere, kAmpereTritonConfigs},
           {TritonConfigsPlatform::kBlackwell, kBlackwellTritonConfigs},
           {TritonConfigsPlatform::kDefaultCuda, kDefaultCudaTritonConfigs},
           {TritonConfigsPlatform::kDefaultRocm, kDefaultRocmTritonConfigs},
-          {TritonConfigsPlatform::kHopperAmpere, kHopperAmpereTritonConfigs},
+          {TritonConfigsPlatform::kHopper, kHopperTritonConfigs},
       };
   for (const auto& [platform, config_str] : kConfigsMap) {
     result[platform] = parse_config(config_str);
