@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/add_original_value.h"
 #include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 #include "xla/hlo/transforms/collectives/all_gather_remove_degenerate_dims.h"
 #include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
@@ -460,6 +461,10 @@ void LogDebugOptions(HloModule* hlo_module) {
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
+  // Add original value tracking for easily matching values between the
+  // unoptimized and optimized HLO dumps.
+  pre_spmd_pipeline.AddPass<AddOriginalValue>();
+
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();

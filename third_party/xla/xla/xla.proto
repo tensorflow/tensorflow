@@ -68,6 +68,9 @@ message DebugOptions {
     AUTOTUNE_BACKEND_TRITON = 2;
     AUTOTUNE_BACKEND_CUBLAS = 3;
     AUTOTUNE_BACKEND_CUBLASLT = 4;
+    AUTOTUNE_BACKEND_ROCBLAS = 5;
+    AUTOTUNE_BACKEND_HIPBLASLT = 6;
+    AUTOTUNE_BACKEND_MIOPEN = 7;
   }
 
   // Enum to define all collective ops
