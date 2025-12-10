@@ -71,7 +71,7 @@ class NamedSharding {
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const OpMetadata> metadata = {})
       : mesh_(std::move(mesh)),
-        dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
+        dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
         replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
         unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
         metadata_(metadata.begin(), metadata.end()) {}
@@ -86,6 +86,19 @@ class NamedSharding {
 
  private:
   friend class HloSharding;
+
+  std::vector<DimensionSharding> CanonicalizedDimShardings(
+      absl::Span<const DimensionSharding> dim_shardings) const {
+    bool all_dims_empty = absl::c_all_of(
+        dim_shardings,
+        [](const DimensionSharding& ds) { return ds.axes().empty(); });
+
+    if (all_dims_empty) {
+      return {};
+    }
+    return std::vector<DimensionSharding>(dim_shardings.begin(),
+                                          dim_shardings.end());
+  }
 
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
