@@ -694,7 +694,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   {
     tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
     absl::ReaderMutexLock lock(mutex_);
-    if (!is_frozen_) {
+    if (!is_frozen_ && !tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
       // Asynchronously load the restored variable tensors to Ifrt array.
       TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
                                             *executable_bundle, device_list));
