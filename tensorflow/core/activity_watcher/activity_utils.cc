@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/activity_watcher/activity_utils.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
