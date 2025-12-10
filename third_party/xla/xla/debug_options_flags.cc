@@ -457,6 +457,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_disable_automatic_host_compute_offload(false);
+  opts.set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(
+      false);
   opts.set_xla_enable_scoped_logging_timers(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
@@ -2602,6 +2604,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_disable_automatic_host_compute_offload(),
       "Return an error if HostOffloader would have automatically offloaded some"
       " compute to the host."));
+  flag_list->push_back(tsl::Flag(
+      "xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled),  // NOLINT
+      debug_options
+          ->xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(),
+      "Allow host-to-host copy when automatic host compute offload is "
+      "disabled, i.e. when xla_disable_automatic_host_compute_offload is "
+      "set."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_scoped_logging_timers",
       bool_setter_for(&DebugOptions::set_xla_enable_scoped_logging_timers),

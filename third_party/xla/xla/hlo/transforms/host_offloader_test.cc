@@ -95,6 +95,14 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
         .set_xla_disable_automatic_host_compute_offload(true);
   }
 
+  static void AllowH2hCopyWhenAutomaticHostComputeOffloadDisabled(
+      HloModule* module) {
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(
+            true);
+  }
+
   AliasInfo alias_info_;
 };
 
@@ -4648,6 +4656,49 @@ TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
   absl::StatusOr<bool> changed = RunHostOffloader(module.get());
   EXPECT_THAT(changed,
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(HostOffloaderTest,
+       H2hCopyDisallowedWhenAutomaticHostComputeOffloadDisabled) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0:T(128)S(5)})->f32[1024]{0:T(128)S(5)}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      ROOT a_copy = f32[1024]{0} copy(param)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DisableAutomaticHostComputeOffload(module.get());
+  // A copy on host memory exists, but we have disabled automatic host compute
+  // offloading and we haven't allowed H2H copies, so we expect an error.
+  absl::StatusOr<bool> changed = RunHostOffloader(module.get());
+  EXPECT_THAT(changed,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(HostOffloaderTest,
+       H2hCopyAllowedWhenAutomaticHostComputeOffloadDisabled) {  // NOLINT
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0:T(128)S(5)})->f32[1024]{0:T(128)S(5)}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      ROOT a_copy = f32[1024]{0} copy(param)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DisableAutomaticHostComputeOffload(module.get());
+  AllowH2hCopyWhenAutomaticHostComputeOffloadDisabled(module.get());
+  // A copy on host memory exists, and we have disabled automatic host compute
+  // offloading, but we have allowed H2H copies, so we expect success.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* a_copy = FindInstruction(module.get(), "a_copy");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(a_copy));
 }
 
 }  // namespace

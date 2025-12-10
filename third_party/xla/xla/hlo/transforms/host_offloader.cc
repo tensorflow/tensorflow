@@ -298,10 +298,17 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "to move the inputs to the device so that computation happens on the "
           "device.",
           instruction->name());
+      bool h2h_copy_allowed =
+          instruction->opcode() == HloOpcode::kCopy &&
+          instruction->GetModule()
+              ->config()
+              .debug_options()
+              .xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled();  // NOLINT
       if (instruction->GetModule()
               ->config()
               .debug_options()
-              .xla_disable_automatic_host_compute_offload()) {
+              .xla_disable_automatic_host_compute_offload() &&
+          !h2h_copy_allowed) {
         return absl::InvalidArgumentError(
             "Automatic host compute offloading is disabled.");
       }
