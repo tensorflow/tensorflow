@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <tuple>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
