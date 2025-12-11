@@ -154,21 +154,6 @@ class CoordinationClient {
                                  tsl::StatusCallback done) = 0;
 };
 
-// Simple wrapper class that can be used to retrieve CoordinationClients.
-class CoordinationClientCache {
- public:
-  virtual ~CoordinationClientCache() = default;
-
-  // If the `target` names a remote task, returns a pointer of the
-  // CoordinationClient object wrapping that channel to the remote task.
-  virtual CoordinationClient* GetClient(const std::string& target) = 0;
-
-  // If the `target` names a remote task, returns an owned pointer of the
-  // CoordinationClient object wrapping that channel to the remote task.
-  virtual std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const std::string& target) = 0;
-};
-
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_COORDINATION_COORDINATION_CLIENT_H_

@@ -52,7 +52,7 @@ std::unique_ptr<xla::CoordinationService> EnableCoordinationService(
   job->set_name(job_name);
   job->set_num_tasks(options.num_nodes);
   auto service =
-      xla::CoordinationService::Create(options.env, config, /*cache=*/nullptr);
+      std::make_unique<xla::CoordinationService>(options.env, config);
   return service;
 }
 }  // namespace

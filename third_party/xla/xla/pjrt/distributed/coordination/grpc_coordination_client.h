@@ -23,9 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-CoordinationClientCache* NewGrpcCoordinationClientCache(
-    std::shared_ptr<tsl::GrpcChannelCache> channel);
-
 CoordinationClient* NewGrpcCoordinationClient(
     std::shared_ptr<::grpc::Channel> channel);
 

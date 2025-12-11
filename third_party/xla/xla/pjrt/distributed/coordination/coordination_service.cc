@@ -201,10 +201,8 @@ bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
 }
 
 CoordinationService::CoordinationService(
-    tsl::Env* env, const CoordinationServiceConfig& config,
-    std::unique_ptr<CoordinationClientCache> client_cache)
-    : client_cache_(std::move(client_cache)),
-      env_(*env),
+    tsl::Env* env, const CoordinationServiceConfig& config)
+    : env_(*env),
       heartbeat_timeout_ms_([&config]() -> uint64_t {
         return config.heartbeat_timeout_in_ms() > 0
                    ? config.heartbeat_timeout_in_ms()
@@ -965,52 +963,7 @@ void CoordinationService::PropagateError(
     VLOG(3) << "All tasks are recoverable, skip propagating error.";
     return;
   }
-  // If there is no service-to-client connection, use error polling or stop
-  // the service.
-  if (client_cache_ == nullptr) {
-    SendErrorPollingResponseOrFailAllTasks(error);
-    return;
-  }
-
-  ReportErrorToTaskRequest request;
-  request.set_error_code(error.raw_code());
-  request.set_error_message(std::string(error.message()));
-  CoordinationServiceError* payload = request.mutable_error_payload();
-  payload->set_is_reported_error(is_reported_by_task);
-  tsl::CallOptions call_opts;
-  call_opts.SetTimeout(kServiceToClientTimeoutMs);
-  // TODO(b/369222279): This logic will be removed shortly, so we don't bother
-  // adding the full list of source tasks.
-  if (!source_tasks.empty()) {
-    *payload->mutable_source_task() = source_tasks[0];
-  }
-
-  std::vector<std::shared_ptr<absl::Notification>> notifications;
-
-  for (const auto& pair : cluster_state_) {
-    // Propagate error only to tasks that are connected
-    if (pair.second->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
-      continue;
-    }
-    std::string task = pair.first;
-
-    CoordinationClient* client = client_cache_->GetClient(task);
-    auto response = std::make_shared<ReportErrorToTaskResponse>();
-    auto n = std::make_shared<absl::Notification>();
-    client->ReportErrorToTaskAsync(
-        &call_opts, &request, response.get(),
-        [response, n, task](const absl::Status& s) {
-          if (!s.ok()) {
-            LOG(ERROR) << "Encountered another error while reporting to "
-                       << task << ": " << s;
-          }
-          n->Notify();
-        });
-    notifications.push_back(n);
-  }
-  for (auto& n : notifications) {
-    n->WaitForNotification();
-  }
+  SendErrorPollingResponseOrFailAllTasks(error);
 }
 
 // Utility for normalizing structured config key string.
@@ -1122,13 +1075,6 @@ void CoordinationService::PollForErrorAsync(const CoordinatedTask& task,
   if (ServiceHasStopped()) {
     done(MakeCoordinationError(absl::InternalError(
         "PollForError requested after coordination service has shut down.")));
-    return;
-  }
-
-  if (client_cache_ != nullptr) {
-    done(MakeCoordinationError(
-        absl::InternalError("Should not use error polling from service when "
-                            "there is service to client connection.")));
     return;
   }
 
@@ -1891,7 +1837,6 @@ void CoordinationService::SendErrorPollingResponseOrFailAllTasks(
   CHECK(!error.ok()) << "SendErrorPollingResponseOrFailAllTasks called with OK "
                         "status. Should always return an error.";
   // Should be called only when there is no service-to-client connection.
-  assert(client_cache_ == nullptr);
   if (IsClientPollingForError()) {
     LOG(ERROR)
         << "Use error polling to propagate the following error to all tasks: "
