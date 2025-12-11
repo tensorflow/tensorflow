@@ -59,6 +59,10 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#endif  // GOOGLE_CUDA
+
 namespace pjrt {
 namespace gpu_plugin {
 
@@ -322,6 +326,50 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   return nullptr;
 }
 
+#if GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
+namespace {
+
+const std::vector<PJRT_NamedValue>* MakeCudaPluginCAttributes() {
+  std::vector<PJRT_NamedValue>* attributes = new std::vector<PJRT_NamedValue>();
+  const std::vector<PJRT_NamedValue>& base_attributes =
+      pjrt::GetXlaPluginCAttributes();
+  attributes->reserve(base_attributes.size() + 1);
+  attributes->assign(base_attributes.begin(), base_attributes.end());
+  {
+    // Include the cuda_version attribute.
+    PJRT_NamedValue c_value;
+    c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+    c_value.extension_start = nullptr;
+    absl::string_view name = "cuda_version";
+    c_value.name = name.data();
+    c_value.name_size = name.size();
+    c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
+    c_value.int64_value = CUDART_VERSION;
+    c_value.value_size = 1;
+    attributes->push_back(c_value);
+  }
+  return attributes;
+}
+
+}  // namespace
+#endif
+
+PJRT_Error* PJRT_Plugin_Attributes_Gpu(PJRT_Plugin_Attributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Plugin_Attributes_Args", PJRT_Plugin_Attributes_Args_STRUCT_SIZE,
+      args->struct_size));
+#if GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
+  static const std::vector<PJRT_NamedValue>* attributes =
+      MakeCudaPluginCAttributes();
+#else
+  const std::vector<PJRT_NamedValue>* attributes =
+      &pjrt::GetXlaPluginCAttributes();
+#endif
+  args->num_attributes = attributes->size();
+  args->attributes = attributes->data();
+  return nullptr;
+}
+
 PLUGIN_Profiler_Api profiler_api{
     /*struct_size=*/PLUGIN_Profiler_Api_STRUCT_SIZE,
     /*priv=*/nullptr,
@@ -470,7 +518,7 @@ const PJRT_Api* GetGpuPjrtApi() {
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp, &cross_host_transfers_extension.base,
-      pjrt::PJRT_Plugin_Attributes_Xla);
+      pjrt::gpu_plugin::PJRT_Plugin_Attributes_Gpu);
 
   return &pjrt_api;
 }
