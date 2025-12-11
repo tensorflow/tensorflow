@@ -473,6 +473,9 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
     return false;
   }
 
+  VLOG(0) << "Merging Dots in computation: " << comp->name();
+  VLOG(1) << "Found " << equivalence_classes.size() << " equivalence classes.";
+
   // Build a dependency graph representing the whole computation.
   GraphCycles graph;
 
@@ -537,9 +540,10 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
 
         if (dead_instrs.contains(a) || dead_instrs.contains(b) ||
             (!is_merge_candidate(a) && !is_merge_candidate(b)) ||
+            !can_merge(a, b) ||
             // Perform reachability checks last since they can be expensive.
             graph.IsReachableNonConst(a_id, b_id) ||
-            graph.IsReachableNonConst(b_id, a_id) || !can_merge(a, b)) {
+            graph.IsReachableNonConst(b_id, a_id)) {
           continue;
         }
 
@@ -559,6 +563,10 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
           dead_instrs.insert(b);
           dots[i] = merged;
           dots[j] = nullptr;
+          if (!is_merge_candidate(merged)) {
+            // The merged dot is not a candidate for futher merging.
+            break;
+          }
         }
       }
     }
