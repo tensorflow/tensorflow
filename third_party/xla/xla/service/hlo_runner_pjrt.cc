@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -560,12 +561,9 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
-  module->mutable_config().set_replica_count(options.num_devices);
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
-
   return ExecuteReplicated(executable.get(), options, device_assignment);
 }
 
@@ -603,8 +601,13 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
-  TF_RET_CHECK(device_assignment->computation_count() == 1)
-      << "Only single-computation execution is supported.";
+  std::optional<DeviceAssignment> default_device_assignment = std::nullopt;
+  if (device_assignment == nullptr) {
+    TF_ASSIGN_OR_RETURN(default_device_assignment,
+                        GetDefaultDeviceAssignment(options.num_devices, 1));
+    device_assignment = &*default_device_assignment;
+  }
+  CHECK_NE(device_assignment, nullptr);
   return ExecuteReplicatedImpl(
       [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
           absl::AnyInvocable<OpaqueExecutable*(int64_t)>
