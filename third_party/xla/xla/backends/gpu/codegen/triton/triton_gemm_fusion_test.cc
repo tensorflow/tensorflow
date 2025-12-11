@@ -685,7 +685,8 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK: transpose
+; CHECK: fusion
+; CHECK-SAME: kind=kLoop
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
@@ -710,7 +711,8 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: ENTRY
-; CHECK: transpose
+; CHECK: fusion
+; CHECK-SAME: kind=kLoop
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "__triton_nested_gemm_fusion"
@@ -1205,7 +1207,8 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK:      ENTRY
-; CHECK:      concatenate
+; CHECK:      fusion
+; CHECK-SAME:   kind=kLoop
 ; CHECK:      fusion
 ; CHECK-SAME:   kind=kCustom
 ; CHECK-SAME:   "__triton_nested_gemm_fusion"
@@ -1336,12 +1339,14 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
 
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Add(
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom),
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
+                        .WithFusionKind(HloInstruction::FusionKind::kCustom),
+                    m::Fusion(m::Parameter(), m::Parameter())
+                        .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
@@ -1511,10 +1516,12 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Sin(
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
+                        .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

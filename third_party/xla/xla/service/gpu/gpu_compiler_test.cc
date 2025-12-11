@@ -455,6 +455,24 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   }
 }
 
+TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
+  xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
+
+  TF_EXPECT_OK(GetOptimizedModule(R"(
+e {
+  a = f32[64,128] parameter(0)
+  t = f32[128,64] transpose(a), dimensions={1,0}
+})")
+                   .status());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+  AutotuneResults results;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
+                                                         &results));
+  EXPECT_THAT(results.results(), Not(IsEmpty()));
+}
+
 int64_t CountCopies(const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {

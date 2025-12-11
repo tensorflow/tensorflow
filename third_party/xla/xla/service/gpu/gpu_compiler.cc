@@ -1487,6 +1487,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module));
   {
     HloPassPipeline pipeline("autotune-fusion-emitters");
+    pipeline.AddPass<FusionWrapper>(gpu_target_config.device_description);
     TF_RETURN_IF_ERROR(AddFusionAutotuningPass(
         &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
         &gpu_target_config, ShapeSizeBytesFunction()));
