@@ -1285,6 +1285,8 @@ def is_tf_type(x):  # pylint: disable=invalid-name
   # objects. It is not a Tensor.
   if (type(x).__name__ == "ObjectProxy"):
     return False
+  if (type(x).__name__ == "_DictWrapper"):
+    return False
   return isinstance(x, tf_type_classes)
 
 
