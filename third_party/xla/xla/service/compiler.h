@@ -28,7 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -85,8 +85,14 @@ class AotCompilationResult {
   }
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) && {
+      const se::StreamExecutor* executor) && {
     return Unimplemented("LoadExecutable unimplemented.");
+  }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler*, const se::StreamExecutor* executor) && {
+    return std::move(*this).LoadExecutable(executor);
   }
 
   virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
@@ -356,7 +362,7 @@ class Compiler {
 
   // Returns an AotCompilationResult of the executable for serialization.
   virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const {
+      Executable* executable) {
     return Unimplemented("Export unimplemented");
   }
 

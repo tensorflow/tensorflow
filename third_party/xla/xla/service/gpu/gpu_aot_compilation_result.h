@@ -62,9 +62,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
     return serialized;
   }
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
-      final {
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && final {
     stream_executor::Platform::Id platform_id =
         stream_exec->GetPlatform()->id();
     const auto symbol_resolver = [&](absl::string_view symbol_name) {

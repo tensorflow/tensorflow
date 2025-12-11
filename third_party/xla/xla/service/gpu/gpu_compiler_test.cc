@@ -950,9 +950,8 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler_->LoadAotCompilationResult(serialized_aot_result));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -988,9 +987,8 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
                           compiler_->Export(executable.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> new_executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(new_executable));
 
@@ -1156,8 +1154,7 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        std::move(*aot_result)
-            .LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result).LoadExecutable(aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 

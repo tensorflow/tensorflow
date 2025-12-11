@@ -249,7 +249,7 @@ class LocalClient : public Client {
   LocalService* local_service_;
 
   absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
-      std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
       const ExecutableBuildOptions& options);
 };
 

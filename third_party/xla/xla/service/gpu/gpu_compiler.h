@@ -90,7 +90,7 @@ class GpuCompiler : public LLVMCompiler {
   LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const override;
+      Executable* executable) override;
 
   absl::Status RunPostSchedulingPipelines(
       HloModule* module, int64_t scheduler_mem_limit,
