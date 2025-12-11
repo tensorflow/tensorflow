@@ -22,6 +22,7 @@ limitations under the License.
 #include <ios>
 #include <map>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
