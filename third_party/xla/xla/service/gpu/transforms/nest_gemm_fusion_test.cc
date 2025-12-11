@@ -671,6 +671,50 @@ CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
 }
 
 TEST_P(NestGemmFusionReshapeTest,
+       BitcastsAreHoistedUpThroughBroadcastsWithTrivialDimensions) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[11,24,1] parameter(0)
+  p0_broadcast = f32[11,1,24,1,128] broadcast(p0), dimensions={0,2,3}
+  p0_reshape = f32[264,128] $0(p0_broadcast)
+  p1 = f32[128,8]{1,0} parameter(1)
+  ROOT result = f32[264,8]{1,0} dot(p0_reshape, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[11,24,1] parameter(0)
+  p1 = f32[128,8] parameter(1)
+  ROOT result = f32[264,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_THAT(
+      NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
+      IsOkAndHolds(true));
+  ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+// Broadcast fusion:
+CHECK: {{.*}} {
+CHECK-NEXT: [[broadcast_p0:[^ ]+]] = f32[264]{0} parameter(0)
+CHECK-NEXT: ROOT {{.*}} = f32[264,128]{1,0} broadcast([[broadcast_p0]]), dimensions={0}
+CHECK-NEXT: }
+CHECK: ENTRY {{.*}} {
+CHECK: [[entry_p0:[^ ]+]] = f32[11,24,1]{{.*}} parameter(0)
+CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_P(NestGemmFusionReshapeTest,
        BitcastOfOperandAndBroadcastDimsIsNotHoistedUp) {
   HloOpcode opcode = GetParam();
   absl::string_view hlo = R"(
@@ -899,8 +943,8 @@ ENTRY entry {
       ParseAndRunNestGemmFusion(absl::Substitute(hlo, HloOpcodeString(opcode)));
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
-CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
-CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
+CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={3}
+CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={3}
 )"),
       IsOkAndHolds(true));
 }
@@ -1124,6 +1168,45 @@ ENTRY e {
 )";
   std::unique_ptr<VerifiedHloModule> module =
       ParseAndRunNestGemmFusion(absl::Substitute(hlo, HloOpcodeString(opcode)));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT broadcast
+CHECK-SAME: f32[3,5,6,2]{2,1,0,3} broadcast
+CHECK-SAME: dimensions={0,1}
+)"),
+      IsOkAndHolds(true));
+}
+
+// TODO(b/467306121): handle the case when we need to sink the reshape through
+// broadcast.
+TEST_P(NestGemmFusionReshapeTest,
+       DISABLED_BitcastsAreHoistedDownThroughBroadcastsWithTrivialDimensions) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[6,7] parameter(1)
+  dot = f32[3,6] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[3,2,3] $0(dot)
+  ROOT broadcast = f32[3,2,1,3,7] broadcast(bitcast), dimensions={0,1,3}
+}
+
+ENTRY e {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[6,7] parameter(1)
+  ROOT result = f32[3,2,1,3,7] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(hlo, HloOpcodeString(opcode))));
+  ASSERT_THAT(
+      NestGemmFusion(device_description_, &mlir_context_).Run(module.get()),
+      IsOkAndHolds(true));
+  ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      ROOT broadcast

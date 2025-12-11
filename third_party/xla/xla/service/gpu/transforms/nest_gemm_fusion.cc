@@ -468,19 +468,26 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfBroadcast(
 
   // Dimensions of the new broadcast.
   llvm::SmallVector<int64_t> new_dims;
+  llvm::SmallVector<int64_t> broadcast_physical_dims =
+      GetPhysicalDimensions(broadcast_shape);
   auto factors = CommonFactors(GetPhysicalDimensions(result_shape),
-                               GetPhysicalDimensions(broadcast_shape));
+                               broadcast_physical_dims);
   for (int64_t i = 1; i < factors.size(); ++i) {
     auto [result_from, broadcast_from] = factors[i - 1];
     auto [result_to, broadcast_to] = factors[i];
 
     bool all_operands = true, any_operands = false;
     for (int64_t j = broadcast_from; j < broadcast_to; ++j) {
+      if (broadcast_physical_dims[j] == 1) {
+        // If dimension size is 1 then we can ignore it: it's either immediately
+        // dropped by old reshape or it's coming from the operand and then the
+        // new reshape will handle it.
+        continue;
+      }
       bool value = is_operand_dim[broadcast_shape.layout().minor_to_major(j)];
       all_operands &= value;
       any_operands |= value;
     }
-
     if (!any_operands) {
       continue;  // All dimensions in this group are broadcast dimensions.
     }
