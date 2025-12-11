@@ -152,7 +152,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
     const int64_t num_replicas, const bool use_threads,
     const bool run_hlo_passes) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_replicas;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = use_threads;
@@ -167,7 +167,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
     const int64_t num_replicas, DeviceAssignment* const device_assignment,
     const bool run_hlo_passes, const bool use_threads) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_replicas;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = use_threads;
@@ -184,7 +184,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
     const int64_t num_replicas, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_replicas;
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
   return test_runner_->ExecuteReplicated(
@@ -259,11 +259,11 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << "Number of replicas is not the same: " << replica_count << " Vs "
            << module_1->config().replica_count();
   }
-  if (options.num_replicas != replica_count) {
+  if (options.num_devices != replica_count) {
     return ::testing::AssertionFailure()
            << "Number of execution replicas is different from number of "
               "replicas in the module: requested number of replicas = "
-           << options.num_replicas
+           << options.num_devices
            << ", number of replicas in hlo = " << replica_count;
   }
 
@@ -540,7 +540,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_replicas;
   options.arguments = {fake_argument_ptrs.begin(), fake_argument_ptrs.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;

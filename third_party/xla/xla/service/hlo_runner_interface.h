@@ -166,7 +166,7 @@ class HloRunnerInterface {
   // The options used to configure an ExecuteReplicated() call.
   struct ReplicatedExecuteOptions {
     // The number of devices the HLO module should be replicated onto.
-    int64_t num_replicas = 1;
+    int64_t num_devices = 1;
 
     // The arguments to be fed to each replica. Since this is used for a
     // replicated execution, all the arguments are the same for all replicas.
