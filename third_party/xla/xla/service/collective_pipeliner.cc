@@ -1636,24 +1636,6 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
 
 }  // namespace
 
-using Interval = std::pair<int64_t, int64_t>;
-using Intervals = std::vector<Interval>;
-// Parses a string "{{a,b},{c,d},{e,f},...}" to a vector of pairs.
-absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
-    absl::string_view str) {
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
-                      ParseReplicaGroupsOnly(str));
-  std::vector<Interval> res;
-  res.reserve(replica_groups.size());
-  for (const ReplicaGroup& replica_group : replica_groups) {
-    TF_RET_CHECK(replica_group.replica_ids_size() == 2);
-    int64_t a = replica_group.replica_ids(0);
-    int64_t b = replica_group.replica_ids(1);
-    res.emplace_back(a, b);
-  }
-  return res;
-}
-
 // If there is a collective-permute instruction with _xla_send_recv_validation
 // attribute in the computation, then during pipelining the loop trip count
 // changes. This function fixes the attribute for the cloned instruction.
@@ -1680,87 +1662,6 @@ absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
 // attribute will become {{1,0},{1,0},{1,0},{0,0},{0,0}} and for the collective
 // inside while loop, this attribute will become
 // {{0,4},{0,4},{1,5},{1,5},{2,5}}.
-absl::Status UpdateSendRecvValidation(
-    HloInstruction* instruction, bool is_peeled,
-    collective_pipeliner_utils::PipeliningDirection direction,
-    const WhileLoopAnalysis& loop_analysis) {
-  if (instruction->opcode() != HloOpcode::kCollectivePermute) {
-    return absl::OkStatus();
-  }
-  const auto& frontend_attributes = instruction->frontend_attributes().map();
-  if (!frontend_attributes.contains(kSendRecvValidationAttr)) {
-    return absl::OkStatus();
-  }
-  VLOG(3) << "Trip count = "
-          << loop_analysis.GetLoopIterationCount()->GetSignedValue();
-  VLOG(3) << "Collective permute with _xla_send_recv_validation: "
-          << instruction->ToString();
-  TF_ASSIGN_OR_RETURN(
-      Intervals old_intervals,
-      ParseVectorOfPairs(frontend_attributes.at(kSendRecvValidationAttr)));
-
-  Intervals intervals;
-
-  if (direction == collective_pipeliner_utils::PipeliningDirection::kForward) {
-    // It is a forward pipelining which means that the peeled collective permute
-    // is before the loop. It should run once for the devices executing the
-    // first iteration and the internal collective permute now sees each
-    // original iteration decreased by one.
-    //
-    // peeled collective permute:
-    //      {{0,0} if {a,b} in old and a<=0<=b, {1,0} otherwise}
-    // internal collective permute: {{max(0, a-1), max(0, b-1)} | {a,b} in old}
-    for (auto [a, b] : old_intervals) {
-      if (is_peeled) {
-        if (a <= 0 && 0 <= b) {
-          intervals.push_back({0, 0});
-        } else {
-          intervals.push_back({1, 0});
-        }
-      } else {
-        intervals.push_back(
-            {std::max(int64_t{0}, a - 1), std::max(int64_t{0}, b - 1)});
-      }
-    }
-  } else if (direction ==
-             collective_pipeliner_utils::PipeliningDirection::kBackward) {
-    // It is a backward pipelining which means that the peeled collective is
-    // after the loop. It should run once for the devices executing the last
-    // iteration and the internal collective permute doesn't see the last
-    // iteration.
-    //
-    // peeled collective permute:
-    //      {{0,0} if {a,b} in old and a<=n<=b where n=#last_iteration, {1,0}
-    //      otherwise}
-    // interval collective permute:
-    //      {{a,min(n-1,b)} | {a,b} in old and n=#last_iteration}
-    auto trip_count_value = loop_analysis.GetLoopIterationCount();
-    if (!trip_count_value) {
-      return absl::InternalError(
-          "Unable to deduce loop trip count in collective pipeliner. This is "
-          "required for backward pipelining while fixing the "
-          "_xla_send_recv_validation attribute");
-    }
-    int64_t trip_count = trip_count_value->GetSignedValue();
-    int64_t last_iteration = trip_count - 1;
-    for (auto [a, b] : old_intervals) {
-      if (is_peeled) {
-        if (a <= last_iteration && last_iteration <= b) {
-          intervals.push_back({0, 0});
-        } else {
-          intervals.push_back({1, 0});
-        }
-      } else {
-        intervals.push_back({a, std::min(last_iteration - 1, b)});
-      }
-    }
-  }
-  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
-      instruction, kSendRecvValidationAttr, intervals);
-  VLOG(3) << "Updated collective_permute with _xla_send_recv_validation: "
-          << instruction->ToString();
-  return absl::OkStatus();
-}
 
 // Function that does the work of pushing forward instructions that have been
 // determined that can be pipelined. Rough transformation:
@@ -1923,12 +1824,6 @@ absl::Status TransformLoopForward(
       TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
           cloned_instr, next_scheduling_id, annotation_map));
     }
-    // TODO(b/398891001): Remove this once we have eliminated the need for
-    // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        cloned_instr, true,
-        collective_pipeliner_utils::PipeliningDirection::kForward,
-        loop_analysis));
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
     if (output_it != is_output_instruction.end()) {
@@ -1992,14 +1887,6 @@ absl::Status TransformLoopForward(
   HloComputation* new_while_body =
       loop_computation->parent()->AddEmbeddedComputation(
           while_body->CloneWithReplacements(&replacements));
-  for (HloInstruction* instruction : new_while_body->instructions()) {
-    // TODO(b/398891001): Remove this once we have eliminated the need for
-    // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        instruction, false,
-        collective_pipeliner_utils::PipeliningDirection::kForward,
-        loop_analysis));
-  }
   HloInstruction* new_init = loop_computation->AddInstruction(
       HloInstruction::CreateTuple(new_init_operands));
   while_body_to_peeled[while_body->root_instruction()] = new_init;
@@ -3150,14 +3037,6 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(UpdateControlDependencies(while_body->root_instruction(),
                                                new_loop_root,
                                                while_body_replacement_map));
-  for (HloInstruction* instruction : new_while_body->instructions()) {
-    // TODO(b/398891001): Remove this once we have eliminated the need for
-    // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        instruction, false,
-        collective_pipeliner_utils::PipeliningDirection::kBackward,
-        loop_analysis));
-  }
   auto cond_builder =
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
@@ -3244,12 +3123,6 @@ static absl::Status TransformLoopBackward(
                                update_collective_channel_id);
     TF_RETURN_IF_ERROR(UpdateInstructionSchedulingAnnotation(
         cloned_instr, next_scheduling_id, annotation_map));
-    // TODO(b/398891001): Remove this once we have eliminated the need for
-    // send/recv validation.
-    TF_RETURN_IF_ERROR(UpdateSendRecvValidation(
-        cloned_instr, true,
-        collective_pipeliner_utils::PipeliningDirection::kBackward,
-        loop_analysis));
     while_body_replacement_map[instr] = cloned_instr;
     if (instruction_is_output_it != is_output_instruction.end()) {
       for (int64_t index : instruction_is_output_it->second) {
