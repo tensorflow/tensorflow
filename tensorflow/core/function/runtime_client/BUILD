@@ -53,7 +53,11 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -83,6 +87,11 @@ cc_library(
         "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
         "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 tf_cc_test(
@@ -103,6 +112,10 @@ tf_cc_test(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Parser",
