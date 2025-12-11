@@ -703,6 +703,31 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_roundtrip.mlir b/stablehlo/
    func.return %0 : tensor<16x16xf32>
  }
  
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -218,6 +218,21 @@
+   // CHECK-NEXT: return [[TRUE]], [[FALSE]], [[TRUE]], [[TRUE]], [[TRUE]], [[FALSE]], [[TRUE]], [[FALSE]]
+   return %0, %1, %2, %3, %4, %5, %6, %7 :
+          tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
++}
++
++// -----
++
++// CHECK-LABEL: func.func @compare_fold_with_implicit_comparison_type
++func.func @compare_fold_with_implicit_comparison_type() -> (tensor<3xi1>, tensor<3xi1>) {
++  %c_0 = stablehlo.constant dense<0> : tensor<3xi64>
++  %c = stablehlo.constant dense<[-1, 0, 1]> : tensor<3xi64>
++  %c_1 = stablehlo.constant dense<0.0> : tensor<3xf64>
++  %c_2 = stablehlo.constant dense<[-1.0, 0.0, 1.0]> : tensor<3xf64>
++  %0 = stablehlo.compare GE, %c, %c_0 : (tensor<3xi64>, tensor<3xi64>) -> tensor<3xi1>
++  %1 = stablehlo.compare GE, %c_2, %c_1 : (tensor<3xf64>, tensor<3xf64>) -> tensor<3xi1>
++  // CHECK-DAG:  [[RES:%.+]] = stablehlo.constant dense<[false, true, true]> : tensor<3xi1>
++  // CHECK-NEXT: return [[RES]], [[RES]] : tensor<3xi1>, tensor<3xi1>
++  return %0, %1 : tensor<3xi1>, tensor<3xi1>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/transforms/CMakeLists.txt b/stablehlo/stablehlo/transforms/CMakeLists.txt
 --- stablehlo/stablehlo/transforms/CMakeLists.txt
 +++ stablehlo/stablehlo/transforms/CMakeLists.txt
@@ -961,4 +986,72 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h b/stabl
  // Returns the common shape these ops would broadcast to, or an error if the
  // ops are not broadcastable.
  FailureOr<Dimensions> getNumpyBroadcastShape(OpBuilder& builder,
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -701,22 +701,50 @@
+     if (failed(validateShapeFoldDtype(rewriter, op, resultType)))
+       return failure();
+ 
++    ComparisonType comparisonType = getComparisonType(op);
++    if (comparisonType == ComparisonType::NOTYPE)
++      return rewriter.notifyMatchFailure(
++          op, "Could not determine comparison type.");
++
++    LLVM_DEBUG(llvm::dbgs() << "comparisonType: " << comparisonType << "\n");
++
+     auto res = foldBinaryOpIntOrFloat<FoldCompare, IntegerAttr, IntegerAttr>(
+-        rewriter, op,
+-        FoldCompare(op.getComparisonDirection(), op.getCompareType()));
++        rewriter, op, FoldCompare(op.getComparisonDirection(), comparisonType));
+     if (failed(res)) return failure();
+     rewriter.replaceOpWithNewOp<mlir::stablehlo::ConstantOp>(op, res.value());
+     return success();
+   }
+ 
++  // Return the comparison type if set, else return the assumed comparison type
++  // according to the StableHLO spec.
++  ComparisonType getComparisonType(CompareOp op) const {
++    auto compareType = op.getCompareType();
++    if (compareType.has_value() &&
++        compareType.value() != ComparisonType::NOTYPE)
++      return *compareType;
++
++    Type elementType = op.getLhs().getType().getElementType();
++    if (elementType.isUnsignedInteger() || elementType.isSignlessInteger(1))
++      return ComparisonType::UNSIGNED;
++    if (elementType.isSignlessInteger())
++      return ComparisonType::SIGNED;
++    else if (elementType.isFloat() || mlir::isa<ComplexType>(elementType))
++      return ComparisonType::FLOAT;
++    else
++      return ComparisonType::NOTYPE;
++  }
++
+   struct FoldCompare {
+     FoldCompare(ComparisonDirection direction,
+-                std::optional<ComparisonType> kind)
++                ComparisonType kind)
+         : direction(direction), kind(kind) {}
+     ComparisonDirection direction;
+-    std::optional<ComparisonType> kind;
++    ComparisonType kind;
+ 
+     APInt operator()(APFloat lhs, APFloat rhs) {
++      if (kind != ComparisonType::FLOAT && kind != ComparisonType::TOTALORDER)
++        llvm::report_fatal_error("invalid float comparison");
++
+       bool result = false;
+       switch (direction) {
+         case ComparisonDirection::EQ:
+@@ -741,6 +769,9 @@
+       return APInt(/*bitwidth=*/1, result);
+     }
+     APInt operator()(APInt lhs, APInt rhs) {
++      if (kind != ComparisonType::UNSIGNED && kind != ComparisonType::SIGNED)
++        llvm::report_fatal_error("invalid integer comparison");
++
+       bool result = false;
+       switch (direction) {
+         case ComparisonDirection::EQ:
 
