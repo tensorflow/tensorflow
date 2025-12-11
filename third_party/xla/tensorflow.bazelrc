@@ -532,12 +532,6 @@ common:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crossto
 common:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
 common:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
 
-# Download CUDA/CUDNN redistributions to preserve the repositories cache between
-# CPU and GPU builds.
-# TODO(ybaturina): Uncomment when RBE is ready to support this.
-# common:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
-# common:rbe_linux_cpu --config=cuda_version
-
 common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu
 # dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
