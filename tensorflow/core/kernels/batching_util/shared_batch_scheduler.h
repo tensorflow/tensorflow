@@ -25,6 +25,7 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -254,6 +255,10 @@ class SharedBatchScheduler
     // inputs into two sub queues.
     bool enable_priority_queue = false;
 
+    // If true, the queue implementation will have a separate subqueue for each
+    // criticality.
+    bool enable_full_criticality_priority_queue = false;
+
     // A separate set of queue options for different priority inputs.
     // Use iff `enable_priority_queue` is true.
     struct PriorityQueueOptions {
@@ -339,6 +344,122 @@ class SharedBatchScheduler
 // Implementation details follow. API users need not read.
 
 namespace internal {
+
+template <typename TaskType>
+class PriorityTaskQueue : public TaskQueueBase<TaskType> {
+ public:
+  void AddTask(std::unique_ptr<TaskType> task,
+               uint64_t start_time_micros) override {
+    GetQueue(GetCriticality(*task)).AddTask(std::move(task), start_time_micros);
+  }
+
+  void PrependTask(std::unique_ptr<TaskType> task,
+                   uint64_t start_time_micros) override {
+    GetQueue(GetCriticality(*task))
+        .PrependTask(std::move(task), start_time_micros);
+  }
+
+  std::unique_ptr<TaskType> RemoveTask() override {
+    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
+      if (it->second) {
+        if (auto task = it->second->RemoveTask()) {
+          return task;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) override {
+    std::vector<std::unique_ptr<TaskType>> tasks;
+    int remaining_size = size;
+    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
+      if (remaining_size <= 0) {
+        break;
+      }
+      if (it->second) {
+        std::vector<std::unique_ptr<TaskType>> t =
+            it->second->RemoveTask(remaining_size);
+        for (const auto& task : t) {
+          remaining_size -= task->size();
+        }
+        std::move(t.begin(), t.end(), std::back_inserter(tasks));
+      }
+    }
+    return tasks;
+  }
+
+  std::optional<uint64_t> EarliestTaskStartTime() const override {
+    std::optional<uint64_t> earliest_task_start_time;
+    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
+      if (it->second) {
+        if (auto t = it->second->EarliestTaskStartTime()) {
+          if (!earliest_task_start_time.has_value() ||
+              *t < *earliest_task_start_time) {
+            earliest_task_start_time = t;
+          }
+        }
+      }
+    }
+    return earliest_task_start_time;
+  }
+
+  bool empty() const override {
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue && !queue->empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int num_tasks() const override {
+    int num_tasks = 0;
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue) {
+        num_tasks += queue->num_tasks();
+      }
+    }
+    return num_tasks;
+  }
+
+  int size() const override {
+    int size = 0;
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue) {
+        size += queue->size();
+      }
+    }
+    return size;
+  }
+
+  int GetQueueSize(const TaskType& task) const override {
+    auto it = queues_.find(GetCriticality(task));
+    if (it != queues_.end() && it->second) {
+      return it->second->size();
+    }
+    return 0;
+  }
+
+ private:
+  tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
+    if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+      return task.criticality();
+    }
+    return tsl::criticality::Criticality::kSheddable;
+  }
+
+  TaskQueue<TaskType>& GetQueue(tsl::criticality::Criticality c) {
+    auto& ptr = queues_[c];
+    if (!ptr) {
+      ptr = std::make_unique<TaskQueue<TaskType>>();
+    }
+    return *ptr;
+  }
+
+  std::map<tsl::criticality::Criticality, std::unique_ptr<TaskQueue<TaskType>>>
+      queues_;
+};
 
 // A task queue for SharedBatchScheduler. Accepts tasks and accumulates them
 // into batches, and dispenses those batches to be processed via a "pull"
@@ -439,6 +560,12 @@ class Queue {
   bool closed() const TF_NO_THREAD_SAFETY_ANALYSIS { return closed_.load(); }
 
  private:
+  // Pre-calculated capacity for low-priority tasks.
+  size_t low_priority_queue_capacity_ = 0;
+  // Pre-calculated per-criticality capacity for low-priority tasks.
+  std::map<tsl::criticality::Criticality, size_t>
+      low_priority_per_criticality_queue_capacity_;
+
   // Computes the max_execution_batch_size of the queue based on queue options.
   static size_t GetMaxExecutionBatchSize(
       const typename SharedBatchScheduler<TaskType>::QueueOptions& options) {
@@ -453,6 +580,13 @@ class Queue {
     } else {
       return options.input_batch_size_limit;
     }
+  }
+
+  static tsl::criticality::Criticality GetCriticality(const TaskType& task) {
+    if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+      return task.criticality();
+    }
+    return tsl::criticality::Criticality::kSheddable;
   }
 
   // Same as IsEmpty(), but assumes the caller already holds a lock on 'mu_'.
@@ -503,6 +637,9 @@ class Queue {
   absl::Status ValidateBatchTaskQueueCapacity(TaskType* task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Returns per-criticality capacity for low-priority tasks.
+  size_t GetLowPriorityQueueCapacity(const TaskType& task) const;
+
   // Returns an error if the low priority task queue doesn't have capacity for
   // this task using the low priority batch options. Since the low priority
   // tasks are not batched until they get scheduled, it only checks that a
@@ -527,7 +664,7 @@ class Queue {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Gets the low priority task queue.
-  TaskQueue<TaskType>& GetLowPriorityTaskQueue()
+  TaskQueueBase<TaskType>& GetLowPriorityTaskQueue()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Retrieves the tasks up to the specified size from the low priority task
@@ -564,7 +701,8 @@ class Queue {
   // Each element corresponds to a task to be dequeued. These tasks to be
   // consumed by `Queue<TaskType>::ProcessBatch` to either pad the high priority
   // batches below or form their own batch to be executed.
-  TaskQueue<TaskType> low_priority_tasks_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<TaskQueueBase<TaskType>> low_priority_tasks_
+      TF_GUARDED_BY(mu_);
 
   // The enqueued batches for high priority input.
   // Each element corresponds to a task to be dequeued and processed by
@@ -874,6 +1012,22 @@ Queue<TaskType>::Queue(
       max_execution_batch_size_(GetMaxExecutionBatchSize(options_)),
       process_batch_callback_(process_batch_callback),
       schedulable_batch_callback_(schedulable_batch_callback) {
+  if (options_.enable_full_criticality_priority_queue) {
+    low_priority_tasks_ = std::make_unique<PriorityTaskQueue<TaskType>>();
+
+    const size_t max_size =
+        options_.low_priority_queue_options.max_enqueued_batches *
+        options_.low_priority_queue_options.max_execution_batch_size;
+    low_priority_per_criticality_queue_capacity_ = {
+        {tsl::criticality::Criticality::kCritical, max_size},
+        {tsl::criticality::Criticality::kSheddablePlus, max_size / 5},
+        {tsl::criticality::Criticality::kSheddable, max_size / 10}};
+  } else {
+    low_priority_tasks_ = std::make_unique<TaskQueue<TaskType>>();
+    low_priority_queue_capacity_ =
+        options_.low_priority_queue_options.max_enqueued_batches *
+        options_.low_priority_queue_options.max_execution_batch_size;
+  }
   // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
   // time of the queue. This prevents the batches in different queues to have
   // the same traceme_context_id_counter_.
@@ -898,6 +1052,12 @@ bool Queue<TaskType>::IsLowPriorityTask(std::unique_ptr<TaskType>* task) {
   // The criticality is defined only when the task is a derived class of
   // BatchTask.
   if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+    // TODO: Hoist the if condition out of the function.
+    if (options_.enable_full_criticality_priority_queue) {
+      return (*task)->criticality() !=
+             tsl::criticality::Criticality::kCriticalPlus;
+    }
+
     // TODO(b/316379576): Make the criticality and priority configurable.
     return ((*task)->criticality() ==
                 tsl::criticality::Criticality::kSheddablePlus ||
@@ -971,7 +1131,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
   // the open batch.
   bool out_of_space = false;
 
-  while (!low_priority_tasks_.empty() && !out_of_space) {
+  while (!low_priority_tasks_->empty() && !out_of_space) {
     const int64_t open_batch_remaining_slot =
         max_execution_batch_size() - batches.back()->size();
     if (open_batch_remaining_slot <= 0) {
@@ -980,8 +1140,8 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
       return;
     }
 
-    uint64_t task_time = low_priority_tasks_.EarliestTaskStartTime().value();
-    std::unique_ptr<TaskType> task = low_priority_tasks_.RemoveTask();
+    uint64_t task_time = low_priority_tasks_->EarliestTaskStartTime().value();
+    std::unique_ptr<TaskType> task = low_priority_tasks_->RemoveTask();
 
     const int64_t input_task_size = task->size();
 
@@ -1002,7 +1162,7 @@ void Queue<TaskType>::PadOpenBatchWithLowPriorityTasks() {
     for (int i = 0; i < output_tasks.size(); ++i) {
       if (batches.back()->size() + output_tasks[i]->size() >
           max_execution_batch_size()) {
-        low_priority_tasks_.PrependTask(std::move(output_tasks[i]), task_time);
+        low_priority_tasks_->PrependTask(std::move(output_tasks[i]), task_time);
         out_of_space = true;
         // NOTE: Future iterations of this loop will also hit this case but are
         // needed to re-add all the unused tasks to the low priority queue.
@@ -1049,7 +1209,7 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
       // Insert the task to the low priority task queue instead of the high
       // priority batch queue below.
       TF_RETURN_IF_ERROR(ValidateLowPriorityTaskQueueCapacity(**task));
-      low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
+      low_priority_tasks_->AddTask(std::move(*task), env_->NowMicros());
     } else {
       TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
     }
@@ -1078,7 +1238,7 @@ size_t Queue<TaskType>::NumEnqueuedTasks() const {
   for (const auto& batch : GetBatches()) {
     num_enqueued_tasks += batch->num_tasks();
   }
-  return num_enqueued_tasks + low_priority_tasks_.num_tasks();
+  return num_enqueued_tasks + low_priority_tasks_->num_tasks();
 }
 
 template <typename TaskType>
@@ -1149,6 +1309,17 @@ absl::Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(
 }
 
 template <typename TaskType>
+size_t Queue<TaskType>::GetLowPriorityQueueCapacity(
+    const TaskType& task) const {
+  if (!options_.enable_full_criticality_priority_queue) {
+    return low_priority_queue_capacity_;
+  }
+
+  tsl::criticality::Criticality criticality = GetCriticality(task);
+  return low_priority_per_criticality_queue_capacity_.at(criticality);
+}
+
+template <typename TaskType>
 absl::Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
     const TaskType& task) const {
   // Unlike the high priority batch capacity validation where having only
@@ -1163,15 +1334,15 @@ absl::Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
         options_.low_priority_queue_options.max_execution_batch_size,
         task.size()));
   }
-  if (low_priority_tasks_.size() + task.size() >
-      options_.low_priority_queue_options.max_enqueued_batches *
-          options_.low_priority_queue_options.max_execution_batch_size) {
+
+  size_t queue_size = low_priority_tasks_->GetQueueSize(task);
+  if (queue_size + task.size() > GetLowPriorityQueueCapacity(task)) {
     return absl::UnavailableError(absl::StrFormat(
         "The low priority task queue to which this task was submitted does not "
         "have the capacity to handle this task; currently the low priority "
         "queue has %d tasks enqueued and the submitted task size is %d while "
         "max_enqueued_batches=%d and max_execution_batch_size=%d",
-        low_priority_tasks_.size(), task.size(),
+        queue_size, task.size(),
         options_.low_priority_queue_options.max_enqueued_batches,
         options_.low_priority_queue_options.max_execution_batch_size));
   }
@@ -1363,7 +1534,7 @@ template <typename TaskType>
 bool Queue<TaskType>::IsEmptyInternal() const {
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
   return num_batches_being_processed_ == 0 && batches.size() == 1 &&
-         batches.back()->empty() && low_priority_tasks_.empty();
+         batches.back()->empty() && low_priority_tasks_->empty();
 }
 
 template <typename TaskType>
@@ -1430,10 +1601,10 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
           options_.low_priority_queue_options.batch_timeout_micros;
     }
 
-    effective_batch_size += low_priority_tasks_.size();
+    effective_batch_size += low_priority_tasks_->size();
 
     auto low_priority_earliest_start_time =
-        low_priority_tasks_.EarliestTaskStartTime();
+        low_priority_tasks_->EarliestTaskStartTime();
     if (low_priority_earliest_start_time.has_value()) {
       effective_start_time_micros = std::min(effective_start_time_micros,
                                              *low_priority_earliest_start_time);
@@ -1460,7 +1631,7 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
 template <typename TaskType>
 std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
   std::unique_ptr<Batch<TaskType>> batch_to_schedule;
-  if (!options_.enable_priority_queue || low_priority_tasks_.empty() ||
+  if (!options_.enable_priority_queue || low_priority_tasks_->empty() ||
       options_.mixed_priority_batching_policy ==
           MixedPriorityBatchingPolicy::kPriorityMerge) {
     // Return early if priority queue is disabled or there is no low priority
@@ -1469,9 +1640,9 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
     return batch_to_schedule;
   }
   if (env_->NowMicros() <
-          *low_priority_tasks_.EarliestTaskStartTime() +
+          *low_priority_tasks_->EarliestTaskStartTime() +
               options_.low_priority_queue_options.batch_timeout_micros &&
-      low_priority_tasks_.size() <
+      low_priority_tasks_->size() <
           options_.low_priority_queue_options.max_execution_batch_size) {
     // Return early if the low priority tasks can't fill up the max batch size
     // and the earliest task didn't time out.
@@ -1483,7 +1654,7 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleLowPriorityBatch() {
   }
 
   batch_to_schedule = std::make_unique<Batch<TaskType>>();
-  for (std::unique_ptr<TaskType>& task : low_priority_tasks_.RemoveTask(
+  for (std::unique_ptr<TaskType>& task : low_priority_tasks_->RemoveTask(
            options_.low_priority_queue_options.max_execution_batch_size)) {
     batch_to_schedule->AddTask(std::move(task), env_->NowMicros());
   }
@@ -1514,8 +1685,8 @@ Queue<TaskType>::GetBatches() const {
 }
 
 template <typename TaskType>
-TaskQueue<TaskType>& Queue<TaskType>::GetLowPriorityTaskQueue() {
-  return low_priority_tasks_;
+TaskQueueBase<TaskType>& Queue<TaskType>::GetLowPriorityTaskQueue() {
+  return *low_priority_tasks_;
 }
 
 template <typename TaskType>

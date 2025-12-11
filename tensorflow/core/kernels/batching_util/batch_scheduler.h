@@ -32,6 +32,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -99,6 +100,46 @@ class BatchTask {
   }
 };
 
+template <typename TaskType>
+class TaskQueueBase {
+ public:
+  TaskQueueBase() = default;
+  virtual ~TaskQueueBase() = default;
+
+  // Appends a task to the end of the queue with the given start time.
+  virtual void AddTask(std::unique_ptr<TaskType> task,
+                       uint64_t start_time_micros) = 0;
+
+  // Adds a task to the front of the queue with the given start time.
+  virtual void PrependTask(std::unique_ptr<TaskType> task,
+                           uint64_t start_time_micros) = 0;
+
+  // Removes a task from the front of the queue, i.e., the oldest task in the
+  // queue.
+  virtual std::unique_ptr<TaskType> RemoveTask() = 0;
+
+  // Removes tasks from the front of the queue as many as possible as long as
+  // the sum of sizes of the removed tasks don't exceed the 'size' given as the
+  // argument.
+  virtual std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) = 0;
+
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  virtual std::optional<uint64_t> EarliestTaskStartTime() const = 0;
+
+  // Returns true iff the queue contains 0 tasks.
+  virtual bool empty() const = 0;
+
+  // Returns the number of tasks in the queue.
+  virtual int num_tasks() const = 0;
+
+  // Returns the sum of the task sizes.
+  virtual int size() const = 0;
+
+  // Returns the size of the queue for the task's criticality.
+  virtual int GetQueueSize(const TaskType& task) const = 0;
+};
+
 // A thread-safe collection of BatchTasks. Tasks can be either added or removed
 // from the TaskQueue. It is mainly used to hold the registered tasks without
 // forming batches, so that the batches can be formed more flexibly right before
@@ -106,10 +147,44 @@ class BatchTask {
 //
 // Type parameter TaskType must be a subclass of BatchTask.
 template <typename TaskType>
-class TaskQueue {
+class TaskQueue : public TaskQueueBase<TaskType> {
  public:
   TaskQueue() = default;
 
+  // Appends a task to the end of the queue with the given start time.
+  void AddTask(std::unique_ptr<TaskType> task,
+               uint64_t start_time_micros) override;
+
+  // Adds a task to the front of the queue with the given start time.
+  void PrependTask(std::unique_ptr<TaskType> task,
+                   uint64_t start_time_micros) override;
+
+  // Removes a task from the front of the queue, i.e., the oldest task in the
+  // queue.
+  std::unique_ptr<TaskType> RemoveTask() override;
+
+  // Removes tasks from the front of the queue as many as possible as long as
+  // the sum of sizes of the removed tasks don't exceed the 'size' given as the
+  // argument.
+  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) override;
+
+  // Returns the start time of the earliest task in the queue. If the queue is
+  // empty, return the null value.
+  std::optional<uint64_t> EarliestTaskStartTime() const override;
+
+  // Returns true iff the queue contains 0 tasks.
+  bool empty() const override;
+
+  // Returns the number of tasks in the queue.
+  int num_tasks() const override;
+
+  // Returns the sum of the task sizes.
+  int size() const override;
+
+  // Returns the size of the queue for the task's criticality.
+  int GetQueueSize(const TaskType& task) const override;
+
+ private:
   struct TaskWrapper {
     std::unique_ptr<TaskType> task;
     uint64_t start_time_micros;
@@ -118,35 +193,6 @@ class TaskQueue {
         : task(std::move(task)), start_time_micros(start_time_micros) {}
   };
 
-  // Appends a task to the end of the queue with the given start time.
-  void AddTask(std::unique_ptr<TaskType> task, uint64_t start_time_micros);
-
-  // Adds a task to the front of the queue with the given start time.
-  void PrependTask(std::unique_ptr<TaskType> task, uint64_t start_time_micros);
-
-  // Removes a task from the front of the queue, i.e., the oldest task in the
-  // queue.
-  std::unique_ptr<TaskType> RemoveTask();
-
-  // Removes tasks from the front of the queue as many as possible as long as
-  // the sum of sizes of the removed tasks don't exceed the 'size' given as the
-  // argument.
-  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size);
-
-  // Returns the start time of the earliest task in the queue. If the queue is
-  // empty, return the null value.
-  std::optional<uint64_t> EarliestTaskStartTime() const;
-
-  // Returns true iff the queue contains 0 tasks.
-  bool empty() const;
-
-  // Returns the number of tasks in the queue.
-  int num_tasks() const;
-
-  // Returns the sum of the task sizes.
-  int size() const;
-
- private:
   mutable mutex mu_;
 
   // Tasks in the queue.
@@ -262,6 +308,11 @@ int TaskQueue<TaskType>::size() const {
     mutex_lock l(mu_);
     return size_;
   }
+}
+
+template <typename TaskType>
+int TaskQueue<TaskType>::GetQueueSize(const TaskType& task) const {
+  return size();
 }
 
 // A thread-safe collection of BatchTasks, to be executed together in some
