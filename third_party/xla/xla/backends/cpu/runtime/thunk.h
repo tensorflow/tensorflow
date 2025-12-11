@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
@@ -46,11 +48,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
-#endif  // XLA_YNNPACK
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -272,7 +269,6 @@ class Thunk {
   // YnnParams
   //===--------------------------------------------------------------------===//
 
-#ifdef XLA_YNNPACK
   // Parameters capturing all the details required for running XNNPACK fusions.
   struct YnnParams {
     static absl::StatusOr<YnnParams> Create(
@@ -282,10 +278,6 @@ class Thunk {
 
     explicit YnnParams(YnnThreadpool threadpool);
   };
-#else
-  // Use XnnParams for placeholder. The parameter won't be used anyway.
-  using YnnParams = XnnParams;
-#endif  // XLA_YNNPACK
 
   //===--------------------------------------------------------------------===//
   // ExecuteParams

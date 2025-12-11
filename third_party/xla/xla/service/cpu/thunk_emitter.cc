@@ -71,8 +71,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/xnn_emitter.h"
 #include "xla/backends/cpu/xnn_support.h"
+#include "xla/backends/cpu/ynn_emitter.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -124,13 +128,6 @@ limitations under the License.
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_fusion_thunk.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/ynn_emitter.h"
-#include "xla/backends/cpu/ynn_support.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -449,11 +446,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
           return EmitXnnFusionThunk(instruction);
         }
 
-#ifdef XLA_YNNPACK
         if (backend_config.fusion_config().kind() == kYnnFusionKind) {
           return EmitYnnFusionThunk(instruction);
         }
-#endif  // XLA_YNNPACK
 
         return Internal("Unsupported custom fusion kind: %s",
                         backend_config.DebugString());
@@ -1098,7 +1093,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
 
-#ifdef XLA_YNNPACK
       const bool use_ynn = absl::c_linear_search(
           hlo_module_config_.debug_options()
               .xla_cpu_experimental_ynn_fusion_type(),
@@ -1112,7 +1106,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
           return EmitYnnFusionThunk(instruction);
         }
       }
-#endif  // XLA_YNNPACK
 
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
@@ -1539,7 +1532,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
     const HloInstruction* instruction) {
-#ifdef XLA_YNNPACK
   // Collect YNNPACK fusion arguments.
   std::vector<YnnFusionThunk::Argument> arguments;
   for (HloInstruction* operand : instruction->operands()) {
@@ -1595,9 +1587,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
         return b(arg_buffers);
       },
       captured_arguments_ids);
-#else
-  return Unimplemented("XLA is not built with YNNPACK.");
-#endif  // XLA_YNNPACK
 }
 
 absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
