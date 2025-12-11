@@ -545,6 +545,153 @@ std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithMeshAxes(
       device_groups, partition_group_list->ToIotaReplicaGroupList());
 }
 
+// Lambdas for creating SPMDCollectiveOps functions.
+decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_reduce)
+CreateCrossPartitionAllReduce(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
+             const std::vector<std::vector<int64_t>>& partition_subgroups,
+             int64_t channel_id) {
+    return creator.create_cross_partition_all_reduce(
+        b, operand, reduction,
+        ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
+        channel_id);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::
+             create_cross_partition_all_reduce_with_iota_device_list)
+CreateCrossPartitionAllReduceWithIotaDeviceList(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
+             const IotaReplicaGroupList& partition_group_list,
+             int64_t channel_id) {
+    // Try to expand the device group list, but if this fails fallback
+    // to creating collective with list of list of integers representation.
+    std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
+        ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
+    if (!expanded_iota_partition_group_list.has_value()) {
+      return creator.create_cross_partition_all_reduce(
+          b, operand, reduction,
+          ExpandDeviceGroups(*device_groups_ptr,
+                             partition_group_list.flattened_replica_groups()),
+          channel_id);
+    }
+    return creator.create_cross_partition_all_reduce_with_iota_device_list(
+        b, operand, reduction, *expanded_iota_partition_group_list, channel_id);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::create_cross_partition_collective_permute)
+CreateCrossPartitionCollectivePermute(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, HloInstruction* operand,
+             std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
+             int64_t next_channel_id) {
+    std::vector<std::pair<int64_t, int64_t>> expanded_pairs(
+        src_dst_pairs.size() * device_groups_ptr->num_groups());
+    for (int64_t g = 0; g < device_groups_ptr->num_groups(); ++g) {
+      for (int64_t i = 0; i < src_dst_pairs.size(); ++i) {
+        expanded_pairs[g * src_dst_pairs.size() + i] =
+            std::pair<int64_t, int64_t>{
+                device_groups_ptr->array()(g, src_dst_pairs[i].first),
+                device_groups_ptr->array()(g, src_dst_pairs[i].second)};
+      }
+    }
+    return creator.create_cross_partition_collective_permute(
+        b, operand, expanded_pairs, next_channel_id);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_to_all)
+CreateCrossPartitionAllToAll(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
+             const std::vector<std::vector<int64_t>>& partition_subgroups,
+             int64_t channel_id, std::optional<int64_t> split_dimension) {
+    return creator.create_cross_partition_all_to_all(
+        b, operands,
+        ExpandDeviceGroups(*device_groups_ptr, partition_subgroups), channel_id,
+        split_dimension);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::
+             create_cross_partition_all_to_all_with_iota_device_list)
+CreateCrossPartitionAllToAllWithIotaDeviceList(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
+             const IotaReplicaGroupList& partition_group_list,
+             int64_t channel_id, std::optional<int64_t> split_dimension) {
+    // Try to expand the partition group list, but if this fails fallback
+    // to creating collective with list of list of integers representation.
+    std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
+        ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
+    if (!expanded_iota_partition_group_list.has_value()) {
+      return creator.create_cross_partition_all_to_all(
+          b, operands,
+          ExpandDeviceGroups(*device_groups_ptr,
+                             partition_group_list.flattened_replica_groups()),
+          channel_id, split_dimension);
+    }
+    return creator.create_cross_partition_all_to_all_with_iota_device_list(
+        b, operands, *expanded_iota_partition_group_list, channel_id,
+        split_dimension);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_gather)
+CreateCrossPartitionAllGather(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
+             const std::vector<std::vector<int64_t>>& partition_subgroups,
+             int64_t channel_id, int64_t all_gather_dimension) {
+    return creator.create_cross_partition_all_gather(
+        b, operand, ag_shape,
+        ExpandDeviceGroups(*device_groups_ptr, partition_subgroups), channel_id,
+        all_gather_dimension);
+  };
+}
+
+decltype(SPMDCollectiveOpsCreator::
+             create_cross_partition_all_gather_with_iota_device_list)
+CreateCrossPartitionAllGatherWithIotaDeviceList(
+    const SPMDCollectiveOpsCreator& creator,
+    std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
+  return [creator, device_groups_ptr](
+             SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
+             const IotaReplicaGroupList& partition_group_list,
+             int64_t channel_id, int64_t all_gather_dimension) {
+    // Try to expand the device group list, but if this fails fallback
+    // to creating collective with list of list of integers
+    // representation.
+    std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
+        ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
+    if (!expanded_iota_partition_group_list.has_value()) {
+      return creator.create_cross_partition_all_gather(
+          b, operand, ag_shape,
+          ExpandDeviceGroups(*device_groups_ptr,
+                             partition_group_list.flattened_replica_groups()),
+          channel_id, all_gather_dimension);
+    }
+    return creator.create_cross_partition_all_gather_with_iota_device_list(
+        b, operand, ag_shape, *expanded_iota_partition_group_list, channel_id,
+        all_gather_dimension);
+  };
+}
+
 SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
     const DeviceGroupTileAssignment& device_groups) {
@@ -568,124 +715,25 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
                                  *device_groups_ptr, b);
   };
   result.create_cross_partition_all_reduce =
-      [creator, device_groups_ptr](
-          SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
-          const std::vector<std::vector<int64_t>>& partition_subgroups,
-          int64_t channel_id) {
-        return creator.create_cross_partition_all_reduce(
-            b, operand, reduction,
-            ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
-            channel_id);
-      };
+      CreateCrossPartitionAllReduce(creator, device_groups_ptr);
   result.create_cross_partition_all_reduce_with_iota_device_list =
-      [creator, device_groups_ptr](
-          SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
-          const IotaReplicaGroupList& partition_group_list,
-          int64_t channel_id) {
-        // Try to expand the device group list, but if this fails fallback
-        // to creating collective with list of list of integers representation.
-        std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
-            ExpandDeviceGroupsWithIota(*device_groups_ptr,
-                                       partition_group_list);
-        if (!expanded_iota_partition_group_list.has_value()) {
-          return creator.create_cross_partition_all_reduce(
-              b, operand, reduction,
-              ExpandDeviceGroups(
-                  *device_groups_ptr,
-                  partition_group_list.flattened_replica_groups()),
-              channel_id);
-        }
-        return creator.create_cross_partition_all_reduce_with_iota_device_list(
-            b, operand, reduction, *expanded_iota_partition_group_list,
-            channel_id);
-      };
+      CreateCrossPartitionAllReduceWithIotaDeviceList(creator,
+                                                      device_groups_ptr);
   result.create_cross_partition_collective_permute =
-      [creator, device_groups_ptr](
-          SpmdBuilder* b, HloInstruction* operand,
-          std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
-          int64_t next_channel_id) {
-        std::vector<std::pair<int64_t, int64_t>> expanded_pairs(
-            src_dst_pairs.size() * device_groups_ptr->num_groups());
-        for (int64_t g = 0; g < device_groups_ptr->num_groups(); ++g) {
-          for (int64_t i = 0; i < src_dst_pairs.size(); ++i) {
-            expanded_pairs[g * src_dst_pairs.size() + i] =
-                std::pair<int64_t, int64_t>{
-                    device_groups_ptr->array()(g, src_dst_pairs[i].first),
-                    device_groups_ptr->array()(g, src_dst_pairs[i].second)};
-          }
-        }
-        return creator.create_cross_partition_collective_permute(
-            b, operand, expanded_pairs, next_channel_id);
-      };
+      CreateCrossPartitionCollectivePermute(creator, device_groups_ptr);
   result.create_cross_partition_all_to_all =
-      [creator, device_groups_ptr](
-          SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
-          const std::vector<std::vector<int64_t>>& partition_subgroups,
-          int64_t channel_id, std::optional<int64_t> split_dimension) {
-        return creator.create_cross_partition_all_to_all(
-            b, operands,
-            ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
-            channel_id, split_dimension);
-      };
+      CreateCrossPartitionAllToAll(creator, device_groups_ptr);
   result.create_cross_partition_all_to_all_with_iota_device_list =
-      [creator, device_groups_ptr](
-          SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
-          const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
-          std::optional<int64_t> split_dimension) {
-        // Try to expand the partition group list, but if this fails fallback
-        // to creating collective with list of list of integers representation.
-        std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
-            ExpandDeviceGroupsWithIota(*device_groups_ptr,
-                                       partition_group_list);
-        if (!expanded_iota_partition_group_list.has_value()) {
-          return creator.create_cross_partition_all_to_all(
-              b, operands,
-              ExpandDeviceGroups(
-                  *device_groups_ptr,
-                  partition_group_list.flattened_replica_groups()),
-              channel_id, split_dimension);
-        }
-        return creator.create_cross_partition_all_to_all_with_iota_device_list(
-            b, operands, *expanded_iota_partition_group_list, channel_id,
-            split_dimension);
-      };
+      CreateCrossPartitionAllToAllWithIotaDeviceList(creator,
+                                                     device_groups_ptr);
   if (creator.create_cross_partition_all_gather) {
     result.create_cross_partition_all_gather =
-        [creator, device_groups_ptr](
-            SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
-            const std::vector<std::vector<int64_t>>& partition_subgroups,
-            int64_t channel_id, int64_t all_gather_dimension) {
-          return creator.create_cross_partition_all_gather(
-              b, operand, ag_shape,
-              ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
-              channel_id, all_gather_dimension);
-        };
+        CreateCrossPartitionAllGather(creator, device_groups_ptr);
   }
   if (creator.create_cross_partition_all_gather_with_iota_device_list) {
     result.create_cross_partition_all_gather_with_iota_device_list =
-        [creator, device_groups_ptr](
-            SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
-            const IotaReplicaGroupList& partition_group_list,
-            int64_t channel_id, int64_t all_gather_dimension) {
-          // Try to expand the device group list, but if this fails fallback
-          // to creating collective with list of list of integers
-          // representation.
-          std::optional<IotaReplicaGroupList>
-              expanded_iota_partition_group_list = ExpandDeviceGroupsWithIota(
-                  *device_groups_ptr, partition_group_list);
-          if (!expanded_iota_partition_group_list.has_value()) {
-            return creator.create_cross_partition_all_gather(
-                b, operand, ag_shape,
-                ExpandDeviceGroups(
-                    *device_groups_ptr,
-                    partition_group_list.flattened_replica_groups()),
-                channel_id, all_gather_dimension);
-          }
-          return creator
-              .create_cross_partition_all_gather_with_iota_device_list(
-                  b, operand, ag_shape, *expanded_iota_partition_group_list,
-                  channel_id, all_gather_dimension);
-        };
+        CreateCrossPartitionAllGatherWithIotaDeviceList(creator,
+                                                        device_groups_ptr);
   }
   return result;
 }
@@ -2902,23 +2950,22 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
   std::vector<std::vector<int64_t>> groups(sharding.num_devices() /
                                            total_group_size);
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        int64_t group_id = 0;
-        for (int64_t dim = 0; dim < indices.size(); ++dim) {
-          if (auto it = absl::c_find(target_dims, dim);
-              it != target_dims.end()) {
-            int64_t group_size =
-                group_sizes[std::distance(target_dims.begin(), it)];
-            group_id *= sharding.dimension(dim) / group_size;
-            group_id += indices[dim] / group_size;
-          } else {
-            group_id *= sharding.dimension(dim);
-            group_id += indices[dim];
-          }
-        }
-        groups[group_id].push_back(device);
-      });
+  sharding.tile_assignment().Each([&](absl::Span<const int64_t> indices,
+                                      int64_t device) {
+    int64_t group_id = 0;
+    for (int64_t dim = 0; dim < indices.size(); ++dim) {
+      if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {
+        int64_t group_size =
+            group_sizes[std::distance(target_dims.begin(), it)];
+        group_id *= sharding.dimension(dim) / group_size;
+        group_id += indices[dim] / group_size;
+      } else {
+        group_id *= sharding.dimension(dim);
+        group_id += indices[dim];
+      }
+    }
+    groups[group_id].push_back(device);
+  });
   return groups;
 }
 
