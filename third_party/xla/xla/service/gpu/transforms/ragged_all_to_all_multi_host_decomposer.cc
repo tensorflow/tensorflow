@@ -103,12 +103,13 @@ HloInstruction* ShuffleMetadataOperandValues(
 
   HloComputation* computation = hlo->parent();
 
-  const Shape& shape = hlo->shape();
-  CHECK_EQ(shape.dimensions().size(), 1);
-
-  int64_t num_elements = shape.dimensions(0);
+  PrimitiveType element_type = hlo->shape().element_type();
+  int64_t num_elements = ShapeUtil::ElementsIn(hlo->shape());
   int64_t num_replicas = permutation.size();
   int64_t num_elements_per_replica = num_elements / permutation.size();
+  Shape linear_shape = ShapeUtil::MakeShape(element_type, {num_elements});
+  Shape gather_shape = ShapeUtil::MakeShape(
+      element_type, {num_replicas, num_elements_per_replica});
 
   Array<int64_t> permutation_array({num_replicas, 1});
   for (int64_t i = 0; i < permutation.size(); ++i) {
@@ -119,11 +120,11 @@ HloInstruction* ShuffleMetadataOperandValues(
       computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateFromArray(permutation_array)));
 
-  Shape new_shape = ShapeUtil::MakeShape(
-      shape.element_type(), {num_replicas, num_elements_per_replica});
+  hlo = computation->AddInstruction(
+      HloInstruction::CreateReshape(linear_shape, hlo));
 
   hlo = computation->AddInstruction(
-      HloInstruction::CreateGather(new_shape, hlo, permutation_constant,
+      HloInstruction::CreateGather(gather_shape, hlo, permutation_constant,
                                    HloGatherInstruction::MakeGatherDimNumbers(
                                        /*offset_dims=*/{1},
                                        /*collapsed_slice_dims=*/{},
@@ -132,7 +133,8 @@ HloInstruction* ShuffleMetadataOperandValues(
                                    /*slice_sizes=*/{num_elements_per_replica},
                                    /*indices_are_sorted=*/false));
 
-  return computation->AddInstruction(HloInstruction::CreateReshape(shape, hlo));
+  return computation->AddInstruction(
+      HloInstruction::CreateReshape(linear_shape, hlo));
 }
 
 // Corrects the offsets in the local metadata to account for the number of input
@@ -337,8 +339,11 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
     HloRaggedAllToAllInstruction* ragged_all_to_all,
     HloComputation* computation,
     absl::Span<ReplicaGroup const> inter_host_replica_groups,
-    absl::Span<ReplicaGroup const> intra_host_replica_groups, int64_t num_hosts,
+    absl::Span<ReplicaGroup const> intra_host_replica_groups,
+    absl::Span<int64_t const> replica_groups_permutation, int64_t num_hosts,
     int64_t num_devices_in_replica, int64_t num_participating_devices) {
+  const Shape& metadata_operand_shape = ragged_all_to_all->operand(2)->shape();
+
   auto* zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(
           ragged_all_to_all->operand(1)->shape().element_type())));
@@ -359,6 +364,9 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
 
   auto get_intra_host_metadata = [&](HloInstruction* metadata_operand,
                                      bool correct_offsets) {
+    metadata_operand = ShuffleMetadataOperandValues(metadata_operand,
+                                                    replica_groups_permutation);
+
     metadata_operand =
         computation->AddInstruction(HloInstruction::CreateReshape(
             /*shape=*/ShapeUtil::MakeShape(
@@ -383,8 +391,7 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
             /*dimensions=*/{1, 0, 2}));
 
     return computation->AddInstruction(HloInstruction::CreateReshape(
-        /*shape=*/ragged_all_to_all->operand(2)->shape(),
-        /*operand=*/metadata_operand));
+        /*shape=*/metadata_operand_shape, /*operand=*/metadata_operand));
   };
 
   absl::InlinedVector<HloInstruction*, 4> intra_host_ragged_all_to_all_operands{
@@ -443,36 +450,40 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
           : std::nullopt,
       /*split_dimension=*/0));
 
-  HloInstruction* corrected_output_offsets = output_offsets;
+  output_offsets = computation->AddInstruction(HloInstruction::CreateReshape(
+      /*shape=*/metadata_operand_shape, /*operand=*/output_offsets));
 
-  corrected_output_offsets =
+  std::vector<HloInstruction*> local_ragged_all_to_all_operands = {
+      local_inputs,   ragged_all_to_all->mutable_operand(1),
+      output_offsets, ragged_all_to_all->mutable_operand(5),
+      output_offsets, ragged_all_to_all->mutable_operand(5),
+  };
+
+  for (int i = 2; i < 6; ++i) {
+    local_ragged_all_to_all_operands[i] = ShuffleMetadataOperandValues(
+        local_ragged_all_to_all_operands[i], replica_groups_permutation);
+  }
+
+  HloInstruction* local_input_offsets =
       computation->AddInstruction(HloInstruction::CreateReshape(
           /*shape=*/ShapeUtil::MakeShape(
               output_offsets->shape().element_type(),
               {num_hosts, num_devices_in_replica_per_host,
                num_updates_per_replica}),
-          /*operand=*/corrected_output_offsets));
+          /*operand=*/local_ragged_all_to_all_operands[2]));
 
-  corrected_output_offsets =
+  local_input_offsets =
       CorrectOffsets(ragged_all_to_all->operand(1)->shape().dimensions(0),
-                     corrected_output_offsets, computation);
+                     local_input_offsets, computation);
 
-  output_offsets = computation->AddInstruction(HloInstruction::CreateReshape(
-      /*shape=*/ragged_all_to_all->operand(2)->shape(),
-      /*operand=*/output_offsets));
-
-  corrected_output_offsets =
+  local_ragged_all_to_all_operands[2] =
       computation->AddInstruction(HloInstruction::CreateReshape(
-          /*shape=*/ragged_all_to_all->operand(2)->shape(),
-          /*operand=*/corrected_output_offsets));
+          /*shape=*/metadata_operand_shape, /*operand=*/local_input_offsets));
 
   HloInstruction* local_ragged_all_to_all =
       computation->AddInstruction(HloInstruction::CreateRaggedAllToAll(
           /*shape=*/ragged_all_to_all->shape(),
-          /*operands=*/
-          {local_inputs, ragged_all_to_all->mutable_operand(1),
-           corrected_output_offsets, ragged_all_to_all->mutable_operand(5),
-           output_offsets, ragged_all_to_all->mutable_operand(5)},
+          /*operands=*/local_ragged_all_to_all_operands,
           /*device_list=*/CollectiveDeviceList(degenerated_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
@@ -590,8 +601,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(
   if (num_input_rows > num_output_rows) {
     return DecomposeCombineRaggedAllToAll(
         ragged_all_to_all, computation, inter_host_replica_groups,
-        intra_host_replica_groups, num_hosts, num_devices_in_replica,
-        num_participating_devices);
+        intra_host_replica_groups, *replica_groups_permutation, num_hosts,
+        num_devices_in_replica, num_participating_devices);
   }
 
   return DecomposeDispatchRaggedAllToAll(

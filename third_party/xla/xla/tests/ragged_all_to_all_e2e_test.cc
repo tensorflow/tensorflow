@@ -935,13 +935,6 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
        RaggedAllToAll_8GPUs_SliceSize4_ShuffledReplicaGroups) {
   auto [num_input_rows, num_output_rows] = GetParam();
 
-  if (num_input_rows > num_output_rows) {
-    // TODO(b/445380264): Fix decomposer for combine ragged-all-to-all.
-    GTEST_SKIP()
-        << "The test will currently fail for combine ragged-all-to-all (when "
-           "input is larger than output).";
-  }
-
   std::string kModuleReplicatedStr =
       absl::Substitute(R"(
   HloModule module
