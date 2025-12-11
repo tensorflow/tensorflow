@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +27,14 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 namespace xla {
+
+int64_t NamedSharding::DimensionSharding::getShardedSize(
+    const Mesh& mesh) const {
+  return std::accumulate(axes_.begin(), axes_.end(), 1,
+                         [&mesh](int64_t cur, const AxisRef& axis) {
+                           return cur * axis.size(mesh);
+                         });
+}
 
 namespace test_utils {
 // Construct sharding with given mesh. 'dim_shardings', 'replicated_axes',

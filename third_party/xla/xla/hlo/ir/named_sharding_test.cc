@@ -109,5 +109,61 @@ TEST(NamedShardingTest, Equality) {
             NamedSharding(mesh_diff_shape, {ds_ab, ds_dc}, {axis_b}, {axis_c}));
 }
 
+TEST(NamedShardingTest, GetShardedSize) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1, {2, 2});
+  AxisRef axis_c(2);
+  AxisRef axis_d(3, {4, 2});
+
+  DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+  EXPECT_EQ(ds_ab.getShardedSize(mesh), 2 * 2);
+
+  DimensionSharding ds_dc({axis_d, axis_c}, /*is_closed=*/true);
+  EXPECT_EQ(ds_dc.getShardedSize(mesh), 2 * 3);
+
+  DimensionSharding ds_b({axis_b}, /*is_closed=*/true);
+  EXPECT_EQ(ds_b.getShardedSize(mesh), 2);
+
+  DimensionSharding ds_empty({}, /*is_closed=*/true);
+  EXPECT_EQ(ds_empty.getShardedSize(mesh), 1);
+}
+
+TEST(NamedShardingTest, Dimension) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1, {2, 2});
+  AxisRef axis_c(2);
+  AxisRef axis_d(3, {4, 2});
+
+  DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+  DimensionSharding ds_dc({axis_d, axis_c}, /*is_closed=*/true);
+
+  NamedSharding sharding(mesh, /*dim_shardings=*/{ds_ab, ds_dc});
+
+  EXPECT_EQ(sharding.dimension(0), 2 * 2);
+  EXPECT_EQ(sharding.dimension(1), 2 * 3);
+  EXPECT_EQ(sharding.num_dimensions(), 2);
+
+  NamedSharding empty_sharding(mesh, /*dim_shardings=*/{});
+  EXPECT_EQ(empty_sharding.num_dimensions(), 0);
+}
+
+TEST(NamedShardingTest, NumDevices) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+  NamedSharding sharding(mesh, {});
+  EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
+
+  Mesh maximal_mesh(5);
+  NamedSharding maximal_sharding(maximal_mesh);
+  EXPECT_EQ(maximal_sharding.num_devices(), 1);
+
+  Mesh empty_mesh;
+  NamedSharding empty_sharding(empty_mesh);
+  EXPECT_EQ(empty_sharding.num_devices(), 0);
+}
+
 }  // namespace
 }  // namespace xla
