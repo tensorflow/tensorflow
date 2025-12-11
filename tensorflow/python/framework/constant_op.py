@@ -111,7 +111,7 @@ def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
 @tf_export(v1=["constant"])
 def constant_v1(
     value, dtype=None, shape=None, name="Const", verify_shape=False
-) -> Union[ops.Operation, ops._EagerTensorBase]:
+) -> tensor_lib.Tensor:
   """Creates a constant tensor.
 
   The resulting tensor is populated with values of type `dtype`, as
@@ -177,7 +177,7 @@ def constant_v1(
 @tf_export("constant", v1=[])
 def constant(
     value, dtype=None, shape=None, name="Const"
-) -> Union[ops.Operation, ops._EagerTensorBase]:
+) -> tensor_lib.Tensor:
   """Creates a constant tensor from a tensor-like object.
 
   Note: All eager `tf.Tensor` values are immutable (in contrast to
@@ -279,7 +279,7 @@ def constant(
 
 def _constant_impl(
     value, dtype, shape, name, verify_shape, allow_broadcast
-) -> Union[ops.Operation, ops._EagerTensorBase]:
+) -> tensor_lib.Tensor:
   """Implementation of constant."""
   ctx = context.context()
   if ctx.executing_eagerly():

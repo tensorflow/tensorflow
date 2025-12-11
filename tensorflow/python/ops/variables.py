@@ -19,6 +19,7 @@ import enum
 import functools
 import itertools
 import os
+from typing import Any
 from typing_extensions import Self
 
 from tensorflow.core.framework import variable_pb2
@@ -388,6 +389,136 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
 
   def __repr__(self):
     raise NotImplementedError
+
+  # Type stubs for dynamically-added operators (for static type checkers).
+  # These methods are overridden at runtime by _OverloadAllOperators().
+  def __getitem__(self, key: Any) -> tensor_lib.Tensor:
+    """Returns the specified slice or element of this variable."""
+    ...
+
+  def __add__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise sum of this variable and `other`."""
+    ...
+
+  def __radd__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise sum of `other` and this variable."""
+    ...
+
+  def __sub__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise difference of this variable and `other`."""
+    ...
+
+  def __rsub__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise difference of `other` and this variable."""
+    ...
+
+  def __mul__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise product of this variable and `other`."""
+    ...
+
+  def __rmul__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise product of `other` and this variable."""
+    ...
+
+  def __div__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise quotient of this variable and `other`."""
+    ...
+
+  def __rdiv__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise quotient of `other` and this variable."""
+    ...
+
+  def __truediv__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise quotient of this variable and `other`."""
+    ...
+
+  def __rtruediv__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise quotient of `other` and this variable."""
+    ...
+
+  def __floordiv__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise floor division of this variable and `other`."""
+    ...
+
+  def __rfloordiv__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise floor division of `other` and this variable."""
+    ...
+
+  def __mod__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise modulo of this variable and `other`."""
+    ...
+
+  def __rmod__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise modulo of `other` and this variable."""
+    ...
+
+  def __pow__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns this variable raised to the power of `other`."""
+    ...
+
+  def __rpow__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns `other` raised to the power of this variable."""
+    ...
+
+  def __matmul__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the matrix product of this variable and `other`."""
+    ...
+
+  def __rmatmul__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the matrix product of `other` and this variable."""
+    ...
+
+  def __lt__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns element-wise `self < other`."""
+    ...
+
+  def __le__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns element-wise `self <= other`."""
+    ...
+
+  def __gt__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns element-wise `self > other`."""
+    ...
+
+  def __ge__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns element-wise `self >= other`."""
+    ...
+
+  def __neg__(self) -> tensor_lib.Tensor:
+    """Returns the element-wise negation of this variable."""
+    ...
+
+  def __abs__(self) -> tensor_lib.Tensor:
+    """Returns the element-wise absolute value of this variable."""
+    ...
+
+  def __invert__(self) -> tensor_lib.Tensor:
+    """Returns the element-wise bitwise inversion of this variable."""
+    ...
+
+  def __and__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical AND of this variable and `other`."""
+    ...
+
+  def __rand__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical AND of `other` and this variable."""
+    ...
+
+  def __or__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical OR of this variable and `other`."""
+    ...
+
+  def __ror__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical OR of `other` and this variable."""
+    ...
+
+  def __xor__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical XOR of this variable and `other`."""
+    ...
+
+  def __rxor__(self, other: Any) -> tensor_lib.Tensor:
+    """Returns the element-wise logical XOR of `other` and this variable."""
+    ...
 
   def value(self):
     """Returns the last snapshot of this variable.
