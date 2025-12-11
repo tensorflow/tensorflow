@@ -43,8 +43,6 @@ limitations under the License.
 
 namespace {
 
-mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-
 struct TritonPipelineOptions
     : public mlir::PassPipelineOptions<TritonPipelineOptions> {
   Option<std::string> target{*this, "target", llvm::cl::init("8.0")};
@@ -75,8 +73,7 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
                                             options.allow_tma,
                                             options.num_stages);
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
-                                         options.num_ctas, options.num_stages,
-                                         cluster_info);
+                                         options.num_ctas, options.num_stages);
         });
 
 }  // namespace
