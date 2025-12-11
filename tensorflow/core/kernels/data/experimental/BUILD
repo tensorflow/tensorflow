@@ -923,6 +923,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
