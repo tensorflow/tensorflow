@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -145,6 +147,7 @@ TEST(GpuExecutableTest, RunThunkPasses) {
   auto create_executable = [&]() {
     Thunk::ThunkInfo thunk_info;
     BufferAllocation alloc(0, 1024, 0);
+    Shape shape = ShapeUtil::MakeShape(S32, {256});
     BufferAllocation::Slice slice(&alloc, 0, 1024);
 
     ThunkSequence thunk_sequence;
@@ -157,7 +160,8 @@ TEST(GpuExecutableTest, RunThunkPasses) {
         /*shmem_bytes=*/0,
         /*tma_metadata=*/se::gpu::TmaMetadata()));
     thunk_sequence.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        thunk_info, slice, slice, 1024));
+        thunk_info, ShapedSlice{slice, shape}, ShapedSlice{slice, shape},
+        1024));
 
     GpuExecutable::Params params;
     params.executable = std::make_unique<SequentialThunk>(
@@ -391,6 +395,7 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
   auto create_executable = [&]() {
     BufferAllocation alloc(0, 1024, 0);
     BufferAllocation::Slice slice(&alloc, 0, 1024);
+    Shape shape = ShapeUtil::MakeShape(S32, {256});
 
     ThunkSequence thunk_sequence;
     thunk_sequence.push_back(std::make_unique<KernelThunk>(
@@ -402,7 +407,8 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
         /*shmem_bytes=*/0,
         /*tma_metadata=*/se::gpu::TmaMetadata()));
     thunk_sequence.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        ThunkInfoWithId(456), slice, slice, 1024));
+        ThunkInfoWithId(456), ShapedSlice{slice, shape},
+        ShapedSlice{slice, shape}, 1024));
 
     GpuExecutable::Params params;
     params.executable = std::make_unique<SequentialThunk>(
@@ -511,6 +517,8 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
   auto create_executable = [&]() {
     ThunkSequence thunk_sequence;
     BufferAllocation::Slice slice(&alloc, 0, 1024);
+    Shape shape = ShapeUtil::MakeShape(S32, {256});
+
     thunk_sequence.push_back(std::make_unique<KernelThunk>(
         ThunkInfoWithId(123),
         /*kernel_name=*/"test_kernel",
@@ -520,7 +528,8 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
         /*shmem_bytes=*/0,
         /*tma_metadata=*/se::gpu::TmaMetadata()));
     thunk_sequence.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        ThunkInfoWithId(456), slice, slice, 1024));
+        ThunkInfoWithId(456), ShapedSlice{slice, shape},
+        ShapedSlice{slice, shape}, 1024));
 
     GpuExecutable::Params params;
     params.executable = std::make_unique<SequentialThunk>(

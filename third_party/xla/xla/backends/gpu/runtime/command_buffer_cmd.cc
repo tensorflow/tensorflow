@@ -1324,13 +1324,19 @@ CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() const {
 // MemcpyDeviceToDeviceCmd
 //===----------------------------------------------------------------------===//
 
-MemcpyDeviceToDeviceCmd::MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
-                                                 BufferAllocation::Slice src,
+MemcpyDeviceToDeviceCmd::MemcpyDeviceToDeviceCmd(ShapedSlice dst,
+                                                 ShapedSlice src,
                                                  int64_t num_bytes)
     : CommandBufferCmd(CommandBufferCmdType::kMemcpyDeviceToDeviceCmd),
       dst_(dst),
       src_(src),
-      num_bytes_(num_bytes) {}
+      num_bytes_(num_bytes) {
+  CHECK_EQ(ShapeUtil::ByteSizeOfElements(src_.shape),
+           ShapeUtil::ByteSizeOfElements(dst_.shape));
+  CHECK_LE(num_bytes, dst_.slice.size());
+  CHECK_LE(num_bytes, src_.slice.size());
+  CHECK_GE(src_.slice.size(), ShapeUtil::ByteSizeOf(src_.shape));
+}
 
 absl::StatusOr<const se::CommandBuffer::Command*>
 MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
@@ -1338,9 +1344,9 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 RecordAction record_action,
                                 se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase dst =
-      execute_params.buffer_allocations->GetDeviceAddress(dst_);
+      execute_params.buffer_allocations->GetDeviceAddress(dst_.slice);
   se::DeviceAddressBase src =
-      execute_params.buffer_allocations->GetDeviceAddress(src_);
+      execute_params.buffer_allocations->GetDeviceAddress(src_.slice);
 
   VLOG(5) << "MemcpyDeviceToDeviceCmd: num_bytes = " << num_bytes_;
   VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
@@ -1363,7 +1369,8 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
 }
 
 CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() const {
-  return {BufferUse::Write(dst_), BufferUse::Read(src_)};
+  return {BufferUse::Write(dst_.slice, dst_.shape),
+          BufferUse::Read(src_.slice, src_.shape)};
 }
 
 //===----------------------------------------------------------------------===//

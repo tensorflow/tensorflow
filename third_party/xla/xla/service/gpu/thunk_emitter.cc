@@ -1151,8 +1151,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/b_slice,
-        /*destination_buffer=*/result_slice,
+        /*source_buffer=*/ShapedSlice{b_slice, b_shape},
+        /*destination_buffer=*/ShapedSlice{result_slice, b_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
   }
 
@@ -1438,8 +1438,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(
   return GetThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      /*source_buffer=*/src_buffer,
-      /*destination_buffer=*/dst_buffer,
+      /*source_buffer=*/ShapedSlice{src_buffer, instr->operand(0)->shape()},
+      /*destination_buffer=*/ShapedSlice{dst_buffer, instr->shape()},
       /*mem_size=*/src_buffer.size()));
 }
 
@@ -1589,9 +1589,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               sort, ir_emitter_context_->GetNextThunkId()),
-          /*source_buffer=*/source_address,
-          /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/
+          /*source_buffer=*/
+          ShapedSlice{source_address, sort->operand(i)->shape()},
+          /*destination_buffer=*/
+          ShapedSlice{destination_buffer, sort->operand(i)->shape()},
           ShapeUtil::ByteSizeOf(sort->operand(i)->shape())));
     }
   }
@@ -1676,10 +1677,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
                                                           : normal_shape_idx));
 
     const int64_t src_memory_space = operand_shape.layout().memory_space();
+    Shape result_buffer_shape = (result_shape.IsTuple())
+                                    ? result_shape.tuple_shapes(oprd_idx)
+                                    : result_shape;
+
     const int64_t dst_memory_space =
-        (result_shape.IsTuple())
-            ? result_shape.tuple_shapes(0).layout().memory_space()
-            : result_shape.layout().memory_space();
+        result_buffer_shape.layout().memory_space();
 
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                         GetAllocationSliceForHlo(operand));
@@ -1690,8 +1693,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
-          /*source_buffer=*/source_slice,
-          /*destination_buffer=*/result_slice,
+          /*source_buffer=*/ShapedSlice{source_slice, operand_shape},
+          /*destination_buffer=*/
+          ShapedSlice{result_slice, result_buffer_shape},
           /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
       // Signal that start thunk not created with nullptr.
       GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
@@ -2097,8 +2101,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDegeneratedCollectiveThunk(
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/buffers[i].source_buffer,
-        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*source_buffer=*/ShapedSlice{buffers[i].source_buffer, shape},
+        /*destination_buffer=*/
+        ShapedSlice{buffers[i].destination_buffer, shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
   if (thunks.size() == 1) {
@@ -2233,8 +2238,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
     auto thunk = std::make_unique<DeviceToHostCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
         /*copy_start_instr=*/copy_start_instr);
@@ -2244,8 +2249,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
     auto thunk = std::make_unique<HostToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
         /*copy_start_instr=*/copy_start_instr);

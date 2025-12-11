@@ -781,8 +781,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
 
 class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
  public:
-  MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
-                          BufferAllocation::Slice src, int64_t num_bytes);
+  MemcpyDeviceToDeviceCmd(ShapedSlice dst, ShapedSlice src, int64_t num_bytes);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -792,9 +791,9 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   BufferUseVector buffers() const override;
 
  private:
-  BufferAllocation::Slice dst_;
-  BufferAllocation::Slice src_;
-  int64_t num_bytes_;
+  ShapedSlice dst_;
+  ShapedSlice src_;
+  uint64_t num_bytes_;
 };
 
 //===----------------------------------------------------------------------===//

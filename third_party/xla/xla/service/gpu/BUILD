@@ -784,6 +784,7 @@ xla_cc_test(
         "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/client:executable_build_options",
         "//xla/codegen/emitters:kernel_arguments",

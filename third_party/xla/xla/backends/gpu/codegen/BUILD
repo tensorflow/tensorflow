@@ -25,6 +25,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",

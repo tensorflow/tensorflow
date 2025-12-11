@@ -159,7 +159,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
-
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
   // Prepare arguments: a=42, b=0
   se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
@@ -178,7 +178,8 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
