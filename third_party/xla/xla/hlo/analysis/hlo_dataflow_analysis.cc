@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
@@ -1617,26 +1616,6 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
   return alias_info->GetInPlaceInputOutputPairs(instruction);
 }
 
-// Returns true if the instruction is a fusion consisting of a single copy which
-// changes tiling. This is handled by the emitters and effectively are no-ops.
-static bool IsChangeTilingCopyFusion(HloInstruction* instr) {
-  if (!instr->parent()->IsFusionComputation() ||
-      instr->opcode() != HloOpcode::kFusion ||
-      instr->called_computations().size() != 1 || instr->operand_count() != 1) {
-    return false;
-  }
-  // These copy fusions should only change tiling (and sometimes memory space).
-  HloInstruction* fusion_root = instr->fused_expression_root();
-  const Layout& operand_layout = fusion_root->operand(0)->shape().layout();
-  const Layout& output_layout = fusion_root->shape().layout();
-  absl::Span<const Tile> operand_tiles = operand_layout.tiles();
-  absl::Span<const Tile> output_tiles = output_layout.tiles();
-  return fusion_root->opcode() == HloOpcode::kCopy &&
-         Layout::Equal().IgnoreTiles().IgnoreMemorySpace()(operand_layout,
-                                                           output_layout) &&
-         operand_tiles != output_tiles;
-}
-
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
@@ -1652,12 +1631,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   const Shape& user_subshape =
       ShapeUtil::GetSubshape(user->shape(), user_index);
 
-  // During tiling assignment, we can add no-op instructions which appear to
-  // change tiling (and memory space) of the operand, but don't.
-  if (IsChangeTilingCopyFusion(user) || IsChangeTilingCopyFusion(operand)) {
-    return true;
-  }
-  const bool shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
+  auto shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
   // Check that operand and user emit the same shape and layout.
   if (shapes_equal) {
     // Must-alias relationship returns true for in-place operations (DUS and DUS
