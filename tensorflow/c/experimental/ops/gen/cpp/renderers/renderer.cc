@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 
+#include <string>
+
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
 #include "tensorflow/core/lib/strings/str_util.h"
