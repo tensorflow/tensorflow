@@ -77,7 +77,7 @@ class LowerToLLVMGPUPass
       : device_spec_(device_description) {}
 
   void runOnOperation() override {
-    if (gpu_device_info_.empty()) {
+    if (!gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
