@@ -61,7 +61,7 @@ using ::mlir::MLIRContext;
 bool IsSupportedCollectiveOp(const HloInstruction& instr) {
   return HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
                           HloOpcode::kReduceScatter, HloOpcode::kAllGatherStart,
-                          HloOpcode::kAllGather>(&instr);
+                          HloOpcode::kAllGather, HloOpcode::kAllToAll>(&instr);
 }
 
 bool IsHostOffloaded(const HloInstruction& instr) {
@@ -127,6 +127,14 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       result += runtime;
       break;
     }
+    case HloOpcode::kAllToAll: {
+      TF_ASSIGN_OR_RETURN(
+          absl::Duration runtime,
+          sol_model.AllToAllLatency(msg_size, num_participating_hosts,
+                                    num_communicators));
+      result += runtime;
+      break;
+    }
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart: {
       result += gpu_performance_model.Get()
@@ -163,6 +171,13 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
                                 msg_size, num_participating_hosts,
                                 SolGPUCostModel::CollectiveType::kReduceScatter,
                                 num_communicators));
+        result += runtime;
+      }
+      if (instr.async_wrapped_opcode() == HloOpcode::kAllToAll) {
+        TF_ASSIGN_OR_RETURN(
+            absl::Duration runtime,
+            sol_model.AllToAllLatency(msg_size, num_participating_hosts,
+                                      num_communicators));
         result += runtime;
       }
       break;

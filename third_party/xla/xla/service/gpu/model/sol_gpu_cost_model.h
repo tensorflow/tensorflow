@@ -50,8 +50,9 @@ class SolGPUCostModel {
   };
 
   enum class CollectiveType {
-    kAllReduce,
     kAllGather,
+    kAllReduce,
+    kAllToAll,
     kReduceScatter,
     kSendRecv,
   };
@@ -72,6 +73,16 @@ class SolGPUCostModel {
                                              int num_nodes,
                                              const CollectiveType& coll_type,
                                              int num_communicators) const;
+
+  // Returns the latency of an AllToAll collective across multiple nodes.
+  //
+  // `buff_size_bytes`: the size of the message to be transferred.
+  // `num_nodes`: the number of nodes participating in the all-to-all.
+  // `num_communicators`: the number of communicators participating in the
+  // all-to-all.
+  absl::StatusOr<absl::Duration> AllToAllLatency(int64_t buff_size_bytes,
+                                                 int num_nodes,
+                                                 int num_communicators) const;
 
  private:
   // Helper functions to estimate the latency subcomponents
