@@ -116,8 +116,6 @@ class CpuAotCompilationResult : public AotCompilationResult {
     return proto_.SerializeAsString();
   }
 
-  using AotCompilationResult::LoadExecutable;
-
   absl::StatusOr<std::unique_ptr<Executable>>
       LoadExecutable(const se::StreamExecutor* stream_exec) && override;
 
