@@ -15,10 +15,13 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <cassert>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
