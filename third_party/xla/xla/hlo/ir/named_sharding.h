@@ -76,7 +76,12 @@ class NamedSharding {
         dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
         replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
         unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
-        metadata_(metadata.begin(), metadata.end()) {}
+        metadata_(metadata.begin(), metadata.end()) {
+    sharded_sizes_.reserve(dim_shardings_.size());
+    for (const DimensionSharding& dim_sharding : dim_shardings_) {
+      sharded_sizes_.push_back(dim_sharding.getShardedSize(mesh_));
+    }
+  }
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -93,6 +98,9 @@ class NamedSharding {
   int64_t dimension(int64_t dim) const {
     return dim_shardings_[dim].getShardedSize(mesh_);
   }
+
+  // Returns all sharding dimensions.
+  absl::Span<const int64_t> dimensions() const { return sharded_sizes_; }
 
   // Returns the total number of devices used by sharding.
   int64_t num_devices() const {
@@ -154,6 +162,13 @@ class NamedSharding {
   std::vector<AxisRef> replicated_axes_;
   std::vector<AxisRef> unreduced_axes_;
   std::vector<OpMetadata> metadata_;
+
+  // Stores sharded sizes for each dimension. Required to maintain backward
+  // compatibility with existing `HloSharding::dimensions()` implementation
+  // returning a span.
+  // Once we make API change for `HloSharding::dimensions()` to return a vector,
+  // we can remove this field.
+  std::vector<int64_t> sharded_sizes_;
 };
 
 // Contains test only helper functions.

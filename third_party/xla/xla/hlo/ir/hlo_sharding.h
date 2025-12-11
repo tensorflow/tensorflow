@@ -506,6 +506,9 @@ class HloSharding {
 
   // Returns all sharding dimensions.
   absl::Span<const int64_t> dimensions() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->dimensions();
+    }
     return tile_assignment().dimensions();
   }
 
