@@ -116,12 +116,8 @@ cc_library(
         ":rocsolver",
         ":rocsparse",
         ":roctracer",
-    ] + select_threshold(
-        above_or_eq = [":hipfft"],
-        below = [":rocfft"],
-        threshold = 40100,
-        value = rocm_version_number(),
-    ),
+        ":hipfft",
+    ],
 )
 
 cc_library(
@@ -535,8 +531,9 @@ cc_library(
 )
 
 cc_library(
-    name = "amd_comgr",
+    name = "amd_comgr_dynamic",
     hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
+    srcs = ["%{rocm_root}/lib/libamd_comgr_stub.a"],
     data = glob([
         "%{rocm_root}/lib/libamd_comgr_loader.so*",
         "%{rocm_root}/lib/libamd_comgr.so*",
@@ -546,22 +543,43 @@ cc_library(
     includes = [
         "%{rocm_root}/include",
     ],
-    linkopts = select({
-        ":build_hermetic": [
-            "-lamd_comgr_loader",
-            "-lamd_comgr",
-        ],
-        "//conditions:default": [
-            "-lamd_comgr",
-        ],
-    }),
+    linkopts = ["-lamd_comgr_loader"],
     strip_include_prefix = "%{rocm_root}",
-    visibility = ["//visibility:public"],
     deps = [
         ":rocm_config",
         ":rocm_rpath",
         ":system_libs",
     ],
+)
+
+cc_library(
+    name = "amd_comgr_static",
+    hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
+    data = glob([
+        "%{rocm_root}/lib/libamd_comgr.so*",
+    ]),
+    include_prefix = "rocm",
+    includes = [
+        "%{rocm_root}/include",
+    ],
+    linkopts = ["-lamd_comgr"],
+    strip_include_prefix = "%{rocm_root}",
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+        ":system_libs",
+    ],
+)
+
+alias(
+    name = "amd_comgr",
+    actual = select_threshold(
+        above_or_eq = ":amd_comgr_dynamic",
+        below = ":amd_comgr_static",
+        threshold = 71000,
+        value = rocm_version_number(),
+    ),
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
