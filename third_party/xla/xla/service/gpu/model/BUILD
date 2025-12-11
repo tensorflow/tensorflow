@@ -922,6 +922,12 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_interpolator_data",
+    hdrs = ["collective_interpolator_data.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
     name = "collective_interpolator",
     srcs = ["collective_interpolator.cc"],
     hdrs = [
@@ -929,6 +935,7 @@ cc_library(
         "collective_interpolator_data.h",
     ],
     deps = [
+        ":collective_interpolator_data",
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
