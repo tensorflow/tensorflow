@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 
 #include <cstdint>
 #include <memory>
@@ -51,7 +53,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
-#include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
@@ -63,19 +64,20 @@ namespace {
 
 namespace se = ::stream_executor;
 
-#define GEN_PASS_DEF_LOWERTOLLVMPASS
-#include "xla/codegen/emitters/transforms/passes.h.inc"
+#define GEN_PASS_DEF_LOWERTOLLVMGPUPASS
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h.inc"
 
-class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
+class LowerToLLVMGPUPass
+    : public impl::LowerToLLVMGPUPassBase<LowerToLLVMGPUPass> {
  public:
-  explicit LowerToLLVMPass(const LowerToLLVMPassOptions& options)
-      : LowerToLLVMPassBase(options) {}
+  explicit LowerToLLVMGPUPass(const LowerToLLVMGPUPassOptions& options)
+      : LowerToLLVMGPUPassBase(options) {}
 
-  explicit LowerToLLVMPass(const se::DeviceDescription& device_description)
+  explicit LowerToLLVMGPUPass(const se::DeviceDescription& device_description)
       : device_spec_(device_description) {}
 
   void runOnOperation() override {
-    if (target_type_ == "gpu" && !gpu_device_info_.empty()) {
+    if (gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
       CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
                                                        &device_info));
@@ -83,9 +85,6 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
           se::DeviceDescription::FromProto(device_info);
       CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
-    } else if (target_type_ == "cpu") {
-      CHECK(gpu_device_info_.empty());
-      *device_spec_.mutable_type() = CpuDeviceSpec{};
     }
     // Populate type conversions.
     mlir::LowerToLLVMOptions llvm_opts(&getContext(),
@@ -99,39 +98,37 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
-    if (device_spec_.IsGpu()) {
-      if (device_spec_.IsAmdGpu()) {
-        std::string chipset =
-            device_spec_.gpu().rocm_compute_capability().gfx_version();
-        llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-            mlir::amdgpu::Chipset::parse(chipset);
-        if (failed(maybeChipset)) {
-          mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                          "Invalid chipset name: " + chipset);
-          return signalPassFailure();
-        }
-        mlir::populateGpuToROCDLConversionPatterns(
-            type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
-            *maybeChipset);
-        mlir::configureGpuToROCDLConversionLegality(target);
-      } else if (device_spec_.IsIntelGpu()) {
-        // Add sub-group-size attribute to functions.
-        int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
-        if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
-          module_op.walk([sub_group_size](mlir::func::FuncOp func) {
-            if (!func.getBody().empty()) {
-              mlir::OpBuilder b(func.getContext());
-              auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
-              func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
-            }
-          });
-        }
-        populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
-        populateGpuMemorySpaceAttributeConversions(type_converter);
-      } else {
-        mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
-        mlir::configureGpuToNVVMConversionLegality(target);
+    if (device_spec_.IsAmdGpu()) {
+      std::string chipset =
+          device_spec_.gpu().rocm_compute_capability().gfx_version();
+      llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+          mlir::amdgpu::Chipset::parse(chipset);
+      if (failed(maybeChipset)) {
+        mlir::emitError(mlir::UnknownLoc::get(&getContext()),
+                        "Invalid chipset name: " + chipset);
+        return signalPassFailure();
       }
+      mlir::populateGpuToROCDLConversionPatterns(
+          type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
+          *maybeChipset);
+      mlir::configureGpuToROCDLConversionLegality(target);
+    } else if (device_spec_.IsIntelGpu()) {
+      // Add sub-group-size attribute to functions.
+      int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
+      if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
+        module_op.walk([sub_group_size](mlir::func::FuncOp func) {
+          if (!func.getBody().empty()) {
+            mlir::OpBuilder b(func.getContext());
+            auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
+            func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
+          }
+        });
+      }
+      populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
+      populateGpuMemorySpaceAttributeConversions(type_converter);
+    } else {
+      mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
+      mlir::configureGpuToNVVMConversionLegality(target);
     }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
     mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
@@ -142,7 +139,7 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
                                                           patterns);
     mlir::populateComplexToLLVMConversionPatterns(type_converter, patterns);
 
-    //  Setup target.
+    // Set up target.
     target.addIllegalDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                              mlir::complex::ComplexDialect>();
     target.addLegalOp<mlir::ModuleOp>();
@@ -153,10 +150,10 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
       return;
     }
 
-    // Cleanup any leftover math ops not handled NVVM or ROCDL lowering
+    // Clean up any leftover math ops not handled NVVM or ROCDL lowering.
     mlir::RewritePatternSet mathPatterns(&getContext());
     mlir::populateMathToLLVMConversionPatterns(type_converter, mathPatterns,
-                                               /* approximateLog1p */ false);
+                                               /*approximateLog1p=*/false);
     target.addIllegalDialect<mlir::math::MathDialect>();
 
     if (failed(applyFullConversion(getOperation(), target,
@@ -171,17 +168,16 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMPass(
-    const std::string& target_type, const std::string& gpu_device_info) {
-  LowerToLLVMPassOptions options;
+std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
+    const std::string& gpu_device_info) {
+  LowerToLLVMGPUPassOptions options;
   options.gpu_device_info_ = gpu_device_info;
-  options.target_type_ = target_type;
-  return std::make_unique<LowerToLLVMPass>(options);
+  return std::make_unique<LowerToLLVMGPUPass>(options);
 }
 
-std::unique_ptr<::mlir::Pass> CreateLowerToLLVMPass(
+std::unique_ptr<::mlir::Pass> CreateLowerToLLVMGPUPass(
     const se::DeviceDescription& device_description) {
-  return std::make_unique<LowerToLLVMPass>(device_description);
+  return std::make_unique<LowerToLLVMGPUPass>(device_description);
 }
 
 }  // namespace emitters
