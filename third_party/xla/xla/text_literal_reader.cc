@@ -90,7 +90,7 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
         ShapeUtil::HumanString(shape));
   }
 
-  Literal result(shape);
+  TF_ASSIGN_OR_RETURN(Literal result, Literal::Make(shape));
   const float fill = std::numeric_limits<float>::quiet_NaN();
   result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;
