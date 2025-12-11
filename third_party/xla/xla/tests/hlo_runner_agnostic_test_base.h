@@ -159,36 +159,36 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
     return test_runner_->CreateExecutable(std::move(module), run_hlo_passes);
   }
 
-  // Executes the given module on multiple replicas.
+  // Executes the given module on multiple devices.
   //
   // use_threads indicates whether this replicated computation will be executed
-  // with a thread-per-replica, vs using an implicitly async call such as
+  // with a thread-per-device, vs using an implicitly async call such as
   // Executable::ExecuteOnStreams.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      absl::Span<const Literal* const> arguments, int64_t num_devices,
       bool use_threads, bool run_hlo_passes = false);
 
   // Same as above, but uses specified device assignment.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      absl::Span<const Literal* const> arguments, int64_t num_devices,
       DeviceAssignment* device_assignment, bool run_hlo_passes,
       bool use_threads);
 
-  // Same as above, but allows passing different programs for replicas.
+  // Same as above, but allows passing different programs for devices.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
       absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
-      int64_t num_replicas, bool run_hlo_passes,
+      int64_t num_devices, bool run_hlo_passes,
       DeviceAssignment* device_assignment = nullptr);
 
   // Convenience function for above. Allows passing different inputs to
-  // different replicas of the same program.
+  // different devices of the same program.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
+      std::vector<std::vector<Literal*>> arguments, int64_t num_devices,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
   // Executes an hlo module with fake inputs and checks that the execution is
@@ -225,8 +225,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       bool use_threads, const std::optional<ErrorSpec>& error);
 
   // Parses the modules, and executes them based on `run_hlo_passes` and
-  // `use_threads` flags. The replica count should be mentioned in the module
-  // itself.
+  // `use_threads` flags. The replica + partition count should be set in the
+  // module itself.
   ::testing::AssertionResult RunAndCompareTwoModulesReplicated(
       absl::string_view module_0_str, absl::string_view module_1_str,
       bool run_hlo_passes, bool use_threads,
@@ -268,10 +268,10 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
-  // Executes an hlo module with fake inputs on multiple replicas.
+  // Executes an hlo module with fake inputs on multiple devices.
   ::testing::AssertionResult RunReplicated(
       absl::string_view hlo_string, bool run_hlo_passes = true,
-      int64_t num_replicas = 1,
+      int64_t num_devices = 1,
       const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
