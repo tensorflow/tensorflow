@@ -370,20 +370,54 @@ static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
 }
 
 static ynn_status DefineConvolution(
-    ynn_subgraph_t subgraph, uint32_t input1_id, uint32_t input2_id,
-    uint32_t output_id, const std::vector<int32_t>& stencil_axes,
+    ynn_subgraph_t subgraph, ynn_type input1_id_type, uint32_t input1_id,
+    uint32_t input2_id, uint32_t output_id,
+    const std::vector<int32_t>& stencil_axes,
     const std::vector<int32_t> new_axes,
     const std::vector<size_t>& stencil_dims,
     const std::vector<size_t>& stencil_strides,
-    const std::vector<size_t>& stencil_dilations) {
-  uint32_t padding_id = YNN_INVALID_VALUE_ID;
+    const std::vector<size_t>& stencil_dilations,
+    const std::vector<int64_t>& padding_lows,
+    const std::vector<int64_t>& padding_highs) {
   uint32_t stencil_id = YNN_INVALID_VALUE_ID;
 
+  ynn_status status;
+
+  // If any of paddings is not zero, define a padding value and pad the input.
+  if (absl::c_any_of(padding_lows, [](int32_t i) { return i != 0; }) ||
+      absl::c_any_of(padding_highs, [](int32_t i) { return i != 0; })) {
+    uint32_t padding_id = YNN_INVALID_VALUE_ID;
+
+    // Define padding value.
+    uint64_t padding_value = 0;
+    status = ynn_define_tensor_value(subgraph, input1_id_type,
+                                     /*rank=*/0, /*dims=*/nullptr,
+                                     /*data=*/&padding_value,
+                                     /*zero_point_id=*/YNN_INVALID_VALUE_ID,
+                                     /*scale_id=*/YNN_INVALID_VALUE_ID,
+                                     /*flags=*/YNN_VALUE_FLAG_COPY_DATA,
+                                     &padding_id);
+
+    if (status != ynn_status_success) {
+      return status;
+    }
+
+    uint32_t padded_id = YNN_INVALID_VALUE_ID;
+    status = ynn_define_static_pad(
+        subgraph, stencil_axes.size(), stencil_axes.data(), padding_lows.data(),
+        padding_highs.data(), input1_id, padding_id, &padded_id, /*flags=*/0);
+    if (status != ynn_status_success) {
+      return status;
+    }
+    input1_id = padded_id;
+    padding_id = YNN_INVALID_VALUE_ID;
+  }
+
   // Make a stenciled view of the input [n, h, w, ci] -> [n, h, w, kh, kw, ci].
-  ynn_status status = ynn_define_stencil_copy(
+  status = ynn_define_stencil_copy(
       subgraph, /*num_stencils=*/stencil_dims.size(), stencil_axes.data(),
       new_axes.data(), stencil_dims.data(), stencil_strides.data(),
-      stencil_dilations.data(), input1_id, padding_id, &stencil_id,
+      stencil_dilations.data(), input1_id, YNN_INVALID_VALUE_ID, &stencil_id,
       /*flags=*/0);
   if (status != ynn_status_success) {
     return status;
@@ -532,19 +566,24 @@ static absl::StatusOr<YnnSubgraph> EmitYnnConvolutionSubgraph(
   std::vector<size_t> stencil_dims(conv_window_dims_size);
   std::vector<size_t> stencil_strides(conv_window_dims_size);
   std::vector<size_t> stencil_dilations(conv_window_dims_size);
+  std::vector<int64_t> padding_lows(conv_window_dims_size);
+  std::vector<int64_t> padding_highs(conv_window_dims_size);
 
   for (size_t i = 0; i < conv_window.dimensions_size(); ++i) {
     stencil_axes[i] = conv_dimensions.input_spatial_dimensions(i);
     stencil_dims[i] = conv_window.dimensions(i).size();
     stencil_strides[i] = conv_window.dimensions(i).stride();
     stencil_dilations[i] = 1;
+    padding_lows[i] = conv_window.dimensions(i).padding_low();
+    padding_highs[i] = conv_window.dimensions(i).padding_high();
   }
 
   std::iota(new_axes.begin(), new_axes.end(), lhs_dims.size() - 1);
 
-  YNN_RETURN_IF_ERROR(DefineConvolution(subgraph.get(), lhs_id, rhs_id, out_id,
-                                        stencil_axes, new_axes, stencil_dims,
-                                        stencil_strides, stencil_dilations));
+  YNN_RETURN_IF_ERROR(
+      DefineConvolution(subgraph.get(), ynn_lhs_type, lhs_id, rhs_id, out_id,
+                        stencil_axes, new_axes, stencil_dims, stencil_strides,
+                        stencil_dilations, padding_lows, padding_highs));
 
   ynn_status status = ynn_optimize_subgraph(
       subgraph.get(), /*threadpool=*/nullptr, /*flags=*/0);

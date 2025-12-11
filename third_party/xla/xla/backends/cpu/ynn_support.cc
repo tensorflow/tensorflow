@@ -327,14 +327,6 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
-  // Only VALID padding for now.
-  if ((window.dimensions(0).padding_low() != 0) ||
-      (window.dimensions(0).padding_high() != 0) ||
-      (window.dimensions(1).padding_low() != 0) ||
-      (window.dimensions(1).padding_high() != 0)) {
-    return false;
-  }
-
   // No dilation for now.
   if ((window.dimensions(0).window_dilation() != 1) ||
       (window.dimensions(1).window_dilation() != 1) ||
