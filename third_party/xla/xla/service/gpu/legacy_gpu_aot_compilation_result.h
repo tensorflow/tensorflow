@@ -67,8 +67,8 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
       LoadExecutable(const se::StreamExecutor* stream_exec) && override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
-  std::unique_ptr<HloModule> consume_optimized_module() override {
-    return std::move(module_);
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
   }
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
@@ -85,7 +85,7 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
         pointer_size_(pointer_size),
         compiler_(compiler) {}
 
-  std::unique_ptr<HloModule> module_;
+  std::shared_ptr<HloModule> module_;
   GpuExecutableProto proto_;
   int pointer_size_;
   Compiler* compiler_;

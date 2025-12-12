@@ -123,8 +123,8 @@ class CpuAotCompilationResult : public AotCompilationResult {
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
-  std::unique_ptr<HloModule> consume_optimized_module() override {
-    return std::move(module_);
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
   }
 
   const CompilationResultProto& proto() const { return proto_; }
@@ -193,7 +193,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
         function_library_(std::move(function_library)) {}
 
   CompilationResultProto proto_;
-  std::unique_ptr<HloModule> module_;
+  std::shared_ptr<HloModule> module_;
   std::optional<size_t> temp_allocation_index_;
   std::vector<BufferAllocationInfo> buffer_allocation_infos_;
 
