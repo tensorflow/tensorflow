@@ -1016,8 +1016,8 @@ absl::Status CollectiveMemoryDeallocate(StreamExecutor* executor,
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
-CudaExecutor::CreateMemoryAllocator(MemoryType type) {
-  if (type == MemoryType::kUnified) {
+CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
+  if (type == MemorySpace::kUnified) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -1049,7 +1049,7 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
         });
   }
 
-  if (type == MemoryType::kCollective) {
+  if (type == MemorySpace::kCollective) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -1073,7 +1073,7 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
         });
   }
 
-  if (type == MemoryType::kHost) {
+  if (type == MemorySpace::kHost) {
     return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
       return AllocateHostMemory(cuda_context_, numa_node_, size);
     });
@@ -1408,7 +1408,7 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
       << "CudaExecutor::Allocate size: " << size
       << " memory_space: " << memory_space;
 
-  if (memory_space == static_cast<int64_t>(MemoryType::kCollective)) {
+  if (memory_space == static_cast<int64_t>(MemorySpace::kCollective)) {
     auto result = CollectiveMemoryAllocate(this, size);
     if (!result.ok()) {
       XLA_LOG_DEVICE(ERROR, device_ordinal())
@@ -1419,7 +1419,7 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceAddressBase(result.value(), size);
   }
 
-  if (memory_space == static_cast<int64_t>(MemoryType::kHost)) {
+  if (memory_space == static_cast<int64_t>(MemorySpace::kHost)) {
     auto result = HostAllocate(cuda_context_, numa_node_, size);
     if (!result.ok()) {
       XLA_LOG_DEVICE(ERROR, device_ordinal())
@@ -1431,7 +1431,7 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceAddressBase(result.value(), size);
   }
 
-  if (memory_space == static_cast<int64_t>(MemoryType::kP2P) &&
+  if (memory_space == static_cast<int64_t>(MemorySpace::kP2P) &&
       is_vmm_supported_) {
     auto device_buf_base = VmmAllocateMemory(size);
 
@@ -1445,8 +1445,8 @@ DeviceAddressBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceAddressBase(nullptr, 0);
   }
 
-  CHECK(memory_space == static_cast<int64_t>(MemoryType::kDevice) ||
-        memory_space == static_cast<int64_t>(MemoryType::kP2P));
+  CHECK(memory_space == static_cast<int64_t>(MemorySpace::kDevice) ||
+        memory_space == static_cast<int64_t>(MemorySpace::kP2P));
 
   auto device_buf_base = DeviceAllocate(cuda_context_, size);
   XLA_VLOG_DEVICE(1, device_ordinal())
@@ -1469,7 +1469,7 @@ void CudaExecutor::Deallocate(DeviceAddressBase* mem) {
     return;
   }
   auto memory_space = status_or_memory_space.value();
-  if (memory_space == MemoryType::kHost) {
+  if (memory_space == MemorySpace::kHost) {
     HostDeallocate(cuda_context_, numa_node_, mem->opaque(), mem->size());
   } else {
     // Memory space is always kDevice here, so the only way to check if the
@@ -1899,7 +1899,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
-absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
+absl::StatusOr<MemorySpace> CudaExecutor::GetPointerMemorySpace(
     const void* ptr) {
   CUdeviceptr pointer = reinterpret_cast<CUdeviceptr>(const_cast<void*>(ptr));
   unsigned int is_managed;
@@ -1907,7 +1907,7 @@ absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
       &is_managed, CU_POINTER_ATTRIBUTE_IS_MANAGED, pointer)));
 
   if (is_managed) {
-    return MemoryType::kUnified;
+    return MemorySpace::kUnified;
   }
 
   unsigned int value;
@@ -1915,9 +1915,9 @@ absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
       &value, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer)));
   switch (value) {
     case CU_MEMORYTYPE_DEVICE:
-      return MemoryType::kDevice;
+      return MemorySpace::kDevice;
     case CU_MEMORYTYPE_HOST:
-      return MemoryType::kHost;
+      return MemorySpace::kHost;
     default:
       return absl::InternalError(
           absl::StrCat("unknown memory space provided by CUDA API: ", value));

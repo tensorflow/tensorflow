@@ -114,7 +114,7 @@ class CudaExecutor : public GpuExecutor {
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
 
-  absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -138,7 +138,7 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<TensorMap> CreateTensorMap(const TmaDescriptor& tma_desc,
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast
