@@ -955,6 +955,31 @@ cc_library(
 )
 
 cc_library(
+    name = "nvshmem",
+    srcs = ["nvshmem.cc"],
+    hdrs = ["nvshmem.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@nvshmem//:nvshmem_lib",
+    ],
+)
+
+cc_library(
     name = "nvjitlink_support",
     srcs = ["nvjitlink_support.cc"],
     hdrs = ["nvjitlink_support.h"],

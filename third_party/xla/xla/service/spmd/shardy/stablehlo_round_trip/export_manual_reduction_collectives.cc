@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -258,6 +259,95 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
   return nextChannelId;
 }
 
+void convertShardedToUnreduced(sdy::ShardedToUnreducedOp op,
+                               mlir::IRRewriter& rewriter) {
+  TensorShardingAttr outSharding = op.getOutSharding();
+  MeshAttr mesh = outSharding.getMesh(op);
+  // If the mesh does not have iota device ids, we need an extra step to convert
+  // partition id to logical device id. We do not support this case for now.
+  CHECK(mesh.getDeviceIds().empty());
+
+  mlir::Location loc = op.getLoc();
+  rewriter.setInsertionPoint(op);
+
+  ManualComputationOp manualComputation = createFullyManualComputation(
+      loc, op.getTensor(), outSharding, mesh, rewriter,
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+        RankedTensorType fullType =
+            mlir::cast<RankedTensorType>(op.getResult().getType());
+        RankedTensorType inputType =
+            sdy::getSharding(op.getTensor())
+                .getLocalTensorType(fullType, mesh,
+                                    /*allowNonDivisible=*/false);
+        CHECK(inputType) << kNonDivisibleShardingError;
+        RankedTensorType outputType =
+            outSharding.getLocalTensorType(fullType, mesh);
+
+        Value zero = stablehlo::ConstantOp::create(
+            blockBuilder, loc,
+            blockBuilder.getZeroAttr(outputType.getElementType()));
+        Value broadcast = stablehlo::BroadcastOp::create(
+            blockBuilder, loc, outputType, zero, outputType.getShape());
+
+        // Decompose partitionId into axis coordinates.
+        Value partitionId = stablehlo::PartitionIdOp::create(blockBuilder, loc);
+        Value currentRem = stablehlo::ConvertOp::create(
+            blockBuilder, loc,
+            RankedTensorType::get({}, blockBuilder.getIntegerType(32)),
+            partitionId);
+        llvm::StringMap<Value> axisSizes, axisCoordinates;
+        for (sdy::MeshAxisAttr axis : llvm::reverse(mesh.getAxes())) {
+          Value axisSize = stablehlo::ConstantOp::create(
+              blockBuilder, loc,
+              blockBuilder.getI32IntegerAttr(axis.getSize()));
+          axisSizes[axis.getName()] = axisSize;
+          axisCoordinates[axis.getName()] =
+              stablehlo::RemOp::create(blockBuilder, loc, currentRem, axisSize);
+          currentRem =
+              stablehlo::DivOp::create(blockBuilder, loc, currentRem, axisSize);
+        }
+
+        SmallVector<Value> offsets;
+        offsets.reserve(outputType.getRank());
+        Value zeroOffset = stablehlo::ConstantOp::create(
+            blockBuilder, loc, blockBuilder.getI32IntegerAttr(0));
+        for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+          if (op.getAxes()[dim].empty()) {
+            offsets.push_back(zeroOffset);
+            continue;
+          }
+
+          Value offset, prevAxisSize;
+          for (AxisRefAttr axis : op.getAxes()[dim].getValue()) {
+            CHECK(!axis.getSubAxisInfo()) << "Sub-axes not supported in "
+                                             "ShardedToUnreducedOp.";
+            StringRef axisName = axis.getName();
+            if (prevAxisSize == nullptr) {
+              offset = axisCoordinates[axisName];
+            } else {
+              offset = stablehlo::MulOp::create(blockBuilder, loc, offset,
+                                                prevAxisSize);
+              offset = stablehlo::AddOp::create(blockBuilder, loc, offset,
+                                                axisCoordinates[axisName]);
+            }
+
+            prevAxisSize = axisSizes[axisName];
+          }
+
+          Value localDimSize = stablehlo::ConstantOp::create(
+              blockBuilder, loc,
+              blockBuilder.getI32IntegerAttr(inputType.getDimSize(dim)));
+          offset =
+              stablehlo::MulOp::create(blockBuilder, loc, offset, localDimSize);
+          offsets.push_back(offset);
+        }
+
+        return stablehlo::DynamicUpdateSliceOp::create(
+            blockBuilder, loc, outputType, broadcast, arg, offsets);
+      });
+  rewriter.replaceOp(op, manualComputation);
+}
+
 void syncInOutUnreducedAxes(mlir::Operation* op) {
   Value input = op->getOperand(0);
   TensorShardingAttr outSharding = sdy::getSharding(op->getResult(0));
@@ -322,6 +412,9 @@ class StablehloExportManualReductionCollectivesPass
           nextChannelId =
               convertReduceScatter(reduceScatter, nextChannelId, rewriter);
         }
+      } else if (auto shardedToUnreduced =
+                     mlir::dyn_cast<sdy::ShardedToUnreducedOp>(op)) {
+        convertShardedToUnreduced(shardedToUnreduced, rewriter);
       }
     });
   }

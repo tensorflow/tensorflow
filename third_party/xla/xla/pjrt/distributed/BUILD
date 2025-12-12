@@ -144,7 +144,6 @@ xla_cc_test(
         ":service",
         ":topology_util",
         "//xla:status_macros",
-        "//xla/pjrt/distributed/coordination:coordination_service_agent",
         "//xla/runtime:device_id",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",

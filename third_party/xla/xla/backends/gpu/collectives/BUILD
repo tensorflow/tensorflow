@@ -479,6 +479,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/cuda:nvshmem",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
@@ -568,9 +569,11 @@ xla_test(
     env = {
         "XLA_FLAGS": "--xla_gpu_experimental_enable_nvshmem=true",
     },
+    tags = ["cuda-only"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:status_macros",
+        "//xla/core/collectives:communicator",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:service",
@@ -585,7 +588,10 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@local_config_cuda//cuda:cuda_headers",
-    ] + if_cuda_is_configured([":nvshmem_collectives"]),
+    ] + if_cuda_is_configured([
+        ":nvshmem_collectives",
+        "//xla/stream_executor/cuda:nvshmem",
+    ]),
 )
 
 cc_library(
