@@ -638,7 +638,7 @@ void TritonDotFusionSearchSpace::AddTmaParameter(
   new_config.config.is_tma_allowed = false;
   updated_configs.push_back(new_config);
 
-  if (IsTmaRecommended(config.config)) {
+  if (exhaustive_tiling_search_ || IsTmaRecommended(config.config)) {
     new_config.config.is_tma_allowed = true;
     updated_configs.push_back(new_config);
   }
