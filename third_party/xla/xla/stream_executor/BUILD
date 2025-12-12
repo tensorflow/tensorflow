@@ -255,6 +255,7 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_space",
         ":module_spec",
         ":platform",
         ":stream",
@@ -484,9 +485,11 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_space",
         ":module_spec",
         ":platform",
         ":stream",
+        ":tensor_map",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
@@ -516,6 +519,12 @@ cc_library(
         ":memory_allocation",
         "@com_google_absl//absl/status:statusor",
     ],
+)
+
+cc_library(
+    name = "memory_space",
+    hdrs = ["memory_space.h"],
+    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(

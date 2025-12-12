@@ -148,8 +148,8 @@ absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
-HostExecutor::CreateMemoryAllocator(MemoryType type) {
-  if (type == MemoryType::kHost) {
+HostExecutor::CreateMemoryAllocator(MemorySpace type) {
+  if (type == MemorySpace::kHost) {
     return std::make_unique<GenericMemoryAllocator>(
         [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
           void* ptr = new char[size];

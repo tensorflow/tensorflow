@@ -101,7 +101,7 @@ class HostExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
  private:
   int device_ordinal_;
