@@ -116,5 +116,24 @@ LegacyGpuAotCompilationResult::buffer_assignment() const {
                                      buffer_size_bytes_function, &alias_info);
 }
 
+absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
+    const {
+  return Unavailable(
+      "SerializeAsString() is not supported by EarlyExitCompilationResult.");
+}
+
+absl::StatusOr<std::unique_ptr<Executable>>
+EarlyExitCompilationResult::LoadExecutable(
+    const se::StreamExecutor* stream_exec) && {
+  return Unavailable(
+      "LoadExecutable() is not supported by EarlyExitCompilationResult.");
+}
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+EarlyExitCompilationResult::buffer_assignment() const {
+  return Unavailable(
+      "buffer_assignment() is not supported by EarlyExitCompilationResult.");
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -284,6 +284,10 @@ class GpuCompiler : public LLVMCompiler {
   LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                            const AotCompilationOptions& options);
 
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                              const AotCompilationOptions& options);
+
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.

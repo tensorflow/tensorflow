@@ -91,6 +91,28 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
   Compiler* compiler_;
 };
 
+class EarlyExitCompilationResult : public AotCompilationResult {
+ public:
+  explicit EarlyExitCompilationResult(std::unique_ptr<HloModule> module)
+      : module_(std::move(module)) {}
+
+  absl::StatusOr<std::string> SerializeAsString() const override;
+
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
+
+  const HloModule* optimized_module() const override { return module_.get(); }
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
+  }
+
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+      const override;
+
+ private:
+  std::shared_ptr<HloModule> module_;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

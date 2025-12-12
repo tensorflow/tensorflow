@@ -1435,6 +1435,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   TF_RETURN_IF_ERROR(RunLayoutAssignmentPasses(
       hlo_module, gpu_version, dnn_version, device_description));
+  if (options.early_exit_with_layouts) {
+    return absl::OkStatus();
+  }
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(
       hlo_module,
@@ -1900,6 +1903,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), is_deviceless ? nullptr : stream_exec,
                         options, gpu_target_config, alias_info.get()));
+  if (options.early_exit_with_layouts) {
+    return std::move(module);
+  }
 
   TF_RETURN_IF_ERROR(RunPreSchedulingCopyInsertion(*module, device_description,
                                                    alias_info.get()));
@@ -2640,6 +2646,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   // compilation.
   CHECK_EQ(options.PlatformId(), PlatformId());
 
+  if (options.early_exit_point() !=
+      AotCompilationOptions::EarlyExitPoint::kNone) {
+    return EarlyExitCompileAheadOfTime(std::move(hlo_module), options);
+  }
+
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_experimental_aot_compiled_thunks()) {
@@ -2666,6 +2677,26 @@ GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                                         const AotCompilationOptions& options) {
+  bool early_exit_with_layouts =
+      options.early_exit_point() ==
+      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment;
+  CompileOptions compile_options;
+  compile_options.device_allocator = options.device_allocator();
+  compile_options.gpu_target_config = options.gpu_target_config();
+  compile_options.early_exit_with_layouts = early_exit_with_layouts;
+
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  TF_ASSIGN_OR_RETURN(
+      auto optimized_module,
+      RunHloPasses(std::move(hlo_module), options.executor(), compile_options));
+  results.push_back(std::make_unique<EarlyExitCompilationResult>(
+      std::move(optimized_module)));
+  return std::move(results);
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                       const AotCompilationOptions& options) {
   std::unique_ptr<HloModule> optimized_module;
@@ -2685,7 +2716,6 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
     optimized_module = std::move(hlo_module);
   }
 
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
 
   const std::optional<Compiler::GpuTargetConfig>& target_config =
       options.gpu_target_config();
@@ -2700,6 +2730,7 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                              {options.device_allocator()}, gpu_device_info));
 
   // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
   TF_ASSIGN_OR_RETURN(
       results.emplace_back(),
       LegacyGpuAotCompilationResult::FromModule(
