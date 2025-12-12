@@ -428,12 +428,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditional(
   }
   TF_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
-  bool branch_index_is_bool = instr->operand(0)->shape().element_type() == PRED;
 
-  return GetThunkSequence(std::make_unique<ConditionalThunk>(
+  auto placeholder = GetThunkSequence(std::make_unique<ConditionalThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      slice, std::move(branch_thunks), branch_index_is_bool));
+      ShapedSlice{slice, instr->operand(0)->shape()},
+      std::move(branch_thunks)));
+  return placeholder;
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}

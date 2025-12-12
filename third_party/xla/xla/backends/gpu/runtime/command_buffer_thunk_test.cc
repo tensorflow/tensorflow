@@ -1384,6 +1384,8 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
 
   BufferAllocation::Slice slice_i(&alloc_i, 0, sizeof(int32_t));
+  Shape i_shape = ShapeUtil::MakeShape(S32, {});
+
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
@@ -1417,7 +1419,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 
   // Prepare commands sequence for thunk.
   CommandBufferCmdSequence commands;
-  commands.Emplace<CaseCmd>(slice_i, false, std::move(branches));
+  commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

@@ -1505,11 +1505,11 @@ absl::StatusOr<const se::CommandBuffer::Command*> ChildCmd::Record(
 // CaseCmd
 //===----------------------------------------------------------------------===//
 
-CaseCmd::CaseCmd(BufferAllocation::Slice index, bool index_is_bool,
+CaseCmd::CaseCmd(ShapedSlice index,
                  std::vector<CommandBufferCmdExecutor> branches)
     : CommandBufferCmd(CommandBufferCmdType::kCaseCmd),
       index_(index),
-      index_is_bool_(index_is_bool),
+      index_is_bool_(index.shape.element_type() == PRED),
       branches_(std::move(branches)) {}
 
 absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
@@ -1525,7 +1525,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase index =
-      execute_params.buffer_allocations->GetDeviceAddress(index_);
+      execute_params.buffer_allocations->GetDeviceAddress(index_.slice);
 
   VLOG(5) << "CaseCmd:";
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
@@ -1568,7 +1568,7 @@ bool CaseCmd::force_update() {
 
 CommandBufferCmd::BufferUseVector CaseCmd::buffers() const {
   absl::flat_hash_set<BufferUse> buffers;
-  buffers.emplace(BufferUse::Read(index_));
+  buffers.emplace(BufferUse::Read(index_.slice, index_.shape));
   for (auto& branch : branches_) {
     buffers.insert(branch.buffers().begin(), branch.buffers().end());
   }

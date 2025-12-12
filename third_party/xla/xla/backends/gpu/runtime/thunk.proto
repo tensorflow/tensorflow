@@ -71,9 +71,8 @@ message DeviceToDeviceCopyThunkProto {
 }
 
 message ConditionalThunkProto {
-  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 1;
+  ShapedSliceProto branch_index_buffer = 1;
   repeated SequentialThunkProto branch_thunks = 2;
-  bool branch_index_is_bool = 3;
 }
 
 message WhileThunkProto {

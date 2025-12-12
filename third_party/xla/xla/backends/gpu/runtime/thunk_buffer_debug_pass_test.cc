@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -300,11 +301,13 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       SequentialThunk::FromThunk(std::move(conditional_branch0_thunk)));
   branch_thunks.push_back(
       SequentialThunk::FromThunk(std::move(conditional_branch1_thunk)));
+
+  Shape condition_shape = ShapeUtil::MakeShape(PRED, {});
+  BufferAllocation::Slice condition_slice = CreateSlice();
+
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(),
-      /*branch_index_buffer_index=*/BufferAllocation::Slice(),
-      std::move(branch_thunks),
-      /*branch_index_is_bool=*/true);
+      Thunk::ThunkInfo(), ShapedSlice{condition_slice, condition_shape},
+      std::move(branch_thunks));
   const Thunk* const conditional_thunk_ptr = conditional_thunk.get();
   std::vector<std::unique_ptr<Thunk>> while_body_thunks;
   while_body_thunks.push_back(std::move(while_body_fake_thunk));

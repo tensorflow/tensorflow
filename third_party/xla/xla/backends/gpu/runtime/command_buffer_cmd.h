@@ -869,8 +869,7 @@ class ChildCmd : public CommandBufferCmd {
 
 class CaseCmd : public CommandBufferCmd {
  public:
-  CaseCmd(BufferAllocation::Slice index, bool index_is_bool,
-          std::vector<CommandBufferCmdExecutor> branches);
+  CaseCmd(ShapedSlice index, std::vector<CommandBufferCmdExecutor> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -889,7 +888,7 @@ class CaseCmd : public CommandBufferCmd {
   BufferUseVector buffers() const override;
 
  private:
-  BufferAllocation::Slice index_;
+  ShapedSlice index_;
   bool index_is_bool_;
   std::vector<CommandBufferCmdExecutor> branches_;
 };

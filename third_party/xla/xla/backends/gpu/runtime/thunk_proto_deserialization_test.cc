@@ -436,7 +436,10 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
           execution_stream_id: 123
         }
         conditional_thunk {
-          branch_index_buffer { offset: 8 size: 256 buffer_allocation_index: 5 }
+          branch_index_buffer {
+            slice { offset: 8 size: 1 buffer_allocation_index: 5 }
+            shape { element_type: PRED }
+          }
           branch_thunks {
             thunks {
               thunk_info {
@@ -569,7 +572,6 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
               }
             }
           }
-          branch_index_is_bool: true
         }
       )pb");
 

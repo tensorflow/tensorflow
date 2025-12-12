@@ -183,6 +183,7 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
     std::vector<std::vector<std::unique_ptr<Thunk>>> branch_thunks) {
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice slice(&alloc, 0, 1024);
+  Shape shape = ShapeUtil::MakeShape(S32, {});
 
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunk_sequences;
   for (auto& thunks : branch_thunks) {
@@ -190,9 +191,9 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
         Thunk::ThunkInfo(), std::move(thunks)));
   }
 
-  return std::make_unique<ConditionalThunk>(Thunk::ThunkInfo(), slice,
-                                            std::move(branch_thunk_sequences),
-                                            /*branch_index_is_bool=*/false);
+  return std::make_unique<ConditionalThunk>(Thunk::ThunkInfo(),
+                                            ShapedSlice{slice, shape},
+                                            std::move(branch_thunk_sequences));
 }
 
 std::unique_ptr<CustomCallThunk> CreateCustomCallThunk(
