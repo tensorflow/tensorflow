@@ -234,7 +234,7 @@ common:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 common:macos_arm64 --cpu=darwin_arm64
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --config=clang_local
-common:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
+common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 common:ios --apple_platform_type=ios
@@ -247,16 +247,16 @@ common:ios_armv7 --cpu=ios_armv7
 common:ios_armv7 --platforms=@org_tensorflow//tensorflow/tools/toolchains/ios:ios_armv7
 common:ios_arm64 --config=ios
 common:ios_arm64 --cpu=ios_arm64
-common:ios_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64
+common:ios_arm64 --platforms=@build_bazel_apple_support//platforms:ios_arm64
 common:ios_arm64e --config=ios
 common:ios_arm64e --cpu=ios_arm64e
-common:ios_arm64e --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64e
+common:ios_arm64e --platforms=@build_bazel_apple_support//platforms:ios_arm64e
 common:ios_sim_arm64 --config=ios
 common:ios_sim_arm64 --cpu=ios_sim_arm64
-common:ios_sim_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_sim_arm64
+common:ios_sim_arm64 --platforms=@build_bazel_apple_support//platforms:ios_sim_arm64
 common:ios_x86_64 --config=ios
 common:ios_x86_64 --cpu=ios_x86_64
-common:ios_x86_64 --platforms=@build_bazel_apple_support//configs/platforms:ios_x86_64
+common:ios_x86_64 --platforms=@build_bazel_apple_support//platforms:ios_x86_64
 common:ios_fat --config=ios
 common:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
