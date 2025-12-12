@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -185,6 +186,15 @@ cc_library(
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = ["dynamic_slice_fusion_test.cc"],
+    # TODO(b/46791573): Remove heap_check= once the bug is fixed.
+    backend_args = if_google(
+        {
+            "b200": ["--heap_check="],
+            "a100": ["--heap_check="],
+            "h100": ["--heap_check="],
+        },
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -224,7 +234,6 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
