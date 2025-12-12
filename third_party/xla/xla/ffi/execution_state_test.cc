@@ -123,4 +123,23 @@ TEST(ExecutionStateTest, Serialization) {
   EXPECT_EQ(static_cast<MyState*>(round_trip_data)->value, "some_state_data");
 }
 
+TEST(ExecutionStateTest, IsSerializable) {
+  ExecutionState state;
+  // Empty state is serializable (as empty proto).
+  EXPECT_TRUE(state.IsSerializable());
+
+  // State without serializer.
+  struct NoSerializer {
+    int x;
+  };
+  TF_ASSERT_OK(state.Set(std::make_unique<NoSerializer>(NoSerializer{42})));
+  EXPECT_FALSE(state.IsSerializable());
+
+  // State with serializer.
+  ExecutionState serializable_state;
+  TF_ASSERT_OK(
+      serializable_state.Set(std::make_unique<MyState>(MyState{"foo"})));
+  EXPECT_TRUE(serializable_state.IsSerializable());
+}
+
 }  // namespace xla::ffi

@@ -91,6 +91,7 @@ class ExecutionState {
   absl::StatusOr<T*> Get() const;
 
   bool IsSet() const;
+  bool IsSerializable() const;
 
  private:
   absl::Status Set(TypeId type_id, TypeInfo type_info, void* state);

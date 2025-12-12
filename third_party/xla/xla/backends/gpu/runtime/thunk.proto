@@ -22,6 +22,7 @@ import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
 import "xla/ffi/attribute_map.proto";
+import "xla/ffi/execution_state.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
@@ -290,6 +291,7 @@ message CustomCallThunkProto {
   // The name of the called computation. It needs to match the HloCompuation in
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
+  optional xla.ffi.ExecutionStateProto execution_state = 8;
 }
 
 message CustomKernelThunkProto {

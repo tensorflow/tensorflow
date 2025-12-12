@@ -103,8 +103,8 @@ class CustomCallThunk : public Thunk {
       std::vector<NullableShapedSlice> operands,
       std::vector<NullableShapedSlice> results,
       xla::ffi::AttributesMap attributes,
-      const HloComputation* called_computation,
-      absl::string_view platform_name);
+      const HloComputation* called_computation, absl::string_view platform_name,
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr);
 
   // Creates a serializable custom call thunk from the given XLA FFI handler
   // bundle. Note that `target_name` needs to refer to a registered XLA FFI
@@ -114,7 +114,8 @@ class CustomCallThunk : public Thunk {
       XLA_FFI_Handler_Bundle bundle, std::vector<NullableShapedSlice> operands,
       std::vector<NullableShapedSlice> results,
       xla::ffi::AttributesMap attributes,
-      const HloComputation* called_computation);
+      const HloComputation* called_computation,
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr);
 
   // Creates a custom call thunk from a bundle of handlers created with
   // xla::ffi::Bind(). Any pointer or reference lambda captures must be valid

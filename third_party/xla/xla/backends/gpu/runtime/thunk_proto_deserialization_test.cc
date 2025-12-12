@@ -764,6 +764,7 @@ TEST(ThunkProtoDeserializationTest, CustomCallThunk) {
             }
           }
           called_computation: "called_computation"
+          execution_state {}
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {
