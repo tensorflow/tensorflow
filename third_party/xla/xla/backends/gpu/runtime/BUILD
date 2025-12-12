@@ -1795,6 +1795,21 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "collective_thunk_test",
+    srcs = ["collective_thunk_test.cc"],
+    deps = [
+        ":collective_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "p2p_thunk_common",
     srcs = ["p2p_thunk_common.cc"],
@@ -2171,6 +2186,7 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -2799,6 +2815,7 @@ cc_library(
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
+        ":collective_thunk",
         ":conditional_thunk",
         ":convolution_reorder_thunk",
         ":convolution_thunk",

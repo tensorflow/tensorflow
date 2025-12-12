@@ -202,6 +202,9 @@ class Thunk {
     // go/keep-sorted end
   };
 
+  static ThunkKindProto KindToProto(Kind kind);
+  static absl::StatusOr<Thunk::Kind> KindFromProto(ThunkKindProto kind);
+
   // TODO(ezhulenev): This should become a part of StreamExecutor library, but
   // for now we keep it here as a Thunk implementation detail. It's not yet
   // clear what else should become a part of "executable source", we likely
