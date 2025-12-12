@@ -70,7 +70,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVerifyFullyConvertedPass();
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFLStatefulPass();
 
 #define GEN_PASS_REGISTRATION
-#define GEN_PASS_CLASSES
 #define GEN_PASS_DECL_TOSALEGALIZETFPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFLPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFTFLPASS
