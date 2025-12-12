@@ -346,6 +346,8 @@ def _build_cond(
     intermediate outputs.
   """
   _make_indexed_slices_indices_types_match(_COND, [true_graph, false_graph])
+  _make_indexed_slices_indices_types_match(_COND, [true_graph, false_graph])
+  _make_output_dtypes_match(_COND, [true_graph, false_graph])
   _check_same_outputs(_COND, [true_graph, false_graph])
 
   # Add inputs to true_graph and false_graph to make them match. Note that
@@ -871,6 +873,182 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
         branch_graph.structured_outputs, branch_graph.outputs)
 
 
+def _make_output_dtypes_match(op_type, branch_graphs):
+  """Match dtype of outputs of branch_graphs."""
+  assert branch_graphs
+  branch_outputs_flat_with_composites = [
+      nest.flatten(branch_graph.structured_outputs, expand_composites=False)
+      for branch_graph in branch_graphs
+  ]
+  outs_per_branch = [len(outs) for outs in branch_outputs_flat_with_composites]
+  assert len(set(outs_per_branch)) == 1, outs_per_branch
+
+  for output_idx, branch_outs in enumerate(
+      zip(*branch_outputs_flat_with_composites)):
+    if len(
+        set(
+            isinstance(out, indexed_slices.IndexedSlices)
+            for out in branch_outs)) != 1:
+      continue  # This is handled in _check_same_outputs via a TypeError.
+    
+    if nest.is_nested_or_composite(branch_outs[0]):
+      # We only support casting Tensors.
+      continue
+
+    # Filter out Nones.
+    valid_branch_outs = [out for out in branch_outs if out is not None]
+    if not valid_branch_outs:
+      continue
+    
+    # Check if all dtypes match.
+    if len(set(out.dtype for out in valid_branch_outs)) == 1:
+      continue
+
+    # Attempt to find a common dtype.
+    try:
+      # We skip the check if we can't determine input types, but here we exist
+      # because we have tensors.
+      # Use the first non-None tensor to start comparison/promotion.
+      target_dtype = valid_branch_outs[0].dtype
+      for out in valid_branch_outs[1:]:
+        if out.dtype == target_dtype:
+          continue
+        if out.dtype.is_floating and target_dtype.is_integer:
+          target_dtype = out.dtype
+        elif out.dtype.is_integer and target_dtype.is_floating:
+          pass
+        elif out.dtype.size > target_dtype.size:
+           target_dtype = out.dtype
+      
+      if any(out.dtype != target_dtype for out in valid_branch_outs):
+         for i, branch_graph in enumerate(branch_graphs):
+           if branch_outs[i] is None: continue
+           if branch_outs[i].dtype != target_dtype:
+             with branch_graph.as_default():
+               # We need to replace the output in the graph.
+               # Because structured_outputs contains the tensors, we need to update it.
+               # However, branch_graph.structured_outputs is "packed". 
+               # We are iterating over flattened list here.
+               # Accessing the exact element in the structured_outputs to replace it is tricky
+               # without re-packing.
+               # Strategy: Update the flattened lists, then re-pack.
+               pass
+
+    except Exception:
+      # If we fail to determine a type or cast, we just leave it for _check_same_outputs to fail.
+      continue
+
+  # Second pass to actually apply casts.
+  # We do this per-index to keep logic simple.
+  for output_idx, branch_outs in enumerate(zip(*branch_outputs_flat_with_composites)):
+      if nest.is_nested_or_composite(branch_outs[0]): continue
+      valid_branch_outs = [out for out in branch_outs if out is not None]
+      if not valid_branch_outs: continue
+      
+      dtypes_set = set(out.dtype for out in valid_branch_outs)
+      if len(dtypes_set) == 1: continue
+
+      # Determine target dtype
+      target_dtype = None
+      
+      has_complex = any(dt.is_complex for dt in dtypes_set)
+      has_float = any(dt.is_floating for dt in dtypes_set)
+      has_int = any(dt.is_integer for dt in dtypes_set)
+      has_bool = any(dt.is_bool for dt in dtypes_set)
+      
+      if any(dt == dtypes.string for dt in dtypes_set) or \
+         any(dt == dtypes.resource for dt in dtypes_set) or \
+         any(dt == dtypes.variant for dt in dtypes_set):
+         continue
+
+      if has_complex:
+          target_dtype = max(dtypes_set, key=lambda x: x.size)
+          if not target_dtype.is_complex:
+              target_dtype = dtypes.complex128
+      elif has_float:
+          target_dtype = max((dt for dt in dtypes_set if dt.is_floating), key=lambda x: x.size)
+      elif has_int:
+          target_dtype = max(dtypes_set, key=lambda x: x.size)
+      elif has_bool:
+          continue
+
+      if target_dtype is None: continue
+
+      # Apply casts
+      for i, branch_graph in enumerate(branch_graphs):
+          tensor = branch_outs[i]
+          if tensor is not None and tensor.dtype != target_dtype:
+             with branch_graph.as_default():
+                 new_tensor = math_ops.cast(tensor, target_dtype)
+                 # Update the structured_outputs
+                 # We need to find *where* this tensor is in structured_outputs.
+                 # Since we are iterating flattened, we can reconstruct the list.
+                 # The 'branch_outputs_flat_with_composites' list we made is a snapshot.
+                 # We need to update the graph's actual structured_outputs.
+                 pass
+  
+  # To apply the updates correctly, we'll re-flatten, update, and re-pack for each graph.
+  for i, branch_graph in enumerate(branch_graphs):
+      flat_outs = nest.flatten(branch_graph.structured_outputs, expand_composites=False)
+      changed = False
+      new_flat_outs = []
+      
+      # Re-calculate target dtypes per position (inefficient but safe)
+      # Or better: pre-calculate target types for all indices.
+      pass
+  
+  # Let's restructure the loops to calculate targets first, then apply.
+  target_dtypes = {} # index -> dtype
+  
+  for output_idx, branch_outs in enumerate(zip(*branch_outputs_flat_with_composites)):
+      if nest.is_nested_or_composite(branch_outs[0]): continue
+      valid_branch_outs = [out for out in branch_outs if out is not None]
+      if not valid_branch_outs: continue
+      dtypes_set = set(out.dtype for out in valid_branch_outs)
+      if len(dtypes_set) == 1: continue
+      
+      if any(dt == dtypes.string for dt in dtypes_set) or \
+         any(dt == dtypes.resource for dt in dtypes_set) or \
+         any(dt == dtypes.variant for dt in dtypes_set):
+         continue 
+
+      # Type Promotion Logic
+      target_dtype = valid_branch_outs[0].dtype
+      for t in valid_branch_outs[1:]:
+          if t.dtype == target_dtype: continue
+          
+          # Fallback: choose largest size, prefer float > int > bool
+          # Logic simplified for consistency with above
+          if t.dtype.is_floating and target_dtype.is_integer:
+              target_dtype = t.dtype
+          elif t.dtype.size > target_dtype.size:
+              target_dtype = t.dtype
+      
+      target_dtypes[output_idx] = target_dtype
+
+  if not target_dtypes:
+      return
+
+  for i, branch_graph in enumerate(branch_graphs):
+      flat_outs = nest.flatten(branch_graph.structured_outputs, expand_composites=False)
+      new_flat_outs = []
+      changed = False
+      for idx, t in enumerate(flat_outs):
+          if idx in target_dtypes and t is not None and t.dtype != target_dtypes[idx]:
+              with branch_graph.as_default():
+                  new_flat_outs.append(math_ops.cast(t, target_dtypes[idx]))
+              changed = True
+          else:
+              new_flat_outs.append(t)
+      
+      if changed:
+          branch_graph.structured_outputs = _pack_sequence_as(
+               branch_graph.structured_outputs, new_flat_outs)
+          branch_graph.outputs = [
+             t for t in func_graph_module.flatten(branch_graph.structured_outputs) if t is not None
+          ]
+
+
 def _pack_sequence_as(structured_outputs, op_outputs):
   """Packs the outputs of the gradient If/Case op.
 
@@ -1359,6 +1537,8 @@ def _build_case(branch_index,
     added intermediate outputs.
   """
   _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
+  _make_indexed_slices_indices_types_match(_CASE, branch_graphs)
+  _make_output_dtypes_match(_CASE, branch_graphs)
   _check_same_outputs(_CASE, branch_graphs)
 
   # Add inputs to branch_graphs to make them match. Note that this modifies the
