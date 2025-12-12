@@ -168,18 +168,6 @@ bool HasForceDelayAsyncAttribute(const HloInstruction* instr) {
   return attr.has_value() && attr.value() == "force_delay_async";
 }
 
-const HloGraphNode* AnyStartHasForceDelay(const HloGraphNode* n) {
-  CHECK(n->IsSupportedAsyncDone())
-      << "Meant to check if any start feeding a done has forced delay";
-  for (auto& v : n->GetPredecessors()) {
-    if (v.Target().IsSupportedAsyncStart() &&
-        HasForceDelayAsyncAttribute(&v.Target().GetInstr())) {
-      return v.TargetPtr();
-    }
-  }
-  return nullptr;
-}
-
 absl::flat_hash_map<int64_t, int64_t>
 GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
     const DefaultSchedulerCore::SchedulingState& sched_state,
