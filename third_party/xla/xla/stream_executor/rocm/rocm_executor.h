@@ -113,7 +113,7 @@ class RocmExecutor : public GpuExecutor {
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
 
-  absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -131,7 +131,7 @@ class RocmExecutor : public GpuExecutor {
   // associated with this executor. Otherwise a NotFound error is returned.
   absl::StatusOr<const RocmKernel*> GetRocmKernel(const Kernel* kernel);
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
   int GetGpuStreamPriority(StreamPriority priority) override;
 

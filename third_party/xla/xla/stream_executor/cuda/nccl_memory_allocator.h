@@ -13,32 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_MEMORY_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_MEMORY_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_
 
 #include <cstdint>
 #include <memory>
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 
-namespace stream_executor {
+namespace stream_executor::gpu {
 
-// A base class for stream executor memory allocators.
-//
-// Memory allocators are responsible allocating physical memory for a given
-// stream executor, this physical memory might reside in different memory spaces
-// such as device memory, unified memory, host memory, etc. See MemoryAllocation
-// documentation for more details.
-class MemoryAllocator {
+// A memory allocator that uses NCCL to allocate memory.
+class NcclMemoryAllocator : public MemoryAllocator {
  public:
-  virtual ~MemoryAllocator() = default;
+  explicit NcclMemoryAllocator(StreamExecutor* executor);
 
-  // Allocates a region of memory, or returns an error if the allocation fails.
-  virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> Allocate(
-      uint64_t size) = 0;
+  absl::StatusOr<std::unique_ptr<MemoryAllocation>> Allocate(
+      uint64_t size) final;
+
+ private:
+  StreamExecutor* executor_;
 };
 
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_MEMORY_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_

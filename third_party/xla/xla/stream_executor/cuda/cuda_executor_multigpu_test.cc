@@ -45,7 +45,7 @@ template <typename T>
 absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
     CudaExecutor* executor, size_t size, size_t offset, T value) {
   stream_executor::DeviceAddressBase device_memory = executor->Allocate(
-      size + offset, static_cast<int64_t>(stream_executor::MemoryType::kP2P));
+      size + offset, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
   }
