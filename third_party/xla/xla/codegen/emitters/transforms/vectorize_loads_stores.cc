@@ -506,7 +506,7 @@ struct FoldVectorInsertExtractPairs
     auto bbarg = mlir::cast<mlir::BlockArgument>(insert.getDest());
     int64_t result_index = bbarg.getArgNumber() - 1;
     if (auto transfer_read =
-            extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
+            extract.getSource().getDefiningOp<mlir::vector::TransferReadOp>()) {
       if (transfer_read.getBase().getType().getNumElements() ==
           vector_type.getNumElements()) {
         return rewriter.notifyMatchFailure(
@@ -538,7 +538,7 @@ struct FoldVectorInsertExtractPairs
       yield_op->setOperand(result_index, insert.getDest());
     });
     rewriter.replaceAllUsesWith(loop->getResult(result_index),
-                                extract.getVector());
+                                extract.getSource());
     return mlir::success();
   }
 };

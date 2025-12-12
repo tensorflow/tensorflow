@@ -365,7 +365,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
       return std::nullopt;
     }
 
-    mlir::Value vector = extract.getVector();
+    mlir::Value vector = extract.getSource();
 
     size_t element_count =
         mlir::cast<FixedVectorValue>(vector).getType().getNumElements();
@@ -389,7 +389,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
 
     for (const mlir::OpOperand& use : vector.getUses()) {
       extract = mlir::dyn_cast<vector::ExtractOp>(use.getOwner());
-      if (!extract || !extract->hasOneUse() || extract.getVector() != vector ||
+      if (!extract || !extract->hasOneUse() || extract.getSource() != vector ||
           !matchPos(extract, &pos)) {
         return std::nullopt;
       }
