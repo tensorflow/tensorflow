@@ -15,7 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 
-#include <string>
+#include <cstddef>
+#include <cstdint>
+#include <tuple>
 #include <utility>
 
 #include "tensorflow/core/framework/kernel_def_builder.h"

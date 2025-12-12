@@ -18,8 +18,11 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status.h"
 
