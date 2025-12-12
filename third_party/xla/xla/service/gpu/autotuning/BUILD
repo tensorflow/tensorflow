@@ -185,6 +185,7 @@ cc_library(
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:gemm_rewriter",
+        "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
         "//xla/service/gpu/transforms:scaled_dot_rewriter",

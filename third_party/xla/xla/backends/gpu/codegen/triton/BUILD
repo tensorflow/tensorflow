@@ -551,7 +551,6 @@ xla_test(
         "no_mac",
     ],
     deps = [
-        ":fusion_emitter",
         ":test_utils",
         ":xtile_compiler",
         "//xla:autotuning_proto_cc",
@@ -569,6 +568,7 @@ xla_test(
         "//xla/service/gpu:target_constants",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",

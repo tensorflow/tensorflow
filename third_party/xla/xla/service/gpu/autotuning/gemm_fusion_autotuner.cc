@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
+#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
@@ -106,7 +107,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -351,6 +351,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(fusion_wrapper.Run(new_module.get()).status());
   }
 
+  HoistFusedBitcasts hoist_fused_bitcasts;
+  TF_RETURN_IF_ERROR(hoist_fused_bitcasts.Run(new_module.get()).status());
   NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
   TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
   return new_module;

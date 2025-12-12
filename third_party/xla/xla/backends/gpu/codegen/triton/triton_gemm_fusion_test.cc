@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -112,6 +112,7 @@ class TritonTest : public GpuCodegenTest {
   GetModuleAndNestedFusionMetadata(absl::string_view hlo_text) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
+    TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
     TF_ASSIGN_OR_RETURN(
         bool fusion_was_nested,
         NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));

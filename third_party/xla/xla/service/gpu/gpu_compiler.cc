@@ -239,6 +239,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
+#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
@@ -1757,8 +1758,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // normalized again.
   add_float_normalization(pipeline);
 
-  // Match the location of this pass in `gemm_fusion_autotuner.cc` to make sure
-  // that there is no discrepancy.
+  // GemmFusionAutotuner runs hoist-fused-bitcasts and nest-gemm-fusion,
+  // matching its behavior here.
+  pipeline.AddPass<HoistFusedBitcasts>();
   pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
                                    &mlir_context_);
 
