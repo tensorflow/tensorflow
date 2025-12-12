@@ -19,11 +19,11 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <limits>
-#include <string>
 #include <type_traits>
 
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // IWYU pragma: export
+#include "ml_dtypes/include/intn.h"
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 namespace xla {
