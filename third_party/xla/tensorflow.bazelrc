@@ -274,8 +274,6 @@ common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
-common:rocm_base --define=xnn_enable_avxvnniint8=false
-common:rocm_base --define=xnn_enable_avx512fp16=false
 common:rocm_base --repo_env TF_NEED_ROCM=1
 
 common:rocm_clang_official --config=rocm_base

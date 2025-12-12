@@ -35,8 +35,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
@@ -91,7 +89,6 @@ class Thunk {
     kSort,
     kTopK,
     kWhile,
-    kXnnFusion,
     kYnnFusion,
     kOneDnnFusion,
   };
@@ -255,20 +252,6 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
-  // XnnParams
-  //===--------------------------------------------------------------------===//
-
-  // Parameters capturing all the details required for running XNNPACK fusions.
-  struct XnnParams {
-    static absl::StatusOr<XnnParams> Create(
-        const ExecutableRunOptions* run_options);
-
-    XnnThreadpool threadpool = nullptr;
-
-    explicit XnnParams(XnnThreadpool threadpool);
-  };
-
-  //===--------------------------------------------------------------------===//
   // YnnParams
   //===--------------------------------------------------------------------===//
 
@@ -284,7 +267,7 @@ class Thunk {
   };
 #else
   // Use XnnParams for placeholder. The parameter won't be used anyway.
-  using YnnParams = XnnParams;
+  struct YnnParams {};
 #endif  // XLA_YNNPACK
 
   //===--------------------------------------------------------------------===//
@@ -301,7 +284,6 @@ class Thunk {
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
-    XnnParams* xnn_params = nullptr;
     YnnParams* ynn_params = nullptr;
     int64_t run_id = -1;          // -1 means no run id is set.
     int64_t device_ordinal = -1;  // -1 means no device ordinal is set.

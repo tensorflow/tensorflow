@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
-#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -79,9 +78,6 @@ class CpuLibraryTest : public TargetMachineTestBase {
             /*triple_string=*/"x86_64-unknown-linux-gnu", spec.cpu_name,
             spec.features);
 
-    // Override XnnGemmConfig.
-    GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return true; });
-
     // Create an HLO module with the specified input and output data types.
     std::string hlo_text = absl::StrReplaceAll(
         hlo_template,
@@ -100,15 +96,12 @@ class CpuLibraryTest : public TargetMachineTestBase {
     }
     tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
-    bool use_xnnpack = spec.lib == "xnn";
     bool use_ynnpack = spec.lib == "ynn";
     LibraryRewriterOptions options = {
         use_onednn,
-        use_xnnpack,
         use_ynnpack,
         /*onednn_fusion_types=*/
         use_onednn ? &fusion_types : &empty_fusion_types,
-        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types,
         /*ynn_fusion_types=*/use_ynnpack ? &fusion_types : &empty_fusion_types,
     };
     LibraryRewriter rewriter(features.get(), options);

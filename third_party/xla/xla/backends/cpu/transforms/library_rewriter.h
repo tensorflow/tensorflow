@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/transforms/xnn_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -53,10 +52,8 @@ enum class FusionDirection {
 
 struct LibraryRewriterOptions {
   bool use_onednn = false;
-  bool use_xnnpack = false;
   bool use_ynnpack = false;
   const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
-  const tsl::protobuf::RepeatedField<int>* xnn_fusion_types = nullptr;
   const tsl::protobuf::RepeatedField<int>* ynn_fusion_types = nullptr;
 };
 
@@ -75,11 +72,6 @@ class LibraryRewriter : public HloModulePass {
           target_machine_features_, options_.onednn_fusion_types));
     }
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-    if (options_.use_xnnpack && options_.xnn_fusion_types != nullptr &&
-        !options_.xnn_fusion_types->empty()) {
-      libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,
-                                                   options_.xnn_fusion_types));
-    }
 #ifdef XLA_YNNPACK
     if (options_.use_ynnpack && options_.ynn_fusion_types != nullptr &&
         !options_.ynn_fusion_types->empty()) {

@@ -1647,17 +1647,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
           cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
-      std::optional<cpu::Thunk::XnnParams> xnn_params;
-      if (cpu_executable->has_xnn_fusions()) {
-        TF_ASSIGN_OR_RETURN(xnn_params,
-                            cpu::Thunk::XnnParams::Create(&run_options));
-      }
-
       std::optional<cpu::Thunk::YnnParams> ynn_params;
+#ifdef XLA_YNNPACK
       if (cpu_executable->has_ynn_fusions()) {
         TF_ASSIGN_OR_RETURN(ynn_params,
                             cpu::Thunk::YnnParams::Create(&run_options));
       }
+#endif  // XLA_YNNPACK
 
       cpu::ThreadPoolTaskRunner task_runner(
           run_options.intra_op_thread_pool()->getPool());
@@ -1670,7 +1666,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           &task_runner,
           &collective_params,
           &custom_call_execute_params,
-          xnn_params ? &*xnn_params : nullptr,
           ynn_params ? &*ynn_params : nullptr,
           run_options.run_id().ToInt(),
           run_options.device_ordinal(),
@@ -1796,17 +1791,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                 custom_call_params =
                     cpu::Thunk::CustomCallExecuteParams::Create(&run_options);
 
-            absl::StatusOr<std::optional<cpu::Thunk::XnnParams>> xnn_params(
-                std::nullopt);
-            if (cpu_executable->has_xnn_fusions()) {
-              xnn_params = cpu::Thunk::XnnParams::Create(&run_options);
-            }
-
             absl::StatusOr<std::optional<cpu::Thunk::YnnParams>> ynn_params(
                 std::nullopt);
+#ifdef XLA_YNNPACK
             if (cpu_executable->has_ynn_fusions()) {
               ynn_params = cpu::Thunk::YnnParams::Create(&run_options);
             }
+#endif  // XLA_YNNPACK
 
             cpu::ThreadPoolTaskRunner task_runner(
                 run_options.intra_op_thread_pool()->getPool());
@@ -1820,7 +1811,6 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                   &task_runner,
                   &*collective_params,
                   &*custom_call_params,
-                  *xnn_params ? &**xnn_params : nullptr,
                   *ynn_params ? &**ynn_params : nullptr,
                   run_options.run_id().ToInt(),
                   run_options.device_ordinal(),

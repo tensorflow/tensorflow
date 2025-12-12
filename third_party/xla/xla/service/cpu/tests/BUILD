@@ -427,23 +427,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "xnn_fusion_test",
-    srcs = ["xnn_fusion_test.cc"],
-    deps = [
-        "//xla:error_spec",
-        "//xla/backends/cpu:xnn_gemm_config",
-        "//xla/service:cpu_plugin",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_cc_test(
     name = "cpu_copy_test",
     srcs = ["cpu_copy_test.cc"],
     deps = [

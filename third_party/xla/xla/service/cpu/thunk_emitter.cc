@@ -69,10 +69,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
-#include "xla/backends/cpu/xnn_emitter.h"
-#include "xla/backends/cpu/xnn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -444,10 +440,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
           return EmitOneDnnFusionThunk(instruction);
         }
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-
-        if (backend_config.fusion_config().kind() == kXnnFusionKind) {
-          return EmitXnnFusionThunk(instruction);
-        }
 
 #ifdef XLA_YNNPACK
         if (backend_config.fusion_config().kind() == kYnnFusionKind) {
@@ -1114,31 +1106,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       }
 #endif  // XLA_YNNPACK
 
-      // Decide whether to use XNNPACK or Eigen.
-      bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
-      if (use_xnn) {
-        const bool use_cost_model =
-            hlo_module_config_.debug_options()
-                .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-            DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
-        TF_ASSIGN_OR_RETURN(
-            use_xnn,
-            IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
-                                instruction->shape(), &target_machine_features_,
-                                use_cost_model));
-      }
-
-      if (use_xnn) {
-        bool capture_rhs = HloPredicateIsOp<HloOpcode::kParameter>(rhs);
-        return ThunkSequence::Of<XnnDotThunk>(
-            XnnDotThunk::Options{}, ThunkInfo(instruction), dnums, lhs_slice,
-            lhs->shape(), rhs_slice, rhs->shape(), out_slice,
-            instruction->shape(), capture_rhs);
-      } else {
-        return ThunkSequence::Of<DotThunk>(
-            ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
-            rhs->shape(), out_slice, instruction->shape());
-      }
+      return ThunkSequence::Of<DotThunk>(
+          ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
+          rhs->shape(), out_slice, instruction->shape());
     }
   }
 }
@@ -1500,41 +1470,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnFusionThunk(
 #else
   return Unimplemented("oneDNN fusion is not supported");
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitXnnFusionThunk(
-    const HloInstruction* instruction) {
-  auto* fusion = Cast<HloFusionInstruction>(instruction);
-
-  // Collect XNNPACK fusion arguments.
-  std::vector<XnnFusionThunk::Argument> arguments;
-  for (HloInstruction* operand : instruction->operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
-          BufferAllocation::Slice slice,
-          buffer_assignment_.GetUniqueSlice(operand, indexed.index));
-      arguments.push_back(XnnFusionThunk::Argument{slice, indexed.shape});
-    }
-  }
-
-  // Collect XNNPACK fusion results.
-  std::vector<XnnFusionThunk::Result> results;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(instruction->shape())) {
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice slice,
-        buffer_assignment_.GetUniqueSlice(instruction, indexed.index));
-    results.push_back(XnnFusionThunk::Result{slice, indexed.shape});
-  }
-
-  const HloComputation* computation = fusion->fused_instructions_computation();
-
-  // Construct XNNPACK subgraph builder from the fusion computation.
-  TF_ASSIGN_OR_RETURN(auto builder, EmitXnnFusionBuilder(computation));
-
-  return ThunkSequence::Of<XnnFusionThunk>(
-      XnnFusionThunk::Options{}, ThunkInfo(instruction), std::move(arguments),
-      std::move(results),
-      [b = std::move(builder)](auto, auto) mutable { return b(); });
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(

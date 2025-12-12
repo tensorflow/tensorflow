@@ -110,7 +110,7 @@ bazel analyze-profile profile.json.gz
 df -h
 bazel --version
 mkdir -p /tmpfs/bazel_output
-bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --config=nonccl --color=yes --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/tmpfs/bazel_output --test_size_filters=small,medium --define=xnn_enable_avxvnniint8=false --//xla/tsl:ci_build -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
+bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --config=nonccl --color=yes --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/tmpfs/bazel_output --test_size_filters=small,medium --//xla/tsl:ci_build -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
 bazel analyze-profile profile.json.gz
 # END BuildType.XLA_MACOS_ARM64_CPU_KOKORO
 # BEGIN BuildType.XLA_MACOS_X86_CPU_KOKORO
@@ -118,7 +118,7 @@ sudo wget --no-verbose -O /usr/local/bin/bazel https://github.com/bazelbuild/baz
 chmod +x /usr/local/bin/bazel
 bazel --version
 mkdir -p /Volumes/BuildData/bazel_output
-bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --config=nonccl --color=yes --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/Volumes/BuildData/bazel_output --define=xnn_enable_avxvnniint8=false --//xla/tsl:ci_build -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
+bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd,-requires-gpu-intel --config=nonccl --color=yes --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/Volumes/BuildData/bazel_output --//xla/tsl:ci_build -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
 bazel analyze-profile profile.json.gz
 # END BuildType.XLA_MACOS_X86_CPU_KOKORO
 # BEGIN BuildType.XLA_WINDOWS_X86_CPU_GITHUB_ACTIONS

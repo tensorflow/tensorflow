@@ -26,7 +26,6 @@ cc_library(
     deps = [
         ":library_matcher",
         ":onednn_matcher",
-        ":xnn_matcher",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -54,7 +53,6 @@ xla_cc_test(
         ":library_rewriter",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_gemm_config",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen:target_machine_test_base",
         "//xla/hlo/ir:hlo",
@@ -101,22 +99,6 @@ onednn_graph_cc_library(
 )
 
 cc_library(
-    name = "xnn_matcher",
-    hdrs = ["xnn_matcher.h"],
-    deps = [
-        ":library_matcher",
-        "//xla/backends/cpu:xnn_support",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
-    ],
-)
-
-cc_library(
     name = "ynn_matcher",
     hdrs = ["ynn_matcher.h"],
     deps = [
@@ -129,41 +111,4 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
     ] + if_ynnpack(["//xla/backends/cpu:ynn_support"]),
-)
-
-cc_library(
-    name = "xnn_graph_fusion",
-    srcs = ["xnn_graph_fusion.cc"],
-    hdrs = ["xnn_graph_fusion.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_support",
-        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:call_graph",
-        "//xla/service:instruction_fusion",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "xnn_graph_fusion_test",
-    srcs = ["xnn_graph_fusion_test.cc"],
-    deps = [
-        ":xnn_graph_fusion",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_support",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_googletest//:gtest",
-    ],
 )
