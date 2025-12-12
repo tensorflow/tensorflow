@@ -1007,9 +1007,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // XNNPACK ops availability checks depend on the layout information,
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
-  const bool use_ynnpack = absl::c_linear_search(
-      debug_options.xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
+  const bool use_ynnpack =
+      !debug_options.xla_cpu_experimental_ynn_fusion_type().empty();
   LibraryRewriterOptions options = {
       /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
       /*use_xnnpack=*/debug_options.xla_cpu_use_xnnpack(),

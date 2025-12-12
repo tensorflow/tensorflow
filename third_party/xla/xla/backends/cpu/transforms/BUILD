@@ -22,7 +22,7 @@ cc_library(
     name = "library_rewriter",
     srcs = ["library_rewriter.cc"],
     hdrs = ["library_rewriter.h"],
-    defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
+    defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]) + if_ynnpack(["XLA_YNNPACK"]),
     deps = [
         ":library_matcher",
         ":onednn_matcher",
@@ -49,7 +49,7 @@ cc_library(
 xla_cc_test(
     name = "library_rewriter_test",
     srcs = ["library_rewriter_test.cc"],
-    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
+    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]) + if_ynnpack(["XLA_YNNPACK"]),
     deps = [
         ":library_rewriter",
         "//xla:xla_data_proto_cc",
