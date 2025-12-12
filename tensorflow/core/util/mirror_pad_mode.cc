@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/mirror_pad_mode.h"
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
