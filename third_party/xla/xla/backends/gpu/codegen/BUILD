@@ -186,9 +186,10 @@ cc_library(
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = ["dynamic_slice_fusion_test.cc"],
-    # TODO(b/46791573): Remove heap_check= once the bug is fixed.
+    # TODO(b/467915739): Remove heap_check= once the bug is fixed.
     backend_args = if_google(
         {
+            "gpu": ["--heap_check="],
             "b200": ["--heap_check="],
             "a100": ["--heap_check="],
             "h100": ["--heap_check="],
