@@ -35,6 +35,11 @@ hwloc_topology_t GetHWLocTopology() {
       LOG(ERROR) << "Call to hwloc_topology_init() failed";
       return;
     }
+    if (hwloc_topology_set_flags(hwloc_topology_handle,
+                                 HWLOC_TOPOLOGY_FLAG_DONT_CHANGE_BINDING)) {
+      LOG(ERROR) << "Call to hwloc_topology_set_flags() failed";
+      return;
+    }
     if (hwloc_topology_load(hwloc_topology_handle)) {
       LOG(ERROR) << "Call to hwloc_topology_load() failed";
       return;
