@@ -473,14 +473,48 @@ class TensorListSetItem : public OpKernel {
                     " list shape: ", l->element_shape.DebugString()));
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
-    int32_t index = c->input(1).scalar<int32>()();
+    int64_t index;
+    const Tensor& index_tensor = c->input(1);
+    if (index_tensor.dtype() == DT_INT32) {
+      index = index_tensor.scalar<int32>()();
+    } else if (index_tensor.dtype() == DT_INT64) {
+      index = index_tensor.scalar<int64_t>()();
+    } else {
+      c->CtxFailureWithWarning(errors::InvalidArgument(
+          "Index must be int32 or int64, received: ",
+          DataTypeString(index_tensor.dtype())));
+      return;
+    }
+
+    OP_REQUIRES(c, index >= 0,
+                errors::InvalidArgument("Index must be non-negative. Received: ",
+                                        index));
+
     if (!resize_if_index_out_of_bounds_) {
       OP_REQUIRES(c, index < l->tensors().size(),
                   errors::InvalidArgument("Trying to modify element ", index,
                                           " in a list with ",
                                           l->tensors().size(), " elements."));
-    } else if (index >= l->tensors().size()) {
-      output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+    } else {
+      if (l->max_num_elements != -1) {
+        OP_REQUIRES(
+            c, index < l->max_num_elements,
+            errors::InvalidArgument(
+                "Tried to set an index: ", index,
+                " in a list with a maximum size of: ", l->max_num_elements));
+      }
+      // TensorList implementation uses std::vector which can only address up to
+      // size_t max. Also, we enforce a sanity limit to prevent OOM DOS.
+      // We use int32 max as a safe conservative limit for TensorList size.
+      OP_REQUIRES(
+          c, index < std::numeric_limits<int32>::max(),
+          errors::InvalidArgument(
+              "Index ", index,
+              " is too large. TensorList supports indices up to int32 max."));
+
+      if (index >= l->tensors().size()) {
+        output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
+      }
     }
     output_list->tensors()[index] = value;
   }
