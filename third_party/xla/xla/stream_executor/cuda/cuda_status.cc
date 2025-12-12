@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_status.h"
 
-#include <string>
+#include <dirent.h>
+#include <sys/stat.h>
 
+#include <cerrno>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -26,9 +34,50 @@ limitations under the License.
 
 namespace stream_executor::cuda::internal {
 
+namespace {
+void LogLdLibraryPathContents() {
+  char* ld_library_path;
+  if ((ld_library_path = getenv("LD_LIBRARY_PATH")) == nullptr) {
+    return;
+  }
+  LOG(ERROR) << "LD_LIBRARY_PATH: " << ld_library_path;
+  std::vector<absl::string_view> paths = absl::StrSplit(ld_library_path, ':');
+  for (absl::string_view path : paths) {
+    LOG(ERROR) << "path: " << path;
+    // Print dir content of the path using standard os api.
+    DIR* dir = opendir(std::string(path).c_str());
+    if (dir == nullptr) {
+      LOG(ERROR) << "Failed to open directory: " << path << ": "
+                 << strerror(errno);
+      continue;
+    }
+    LOG(ERROR) << "Contents of directory: " << path;
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+      std::string file_name = entry->d_name;
+      if (file_name == "." || file_name == "..") {
+        continue;
+      }
+      std::string full_path = absl::StrCat(path, "/", file_name);
+      struct stat sb;
+      if (stat(full_path.c_str(), &sb) == -1) {
+        LOG(ERROR) << "  " << file_name << ": stat failed: " << strerror(errno);
+      } else {
+        LOG(ERROR) << "  " << file_name << " size: " << sb.st_size
+                   << " mode: " << sb.st_mode;
+      }
+    }
+    LOG(ERROR) << "Closing directory: " << path;
+    closedir(dir);
+  }
+  LOG(ERROR) << "Done with LD_LIBRARY_PATH: " << ld_library_path;
+}
+}  // namespace
+
 absl::Status ToStatusSlow(CUresult result, absl::string_view detail) {
   const char* error_name;
   std::string error_detail;
+  LOG(ERROR) << "ToStatusSlow: " << detail;
   if (cuGetErrorName(result, &error_name)) {
     error_detail = absl::StrCat(detail, ": UNKNOWN ERROR (",
                                 static_cast<int>(result), ")");
@@ -41,13 +90,19 @@ absl::Status ToStatusSlow(CUresult result, absl::string_view detail) {
     }
   }
 
+  LogLdLibraryPathContents();
   if (result == CUDA_ERROR_OUT_OF_MEMORY) {
+    LOG(ERROR) << "CUDA_ERROR_OUT_OF_MEMORY";
     return absl::ResourceExhaustedError(error_detail);
-  } else if (result == CUDA_ERROR_NOT_FOUND) {
-    return absl::NotFoundError(error_detail);
-  } else {
-    return absl::InternalError(absl::StrCat("CUDA error: ", error_detail));
   }
+  if (result == CUDA_ERROR_NOT_FOUND) {
+    LOG(ERROR) << "CUDA_ERROR_NOT_FOUND";
+    // Look at all the LD_LIBRARY directory paths that are searched for the
+    // libcuda.so file.
+    return absl::NotFoundError(error_detail);
+  }
+  LOG(ERROR) << "Not CUDA_ERROR_NOT_FOUND";
+  return absl::InternalError(absl::StrCat("CUDA error: ", error_detail));
 }
 
 absl::Status ToStatusSlow(cudaError_t result, absl::string_view detail) {
@@ -64,6 +119,8 @@ absl::Status ToStatusSlow(cudaError_t result, absl::string_view detail) {
   if (error_string != nullptr) {
     absl::StrAppend(&error_detail, ": ", error_string);
   }
+
+  LogLdLibraryPathContents();
 
   return absl::InternalError(
       absl::StrCat("CUDA Runtime error: ", error_detail));
