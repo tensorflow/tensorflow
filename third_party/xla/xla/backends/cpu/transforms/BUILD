@@ -3,7 +3,6 @@ load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/xnnpack:build_defs.bzl", "if_ynnpack")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -27,6 +26,7 @@ cc_library(
         ":library_matcher",
         ":onednn_matcher",
         ":xnn_matcher",
+        ":ynn_matcher",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -43,7 +43,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
-    ] + if_ynnpack([":ynn_matcher"]),
+    ],
 )
 
 xla_cc_test(
@@ -121,6 +121,7 @@ cc_library(
     hdrs = ["ynn_matcher.h"],
     deps = [
         ":library_matcher",
+        "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/base:no_destructor",
@@ -128,7 +129,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
-    ] + if_ynnpack(["//xla/backends/cpu:ynn_support"]),
+    ],
 )
 
 cc_library(

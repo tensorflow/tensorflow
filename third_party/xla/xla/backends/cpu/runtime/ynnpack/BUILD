@@ -1,5 +1,5 @@
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/xnnpack:build_defs.bzl", "ynn_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,7 +30,7 @@ cc_library(
     ],
 )
 
-ynn_cc_test(
+xla_cc_test(
     name = "slinky_threadpool_test",
     srcs = ["slinky_threadpool_test.cc"],
     deps = [
@@ -110,7 +110,7 @@ cc_library(
     ],
 )
 
-ynn_cc_test(
+xla_cc_test(
     name = "ynn_fusion_thunk_test",
     srcs = ["ynn_fusion_thunk_test.cc"],
     deps = [
