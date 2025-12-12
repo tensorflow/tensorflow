@@ -1,4 +1,4 @@
-From 925be4390f717899f3e825abe6e9a0548f0630e4 Mon Sep 17 00:00:00 2001
+From 5c2d2d62a71fe19c92c6f807d533c0ea90c15f03 Mon Sep 17 00:00:00 2001
 From: Marcin Radomski <dextero@google.com>
 Date: Thu, 4 Dec 2025 15:37:45 +0000
 Subject: [PATCH 1/2] Add ASSERT_OK/EXPECT_OK/ASSERT_OK_AND_ASSIGN macros
@@ -37,7 +37,7 @@ index c78fb8ee..69b33572 100644
  #endif  // GOOGLEMOCK_INCLUDE_GMOCK_GMOCK_H_
 diff --git a/googlemock/include/gmock/internal/xla-gmock-macros.h b/googlemock/include/gmock/internal/xla-gmock-macros.h
 new file mode 100644
-index 00000000..fd48a21a
+index 00000000..b851bcca
 --- /dev/null
 +++ b/googlemock/include/gmock/internal/xla-gmock-macros.h
 @@ -0,0 +1,118 @@
@@ -94,7 +94,7 @@ index 00000000..fd48a21a
 +  ASSERT_THAT(expression, ::xla_testing::internal::IsOk())
 +
 +#define ASSERT_OK_AND_ASSIGN(lhs, rexpr)                            \
-+  TF_ASSERT_OK_AND_ASSIGN_IMPL(                                     \
++  ASSERT_OK_AND_ASSIGN_IMPL(                                     \
 +      XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), \
 +      lhs, rexpr);
 +
