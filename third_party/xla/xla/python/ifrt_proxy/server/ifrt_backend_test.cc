@@ -37,6 +37,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -48,6 +49,7 @@
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
@@ -88,6 +90,7 @@
 #include "xla/tsl/protobuf/status.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -102,6 +105,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::Invoke;
+using ::testing::MatchesRegex;
 using ::testing::Not;
 using ::testing::NotNull;
 using ::testing::Optional;
@@ -1375,19 +1379,36 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
     EXPECT_NE(output.array_handle(), 0);
   }
 
+  auto check_execution_result = [&](uint64_t handle) -> absl::Status {
+    if (handle == 0) {
+      return absl::InternalError("Test error, future handle is 0");
+    }
+    if (Version().protocol_version() >= protocol_version::kExecuteResult) {
+      auto request = NewIfrtRequest(NewOpId());
+      request->mutable_loaded_executable_fetch_execute_result_request()
+          ->set_result_status_handle(handle);
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
+                          CallBackend(std::move(request)));
+      return tsl::StatusFromProto(response->response_metadata().status());
+    } else {
+      return CheckFuture(handle);
+    }
+  };
+
   EXPECT_THAT(
-      CheckFuture(
+      check_execution_result(
           response->loaded_executable_execute_response().status_handle()),
       absl_testing::StatusIs(absl::StatusCode::kInternal,
                              StrEq("injected error")));
 
-  // The second call to `CheckFuture` fails since `CheckFuture` above performs a
-  // destructive read.
+  // The second call to `check_execution_result` fails since
+  // `check_execution_result` above performs a destructive read.
   EXPECT_THAT(
-      CheckFuture(
+      check_execution_result(
           response->loaded_executable_execute_response().status_handle()),
-      absl_testing::StatusIs(absl::StatusCode::kNotFound,
-                             HasSubstr("Unknown future handle")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kNotFound,
+          MatchesRegex("Unknown (future|result status) handle.*")));
 }
 
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
@@ -1450,10 +1471,88 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
 
   EXPECT_THAT(CallBackend(std::move(request)), status_is_err);
 
-  EXPECT_THAT(CheckFuture(kFirstResultHandle + kNumOutputs), status_is_err);
+  {
+    const uint64_t handle = kFirstResultHandle + kNumOutputs;
+    if (Version().protocol_version() >= protocol_version::kExecuteResult) {
+      auto request = NewIfrtRequest(NewOpId());
+      request->mutable_loaded_executable_fetch_execute_result_request()
+          ->set_result_status_handle(handle);
+      EXPECT_THAT(CallBackend(std::move(request)), status_is_err);
+    } else {
+      EXPECT_THAT(CheckFuture(handle), status_is_err);
+    }
+  }
 
   for (int i = 0; i < kNumOutputs; ++i) {
     EXPECT_THAT(CheckValueReady(kFirstResultHandle + i), status_is_err);
+  }
+}
+
+TEST_P(IfrtBackendHandlerTest, LoadedExecutableDeviceTime) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
+  if (Version().protocol_version() < protocol_version::kExecuteResult) {
+    GTEST_SKIP()
+        << "Device time measurement is not supported in this protocol version";
+  }
+
+  MockLoadedExecutable* executable;
+  uint64_t handle;
+  {
+    auto e = std::make_unique<MockLoadedExecutable>();
+    executable = e.get();
+    TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                            CompileTestLoadedExecutable(std::move(e)));
+    handle = response.loaded_executable_handle();
+  }
+
+  EXPECT_CALL(*executable, Execute(_, _, _))
+      .WillOnce([&](absl::Span<ArrayRef> args,
+                    const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+                    std::optional<DeviceListRef> devices)
+                    -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
+        std::optional<uint64_t> device_time_key =
+            xla::GetDeviceTimeMeasurementKey();
+        if (device_time_key.has_value()) {
+          xla::RecordDeviceTimeMeasurement(
+              *device_time_key, absl::Microseconds(1234),
+              xla::DeviceTimeMeasurement::DeviceType::kTpu);
+        }
+        LoadedExecutable::ExecuteResult result;
+        result.status = tsl::Future<>(absl::OkStatus());
+        return result;
+      });
+
+  constexpr uint64_t kResultStatusHandle = 1000;
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    LoadedExecutableExecuteRequest* execute_request =
+        request->mutable_loaded_executable_execute_request();
+    execute_request->set_loaded_executable_handle(handle);
+    execute_request->set_result_status_handle(kResultStatusHandle);
+
+    xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+    execute_options.fill_status = true;
+    TF_ASSERT_OK(execute_options.ToProto(
+        *execute_request->mutable_execute_options(), ifrt_serdes_version()));
+
+    EXPECT_OK(CallBackend(std::move(request)));
+  }
+
+  {
+    auto request = NewIfrtRequest(NewOpId());
+    request->mutable_loaded_executable_fetch_execute_result_request()
+        ->set_result_status_handle(kResultStatusHandle);
+    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                            CallBackend(std::move(request)));
+    EXPECT_THAT(response, Pointee(Partially(EquivToProto(R"pb(
+                  loaded_executable_fetch_execute_result_response {
+                    device_time { key: "tpu" value: 1234.0 }
+                    device_time { key: "gpu" value: 0 }
+                  }
+                )pb"))));
   }
 }
 

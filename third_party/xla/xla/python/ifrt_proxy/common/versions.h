@@ -66,6 +66,10 @@ enum {
   // GetMpmdCostAnalysis.
   kMpmdLoadedExecutableMethods = 20,
 
+  // kExecuteResult adds a separate request/response type for Execution
+  // results to return extra information such as device time measurement.
+  kExecuteResult = 21,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

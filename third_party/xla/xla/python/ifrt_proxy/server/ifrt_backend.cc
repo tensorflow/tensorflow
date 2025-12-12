@@ -46,6 +46,7 @@
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -636,19 +637,34 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
           HandleLoadedExecutableExecuteRequest(*asr, std::move(request));
       if (client_generated_status_handle != 0) {
         // Populate the handle if not already populated.
-        absl::MutexLock l(futures_mutex_);
-        const bool inserted = futures_
-                                  .insert({client_generated_status_handle,
-                                           tsl::Future<>(result.status())})
-                                  .second;
-        // If `HandleLoadedExecutableExecuteRequest` returned OK, verify that
-        // it already has populated status_handle.
-        if (result.ok()) {
-          CHECK(!inserted);
+        if (protocol_version() >= protocol_version::kExecuteResult) {
+          absl::MutexLock l(execute_results_mutex_);
+          if (result.ok()) {
+            CHECK(execute_results_.contains(client_generated_status_handle));
+          } else {
+            CHECK(execute_results_
+                      .insert({client_generated_status_handle,
+                               tsl::Future<ExecuteResult>(result.status())})
+                      .second);
+          }
+        } else {
+          absl::MutexLock l(futures_mutex_);
+          const bool inserted = futures_
+                                    .insert({client_generated_status_handle,
+                                             tsl::Future<>(result.status())})
+                                    .second;
+          // If `HandleLoadedExecutableExecuteRequest` returned OK, verify that
+          // it already has populated status_handle.
+          if (result.ok()) {
+            CHECK(!inserted);
+          }
         }
       }
       return tsl::Future<Response>(asr->ProcessResponse(std::move(result)));
     }
+    case IfrtRequest::RequestCase::kLoadedExecutableFetchExecuteResultRequest:
+      return HandleLoadedExecutableFetchExecuteResultRequest(
+          std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableDeleteRequest:
       return tsl::Future<Response>(
           HandleLoadedExecutableDeleteRequest(std::move(request)));
@@ -1815,6 +1831,11 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
     TF_ASSIGN_OR_RETURN(devices, client_->MakeDeviceList(std::move(d)));
   }
 
+  std::unique_ptr<xla::DeviceTimeMeasurement> device_time;
+  if (execute_options.fill_status) {
+    device_time = xla::CreateDeviceTimeMeasurement();
+  }
+
   TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
                       executable_info->executable->Execute(
                           absl::MakeSpan(args), execute_options, devices));
@@ -1894,15 +1915,31 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // atomically (as in ACID) across all handles.
   [&]() -> void {
     if (execute_options.fill_status) {
-      // Caller is expected to call `CheckFuture` exactly once to check for its
-      // status and erase it.
-      absl::MutexLock lock(futures_mutex_);
       uint64_t status_handle = execute.result_status_handle();
       if (status_handle == 0) {
         status_handle = handle_generator_.GenerateAtServer();
       }
       execute_response->set_status_handle(status_handle);
-      futures_.insert({status_handle, std::move(result.status)});
+
+      if (version_.protocol_version() >= protocol_version::kExecuteResult) {
+        // Caller is expected to call `LoadedExecutableFetchExecuteResult`
+        // exactly once to check for its status and erase it.
+        absl::MutexLock lock(execute_results_mutex_);
+        tsl::Future<ExecuteResult> future = result.status.Map<ExecuteResult>(
+            [device_time = std::move(device_time)]() mutable {
+              ExecuteResult result;
+              if (device_time != nullptr) {
+                result.device_time = device_time->GetTotalDurations();
+              }
+              return result;
+            });
+        execute_results_.insert({status_handle, std::move(future)});
+      } else {
+        // Caller is expected to call `CheckFuture` exactly once to check for
+        // its status and erase it.
+        absl::MutexLock lock(futures_mutex_);
+        futures_.insert({status_handle, std::move(result.status)});
+      }
     }
 
     std::vector<uint64_t> result_handles = asr.Fill(result.outputs);
@@ -1924,6 +1961,50 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   }();
 
   return ifrt_resp;
+}
+
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableFetchExecuteResultRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  const auto& fetch = request->loaded_executable_fetch_execute_result_request();
+
+  tsl::Future<ExecuteResult> result;
+  {
+    absl::MutexLock lock(execute_results_mutex_);
+    const auto it = execute_results_.find(fetch.result_status_handle());
+    if (it == execute_results_.end()) {
+      return tsl::Future<Response>(absl::NotFoundError(absl::StrCat(
+          "Unknown result status handle: ", fetch.result_status_handle())));
+    }
+    result = std::move(it->second);
+    execute_results_.erase(it);
+  }
+
+  return result.Map<BackendInterface::Response>(
+      [op_id =
+           request->request_metadata().op_id()](const ExecuteResult& result) {
+        auto ifrt_resp = NewIfrtResponse(op_id);
+
+        auto* const fetch_response =
+            ifrt_resp
+                ->mutable_loaded_executable_fetch_execute_result_response();
+        for (const auto& [device_type, duration] : result.device_time) {
+          switch (device_type) {
+            case xla::DeviceTimeMeasurement::DeviceType::kTpu:
+              fetch_response->mutable_device_time()->insert(
+                  {"tpu", absl::ToDoubleMicroseconds(duration)});
+              break;
+            case xla::DeviceTimeMeasurement::DeviceType::kGpu:
+              fetch_response->mutable_device_time()->insert(
+                  {"gpu", absl::ToDoubleMicroseconds(duration)});
+              break;
+            case xla::DeviceTimeMeasurement::DeviceType::kUnknown:
+              break;
+          }
+        }
+
+        return ifrt_resp;
+      });
 }
 
 // This handler will be deleted on 2025-06-06 since the underlying IFRT API is

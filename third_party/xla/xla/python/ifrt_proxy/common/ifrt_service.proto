@@ -37,7 +37,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 32.
+// Next ID: 33.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -73,6 +73,8 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
+    LoadedExecutableFetchExecuteResultRequest
+        loaded_executable_fetch_execute_result_request = 32;
     LoadedExecutableCostAnalysisRequest
         loaded_executable_cost_analysis_request = 28;
     LoadedExecutableHumanReadableProgramTextRequest
@@ -102,7 +104,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 32.
+// Next ID: 33.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -138,6 +140,8 @@ message IfrtResponse {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataResponse loaded_executable_metadata_response = 14;
     LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
+    LoadedExecutableFetchExecuteResultResponse
+        loaded_executable_fetch_execute_result_response = 32;
     LoadedExecutableCostAnalysisResponse
         loaded_executable_cost_analysis_response = 28;
     LoadedExecutableHumanReadableProgramTextResponse
@@ -602,6 +606,14 @@ message LoadedExecutableExecuteResponse {
   }
 
   repeated Output outputs = 2;
+}
+
+message LoadedExecutableFetchExecuteResultRequest {
+  fixed64 result_status_handle = 1;
+}
+message LoadedExecutableFetchExecuteResultResponse {
+  // Map from device types to device time in microseconds.
+  map<string, double> device_time = 1;
 }
 
 // Mirrors `LoadedExecutable::Delete`. Returns a handle of a future that becomes
