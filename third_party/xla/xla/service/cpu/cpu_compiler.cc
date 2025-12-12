@@ -542,6 +542,19 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   return pipeline;
 }
 
+auto LibrarySupportsConvolution(
+    HloModule* module, TargetMachineFeatures* target_machine_features) {
+  const bool ynnpack_convolution_enabled = absl::c_linear_search(
+      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
+  return [=](const HloInstruction& instr) {
+#ifdef XLA_YNNPACK
+    return ynnpack_convolution_enabled && IsConvolutionOpSupportedByYnn(&instr);
+#endif  // XLA_YNNPACK
+    return false;
+  };
+}
+
 auto LibrarySupportsDot(HloModule* module,
                         TargetMachineFeatures* target_machine_features) {
   // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
@@ -670,31 +683,41 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   auto library_supports_dot =
       LibrarySupportsDot(module, target_machine_features);
 
-  auto call_library_for_dot = [&](const HloInstruction& instr) {
-    if (instr.opcode() != HloOpcode::kDot) {
+  auto library_supports_convolution =
+      LibrarySupportsConvolution(module, target_machine_features);
+
+  auto call_library_for_instruction = [&](const HloInstruction& instr) {
+    if (instr.opcode() != HloOpcode::kDot &&
+        instr.opcode() != HloOpcode::kConvolution) {
       return false;
     }
 
-    auto dot_strategy = GetDotImplementationStrategy(
-        module->config(), instr, *target_machine_features,
-        /*allow_runtime_calls=*/true);
-    if (dot_strategy != DotImplementationStrategy::kEigen) {
-      // We aren't going to call a library for this dot.
-      return false;
+    if (instr.opcode() == HloOpcode::kDot) {
+      auto dot_strategy = GetDotImplementationStrategy(
+          module->config(), instr, *target_machine_features,
+          /*allow_runtime_calls=*/true);
+      if (dot_strategy != DotImplementationStrategy::kEigen) {
+        // We aren't going to call a library for this dot.
+        return false;
+      }
+      return library_supports_dot(instr);
+    }
+    if (instr.opcode() == HloOpcode::kConvolution) {
+      return library_supports_convolution(instr);
     }
 
-    return library_supports_dot(instr);
+    return false;
   };
 
   // If YNNPACK is enabled, we only need to upcast dots that YnnDotThunk does
   // not support. `upcaster_filter` returns false if the instruction shouldn't
   // be processed.
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    return !call_library_for_dot(*instr);
+    return !call_library_for_instruction(*instr);
   };
 
-  // xla::cpu::GetDotImplementationStrategy (used by call_library_for_dot)
-  // relies on the canonical form of dots.
+  // xla::cpu::GetDotImplementationStrategy (used by
+  // call_library_for_instruction) relies on the canonical form of dots.
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
@@ -754,7 +777,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-  CpuFloatSupport bf16_support(BF16, call_library_for_dot);
+  CpuFloatSupport bf16_support(BF16, call_library_for_instruction);
 #ifdef XLA_ONEDNN
   bool use_onednn_graph =
       module->config().debug_options().xla_cpu_use_onednn() &&
