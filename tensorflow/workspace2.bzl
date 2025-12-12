@@ -1,5 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("//third_party:repo.bzl", "tf_vendored")
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -409,8 +410,16 @@ def _tf_repositories():
         },
     )
 
-    tf_http_archive(
+    # Use XLA's googletest wrapper which provides EXPECT_OK and ASSERT_OK macros.
+    # This wrapper adds those macros to the open-source gmock/gmock.h header,
+    # matching the behavior of internal builds.
+    tf_vendored(
         name = "com_google_googletest",
+        path = "third_party/xla/third_party/xla_googletest_wrapper",
+    )
+
+    tf_http_archive(
+        name = "com_google_googletest_upstream",
         # Use the commit on 2025/6/09:
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
