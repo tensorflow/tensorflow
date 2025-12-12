@@ -13370,6 +13370,135 @@ ENTRY main {
   TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
+// This module is optmized as below, which adds two slices followed by a concat
+// bitcast. Since the concat bitcast uses the same slice buffers for its output,
+// the heap simulator trace should not have freed any of the slices before the
+// concat bitcast users are allocated/processed.
+//
+// ENTRY main {
+//   ...
+//   p1 = f32[8,8]{1,0} parameter(1)
+//   slice-start = slice-start(p1), slice={[4:8], [0:8]}
+//   ...
+//   slice-start.1 = slice-start(p1), slice={[0:4], [0:8]}
+//   ...
+//   c = f32[8,8]{1,0:S(1)} tanh(b)
+//   slice-done = f32[4,8]{1,0:S(1)} slice-done(slice-start)
+//   slice-done.1 = f32[4,8]{1,0:S(1)} slice-done(slice-start.1)
+//   custom-call = f32[8,8]{1,0:S(1)} custom-call(slice-done, slice-done.1),
+//                                    custom_call_target="ConcatBitcast"
+//   r = f32[8,8]{1,0:S(1)} add(c, custom-call)
+//   n = f32[8,8]{1,0:S(1)} negate(custom-call)
+// ROOT f = f32[8,8]{1,0} add(r, n)
+// }
+//
+TEST_F(SlicedPrefetchTest, SlicedPrefetchHeapSimulatorTrace) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  r = f32[8,8] add(c, p1)
+  n = f32[8,8] negate(p1)
+  ROOT f = f32[8,8] add(r, n)
+})zz";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), MakeDefaultOptions(),
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto* r_instr = FindInstruction(module.get(), "r");
+  EXPECT_NE(r_instr, nullptr);
+  auto* n_instr = FindInstruction(module.get(), "n");
+  EXPECT_NE(n_instr, nullptr);
+
+  // Expect p1 to be copied via a sliced prefetch for use in r and n.
+  EXPECT_THAT(
+      r_instr,
+      op::Add(_, IsAsyncSlicedCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                   {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                   op::Parameter(1))));
+  EXPECT_THAT(n_instr, op::Negate(r_instr->operand(1)));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(
+      CheckSchedule(*module, r_instr->operand(1),
+                    /*slices_start_after_instruction_name=*/"p1",
+                    /*slices_done_before_instruction_name=*/"r",
+                    /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, r_instr->operand(1)));
+
+  const HeapSimulatorTrace& heap_trace =
+      assignments->assignment_information_for_space(kAlternateMemorySpace)
+          ->heap_simulator_trace;
+  // Track the set of instructions currently living in the alternate memory
+  // space.
+  // - ALLOC event: Instruction should not be in the set. Add it.
+  // - FREE event: Instruction should be in the set. Remove it.
+  // - Concat bitcast instruction: Slice operands should remain in the set until
+  //   all concat bitcast users are allocated.
+  absl::flat_hash_set<const HloInstruction*> allocated_instructions;
+  for (const auto& event : heap_trace.events()) {
+    VLOG(3) << "event: " << event.DebugString();
+    const HloInstruction* instruction =
+        FindInstruction(module.get(), event.instruction_name());
+    EXPECT_NE(instruction, nullptr)
+        << "Instruction not found: " << event.instruction_name();
+    if (instruction->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_NE(instruction->custom_call_target(),
+                memory_space_assignment::kConcatBitcastCustomCall)
+          << "We do not expect concat bitcast custom call to add any "
+             "independent events to the heap trace.";
+    }
+    if (instruction->opcode() == HloOpcode::kSlice) {
+      EXPECT_TRUE(event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+                  event.kind() == HeapSimulatorTrace::Event::FREE);
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      allocated_instructions.insert(instruction);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      EXPECT_TRUE(allocated_instructions.contains(instruction))
+          << "FREE is called on slice instruction before its ALLOC or is its "
+             "being called more than once on the same slice buffer.";
+      allocated_instructions.erase(instruction);
+    } else {
+      FAIL() << "Unexpected event kind: " << event.kind()
+             << " for instruction: " << event.instruction_name();
+    }
+    // At the time we allocate the r and n instructions, we should still have
+    // valid allocations for both slices of the concatbitcast operands, because
+    // the concatbitcast should share that buffer with its users, i.e. r and n
+    // instructions.
+    if ((instruction == r_instr || instruction == n_instr) &&
+        event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      int slice_count = absl::c_count_if(
+          allocated_instructions, [](const HloInstruction* inst) {
+            return inst->opcode() == HloOpcode::kSlice;
+          });
+      EXPECT_EQ(slice_count, 2)
+          << "Did not find enough valid allocations for both slice buffers in "
+             "the trace at the time of allocation for r or n instructions.";
+    }
+  }
+}
+
 TEST_F(SlicedPrefetchTest, TwoSlicesWithCopyReplacement) {
   std::string hlo_text = R"zz(
 HloModule Slice, is_scheduled=true
