@@ -980,6 +980,31 @@ cc_library(
 )
 
 cc_library(
+    name = "nvshmem_memory_allocator",
+    srcs = ["nvshmem_memory_allocator.cc"],
+    hdrs = ["nvshmem_memory_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":nvshmem",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:numbers",
+        "@nvshmem//:nvshmem_lib",
+    ],
+)
+
+cc_library(
     name = "nvjitlink_support",
     srcs = ["nvjitlink_support.cc"],
     hdrs = ["nvjitlink_support.h"],
