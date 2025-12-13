@@ -16,9 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_padding_requirements.h"
 
 #include <cstdint>
-#include <variant>
 
-#include "absl/functional/overload.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
