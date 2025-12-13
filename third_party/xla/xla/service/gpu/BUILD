@@ -752,7 +752,11 @@ cc_library(
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_cuda_is_configured([
+        # TODO(ybaturina): This should be in the deps of ":cuda_executor" but it breaks OSS.
+        "//xla/stream_executor/cuda:nccl_memory_allocator",  # buildcleaner: keep (static registration)
+        "//xla/stream_executor/cuda:nvshmem_memory_allocator_if_supported",  # buildcleaner: keep (static registration)
+    ]),
 )
 
 tf_proto_library(

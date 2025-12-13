@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
@@ -18,57 +17,6 @@ package_group(
     includes = [
         "//xla:friends",
     ],
-)
-
-# Allows to explicitely disable nvshmem collectives using invocation flag.
-bool_flag(
-    name = "nvshmem_enabled",
-    build_setting_default = True,
-)
-
-# NVSHMEM requires builtin functions since it uses printf's for debugging.
-config_setting(
-    name = "no_builtin_used",
-    values = {
-        "copt": "-fno-builtin",
-    },
-)
-
-cc_library(
-    name = "nvshmem_collectives_if_builtin_used",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps =
-        select({
-            ":no_builtin_used": [],
-            "//conditions:default": [":nvshmem_collectives"],
-        }),
-)
-
-config_setting(
-    name = "nvshmem_supported",
-    constraint_values = [
-        "@platforms//os:linux",
-    ],
-    flag_values = {
-        ":nvshmem_enabled": "True",
-    },
-)
-
-# Since selects can't be nested we need to create this intermediate target
-cc_library(
-    name = "nvshmem_collectives_if_supported",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps =
-        select({
-            ":nvshmem_supported": [":nvshmem_collectives_if_builtin_used"],
-            "//conditions:default": [],
-        }),
 )
 
 # Build target that registers all available GPU collectives implementations with the collectives
@@ -500,6 +448,32 @@ cc_library(
         "@nvshmem//:nvshmem_lib",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_builtin_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = select({
+        "//xla/stream_executor/cuda:no_builtin_used": [],
+        "//conditions:default": [":nvshmem_collectives"],
+    }),
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_supported",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = select({
+        "//xla/stream_executor/cuda:nvshmem_supported": [
+            ":nvshmem_collectives_if_builtin_used",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 xla_test(
