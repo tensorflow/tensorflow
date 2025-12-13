@@ -1,4 +1,3 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
@@ -18,57 +17,6 @@ package_group(
     includes = [
         "//xla:friends",
     ],
-)
-
-# Allows to explicitely disable nvshmem collectives using invocation flag.
-bool_flag(
-    name = "nvshmem_enabled",
-    build_setting_default = True,
-)
-
-# NVSHMEM requires builtin functions since it uses printf's for debugging.
-config_setting(
-    name = "no_builtin_used",
-    values = {
-        "copt": "-fno-builtin",
-    },
-)
-
-cc_library(
-    name = "nvshmem_collectives_if_builtin_used",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps =
-        select({
-            ":no_builtin_used": [],
-            "//conditions:default": [":nvshmem_collectives"],
-        }),
-)
-
-config_setting(
-    name = "nvshmem_supported",
-    constraint_values = [
-        "@platforms//os:linux",
-    ],
-    flag_values = {
-        ":nvshmem_enabled": "True",
-    },
-)
-
-# Since selects can't be nested we need to create this intermediate target
-cc_library(
-    name = "nvshmem_collectives_if_supported",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps =
-        select({
-            ":nvshmem_supported": [":nvshmem_collectives_if_builtin_used"],
-            "//conditions:default": [],
-        }),
 )
 
 # Build target that registers all available GPU collectives implementations with the collectives
@@ -373,6 +321,7 @@ cc_library(
         "@local_tsl//tsl/platform:numbers",
     ] + if_cuda_is_configured([
         "//xla/tsl/cuda:nccl",
+        "//xla/stream_executor/cuda:nccl_memory_allocator",  # buildcleaner: keep (static registration)
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
@@ -475,16 +424,15 @@ cc_library(
         "//xla/core/collectives:collectives_registry",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
-        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/cuda:nvshmem",
+        "//xla/stream_executor/cuda:nvshmem_memory_allocator",  # buildcleaner: keep (static registration)
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -492,7 +440,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:casts",
@@ -500,6 +447,32 @@ cc_library(
         "@nvshmem//:nvshmem_lib",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_builtin_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = select({
+        "//xla/stream_executor/cuda:no_builtin_used": [],
+        "//conditions:default": [":nvshmem_collectives"],
+    }),
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_supported",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = select({
+        "//xla/stream_executor/cuda:nvshmem_supported": [
+            ":nvshmem_collectives_if_builtin_used",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 xla_test(

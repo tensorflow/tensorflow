@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -53,17 +54,22 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
 
 namespace stream_executor::gpu {
 
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
  public:
-  CudaExecutor(Platform* platform, int device_ordinal)
-      : GpuExecutor(platform, device_ordinal) {}
+  CudaExecutor(Platform* platform, int device_ordinal,
+               CollectiveAllocatorType collective_allocator_type)
+      : GpuExecutor(platform, device_ordinal),
+        collective_allocator_type_(collective_allocator_type) {}
+
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
@@ -224,6 +230,8 @@ class CudaExecutor : public GpuExecutor {
 
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
+
+  CollectiveAllocatorType collective_allocator_type_;
 
   bool is_vmm_supported_ = false;
 

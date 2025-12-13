@@ -74,6 +74,24 @@ bool_flag(
     ),
 )
 
+# Allows to explicitely disable nvshmem collectives using invocation flag.
+bool_flag(
+    name = "nvshmem_enabled",
+    build_setting_default = True,
+)
+
+# NVSHMEM requires builtin functions since it uses printf's for debugging.
+config_setting(
+    name = "no_builtin_used",
+    values = {"copt": "-fno-builtin"},
+)
+
+config_setting(
+    name = "nvshmem_supported",
+    constraint_values = ["@platforms//os:linux"],
+    flag_values = {":nvshmem_enabled": "True"},
+)
+
 config_setting(
     name = "libnvjitlink_support_enabled",
     flag_values = {
@@ -100,8 +118,10 @@ cc_library(
     deps = [
         ":cuda_diagnostics",
         ":cuda_executor",
+        ":cuda_memory_allocator",
         ":cuda_platform_id",
         ":cuda_status",
+        "//xla:debug_options_flags",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:platform",
@@ -929,6 +949,30 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cuda_memory_allocator",
+    srcs = ["cuda_memory_allocator.cc"],
+    hdrs = ["cuda_memory_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "nccl_memory_allocator",
     srcs = ["nccl_memory_allocator.cc"],
     hdrs = ["nccl_memory_allocator.h"],
@@ -937,12 +981,14 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_memory_allocator",
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/platform:initialize",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -952,6 +998,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:numbers",
     ],
+    alwayslink = True,  # static registration
 )
 
 cc_library(
@@ -988,10 +1035,13 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_memory_allocator",
         ":nvshmem",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/platform:initialize",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -1002,6 +1052,7 @@ cc_library(
         "@local_tsl//tsl/platform:numbers",
         "@nvshmem//:nvshmem_lib",
     ],
+    alwayslink = True,  # static registration
 )
 
 cc_library(
@@ -1206,6 +1257,7 @@ cc_library(
         ":cuda_context",
         ":cuda_event",
         ":cuda_kernel",
+        ":cuda_memory_allocator",
         ":cuda_platform_id",
         ":cuda_status",
         ":cuda_stream",
@@ -1236,12 +1288,14 @@ cc_library(
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:module_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:tensor_map",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:multicast_memory",

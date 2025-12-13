@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -106,3 +108,12 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> NcclMemoryAllocator::Allocate(
 }
 
 }  // namespace stream_executor::gpu
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    nccl_memory_allocator,
+    stream_executor::gpu::RegisterCollectiveAllocatorFactory(
+        stream_executor::gpu::CollectiveAllocatorType::kNccl,
+        [](stream_executor::StreamExecutor* executor) {
+          return std::make_unique<stream_executor::gpu::NcclMemoryAllocator>(
+              executor);
+        }));
