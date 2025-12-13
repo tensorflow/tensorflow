@@ -443,10 +443,8 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   // Fusion modes to test for each library.
   absl::flat_hash_map<std::string, std::vector<std::string>> fusion_modes;
 
-#if XLA_YNNPACK
   // Don't test YNNPACK if we don't build with it.
   fusion_modes["ynn"] = {"dot", "greedy"};
-#endif
 
 #if XLA_ONEDNN_USE_GRAPH_API
   // Don't test oneDNN if we don't build with it.

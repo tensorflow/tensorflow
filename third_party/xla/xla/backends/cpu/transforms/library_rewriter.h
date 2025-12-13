@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
+#include "xla/backends/cpu/transforms/ynn_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -38,9 +39,6 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
 
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/transforms/ynn_matcher.h"
-#endif
 
 namespace xla::cpu {
 
@@ -72,13 +70,11 @@ class LibraryRewriter : public HloModulePass {
           target_machine_features_, options_.onednn_fusion_types));
     }
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-#ifdef XLA_YNNPACK
     if (options_.use_ynnpack && options_.ynn_fusion_types != nullptr &&
         !options_.ynn_fusion_types->empty()) {
       libs_.push_back(std::make_unique<YnnMatcher>(target_machine_features_,
                                                    options_.ynn_fusion_types));
     }
-#endif  // XLA_YNNPACK
 
     for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
       supported_ops_.merge(lib->SupportedOps());

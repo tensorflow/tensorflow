@@ -61,6 +61,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_fusion_options.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -76,12 +79,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/ynn_emitter.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -716,7 +713,6 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
-#ifdef XLA_YNNPACK
 static absl::Status ToProto(const YnnFusionThunk& thunk, ThunkProto& proto) {
   YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
   ynn_fusion_proto->mutable_options()->set_use_threadpool(
@@ -736,7 +732,6 @@ static absl::Status ToProto(const YnnFusionThunk& thunk, ThunkProto& proto) {
 
   return absl::OkStatus();
 }
-#endif  // XLA_YNNPACK
 
 static absl::Status ToProto(const FftThunk& thunk, ThunkProto& proto) {
   FftThunkProto* fft_thunk_proto = proto.mutable_fft_thunk();
@@ -919,12 +914,10 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
                   internal::LogicalIdKind::kReplicaId>&>(thunk)),
           proto));
       break;
-#ifdef XLA_YNNPACK
     case Thunk::Kind::kYnnFusion:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           tsl::down_cast<const YnnFusionThunk&>(thunk), proto));
       break;
-#endif  // XLA_YNNPACK
     default:
       return absl::UnimplementedError(
           absl::StrFormat("ToProto is not implemented for thunk kind: %s",
@@ -1455,7 +1448,6 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
                             std::move(*body_sequence), trip_count);
 }
 
-#ifdef XLA_YNNPACK
 static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
     const ThunkProto& proto, const HloModule* hlo_module,
     const std::vector<BufferAllocation>& buffer_allocations) {
@@ -1533,7 +1525,6 @@ static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
       },
       captured_arguments_ids);
 }
-#endif  // XLA_YNNPACK
 
 static absl::StatusOr<std::unique_ptr<Thunk>> PartitionIdThunkFromProto(
     const ThunkProto& proto,
@@ -1633,10 +1624,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:
       return ReplicaIdThunkFromProto(proto, *buffer_allocations_);
-#ifdef XLA_YNNPACK
     case Thunk::Kind::kYnnFusion:
       return YnnFusionThunkFromProto(proto, hlo_module_, *buffer_allocations_);
-#endif  // XLA_YNNPACK
     default:
       return absl::Status(absl::StatusCode::kInvalidArgument,
                           absl::StrFormat("Unsupported thunk kind: %s",

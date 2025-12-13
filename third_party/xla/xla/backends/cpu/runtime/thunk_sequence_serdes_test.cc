@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
@@ -76,10 +77,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 namespace {
@@ -1028,14 +1025,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
            thunk_1.trip_count() == thunk_2.trip_count();
   }
 
-#ifdef XLA_YNNPACK
   bool VerifyYnnFusionThunkEquality(const YnnFusionThunk& thunk_1,
                                     const YnnFusionThunk& thunk_2) {
     // TODO(ashaposhnikov) assume this is always false until we implement
     // serialization of YnnFusionThunk.
     return false;
   }
-#endif  // XLA_YNNPACK
 
   bool VerifyKernelThunkEquality(const KernelThunkBase& thunk_1,
                                  const KernelThunkBase& thunk_2) {
@@ -1231,7 +1226,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             tsl::down_cast<const WhileThunk&>(thunk_1),
             tsl::down_cast<const WhileThunk&>(thunk_2));
       case Thunk::Kind::kYnnFusion: {
-#ifdef XLA_YNNPACK
         const YnnFusionThunk& ynn_fusion_thunk_1 =
             tsl::down_cast<const YnnFusionThunk&>(thunk_1);
         const YnnFusionThunk& ynn_fusion_thunk_2 =
@@ -1243,10 +1237,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         return VerifyYnnFusionThunkEquality(
             tsl::down_cast<const YnnFusionThunk&>(thunk_1),
             tsl::down_cast<const YnnFusionThunk&>(thunk_2));
-#else
-        CHECK(false) << "Unsupported YNN fusion thunk type";
-        return false;
-#endif  // XLA_YNNPACK
       }
       case Thunk::Kind::kKernel:
         return VerifyKernelThunkEquality(

@@ -17,7 +17,6 @@ load(
     "if_llvm_x86_available",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/xnnpack:build_defs.bzl", "if_ynnpack")
 load(":build_defs.bzl", "runtime_copts")
 
 package(
@@ -158,6 +157,7 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:constant_allocation",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:compiled_function_library",
         "//xla/backends/cpu/codegen:cpu_features",
@@ -354,8 +354,6 @@ cc_library(
         ":onednn_contraction_rewriter",
         ":onednn_float_support",
         ":onednn_ops_rewriter",
-    ]) + if_ynnpack([
-        "//xla/backends/cpu:ynn_support",
     ]),
 )
 
@@ -803,7 +801,7 @@ cc_library(
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
     copts = tsl_copts(),
-    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]) + if_ynnpack(["XLA_YNNPACK"]),
+    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":backend_config_proto_cc",
         ":cpu_options",
@@ -819,6 +817,8 @@ cc_library(
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu:onednn_emitter",
         "//xla/backends/cpu:onednn_support",
+        "//xla/backends/cpu:ynn_emitter",
+        "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
@@ -851,6 +851,8 @@ cc_library(
         "//xla/backends/cpu/runtime:topk_thunk",
         "//xla/backends/cpu/runtime:while_thunk",
         "//xla/backends/cpu/runtime/onednn:onednn_fusion_thunk",
+        "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
+        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_kernel_source",
@@ -890,11 +892,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_onednn([
         "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
-    ]) + if_ynnpack([
-        "//xla/backends/cpu:ynn_emitter",
-        "//xla/backends/cpu:ynn_support",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
-        "//xla/backends/cpu/runtime/ynnpack:ynn_fusion_thunk",
     ]),
 )
 

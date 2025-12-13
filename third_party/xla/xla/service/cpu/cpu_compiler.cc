@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -248,10 +249,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_float_support.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #endif  // XLA_ONEDNN
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/ynn_support.h"
-#endif  // XLA_YNNPACK
 
 namespace xla {
 namespace {
@@ -497,7 +494,6 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     pipeline->AddPass<TreeReductionRewriter>();
   }
 
-#ifdef XLA_YNNPACK
   if (absl::c_contains(module->config()
                            .debug_options()
                            .xla_cpu_experimental_ynn_fusion_type(),
@@ -507,7 +503,6 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
           return !IsReduceOpOffloadedToYnn(hlo);
         });
   }
-#endif
 
   // BatchNormExpander can create zero-sized ops, so zero-sized HLO
   // elimination has to come after that pass.
@@ -534,16 +529,12 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 
 auto LibrarySupportsConvolution(
     HloModule* module, TargetMachineFeatures* target_machine_features) {
-#ifdef XLA_YNNPACK
   const bool ynnpack_convolution_enabled = absl::c_linear_search(
       module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
   return [=](const HloInstruction& instr) {
     return ynnpack_convolution_enabled && IsConvolutionOpSupportedByYnn(&instr);
   };
-#else
-  return [](const HloInstruction&) { return false; };
-#endif  // XLA_YNNPACK
 }
 
 auto LibrarySupportsDot(HloModule* module,
@@ -551,7 +542,6 @@ auto LibrarySupportsDot(HloModule* module,
   // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
   // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
   // `XnnFusionThunk`.
-#ifdef XLA_YNNPACK
   const bool ynnpack_dot_enabled = absl::c_linear_search(
       module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
@@ -566,9 +556,6 @@ auto LibrarySupportsDot(HloModule* module,
 
     return false;
   };
-#else
-  return [](const HloInstruction&) { return false; };
-#endif  // XLA_YNNPACK
 }
 
 }  // namespace

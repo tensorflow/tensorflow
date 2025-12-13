@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
@@ -40,11 +42,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -161,7 +158,6 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
-#ifdef XLA_YNNPACK
 absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
     const ExecutableRunOptions* run_options) {
   TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
@@ -171,7 +167,6 @@ absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
 
 Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
-#endif  // XLA_YNNPACK
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
