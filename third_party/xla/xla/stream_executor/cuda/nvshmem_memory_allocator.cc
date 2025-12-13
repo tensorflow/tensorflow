@@ -25,9 +25,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/cuda/nvshmem.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/numbers.h"
@@ -90,3 +93,12 @@ NvshmemMemoryAllocator::Allocate(uint64_t size) {
 }
 
 }  // namespace stream_executor::gpu
+
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    nvshmem_memory_allocator,
+    stream_executor::gpu::RegisterCollectiveAllocatorFactory(
+        stream_executor::gpu::CollectiveAllocatorType::kNvshmem,
+        [](stream_executor::StreamExecutor* executor) {
+          return std::make_unique<
+              stream_executor::gpu::NvshmemMemoryAllocator>();
+        }));
