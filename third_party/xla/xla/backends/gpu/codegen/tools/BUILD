@@ -83,6 +83,7 @@ xla_cc_binary(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "//xla/codegen/tools:test_lib",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:shape_util",

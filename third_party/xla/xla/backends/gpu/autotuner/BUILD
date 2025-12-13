@@ -633,11 +633,11 @@ cc_library(
         ":triton",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/service:compiler",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "@llvm-project//mlir:IR",
     ],
     alwayslink = True,
 )
