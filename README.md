@@ -29,6 +29,14 @@ the Machine Intelligence team at Google Brain to conduct research in machine
 learning and neural networks. However, the framework is versatile enough to be
 used in other areas as well.
 
+## How to Run the Script
+
+To execute the script, please ensure you have Python installed. You can run the main script using the following command:
+
+```bash
+# Run the example script
+python main.py
+
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
 non-guaranteed backward compatible API for
