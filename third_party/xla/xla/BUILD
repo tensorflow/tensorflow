@@ -509,6 +509,7 @@ xla_cc_test(
     deps = [
         ":shape_pool",
         ":shape_util",
+        ":xla_data_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
