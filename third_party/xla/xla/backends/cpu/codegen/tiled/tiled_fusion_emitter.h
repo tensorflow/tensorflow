@@ -5,6 +5,7 @@
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/xla_data.pb.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
