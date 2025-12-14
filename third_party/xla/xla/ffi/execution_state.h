@@ -51,8 +51,8 @@ class ExecutionState {
   ExecutionState(const ExecutionState&) = delete;
   ExecutionState& operator=(const ExecutionState&) = delete;
 
-  ExecutionState(ExecutionState&& other) { *this = std::move(other); }
-  ExecutionState& operator=(ExecutionState&& other) {
+  ExecutionState(ExecutionState&& other) noexcept { *this = std::move(other); }
+  ExecutionState& operator=(ExecutionState&& other) noexcept {
     if (this != &other) {
       if (type_info_.deleter) {
         type_info_.deleter(state_);
