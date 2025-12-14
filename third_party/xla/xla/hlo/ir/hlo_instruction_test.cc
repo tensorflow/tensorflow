@@ -15,15 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
