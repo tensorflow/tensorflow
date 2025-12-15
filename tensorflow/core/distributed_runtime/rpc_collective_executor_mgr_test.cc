@@ -39,7 +39,7 @@ namespace tensorflow {
 class RpcCollectiveExecutorMgrTest : public ::testing::Test {
  protected:
   RpcCollectiveExecutorMgrTest() {
-    string task_name = "/job:localhost/replica:0/task:0";
+    std::string task_name = "/job:localhost/replica:0/task:0";
     SessionOptions options;
     options.config.mutable_experimental()->set_collective_group_leader(
         task_name);

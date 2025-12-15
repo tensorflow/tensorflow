@@ -81,7 +81,8 @@ class AlignedMemory final : public CpuDeviceMemory::RawMemory {
       : base_(base), size_bytes_(size_bytes) {}
 
   ~AlignedMemory() final {
-    tsl::port::AlignedSizedFree(base_, cpu::MinAlign(), size_bytes_);
+    tsl::port::AlignedSizedFree(base_, size_bytes_,
+                                static_cast<std::align_val_t>(cpu::MinAlign()));
   }
 
   void* base() const final { return base_; }
@@ -96,7 +97,8 @@ class AlignedAllocator final : public CpuDeviceMemory::Allocator {
  public:
   absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
       size_t size_bytes, size_t alignment) const final {
-    if (void* base = tsl::port::AlignedMalloc(size_bytes, alignment)) {
+    if (void* base = tsl::port::AlignedMalloc(
+            size_bytes, static_cast<std::align_val_t>(alignment))) {
       return std::make_unique<AlignedMemory>(base, size_bytes);
     }
     return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);

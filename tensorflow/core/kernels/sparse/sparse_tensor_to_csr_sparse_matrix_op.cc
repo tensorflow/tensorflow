@@ -74,7 +74,7 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
     const int64_t total_nnz = values.NumElements();
 
-    static constexpr int64_t kInt32Max = std::numeric_limits<int32>::max();
+    static constexpr int64_t kInt32Max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES(
         ctx, batch_size < kInt32Max,
         errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
@@ -106,16 +106,16 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
-    functor::SetZeroFunctor<CPUDevice, int32> set_zero;
-    set_zero(ctx->eigen_device<CPUDevice>(), csr_row_ptr.flat<int32>());
+    functor::SetZeroFunctor<CPUDevice, int32_t> set_zero;
+    set_zero(ctx->eigen_device<CPUDevice>(), csr_row_ptr.flat<int32_t>());
 
     // Convert from COO to CSR format.
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(
         ctx,
         coo_to_csr(batch_size, num_rows, num_cols,
-                   indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
-                   csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
+                   indices.template matrix<int64_t>(), batch_ptr.vec<int32_t>(),
+                   csr_row_ptr.vec<int32_t>(), csr_col_ind.vec<int32_t>()));
 
     // Create the CSRSparseMatrix object from its component Tensors and prepare
     // the Variant output Tensor.

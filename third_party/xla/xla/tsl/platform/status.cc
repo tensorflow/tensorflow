@@ -322,7 +322,7 @@ absl::Status StatusGroup::as_concatenated_status() const {
   }
 
   if (!non_derived_.empty()) {
-    std::vector<string> fmt;
+    std::vector<std::string> fmt;
     fmt.emplace_back("\n=====================");
     for (const auto& s : non_derived_) {
       fmt.emplace_back(MakeString(s));
