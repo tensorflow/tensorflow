@@ -182,9 +182,9 @@ absl::Status CSRSparseMatrixTranspose<Device, T>::operator()(
 
   // Set the output row pointers to zero, in case we hit any empty
   // input batches.
-  functor::SetZeroFunctor<Device, int32> set_zero;
+  functor::SetZeroFunctor<Device, int32_t> set_zero;
   const Device& d = ctx->eigen_device<Device>();
-  set_zero(d, output_row_ptr_t.flat<int32>());
+  set_zero(d, output_row_ptr_t.flat<int32_t>());
 
   functor::CSRSparseMatrixTransposeComponent<Device, T> transpose_component;
   for (int i = 0; i < batch_size; ++i) {

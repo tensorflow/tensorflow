@@ -79,7 +79,7 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != buffers.end(); ++in_it, ++out_it) {
-      out_it->second = in_it->second.AsDeviceMemoryBase();
+      out_it->second = in_it->second.AsDeviceAddress();
     }
   }
 
