@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <algorithm>
 #include <iterator>
 #include <string>
 #include <vector>
