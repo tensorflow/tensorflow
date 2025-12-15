@@ -133,7 +133,7 @@ struct ExecutionFunctions {
 
   // Mesh fingerprint of function_list. Set only when ExecutionFunctions refers
   // to a function for performance reason, since an eager op doesn't use it.
-  uint64 function_mesh_fingerprint = 0;
+  uint64_t function_mesh_fingerprint = 0;
 };
 
 class TensorWithLayoutTf
@@ -443,8 +443,7 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
 
 template <typename T>
 std::string ShapeToDebugString(const std::vector<T> shape_vector) {
-  std::vector<tensorflow::int64> cast_shape(shape_vector.begin(),
-                                            shape_vector.end());
+  std::vector<int64_t> cast_shape(shape_vector.begin(), shape_vector.end());
   tensorflow::PartialTensorShape shape;
   if (!tensorflow::PartialTensorShape::MakePartialShape(
            cast_shape.data(), cast_shape.size(), &shape)

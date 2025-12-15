@@ -77,7 +77,7 @@ REGISTER_OP("DTensorAllScatter")
             "layout rank ",
             output_layout.rank());
       }
-      const std::vector<int32> output_sharding = output_layout.num_shards();
+      const std::vector<int32_t> output_sharding = output_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
       for (int i = 0; i < c->Rank(in); ++i) {
@@ -137,10 +137,10 @@ REGISTER_OP("DTensorAllGather")
             "layout rank ",
             output_layout.rank());
       }
-      const std::vector<int32> input_sharding = input_layout.num_shards();
+      const std::vector<int32_t> input_sharding = input_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
-      for (int32 i = 0; i < c->Rank(in); ++i) {
+      for (int32_t i = 0; i < c->Rank(in); ++i) {
         shape_inference::DimensionHandle dim = c->Dim(in, i);
         if (!c->ValueKnown(dim) ||
             input_layout.sharding_spec(i) == output_layout.sharding_spec(i)) {
@@ -193,8 +193,8 @@ REGISTER_OP("DTensorAllToAll")
             "layout rank ",
             output_layout.rank());
       }
-      const std::vector<int32> input_sharding = input_layout.num_shards();
-      const std::vector<int32> output_sharding = output_layout.num_shards();
+      const std::vector<int32_t> input_sharding = input_layout.num_shards();
+      const std::vector<int32_t> output_sharding = output_layout.num_shards();
       std::vector<shape_inference::DimensionHandle> out_dims;
       out_dims.reserve(c->Rank(in));
       for (int i = 0; i < c->Rank(in); ++i) {
