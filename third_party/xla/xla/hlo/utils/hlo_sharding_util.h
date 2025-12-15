@@ -126,9 +126,8 @@ HloSharding FindCommonSharding(
 HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
                                       int64_t source_dim, int64_t target_dim);
 
-// Returns the HloSharding with the tile dimensions and tile assignment
-// transposed based on the specified dimension numbers. In case of a tile
-// maximal sharding returns the original sharding.
+// Returns the HloSharding transposed based on the specified dimension numbers.
+// In case of a tile maximal sharding returns the original sharding.
 HloSharding TransposeSharding(const HloSharding& sharding,
                               absl::Span<const int64_t> dimensions);
 

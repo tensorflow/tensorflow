@@ -93,6 +93,11 @@ class Mesh {
   bool operator!=(const Mesh& other) const { return !(*this == other); }
 
   std::string ToString() const {
+    if (IsMaximal()) {
+      return absl::StrCat("@maximal_mesh<device_ids=[",
+                          device_assignment_.array()(0), "]>");
+    }
+
     std::string mesh_str = "@mesh";
     // Add the mesh axes names and sizes.
     std::vector<std::string> formatted_axes_names;

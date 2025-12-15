@@ -408,6 +408,11 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
     return;
   }
 
+  if (UseNamedShardingLeaf()) {
+    printer->Append(named_sharding_->ToString(include_metadata));
+    return;
+  }
+
   auto print_metadata = [&] {
     if (include_metadata && !metadata_.empty()) {
       printer->Append(" metadata={");

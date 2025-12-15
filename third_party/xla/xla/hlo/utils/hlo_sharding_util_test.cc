@@ -145,12 +145,30 @@ TEST(HloShardingUtilTest, MoveAndMergeShardingTilesSubGroup) {
 TEST(HloShardingUtilTest, TransposeShardingReplicated) {
   EXPECT_EQ(TransposeSharding(HloSharding::Replicate(), {0, 1, 2}),
             HloSharding::Replicate());
+
+  {
+    EXPECT_EQ(
+        TransposeSharding(
+            HloSharding::Replicate({}, /*use_named_sharding=*/true), {0, 1, 2}),
+        HloSharding::Replicate({}, /*use_named_sharding=*/true));
+  }
 }
 
 TEST(HloShardingUtilTest, TransposeShardingTiled) {
   HloSharding input = HloSharding::IotaTile({1, 2, 1, 2});
   HloSharding output = HloSharding::IotaTile({2, 1, 2, 1}, {2, 2}, {1, 0});
   EXPECT_EQ(TransposeSharding(input, {3, 0, 1, 2}), output);
+
+  {
+    Mesh mesh({2, 2}, {"a", "b"});
+    NamedSharding input =
+        test_utils::FromAxisNames(mesh, {{}, {"a"}, {}, {"b"}});
+    NamedSharding output =
+        test_utils::FromAxisNames(mesh, {{"b"}, {}, {"a"}, {}});
+    EXPECT_EQ(
+        TransposeSharding(HloSharding(input), {3, 2, 1, 0}).named_sharding(),
+        output);
+  }
 }
 
 TEST(HloShardingUtilTest, TransposeShardingWithCollapsedDimsSubgroupManual) {
@@ -160,6 +178,16 @@ TEST(HloShardingUtilTest, TransposeShardingWithCollapsedDimsSubgroupManual) {
       HloSharding::Subgroup(TileAssignment({1, 1, 2, 4}), {OpSharding::MANUAL});
   EXPECT_EQ(TransposeShardingWithCollapsedDims(input, {-1, 2}, {-1, -1, 1}),
             output);
+
+  {
+    Mesh mesh({1, 2, 4}, {"a", "b", "c"});
+    NamedSharding input = test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding output = test_utils::FromAxisNames(mesh, {{}, {}, {"b"}});
+    EXPECT_EQ(TransposeShardingWithCollapsedDims(HloSharding(input), {-1, 2},
+                                                 {-1, -1, 1})
+                  ->named_sharding(),
+              output);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned1) {
@@ -172,6 +200,18 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned1) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({3, 2, 2}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"b"}, {"c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned2) {
@@ -184,6 +224,18 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned2) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 3, 2}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned3) {
@@ -196,6 +248,18 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned3) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 3, 2}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a", "c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned4) {
@@ -208,6 +272,23 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned4) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({3, 4}, {"a", "b"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    // TODO: Better way to construct these dimension shardings, I don't like
+    // this way
+    NamedSharding::DimensionSharding ds1({AxisRef(1, {1, 2})},
+                                         /*is_closed=*/true);
+    NamedSharding::DimensionSharding ds2({AxisRef(1, {2, 2})},
+                                         /*is_closed=*/true);
+    NamedSharding output_sharding(mesh, {ds1, ds2});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned5) {
@@ -219,6 +300,26 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned5) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 3, 4}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding::DimensionSharding ds0({AxisRef(0)},
+                                         /*is_closed=*/true);
+    NamedSharding::DimensionSharding ds1({AxisRef(1)},
+                                         /*is_closed=*/true);
+    NamedSharding::DimensionSharding ds2({AxisRef(2, {1, 2})},
+                                         /*is_closed=*/true);
+    NamedSharding::DimensionSharding ds3({AxisRef(2, {2, 2})},
+                                         /*is_closed=*/true);
+    NamedSharding output_sharding =
+        NamedSharding(mesh, {{ds0}, {ds1}, {ds2}, {ds3}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingMaximal) {
@@ -229,6 +330,15 @@ TEST(HloShardingUtilTest, ReshapeShardingMaximal) {
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), sharding);
+
+  {
+    Mesh mesh(7);
+    NamedSharding named_sharding = NamedSharding::MaximalSharding(7);
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(named_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledInvalid) {
@@ -238,6 +348,15 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledInvalid) {
   std::optional<HloSharding> result =
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_FALSE(result.has_value());
+
+  {
+    Mesh mesh({1, 2, 1}, {"a", "b", "c"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(named_sharding));
+    EXPECT_FALSE(result.has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledMerge) {
@@ -249,6 +368,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledMerge) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 1, 1}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplit) {
@@ -260,6 +391,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 1}, {"a", "b"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplit2) {
@@ -271,6 +414,22 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit2) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({16, 1}, {"a", "b"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding::DimensionSharding ds0({AxisRef(0, {1, 4})},
+                                         /*is_closed=*/true);
+    NamedSharding::DimensionSharding ds1({AxisRef(0, {4, 4})},
+                                         /*is_closed=*/true);
+    NamedSharding output_sharding(
+        mesh, {{ds0}, {ds1}, {NamedSharding::DimensionSharding()}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplit3) {
@@ -283,6 +442,19 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplit3) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({4}, {"a"});
+    NamedSharding input_sharding = test_utils::FromAxisNames(mesh, {{"a"}});
+    NamedSharding::DimensionSharding ds0({AxisRef(0, {1, 2})},
+                                         /*is_closed=*/true);
+    NamedSharding output_sharding(
+        mesh, {{ds0}, {NamedSharding::DimensionSharding()}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledSplitThenMerge) {
@@ -294,6 +466,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledSplitThenMerge) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 1, 1}, {"a", "b", "c"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledArbitraryMinorDimensions) {
@@ -304,6 +488,16 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledArbitraryMinorDimensions) {
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), sharding);
+
+  {
+    Mesh mesh({2, 1, 1, 1}, {"a", "b", "c", "d"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(named_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTiledTrivialDimensions) {
@@ -315,6 +509,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTiledTrivialDimensions) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({1, 1, 2, 1}, {"a", "b", "c", "d"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}, {"d"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{}, {"c"}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTrivialDimensionInsertedToEnd) {
@@ -326,6 +532,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTrivialDimensionInsertedToEnd) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 1}, {"a", "b"});
+    NamedSharding input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, NoopReshapeShardingEmptyTile) {
@@ -334,6 +552,18 @@ TEST(HloShardingUtilTest, NoopReshapeShardingEmptyTile) {
   std::optional<HloSharding> result = ReshapeSharding(shape, shape, sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), sharding);
+
+  {
+    // TODO: We are removing axis of size 1 as can be seen in test below, is
+    // that fine ?
+    Mesh mesh({2, 1, 1}, {"a", "b", "c"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(shape, shape, HloSharding(named_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingScalar) {
@@ -343,6 +573,15 @@ TEST(HloShardingUtilTest, ReshapeShardingScalar) {
   std::optional<HloSharding> result =
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_FALSE(result.has_value());
+
+  {
+    Mesh mesh({2, 1, 1}, {"a", "b", "c"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(named_sharding));
+    EXPECT_FALSE(result.has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne1) {
@@ -359,6 +598,26 @@ TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne1) {
   result = ReshapeSharding(output_shape, input_shape, output_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), input_sharding);
+
+  {
+    Mesh mesh({4, 1, 1}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+
+    // TODO: Sharding wouldn't be reconstructible as we removed axis of size 1,
+    // or maybe we can compare 2 shardings as equal
+
+    // result = ReshapeSharding(output_shape, input_shape,
+    //                          HloSharding(named_output_sharding));
+    // EXPECT_TRUE(result.has_value());
+    // EXPECT_EQ(result.value().named_sharding(), named_input_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne2) {
@@ -371,6 +630,18 @@ TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne2) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({4, 2, 8}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne3) {
@@ -382,6 +653,18 @@ TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne3) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({4, 2}, {"a", "b"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne4) {
@@ -394,6 +677,18 @@ TEST(HloShardingUtilTest, ReshapeShardingSuffixShapeSizeOne4) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({4, 2, 4}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingPrefixShapeSizeOne1) {
@@ -409,6 +704,26 @@ TEST(HloShardingUtilTest, ReshapeShardingPrefixShapeSizeOne1) {
   result = ReshapeSharding(output_shape, input_shape, output_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), input_sharding);
+
+  {
+    Mesh mesh({1, 1, 4}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{}, {"c"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+
+    // TODO: Sharding wouldn't be reconstructible as we removed axis of size 1,
+    // or maybe we can compare 2 shardings as equal
+
+    // result = ReshapeSharding(output_shape, input_shape,
+    //                          HloSharding(named_output_sharding));
+    // EXPECT_TRUE(result.has_value());
+    // EXPECT_EQ(result.value().named_sharding(), named_input_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingPrefixShapeSizeOne2) {
@@ -424,6 +739,26 @@ TEST(HloShardingUtilTest, ReshapeShardingPrefixShapeSizeOne2) {
   result = ReshapeSharding(output_shape, input_shape, output_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), input_sharding);
+
+  {
+    Mesh mesh({2, 1, 1}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+
+    // TODO: Sharding wouldn't be reconstructible as we removed axis of size 1,
+    // or maybe we can compare 2 shardings as equal
+
+    // result = ReshapeSharding(output_shape, input_shape,
+    //                          HloSharding(named_output_sharding));
+    // EXPECT_TRUE(result.has_value());
+    // EXPECT_EQ(result.value().named_sharding(), named_input_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTranspose1) {
@@ -434,6 +769,17 @@ TEST(HloShardingUtilTest, ReshapeShardingTranspose1) {
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), sharding);
+
+  {
+    // TODO: Removing axis of size 1 ?
+    Mesh mesh({2, 1, 5}, {"a", "b", "c"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {"c"}});
+    std::optional<HloSharding> result =
+        ReshapeSharding(input_shape, output_shape, HloSharding(named_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTranspose2) {
@@ -445,6 +791,18 @@ TEST(HloShardingUtilTest, ReshapeShardingTranspose2) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 1, 1, 1, 13}, {"a", "b", "c", "d", "e"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {"e"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTranspose3) {
@@ -454,6 +812,15 @@ TEST(HloShardingUtilTest, ReshapeShardingTranspose3) {
   std::optional<HloSharding> result =
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_FALSE(result.has_value());
+
+  {
+    Mesh mesh({1, 1, 5}, {"a", "b", "c"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_FALSE(result.has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingTranspose4) {
@@ -466,6 +833,42 @@ TEST(HloShardingUtilTest, ReshapeShardingTranspose4) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({1, 1, 5, 1, 1, 13, 1, 1},
+              {"a", "b", "c", "d", "e", "f", "g", "h"});
+    NamedSharding named_input_sharding = test_utils::FromAxisNames(
+        mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{}, {}, {"c"}, {}, {}, {}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
+}
+
+TEST(HloShardingUtilTest, ReshapeShardingTranspose5) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {3, 2});
+  HloSharding input_sharding = HloSharding::IotaTile({6});
+  HloSharding output_sharding = HloSharding::IotaTile({3, 2});
+  std::optional<HloSharding> result =
+      ReshapeSharding(input_shape, output_shape, input_sharding);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 3}, {"a", "b"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a", "b"}});
+    NamedSharding named_output_sharding =
+        test_utils::FromAxisNames(mesh, {{"b"}, {"a"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingWithPadding1) {
@@ -475,6 +878,15 @@ TEST(HloShardingUtilTest, ReshapeShardingWithPadding1) {
   std::optional<HloSharding> result =
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_FALSE(result.has_value());
+
+  {
+    Mesh mesh({8}, {"a"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_FALSE(result.has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingWithPadding2) {
@@ -487,6 +899,19 @@ TEST(HloShardingUtilTest, ReshapeShardingWithPadding2) {
       ReshapeSharding(input_shape, output_shape, input_sharding);
   EXPECT_TRUE(result.has_value());
   EXPECT_EQ(result.value(), output_sharding);
+
+  {
+    Mesh mesh({2, 4}, {"a", "b"});
+    NamedSharding named_input_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding::DimensionSharding ds({AxisRef(0), AxisRef(1, {1, 2})},
+                                        /*is_closed=*/true);
+    NamedSharding named_output_sharding(mesh, {ds});
+    std::optional<HloSharding> result = ReshapeSharding(
+        input_shape, output_shape, HloSharding(named_input_sharding));
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().named_sharding(), named_output_sharding);
+  }
 }
 
 TEST(HloShardingUtilTest, PropagateReshapeShardingTranspose1) {

@@ -512,6 +512,7 @@ TEST_F(HloShardingTest, ToStringReplicatedTest) {
 class HloReplicateShardingWithMetadataTest
     : public ::testing::TestWithParam<ShardingWithMetadataParamType> {};
 
+// Add test for tuple named sharding.
 TEST_P(HloReplicateShardingWithMetadataTest, ToStringTest) {
   HloSharding sharding = HloSharding::Replicate(std::get<0>(GetParam()));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/false), "{replicated}");
