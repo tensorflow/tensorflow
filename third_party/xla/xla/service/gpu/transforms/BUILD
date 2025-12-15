@@ -2371,6 +2371,7 @@ cc_library(
     srcs = ["composite_rewriter.cc"],
     hdrs = ["composite_rewriter.h"],
     deps = [
+        "//xla:literal",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -2397,7 +2398,9 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
