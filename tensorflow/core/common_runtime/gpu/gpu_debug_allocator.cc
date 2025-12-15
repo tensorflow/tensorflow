@@ -44,7 +44,8 @@ int64_t* before_mask = NewMask(0xabababababababab);
 int64_t* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
 
 bool CheckMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
-  se::DeviceMemory<int64_t> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
+  stream_executor::DeviceAddress<int64_t> gpu_ptr{
+      stream_executor::DeviceAddressBase{ptr, MASK_BYTES}};
   int64_t tmp[MASK_WORDS];
 
   absl::Status result = exec->SynchronousMemcpyD2H(gpu_ptr, MASK_BYTES, tmp);
@@ -66,7 +67,8 @@ bool CheckMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
 }
 
 void InitMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
-  se::DeviceMemory<int64_t> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
+  stream_executor::DeviceAddress<int64_t> gpu_ptr{
+      stream_executor::DeviceAddressBase{ptr, MASK_BYTES}};
   absl::Status result = exec->SynchronousMemcpyH2D(mask, MASK_BYTES, &gpu_ptr);
   if (!result.ok()) {
     LOG(FATAL) << "Could not copy debug mask, " << result;
@@ -175,8 +177,9 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   size_t req_size = base_allocator_->RequestedSize(allocated_ptr);
   std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
                           std::nanf(""));
-  se::DeviceMemory<float> nan_ptr{
-      se::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
+  stream_executor::DeviceAddress<float> nan_ptr{
+      stream_executor::DeviceAddressBase{static_cast<float*>(allocated_ptr),
+                                         req_size}};
 
   absl::Status result =
       stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, &nan_ptr);
@@ -192,8 +195,8 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
     size_t req_size = base_allocator_->RequestedSize(ptr);
     std::vector<float> nans((req_size + sizeof(float) - 1) / sizeof(float),
                             std::nanf(""));
-    se::DeviceMemory<float> nan_ptr{
-        se::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
+    stream_executor::DeviceAddress<float> nan_ptr{
+        stream_executor::DeviceAddressBase{static_cast<float*>(ptr), req_size}};
     absl::Status result =
         stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, &nan_ptr);
     if (!result.ok()) {
