@@ -96,7 +96,8 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
   if (active_allocator == nullptr) {
     owned_allocator =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            stream_executor);
     active_allocator = owned_allocator.get();
   }
 
