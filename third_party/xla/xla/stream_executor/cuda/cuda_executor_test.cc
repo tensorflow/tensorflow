@@ -118,8 +118,8 @@ TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
       executor->CreateMemoryAllocator(MemorySpace::kUnified));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
 }
 
 TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
@@ -131,8 +131,8 @@ TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
                           executor->CreateMemoryAllocator(MemorySpace::kHost));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
 }
 
 TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
@@ -145,8 +145,8 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
       executor->CreateMemoryAllocator(MemorySpace::kCollective));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
 }
 
 // TODO: b/420735471 - Enable test once fixed.
@@ -189,7 +189,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithUnifiedMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           unified_memory_allocator->Allocate(256));
-  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->address().opaque()),
               absl_testing::IsOkAndHolds(MemorySpace::kUnified));
 }
 
@@ -201,7 +201,7 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           executor->HostMemoryAllocate(256));
-  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->opaque()),
+  EXPECT_THAT(executor->GetPointerMemorySpace(allocation->address().opaque()),
               absl_testing::IsOkAndHolds(MemorySpace::kHost));
 }
 

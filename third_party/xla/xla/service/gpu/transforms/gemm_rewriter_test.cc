@@ -129,7 +129,7 @@ ENTRY AddDotsFunc {
     return ParseAndReturnVerifiedModule(hlo_text, config);
   };
 
-  se::StreamExecutorMemoryAllocator allocator(
+  stream_executor::StreamExecutorAddressAllocator allocator(
       backend().default_stream_executor());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
@@ -1488,8 +1488,9 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo));
     if (allocator_ == nullptr) {
-      allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-          backend().default_stream_executor());
+      allocator_ =
+          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+              backend().default_stream_executor());
     }
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,

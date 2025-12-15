@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 
 #include "llvm/ADT/ArrayRef.h"

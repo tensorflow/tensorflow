@@ -403,8 +403,8 @@ StatusOr<mlir::Operation*> TileSPMDExpander::ExpandOp(mlir::Operation* op) {
       VerifyTileOperandLayout(*operand_layout, static_multiples));
 
   llvm::SmallVector<int, 4> local_tile_multiples;
-  std::vector<int32> operand_shards = operand_layout->num_shards();
-  std::vector<int32> output_shards = output_layout->num_shards();
+  std::vector<int32_t> operand_shards = operand_layout->num_shards();
+  std::vector<int32_t> output_shards = output_layout->num_shards();
   if (operand_shards.size() != output_shards.size()) {
     return errors::InvalidArgument(
         "Expected inputs and outputs to have the same rank.");
@@ -596,8 +596,8 @@ void ComputeReshapeSegments(
     input_segment_start.emplace_back(input_offset);
     output_segment_start.emplace_back(output_offset);
 
-    int64 input_prod = input_shape[input_offset++];
-    int64 output_prod = output_shape[output_offset++];
+    int64_t input_prod = input_shape[input_offset++];
+    int64_t output_prod = output_shape[output_offset++];
     while (input_prod != output_prod) {
       if (input_prod < output_prod)
         input_prod *= input_shape[input_offset++];
@@ -887,7 +887,7 @@ StatusOr<mlir::Operation*> TransposeSPMDExpander::ExpandOp(
           "operand layout of TransposeOp must be known before SPMD expansion.");
 
     auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-    llvm::SmallVector<int64, 4> perm;
+    llvm::SmallVector<int64_t, 4> perm;
     TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
     for (const auto& p : llvm::enumerate(perm)) {
@@ -913,12 +913,12 @@ TransposeSPMDExpander::ComputeLayoutForward(
     return llvm::DenseMap<int, Layout>();
 
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-  llvm::SmallVector<int64, 4> perm;
+  llvm::SmallVector<int64_t, 4> perm;
   TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
 
   const Layout input_layout = input_layouts.lookup(0);
   std::vector<std::string> output_layout_specs;
-  for (int64 p : perm)
+  for (int64_t p : perm)
     output_layout_specs.push_back(input_layout.sharding_spec(p));
 
   TF_ASSIGN_OR_RETURN(
@@ -931,7 +931,7 @@ StatusOr<llvm::DenseMap<int, Layout>>
 TransposeSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
   auto transpose = mlir::cast<mlir::TF::TransposeOp>(op);
-  llvm::SmallVector<int64, 4> perm;
+  llvm::SmallVector<int64_t, 4> perm;
   TF_RETURN_IF_ERROR(ExtractConstVectorFromValue(transpose.getPerm(), &perm));
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
 
@@ -941,7 +941,7 @@ TransposeSPMDExpander::ComputeLayoutBackward(
   if (output_layouts.find(0) != output_layouts.end()) {
     const Layout output_layout = output_layouts.lookup(0);
 
-    llvm::SmallVector<int64, 4> inverse_perm(perm.size());
+    llvm::SmallVector<int64_t, 4> inverse_perm(perm.size());
     for (const auto& p : llvm::enumerate(perm)) {
       inverse_perm[p.value()] = p.index();
     }
