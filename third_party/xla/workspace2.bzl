@@ -10,6 +10,7 @@ load("@rules_ml_toolchain//gpu/sycl:sycl_init_repository.bzl", "sycl_init_reposi
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
+load("//third_party/brotli:workspace.bzl", brotli = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
@@ -42,6 +43,7 @@ load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/raft:workspace.bzl", raft = "repo")
 load("//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
+load("//third_party/riegeli:workspace.bzl", riegeli = "repo")
 load("//third_party/rmm:workspace.bzl", rmm = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
@@ -76,6 +78,8 @@ def _initialize_third_party():
     farmhash()
     fmt()
     fxdiv()
+    riegeli()
+    brotli()
     gemmlowp()
     gloo()
     gutil()
@@ -389,9 +393,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "snappy",
         build_file = "//third_party:snappy.BUILD",
-        sha256 = "2e458b7017cd58dcf1469ab315389e85e7f445bd035188f2983f81fb19ecfb29",
-        strip_prefix = "snappy-984b191f0fefdeb17050b42a90b7625999c13b8d",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/984b191f0fefdeb17050b42a90b7625999c13b8d.tar.gz"),
+        sha256 = "736aeb64d86566d2236ddffa2865ee5d7a82d26c9016b36218fcc27ea4f09f86",
+        strip_prefix = "snappy-1.2.1",
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.1.tar.gz"),
     )
 
     tf_http_archive(

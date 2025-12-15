@@ -3,6 +3,7 @@ module(name = "xla")
 ##############################################################
 # Bazel module dependencies
 
+# go/keep-sorted start
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
@@ -21,6 +22,7 @@ bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "riegeli", version = "0.0.0-20250822-9f2744d", repo_name = "com_google_riegeli")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -28,6 +30,7 @@ bazel_dep(name = "rules_python", version = "1.6.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+# go/keep-sorted end
 
 # Only for compatibility, not directly used, change repo_name to None after upgrading Bazel to latest 7.x
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = "DO_NOT_USE_eigen")
@@ -71,12 +74,12 @@ single_version_override(
 # Use an unreleased version of googletest
 archive_override(
     module_name = "googletest",
-    strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
-    urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
     patch_strip = 1,
     patches = [
         "//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
     ],
+    strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
+    urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
 )
 
 ##############################################################
