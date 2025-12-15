@@ -242,8 +242,8 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
 
     for (const auto& leaf : xla_input->shaped_buffer().buffers().leaves()) {
       const xla::ShapeIndex& index = leaf.first;
-      const se::DeviceMemoryBase& input_buffer = leaf.second;
-      const se::DeviceMemoryBase& output_buffer =
+      const stream_executor::DeviceAddressBase& input_buffer = leaf.second;
+      const stream_executor::DeviceAddressBase& output_buffer =
           xla_output->shaped_buffer().buffer(index);
       TF_RET_CHECK(input_buffer.size() == output_buffer.size())
           << "input: " << input_buffer.size()
@@ -309,14 +309,14 @@ void TpuDeviceToDeviceCopy(DeviceContext* src_dev_context,
 
 class TpuNodeDeviceFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 absl::Status TpuNodeDeviceFactory::ListPhysicalDevices(
-    std::vector<string>* devices) {
+    std::vector<std::string>* devices) {
   tpu::TpuPlatformInterface* platform =
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
   if (platform == nullptr) {
@@ -327,7 +327,7 @@ absl::Status TpuNodeDeviceFactory::ListPhysicalDevices(
   int device_count = platform->VisibleDeviceCount();
 
   for (int i = 0; i < device_count; ++i) {
-    const string device_name = absl::StrCat("/physical_device:TPU:", i);
+    const std::string device_name = absl::StrCat("/physical_device:TPU:", i);
     devices->push_back(device_name);
   }
 
@@ -335,7 +335,7 @@ absl::Status TpuNodeDeviceFactory::ListPhysicalDevices(
 }
 
 absl::Status TpuNodeDeviceFactory::CreateDevices(
-    const SessionOptions& session_options, const string& name_prefix,
+    const SessionOptions& session_options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   tpu::TpuPlatformInterface* platform =
       tpu::TpuPlatformInterface::GetRegisteredPlatform();
@@ -413,14 +413,14 @@ absl::Status TpuNodeDeviceFactory::CreateDevices(
 
 class TpuSystemDeviceFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
 absl::Status TpuSystemDeviceFactory::ListPhysicalDevices(
-    std::vector<string>* devices) {
+    std::vector<std::string>* devices) {
   int device_count = 0;
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));
   if (device_count == 0) {
@@ -434,7 +434,7 @@ absl::Status TpuSystemDeviceFactory::ListPhysicalDevices(
 }
 
 absl::Status TpuSystemDeviceFactory::CreateDevices(
-    const SessionOptions& options, const string& name_prefix,
+    const SessionOptions& options, const std::string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   int device_count = 0;
   TF_RETURN_IF_ERROR(tpu::TpuPlatform::TpusPerHost(&device_count));

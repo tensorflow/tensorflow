@@ -216,7 +216,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
   // Creates a Variable. Doesn't add it to the resource manager.
   template <typename T>
-  Var* CreateVariable(const string& name, const TensorShape& shape,
+  Var* CreateVariable(const std::string& name, const TensorShape& shape,
                       const gtl::ArraySlice<T> data) {
     Tensor* init_var_value = CreateDeviceTensor<T>(shape, data);
     Var* var = new Var(DataTypeToEnum<T>::v());
@@ -229,7 +229,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
   // Creates a Variable, adds it to the resource manager and also adds it as one
   // of the inputs in the context_
   template <typename T>
-  void AddVariableInput(const string& name, const TensorShape& shape,
+  void AddVariableInput(const std::string& name, const TensorShape& shape,
                         const gtl::ArraySlice<T> data) {
     Var* var = CreateVariable<T>(name, shape, data);
     ResourceMgr* rm = device_->resource_manager();
@@ -281,20 +281,20 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArguments) {
 
   EXPECT_EQ(exec_args.size(), 2);
 
-  std::shared_ptr<xla::Literal> literal1 = *exec_args[0]->ToLiteralSync();
+  std::shared_ptr<xla::Literal> literal1 = *exec_args[0]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal1, xla::LiteralUtil::CreateR2<int32_t>({{1, 2, 3}})));
 
-  std::shared_ptr<xla::Literal> literal2 = *exec_args[1]->ToLiteralSync();
+  std::shared_ptr<xla::Literal> literal2 = *exec_args[1]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal2, xla::LiteralUtil::CreateR2<int32_t>({{4, 5, 6}})));
 }
 
 TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArgumentsVariableInputs) {
   std::vector<VariableInfo> variables;
-  Var* var1 = CreateVariable<int32>("v1", TensorShape({1, 2}), {1, 2});
+  Var* var1 = CreateVariable<int32_t>("v1", TensorShape({1, 2}), {1, 2});
   variables.emplace_back(3, "v1", var1);
-  Var* var2 = CreateVariable<int32>("v2", TensorShape({1, 2}), {3, 4});
+  Var* var2 = CreateVariable<int32_t>("v2", TensorShape({1, 2}), {3, 4});
   variables.emplace_back(4, "v2", var2);
 
   std::vector<const Tensor*> inputs;
@@ -314,11 +314,11 @@ TEST_F(PjRtExecutionUtilTest, PreparePjRtExecutableArgumentsVariableInputs) {
 
   EXPECT_EQ(exec_args.size(), 2);
 
-  std::shared_ptr<xla::Literal> literal1 = *exec_args[0]->ToLiteralSync();
+  std::shared_ptr<xla::Literal> literal1 = *exec_args[0]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal1, xla::LiteralUtil::CreateR2<int32_t>({{1, 2}})));
 
-  std::shared_ptr<xla::Literal> literal2 = *exec_args[1]->ToLiteralSync();
+  std::shared_ptr<xla::Literal> literal2 = *exec_args[1]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal2, xla::LiteralUtil::CreateR2<int32_t>({{3, 4}})));
 }
@@ -334,8 +334,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputs) {
   TF_EXPECT_OK(InitOp());
 
   // Add inputs.
-  Tensor* a = CreateDeviceTensor<int32>(TensorShape({1, 3}), {1, 2, 3});
-  Tensor* b = CreateDeviceTensor<int32>(TensorShape({1, 3}), {4, 5, 6});
+  Tensor* a = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {1, 2, 3});
+  Tensor* b = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {4, 5, 6});
   inputs_.push_back({nullptr, a});
   inputs_.push_back({nullptr, b});
 
@@ -363,8 +363,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputs) {
       /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
       /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
-  Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 3}), {5, 7, 9});
-  test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+  Tensor* expected = CreateHostTensor<int32_t>(TensorShape({1, 3}), {5, 7, 9});
+  test::ExpectTensorEqual<int32_t>(*expected, *GetOutput(0));
 }
 
 TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsDynamicShape) {
@@ -401,8 +401,9 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsDynamicShape) {
       /*num_missing_prefix_ctx_inputs=*/0, inputs, {}, *result,
       /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
   // The expected output is indices of non-zero inputs.
-  Tensor* expected = CreateHostTensor<int64>(TensorShape({2, 2}), {0, 1, 0, 2});
-  test::ExpectTensorEqual<int64>(*expected, *GetOutput(0));
+  Tensor* expected =
+      CreateHostTensor<int64_t>(TensorShape({2, 2}), {0, 1, 0, 2});
+  test::ExpectTensorEqual<int64_t>(*expected, *GetOutput(0));
 }
 
 TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
@@ -415,8 +416,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
 
-  AddVariableInput<int32>("var1", TensorShape({1, 2}), {1, 2});
-  AddVariableInput<int32>("var2", TensorShape({1, 2}), {3, 4});
+  AddVariableInput<int32_t>("var1", TensorShape({1, 2}), {1, 2});
+  AddVariableInput<int32_t>("var2", TensorShape({1, 2}), {3, 4});
 
   CreateContext();
 
@@ -448,8 +449,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsVariableInputs) {
       /*num_missing_prefix_ctx_inputs=*/0, inputs, variables, *result,
       /*use_pjrt_tensor_buffer=*/false, execute_outputs, context_.get()));
 
-  Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
-  test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+  Tensor* expected = CreateHostTensor<int32_t>(TensorShape({1, 2}), {4, 6});
+  test::ExpectTensorEqual<int32_t>(*expected, *GetOutput(0));
 }
 
 TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
@@ -462,8 +463,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
 
-  AddVariableInput<int32>("var", TensorShape({1, 3}), {1, 2, 3});
-  Tensor* a = CreateDeviceTensor<int32>(TensorShape({1, 3}), {2, 2, 2});
+  AddVariableInput<int32_t>("var", TensorShape({1, 3}), {1, 2, 3});
+  Tensor* a = CreateDeviceTensor<int32_t>(TensorShape({1, 3}), {2, 2, 2});
   inputs_.push_back({nullptr, a});
 
   CreateContext();
@@ -511,8 +512,8 @@ TEST_F(PjRtExecutionUtilTest, PopulateCtxOutputsResourceUpdates) {
   TF_ASSERT_OK(device_context_->CopyDeviceTensorToCPUSync(
       device_tensor, "", device_, host_tensor));
 
-  Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 3}), {3, 4, 5});
-  test::ExpectTensorEqual<int32>(*expected, *host_tensor);
+  Tensor* expected = CreateHostTensor<int32_t>(TensorShape({1, 3}), {3, 4, 5});
+  test::ExpectTensorEqual<int32_t>(*expected, *host_tensor);
 }
 
 TEST(XlaLaunchUtilTest, GetPjRtExecuteOptions) {
@@ -532,8 +533,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutable) {
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
 
-  AddVariableInput<int32>("var1", TensorShape({1, 2}), {1, 2});
-  AddVariableInput<int32>("var2", TensorShape({1, 2}), {3, 4});
+  AddVariableInput<int32_t>("var1", TensorShape({1, 2}), {1, 2});
+  AddVariableInput<int32_t>("var2", TensorShape({1, 2}), {3, 4});
 
   CreateContext();
 
@@ -562,8 +563,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutable) {
   TF_ASSERT_OK(RunPjRtExecutable(inputs, variables, *result, pjrt_client_,
                                  executable, context_.get()));
 
-  Tensor* expected = CreateHostTensor<int32>(TensorShape({1, 2}), {4, 6});
-  test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+  Tensor* expected = CreateHostTensor<int32_t>(TensorShape({1, 2}), {4, 6});
+  test::ExpectTensorEqual<int32_t>(*expected, *GetOutput(0));
 }
 
 TEST_F(PjRtExecutionUtilTest,
@@ -578,8 +579,8 @@ TEST_F(PjRtExecutionUtilTest,
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
 
-  Tensor* dims = CreateHostTensor<int32>(TensorShape({1}), {2});
-  Tensor* value = CreateDeviceTensor<int32>(TensorShape(), {1});
+  Tensor* dims = CreateHostTensor<int32_t>(TensorShape({1}), {2});
+  Tensor* value = CreateDeviceTensor<int32_t>(TensorShape(), {1});
   inputs_.push_back({nullptr, dims});
   inputs_.push_back({nullptr, value});
 
@@ -626,8 +627,8 @@ TEST_F(PjRtExecutionUtilTest,
         constant_input_indices.size(), inputs, variable_snapshots,
         updated_variables, *result, pjrt_client_, executable, context_.get()));
   }
-  Tensor* expected = CreateHostTensor<int32>(TensorShape({2}), {1, 1});
-  test::ExpectTensorEqual<int32>(*expected, *GetOutput(0));
+  Tensor* expected = CreateHostTensor<int32_t>(TensorShape({2}), {1, 1});
+  test::ExpectTensorEqual<int32_t>(*expected, *GetOutput(0));
 }
 
 TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
@@ -640,8 +641,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
-  AddVariableInput<int32>("var1", TensorShape({1, 2}), {1, 2});
-  AddVariableInput<int32>("var2", TensorShape({1, 2}), {3, 4});
+  AddVariableInput<int32_t>("var1", TensorShape({1, 2}), {1, 2});
+  AddVariableInput<int32_t>("var2", TensorShape({1, 2}), {3, 4});
 
   CreateContext();
 
@@ -694,7 +695,8 @@ TEST_F(PjRtExecutionUtilTest, RunPjRtExecutableWithoutCtx) {
   }
 
   ASSERT_EQ(execute_outputs.size(), 1);
-  std::shared_ptr<xla::Literal> literal = *execute_outputs[0]->ToLiteralSync();
+  std::shared_ptr<xla::Literal> literal =
+      *execute_outputs[0]->ToLiteral().Await();
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       *literal, xla::LiteralUtil::CreateR2<int32_t>({{4, 6}})));
 }

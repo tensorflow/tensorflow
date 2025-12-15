@@ -37,7 +37,7 @@ class XlaDeviceAllocator : public Allocator {
   XlaDeviceAllocator(se::StreamExecutor* stream_executor);
   ~XlaDeviceAllocator() override;
 
-  string Name() override;
+  std::string Name() override;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;

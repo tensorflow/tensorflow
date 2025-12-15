@@ -166,10 +166,10 @@ class XlaComputationLaunchContext {
   // 'use_multiple_streams' is true, 'allocate_xla_tensors' must also be true
   // because we track inter-stream dependencies through events inside XlaTensor
   // objects.
-  XlaComputationLaunchContext(xla::LocalClient* client,
-                              se::DeviceMemoryAllocator* xla_allocator,
-                              int device_ordinal, bool allocate_xla_tensors,
-                              bool use_multiple_streams);
+  XlaComputationLaunchContext(
+      xla::LocalClient* client,
+      stream_executor::DeviceAddressAllocator* xla_allocator,
+      int device_ordinal, bool allocate_xla_tensors, bool use_multiple_streams);
 
   // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
   // op.
@@ -214,7 +214,7 @@ class XlaComputationLaunchContext {
 
  private:
   xla::LocalClient* client_;
-  se::DeviceMemoryAllocator* xla_allocator_;
+  stream_executor::DeviceAddressAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
   bool use_multiple_streams_;
   int device_ordinal_;
