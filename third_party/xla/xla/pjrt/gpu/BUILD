@@ -178,7 +178,6 @@ cc_library(
     ]) + if_cuda([
         # keep sorted
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted

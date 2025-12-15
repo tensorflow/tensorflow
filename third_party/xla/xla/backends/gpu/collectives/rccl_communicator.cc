@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/nccl_communicator.h"
+#include "xla/backends/gpu/collectives/rccl_communicator.h"
 
 #include <atomic>
 #include <cstddef>
@@ -34,11 +34,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/nccl/nccl.h"
+#include "rocm/include/hip/hip_runtime.h"
+#include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
-#include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/backends/gpu/collectives/single_threaded_executor.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -56,11 +56,17 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
+
 namespace xla::gpu {
 namespace {
 
-CUstream AsCudaStream(se::Stream* stream) {
-  return absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
+hipStream_t AsHipStream(se::Stream* stream) {
+  return absl::bit_cast<hipStream_t>(stream->platform_specific_handle().stream);
 }
 
 se::Stream* ToStream(const Communicator::Executor& executor) {
@@ -68,7 +74,7 @@ se::Stream* ToStream(const Communicator::Executor& executor) {
 }
 
 //==-----------------------------------------------------------------------===//
-// Conversions between XLA and NCCL data types
+// Conversions between XLA and RCCL data types
 //==-----------------------------------------------------------------------===//
 
 static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
@@ -140,23 +146,22 @@ static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 }  // namespace
 
 //==-----------------------------------------------------------------------===//
-// NCCL Registered Buffer Handle
+// RCCL Registered Buffer Handle
 //==-----------------------------------------------------------------------===//
 
-// An RAII handle for user buffers registered with an NCCL communicator.
-class NcclCommunicator::NcclRegisteredBufferHandle
+// An RAII handle for user buffers registered with an RCCL communicator.
+class RcclCommunicator::RcclRegisteredBufferHandle
     : public Communicator::RegisteredBufferHandle {
  public:
-  NcclRegisteredBufferHandle(NcclCommunicator& comm, void* handle,
+  RcclRegisteredBufferHandle(RcclCommunicator& comm, void* handle,
                              tsl::Executor* executor, bool symmetric_handle,
                              int device_ordinal)
       : comm_(comm),
         handle_(handle),
-        executor_(),
         symmetric_handle_(symmetric_handle),
         device_ordinal_(device_ordinal) {}
 
-  ~NcclRegisteredBufferHandle() override {
+  ~RcclRegisteredBufferHandle() override {
     if (auto status = Unregister(); !status.ok()) {
       LOG(ERROR) << status.message();
     }
@@ -164,61 +169,61 @@ class NcclCommunicator::NcclRegisteredBufferHandle
 
   absl::Status Unregister() final {
     VLOG(3) << absl::StreamFormat(
-        "[%d] Deregister buffer for NCCL communicator; handle=%p; comm=%p",
+        "[%d] Deregister buffer for RCCL communicator; handle=%p; comm=%p",
         device_ordinal_, handle_, comm_.comm_);
     if (!symmetric_handle_) {
 #if (NCCL_VERSION_CODE >= 21901)
       auto f = [this]() -> absl::Status {
         if (comm_.canceling_.load()) {
-          return FailedPrecondition("[%d] NcclCommunicator aborted",
+          return FailedPrecondition("[%d] RcclCommunicator aborted",
                                     device_ordinal_);
         }
-        XLA_NCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm(), handle_));
+        XLA_RCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm_, handle_));
         return comm_.PollUntilDone();
       };
       return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
 #else
       return Unimplemented(
-          "[%d] NCCL version does not support ncclCommDeregister",
+          "[%d] RCCL version does not support ncclCommDeregister",
           device_ordinal_);
 #endif  // NCCL_VERSION_CODE >= 21901
     } else {
       VLOG(3) << absl::StreamFormat(
-          "[%d] Deregister symmetric buffer for NCCL communicator; handle=%p; "
+          "[%d] Deregister symmetric buffer for RCCL communicator; handle=%p; "
           "comm=%p",
-          device_ordinal_, handle_, comm_.comm_);
+          device_ordinal_, handle_, comm_.comm());
 #if (NCCL_VERSION_CODE >= 22700)
       auto f = [this]() -> absl::Status {
         if (comm_.canceling_.load()) {
-          return FailedPrecondition("[%d] NcclCommunicator aborted",
+          return FailedPrecondition("[%d] RcclCommunicator aborted",
                                     device_ordinal_);
         }
-        XLA_NCCL_RETURN_IF_ERROR(
-            ncclCommWindowDeregister(comm_.comm(), *(ncclWindow_t*)(handle_)));
+        XLA_RCCL_RETURN_IF_ERROR(
+            ncclCommWindowDeregister(comm_.comm_, *(ncclWindow_t*)(handle_)));
         return comm_.PollUntilDone();
       };
       return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
 #else
       return Unimplemented(
-          "[%d] NCCL version does not support ncclCommWindowDeregister",
+          "[%d] RCCL version does not support ncclCommWindowDeregister",
           device_ordinal_);
 #endif  // NCCL_VERSION_CODE >= 22700
     }
   }
 
  private:
-  NcclCommunicator& comm_;
+  RcclCommunicator& comm_;
   void* handle_;
-  tsl::Executor* executor_;
   bool symmetric_handle_;
+  tsl::Executor* executor_;
   int device_ordinal_;
 };
 
 //==-----------------------------------------------------------------------===//
-// NCCL Communicator
+// RCCL Communicator
 //==-----------------------------------------------------------------------===//
 
-absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
+absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
     absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm, bool is_async,
     std::atomic_bool* cancel, tsl::Env& env) {
   auto f = [cancel, &make_comm]() -> absl::StatusOr<ncclComm_t> {
@@ -233,22 +238,22 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> NcclCommunicator::Create(
   };
 
   if (!is_async) {
-    // If this NcclCommunicator is synchronous, construct ncclComm_t in the
+    // If this RcclCommunicator is synchronous, construct ncclComm_t in the
     // calling thread.
     TF_ASSIGN_OR_RETURN(ncclComm_t comm, f());
-    return absl::WrapUnique(new NcclCommunicator(comm, nullptr));
+    return absl::WrapUnique(new RcclCommunicator(comm, nullptr));
   }
 
-  // If this NcclCommunicator is asynchronous, then all operations on the
+  // If this RcclCommunicator is asynchronous, then all operations on the
   // underlying ncclComm_t, including its creation, must take place on the
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
   TF_ASSIGN_OR_RETURN(ncclComm_t comm,
                       Future<ncclComm_t>::MakeOn(*executor, f).Await());
-  return absl::WrapUnique(new NcclCommunicator(comm, std::move(executor)));
+  return absl::WrapUnique(new RcclCommunicator(comm, std::move(executor)));
 }
 
-NcclCommunicator::~NcclCommunicator() {
+RcclCommunicator::~RcclCommunicator() {
   auto f = [this]() -> absl::Status {
     if (comm_ == nullptr) {
       VLOG(1) << "Skipping destruction; null comm_ " << *this;
@@ -263,65 +268,65 @@ NcclCommunicator::~NcclCommunicator() {
     // Note that we intentionally don't call PollUntilDone. Once comm_ has been
     // destroyed, we can no longer safely touch it.
     VLOG(1) << "Destroy " << *this;
-    return XLA_NCCL_STATUS(ncclCommDestroy(comm_));
+    return XLA_RCCL_STATUS(ncclCommDestroy(comm_));
   };
 
   if (absl::Status s = Execute(f).Await(); !s.ok()) {
-    LOG(ERROR) << "NcclCommunicator::~NcclCommunicator: " << s;
+    LOG(ERROR) << "RcclCommunicator::~RcclCommunicator: " << s;
   }
 }
 
-absl::Status NcclCommunicator::Abort() {
+absl::Status RcclCommunicator::Abort() {
   // By setting canceling_ to true, all pending collectives scheduled on
   // executor_ will cancel. This will allow the aborting lambda below to run.
   canceling_.store(true);
 
   return ExecuteAwait([this]() -> absl::Status {
-    VLOG(1) << "Abort NCCL communicator: " << *this;
+    VLOG(1) << "Abort RCCL communicator: " << *this;
     if (aborted_) {
-      return FailedPrecondition("NcclCommunicator already aborted");
+      return FailedPrecondition("RcclCommunicator already aborted");
     }
     aborted_ = true;
     // Note that we intentionally don't call PollUntilDone. Once comm_
     // has been aborted, we can no longer safely touch it.
-    return XLA_NCCL_STATUS(ncclCommAbort(comm_));
+    return XLA_RCCL_STATUS(ncclCommAbort(comm_));
   });
 }
 
-absl::Status NcclCommunicator::HealthCheck() const {
+absl::Status RcclCommunicator::HealthCheck() const {
   return ExecuteAwait([this]() -> absl::Status {
-    VLOG(5) << "Get last async error for NCCL communicator: " << *this;
+    VLOG(5) << "Get last async error for RCCL communicator: " << *this;
     if (canceling_.load()) {
-      return absl::FailedPreconditionError("NcclCommunicator aborted");
+      return absl::FailedPreconditionError("RcclCommunicator aborted");
     }
 
     ncclResult_t async_err;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
+    XLA_RCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm_, &async_err));
     if (async_err == ncclSuccess) {
       return absl::OkStatus();
     }
 
-    return Internal("%s. Last NCCL error (maybe unrelated): %s",
+    return Internal("%s. Last RCCL error (maybe unrelated): %s",
                     ncclGetLastError(comm_), ncclGetErrorString(async_err));
   });
 }
 
-absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
+absl::StatusOr<size_t> RcclCommunicator::NumRanks() const {
   return ExecuteAwait<size_t>([this]() -> absl::StatusOr<size_t> {
-    VLOG(5) << "Get the number of ranks in NCCL communicator: " << *this;
+    VLOG(5) << "Get the number of ranks in RCCL communicator: " << *this;
     if (canceling_.load()) {
-      return absl::FailedPreconditionError("NcclCommunicator aborted");
+      return absl::FailedPreconditionError("RcclCommunicator aborted");
     }
 
     // We intentionally don't call PollUntilDone. ncclCommCount is
     // blocking.
     int32_t count = 0;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
+    XLA_RCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
     return count;
   });
 }
 
-absl::Status NcclCommunicator::RegisterBufferOnce(
+absl::Status RcclCommunicator::RegisterBufferOnce(
     se::DeviceAddressBase buffer_range, int device_ordinal,
     bool use_symmetric_buffer) {
   bool need_reg = false;
@@ -353,7 +358,7 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
 }
 
 absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
-NcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
+RcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
                                  int device_ordinal,
                                  bool use_symmetric_buffer) {
 #if (NCCL_VERSION_CODE >= 21901)
@@ -363,57 +368,57 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
     return ExecuteAwait<Handle>(
         [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
           VLOG(3) << absl::StreamFormat(
-              "[%d] Register buffer for NCCL communicator; buffer=%p; "
+              "[%d] Register buffer for RCCL communicator; buffer=%p; "
               "size=%d; "
               "comm=%p",
               device_ordinal, buffer.opaque(), buffer.size(), comm_);
           if (canceling_.load()) {
-            return absl::FailedPreconditionError("NcclCommunicator aborted");
+            return absl::FailedPreconditionError("RcclCommunicator aborted");
           }
           void* handle = nullptr;
-          XLA_NCCL_RETURN_IF_ERROR(
+          XLA_RCCL_RETURN_IF_ERROR(
               ncclCommRegister(comm_, buffer.opaque(), buffer.size(), &handle));
           if (group_nesting_level_ == 0) {
             TF_RETURN_IF_ERROR(PollUntilDone());
           }
-          return std::make_unique<NcclRegisteredBufferHandle>(
+          return std::make_unique<RcclRegisteredBufferHandle>(
               *this, handle, executor_.get(), /*symmetric_buffer= */ false,
               device_ordinal);
         });
 #else
-  return Unimplemented("[%d] NCCL version does not support ncclCommRegister",
+  return Unimplemented("[%d] RCCL version does not support ncclCommRegister",
                        device_ordinal);
-#endif  // NCCL_VERSION_CODE >= 21901
+#endif  // RCCL_VERSION_CODE >= 21901
   } else {
 #if (NCCL_VERSION_CODE >= 22700)
     return ExecuteAwait<Handle>(
         [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
           VLOG(3) << absl::StreamFormat(
-              "[%d] Register symmetric buffer for NCCL communicator; "
+              "[%d] Register symmetric buffer for RCCL communicator; "
               "buffer=%p; size=%d; comm=%p",
               device_ordinal, buffer.opaque(), buffer.size(), comm_);
           void* handle = nullptr;
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-          XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
+          XLA_RCCL_RETURN_IF_ERROR(ncclGroupStart());
+          XLA_RCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
               comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
-              NCCL_WIN_COLL_SYMMETRIC));
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+              RCCL_WIN_COLL_SYMMETRIC));
+          XLA_RCCL_RETURN_IF_ERROR(ncclGroupEnd());
           if (group_nesting_level_ == 0) {
             TF_RETURN_IF_ERROR(PollUntilDone());
           }
-          return std::make_unique<NcclRegisteredBufferHandle>(
+          return std::make_unique<RcclRegisteredBufferHandle>(
               *this, handle, executor_.get(),
               /*symmetric_buffer= */ true, device_ordinal);
         });
 #else
   return Unimplemented(
-      "[%d] NCCL version does not support ncclCommWindowRegister",
+      "[%d] RCCL version does not support ncclCommWindowRegister",
       device_ordinal);
-#endif  // NCCL_VERSION_CODE >= 22700
+#endif  // RCCL_VERSION_CODE >= 22700
   }
 }
 
-Future<> NcclCommunicator::GroupExecute(
+Future<> RcclCommunicator::GroupExecute(
     absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) {
   return Execute([f = std::move(f), this]() mutable -> absl::Status {
     TF_RETURN_IF_ERROR(GroupStart());
@@ -423,7 +428,7 @@ Future<> NcclCommunicator::GroupExecute(
   });
 }
 
-Future<> NcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
+Future<> RcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
                                      se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      ReductionKind reduction_kind,
@@ -435,7 +440,7 @@ Future<> NcclCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
+Future<> RcclCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
                                      se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      RankId root, const Executor& executor) {
@@ -446,7 +451,7 @@ Future<> NcclCommunicator::Broadcast(se::DeviceAddressBase send_buffer,
       });
 }
 
-Future<> NcclCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
+Future<> RcclCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
                                          se::DeviceAddressBase recv_buffer,
                                          PrimitiveType dtype, size_t count,
                                          ReductionKind reduction_kind,
@@ -458,7 +463,7 @@ Future<> NcclCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::AllGather(se::DeviceAddressBase send_buffer,
+Future<> RcclCommunicator::AllGather(se::DeviceAddressBase send_buffer,
                                      se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      const Executor& executor) {
@@ -467,7 +472,7 @@ Future<> NcclCommunicator::AllGather(se::DeviceAddressBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::AllToAll(
+Future<> RcclCommunicator::AllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
@@ -476,7 +481,7 @@ Future<> NcclCommunicator::AllToAll(
   });
 }
 
-Future<> NcclCommunicator::CollectivePermute(
+Future<> RcclCommunicator::CollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
@@ -490,7 +495,7 @@ Future<> NcclCommunicator::CollectivePermute(
   });
 }
 
-Future<> NcclCommunicator::Send(se::DeviceAddressBase send_buffer,
+Future<> RcclCommunicator::Send(se::DeviceAddressBase send_buffer,
                                 PrimitiveType dtype, size_t count, RankId peer,
                                 const Executor& executor) {
   return Execute([send_buffer, dtype, count, peer, &executor, this]() {
@@ -498,7 +503,7 @@ Future<> NcclCommunicator::Send(se::DeviceAddressBase send_buffer,
   });
 }
 
-Future<> NcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
+Future<> RcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
                                 PrimitiveType dtype, size_t count, RankId peer,
                                 const Executor& executor) {
   return Execute([recv_buffer, dtype, count, peer, &executor, this]() {
@@ -506,16 +511,16 @@ Future<> NcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
   });
 }
 
-absl::Status NcclCommunicator::GroupStart() {
-  VLOG(5) << "Start NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+absl::Status RcclCommunicator::GroupStart() {
+  VLOG(5) << "Start RCCL group";
+  XLA_RCCL_RETURN_IF_ERROR(ncclGroupStart());
   group_nesting_level_++;
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::GroupEnd() {
-  VLOG(5) << "End NCCL group";
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+absl::Status RcclCommunicator::GroupEnd() {
+  VLOG(5) << "End RCCL group";
+  XLA_RCCL_RETURN_IF_ERROR(ncclGroupEnd());
   group_nesting_level_--;
   if (group_nesting_level_ > 0) {
     // Though NCCL allows groups to be nested, no operations are actually
@@ -529,17 +534,17 @@ absl::Status NcclCommunicator::GroupEnd() {
   return PollUntilDone();
 }
 
-absl::Status NcclCommunicator::LaunchAllReduce(
+absl::Status RcclCommunicator::LaunchAllReduce(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Communicator::Executor& executor) {
   if (canceling_.load()) {
-    return FailedPrecondition("NcclCommunicator aborted");
+    return FailedPrecondition("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL AllReduce operation; send_buffer=%p; "
+      "[%d] Launch RCCL AllReduce operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -548,26 +553,26 @@ absl::Status NcclCommunicator::LaunchAllReduce(
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllReduce(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
-      AsCudaStream(stream))));
+      AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchBroadcast(
+absl::Status RcclCommunicator::LaunchBroadcast(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, RankId root, const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL Broadcast operation; send_buffer=%p; "
+      "[%d] Launch RCCL Broadcast operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; root=%d; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -576,26 +581,26 @@ absl::Status NcclCommunicator::LaunchBroadcast(
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclBroadcast(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
-      nccl_dtype, root.value(), comm_, AsCudaStream(stream))));
+      nccl_dtype, root.value(), comm_, AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchReduceScatter(
+absl::Status RcclCommunicator::LaunchReduceScatter(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, ReductionKind reduction_kind,
     const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL ReduceScatter operation; send_buffer=%p; "
+      "[%d] Launch RCCL ReduceScatter operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%v; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -604,26 +609,26 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclReduceScatter(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, ToNcclReduction(reduction_kind), comm_,
-      AsCudaStream(stream))));
+      AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchAllGather(
+absl::Status RcclCommunicator::LaunchAllGather(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL AllGather operation; send_buffer=%p; "
+      "[%d] Launch RCCL AllGather operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
@@ -631,21 +636,21 @@ absl::Status NcclCommunicator::LaunchAllGather(
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclAllGather(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
-      nccl_dtype, comm_, AsCudaStream(stream))));
+      nccl_dtype, comm_, AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchAllToAll(
+absl::Status RcclCommunicator::LaunchAllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
@@ -654,7 +659,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   };
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL AllToAll operation; send_buffers=[%s]; "
+      "[%d] Launch RCCL AllToAll operation; send_buffers=[%s]; "
       "recv_buffers=[%s]; dtype=%s; count=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(),
       absl::StrJoin(send_buffers, ", ", buffer_formatter),
@@ -668,7 +673,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   }
 
   int32_t num_ranks;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &num_ranks));
+  XLA_RCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &num_ranks));
 
   if (send_buffers.size() != num_ranks) {
     return InvalidArgument(
@@ -683,24 +688,24 @@ absl::Status NcclCommunicator::LaunchAllToAll(
     se::DeviceAddressBase send_buffer = send_buffers[i];
     se::DeviceAddressBase recv_buffer = recv_buffers[i];
 
-    XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
+    XLA_RCCL_RETURN_IF_ERROR(ncclSend(send_buffer.opaque(),
                                       ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsCudaStream(stream)));
+                                      comm_, AsHipStream(stream)));
 
-    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
+    XLA_RCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer.opaque(),
                                       ToNcclCount(dtype, count), nccl_dtype, i,
-                                      comm_, AsCudaStream(stream)));
+                                      comm_, AsHipStream(stream)));
   }
   TF_RETURN_IF_ERROR(GroupEnd());
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchCollectivePermute(
+absl::Status RcclCommunicator::LaunchCollectivePermute(
     se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   if (canceling_.load()) {
-    return FailedPrecondition("NcclCommunicator aborted");
+    return FailedPrecondition("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
@@ -709,7 +714,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   };
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL CollectivePermute operation; send_buffer=%p; "
+      "[%d] Launch RCCL CollectivePermute operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; source_rank=%s; target_ranks=[%s]; count=%d; "
       "comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -727,15 +732,15 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   TF_RETURN_IF_ERROR(GroupStart());
 
   if (source_rank) {
-    XLA_NCCL_RETURN_IF_ERROR(
+    XLA_RCCL_RETURN_IF_ERROR(
         ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 source_rank->value(), comm_, AsCudaStream(stream)));
+                 source_rank->value(), comm_, AsHipStream(stream)));
   }
 
   for (auto target_rank : target_ranks) {
-    XLA_NCCL_RETURN_IF_ERROR(
+    XLA_RCCL_RETURN_IF_ERROR(
         ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-                 target_rank.value(), comm_, AsCudaStream(stream)));
+                 target_rank.value(), comm_, AsHipStream(stream)));
   }
 
   TF_RETURN_IF_ERROR(GroupEnd());
@@ -743,17 +748,17 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
+absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
                                           PrimitiveType dtype, size_t count,
                                           RankId peer,
                                           const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL Send operation; send_buffer=%p; dtype=%s; "
+      "[%d] Launch RCCL Send operation; send_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
@@ -761,26 +766,26 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-               peer.value(), comm_, AsCudaStream(stream))));
+               peer.value(), comm_, AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-absl::Status NcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
+absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
                                           PrimitiveType dtype, size_t count,
                                           RankId peer,
                                           const Executor& executor) {
   if (canceling_.load()) {
-    return absl::FailedPreconditionError("NcclCommunicator aborted");
+    return absl::FailedPreconditionError("RcclCommunicator aborted");
   }
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "[%d] Launch NCCL Recv operation; recv_buffer=%p; dtype=%s; "
+      "[%d] Launch RCCL Recv operation; recv_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), recv_buffer.opaque(),
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
@@ -788,36 +793,36 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
 
-  TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(
+  TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
-               peer.value(), comm_, AsCudaStream(stream))));
+               peer.value(), comm_, AsHipStream(stream))));
   if (group_nesting_level_ == 0) {
     TF_RETURN_IF_ERROR(PollUntilDone());
   }
   return absl::OkStatus();
 }
 
-std::string NcclCommunicator::ToString() const {
+std::string RcclCommunicator::ToString() const {
   // comm_ should not be "touched" outside of executor_, but we are printing the
   // pointer itself and not touching the value, so this is safe.
-  return absl::StrFormat("NcclCommunicator(ncclComm_t=%p)", comm_);
+  return absl::StrFormat("RcclCommunicator(ncclComm_t=%p)", comm_);
 }
 
-absl::Status NcclCommunicator::PollUntilDone() const {
+absl::Status RcclCommunicator::PollUntilDone() const {
   if (canceling_.load()) {
-    return FailedPrecondition("NcclCommunicator aborted");
+    return FailedPrecondition("RcclCommunicator aborted");
   }
   return ::xla::gpu::PollUntilDone(comm_, canceling_);
 }
 
-Future<> NcclCommunicator::Execute(
+Future<> RcclCommunicator::Execute(
     absl::AnyInvocable<absl::Status() &&> f) const {
   return executor_ ? Future<>::MakeOn(*executor_, std::move(f))
                    : Future<>(std::move(f)());
 }
 
 template <typename T>
-Future<T> NcclCommunicator::Execute(
+Future<T> RcclCommunicator::Execute(
     absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
   return executor_ ? Future<T>::MakeOn(*executor_, std::move(f))
                    : Future<T>(std::move(f)());

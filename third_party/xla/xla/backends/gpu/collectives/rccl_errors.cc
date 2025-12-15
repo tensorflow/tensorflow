@@ -13,15 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/rccl_errors.h"
 
 #include <atomic>
 
 #include "absl/log/log.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "third_party/nccl/nccl.h"
+#include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/util.h"
+
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 
@@ -30,12 +36,12 @@ absl::Status PollUntilDone(ncclComm_t comm, const std::atomic_bool& aborted) {
                  const std::atomic_bool& aborted) -> absl::Status {
     ncclResult_t state = ncclInProgress;
     while (state == ncclInProgress && !aborted.load()) {
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
+      XLA_RCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &state));
     }
     if (aborted.load()) {
       return Cancelled("NcclCommunicator aborted");
     }
-    return XLA_NCCL_STATUS(state);
+    return XLA_RCCL_STATUS(state);
   };
 
   if (!VLOG_IS_ON(1)) {
@@ -45,7 +51,7 @@ absl::Status PollUntilDone(ncclComm_t comm, const std::atomic_bool& aborted) {
   absl::Time start = absl::Now();
   absl::Status s = poll(comm, aborted);
   absl::Time stop = absl::Now();
-  VLOG(1) << "Polled NCCL communicator " << comm << " for " << (stop - start)
+  VLOG(1) << "Polled RCCL communicator " << comm << " for " << (stop - start)
           << ": " << s;
   return s;
 }

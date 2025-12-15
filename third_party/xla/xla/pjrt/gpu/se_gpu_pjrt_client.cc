@@ -759,7 +759,8 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
   auto setup_sends = [&]() -> absl::Status {
     TF_ASSIGN_OR_RETURN(local_device_state, GetLocalDeviceState(device));
     stream = local_device_state->GetDeviceToDeviceStream();
-    gpu::GpuCollectives* gpu_collectives = gpu::GpuCollectives::Default();
+    gpu::GpuCollectives* gpu_collectives =
+        gpu::GpuCollectives::Default(stream->parent()->GetPlatform()->Name());
     usage_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
         BufferSequencingEvent::Create(this->thread_pool()));
 
@@ -974,7 +975,8 @@ StreamExecutorGpuClient::CrossHostReceiveBuffers(
     stream = local_device_state->GetDeviceToDeviceStream();
     TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                         device->default_memory_space());
-    gpu::GpuCollectives* gpu_collectives = gpu::GpuCollectives::Default();
+    gpu::GpuCollectives* gpu_collectives =
+        gpu::GpuCollectives::Default(stream->parent()->GetPlatform()->Name());
     definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
         BufferSequencingEvent::Create(this->thread_pool()));
 

@@ -242,19 +242,6 @@ tsl_gpu_library(
 )
 
 cc_library(
-    name = "gpu_stream",
-    srcs = ["gpu_stream.cc"],
-    hdrs = ["gpu_stream.h"],
-    tags = ["gpu"],
-    deps = [
-        ":gpu_types_header",
-        "//xla/stream_executor:stream",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log:check",
-    ],
-)
-
-cc_library(
     name = "gpu_semaphore",
     srcs = ["gpu_semaphore.cc"],
     hdrs = ["gpu_semaphore.h"],

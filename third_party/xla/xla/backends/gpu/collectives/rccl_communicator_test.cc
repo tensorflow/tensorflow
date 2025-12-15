@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/nccl_communicator.h"
+#include "xla/backends/gpu/collectives/rccl_communicator.h"
 
 #include <cstddef>
 #include <memory>
@@ -26,14 +26,19 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
-#include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/backends/gpu/collectives/rccl_errors.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
+
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
 
 namespace xla::gpu {
 namespace {
@@ -54,12 +59,12 @@ void AssertEventAborted(Future<> future) {
 };
 
 // Creates a non-blocking NCCL communicator.
-absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
+absl::StatusOr<std::unique_ptr<RcclCommunicator>> CreateCommunicator(
     bool blocking) {
   auto f = [blocking]() -> absl::StatusOr<ncclComm_t> {
     // Create a unique NCCL Id.
     ncclUniqueId id;
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclGetUniqueId(&id)));
+    TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclGetUniqueId(&id)));
 
     // Initialize a communicator.
     ncclConfig_t config = NCCL_CONFIG_INITIALIZER;
@@ -71,28 +76,28 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
       // If this test runs on a machine without any CUDA-capable devices
       // available, we get a ncclUnhandledCudaError. We return a specific error
       // and skip the test.
-      LOG(ERROR) << XLA_NCCL_STATUS(r);
+      LOG(ERROR) << XLA_RCCL_STATUS(r);
       return absl::FailedPreconditionError(kCudaError);
     }
     if (r != ncclSuccess && r != ncclInProgress) {
-      return XLA_NCCL_STATUS(r);
+      return XLA_RCCL_STATUS(r);
     }
 
     // Wait for the communicator to finish initializing.
     ncclResult_t state = ncclInProgress;
     while (state == ncclInProgress) {
-      TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
+      TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclCommGetAsyncError(comm, &state)));
     }
-    TF_RETURN_IF_ERROR(XLA_NCCL_STATUS(state));
+    TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(state));
     return comm;
   };
   bool is_async = !blocking;
-  return NcclCommunicator::Create(f, is_async);
+  return RcclCommunicator::Create(f, is_async);
 }
 
-TEST(NcclCommunicator, AbortSucceeds) {
+TEST(RcclCommunicator, AbortSucceeds) {
   for (const bool blocking : {true, false}) {
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+    absl::StatusOr<std::unique_ptr<RcclCommunicator>> comm =
         CreateCommunicator(blocking);
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
@@ -102,9 +107,9 @@ TEST(NcclCommunicator, AbortSucceeds) {
   }
 }
 
-TEST(NcclCommunicator, DoubleAbortFails) {
+TEST(RcclCommunicator, DoubleAbortFails) {
   for (const bool blocking : {true, false}) {
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+    absl::StatusOr<std::unique_ptr<RcclCommunicator>> comm =
         CreateCommunicator(blocking);
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";
@@ -117,7 +122,7 @@ TEST(NcclCommunicator, DoubleAbortFails) {
   }
 }
 
-TEST(NcclCommunicator, OperationsFailAfterAbort) {
+TEST(RcclCommunicator, OperationsFailAfterAbort) {
   for (const bool blocking : {true, false}) {
     // Declare placeholder variables to make the operations below compile.
     se::DeviceAddressBase buf;
@@ -126,9 +131,9 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
     ReductionKind rk = ReductionKind::SUM;
     GpuCollectives::Executor executor(nullptr);
 
-    // Execute NcclCommunicator operations. They should all immediately fail
+    // Execute RcclCommunicator operations. They should all immediately fail
     // because the communicator has been aborted.
-    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+    absl::StatusOr<std::unique_ptr<RcclCommunicator>> comm =
         CreateCommunicator(blocking);
     if (comm.status().message() == kCudaError) {
       GTEST_SKIP() << "unhandled cuda error";

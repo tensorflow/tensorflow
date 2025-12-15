@@ -325,7 +325,8 @@ bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path,
   }
   const char* const safe_path = Sanitize(path);
   FileDescriptor build_fd = fd.Duplicate();
-  if (!IsInMemoryCachePath(safe_path) && Load(safe_path, std::move(fd))) {
+  if (!IsInMemoryCachePath(safe_path) && fd.Size() &&
+      Load(safe_path, std::move(fd))) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache loaded from '%s'.", safe_path);
     return true;

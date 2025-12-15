@@ -48,7 +48,7 @@ bool NvshmemCollectives::IsInitialized() const {
 
 NvshmemCollectives* NvshmemCollectives::Default() {
   absl::StatusOr<Collectives*> collectives =
-      CollectivesRegistry::Get("gpu", "nvshmem");
+      CollectivesRegistry::Get("CUDA", "nvshmem");
   CHECK_OK(collectives) << "Failed to get NVSHMEM collectives";  // Crash OK
 
   if (auto* nvshmem_collectives =
@@ -98,5 +98,5 @@ NvshmemCollectives::CreateCommunicator() {
 
 // NvshmemCollectives currently does not implement GpuCollectives, so it cannot
 // be used as a host-side collectives library. Therefore, set priority to -100.
-XLA_COLLECTIVES_REGISTER("gpu", "nvshmem", -100,
+XLA_COLLECTIVES_REGISTER("CUDA", "nvshmem", -100,
                          std::make_unique<xla::gpu::NvshmemCollectives>());
