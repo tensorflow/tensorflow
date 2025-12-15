@@ -174,23 +174,23 @@ tf_proto_library(
     srcs = [],
     create_go_proto = False,
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
+        "//tensorflow/core/grappler/costs:op_performance_data",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/protobuf:error_codes_proto_impl",
         "//tensorflow/core/protobuf:for_core_protos",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto",
-        "//tensorflow/core/grappler/costs:op_performance_data",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto",
         "@local_xla//xla/tsl/protobuf:coordination_config_proto",
         "@local_xla//xla/tsl/protobuf:distributed_runtime_payloads_proto",
         "@local_xla//xla/tsl/protobuf:status_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_jspb_proto_library(
