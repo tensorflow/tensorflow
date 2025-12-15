@@ -177,6 +177,13 @@ static bool IsContiguousSlice(
   return true;
 }
 
+int GetBitwidth(PrimitiveType type) {
+  if (type == PRED) {
+    return 8;
+  }
+  return primitive_util::BitWidth(type);
+}
+
 bool IsContiguousSlice(const HloInstruction& instr) {
   if (auto slice = DynCast<HloSliceInstruction>(&instr)) {
     const Shape& full_shape = slice->operand(0)->shape();
