@@ -207,13 +207,12 @@ cc_library(
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
+        "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_config_rocm//rocm:amd_comgr",
-        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -310,6 +309,33 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+xla_cc_test(
+    name = "amdgpu_register_spilling_test",
+    size = "small",
+    srcs = ["amdgpu_register_spilling_test.cc"],
+    data = [
+        "tests_data/amdgpu_dynamic_stack.ll",
+        "tests_data/amdgpu_no_spills.ll",
+        "tests_data/amdgpu_sgpr_spills.ll",
+        "tests_data/amdgpu_vgpr_spills.ll",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":amdgpu_backend",
+        ":load_ir_module",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
