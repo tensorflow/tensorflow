@@ -176,8 +176,9 @@ HloTestBase::HloTestBase(
 
 se::DeviceAddressAllocator* HloTestBase::GetAllocator() {
   if (allocator_ == nullptr) {
-    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-        backend().default_stream_executor());
+    allocator_ =
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            backend().default_stream_executor());
   }
   return allocator_.get();
 }

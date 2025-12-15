@@ -36,7 +36,7 @@ struct ControlFlowInfo {
 
   const Node* frame = nullptr;         // frame of a node
   const Node* parent_frame = nullptr;  // parent frame of a node
-  string frame_name;                   // frame name of a node
+  std::string frame_name;              // frame name of a node
 };
 
 // Clear and populate `info` with each node's frame and the level it belongs to.
@@ -54,7 +54,7 @@ struct ControlFlowInfo {
 // which all sane front-ends should satisfy.
 absl::Status BuildControlFlowInfo(
     const Graph* g, std::vector<ControlFlowInfo>* info,
-    std::vector<string>* unreachable_nodes = nullptr);
+    std::vector<std::string>* unreachable_nodes = nullptr);
 
 }  // namespace tensorflow
 

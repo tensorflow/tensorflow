@@ -66,7 +66,7 @@ absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> TestAllocator::Allocate(
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return se::StreamExecutorMemoryAllocator::Allocate(
+  return stream_executor::StreamExecutorAddressAllocator::Allocate(
       device_ordinal, size, retry_on_failure, memory_space);
 }
 
@@ -78,7 +78,8 @@ absl::Status TestAllocator::Deallocate(int device_ordinal,
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
-  return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
+  return stream_executor::StreamExecutorAddressAllocator::Deallocate(
+      device_ordinal, mem);
 }
 
 int64_t TestAllocator::allocation_count() const {

@@ -96,7 +96,7 @@ absl::Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   return absl::OkStatus();
 }
 
-string LocalTensorHandleData::DebugString() const {
+std::string LocalTensorHandleData::DebugString() const {
   if (IsReady()) {
     return tensor_.DeviceSafeDebugString();
   } else {
