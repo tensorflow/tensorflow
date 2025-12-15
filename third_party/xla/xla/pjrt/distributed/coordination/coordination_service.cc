@@ -796,19 +796,6 @@ CoordinatedTaskStateInfo CoordinationService::CreateTaskStateInfo(
   return info;
 }
 
-std::vector<CoordinatedTaskStateInfo> CoordinationService::GetTaskState(
-    const std::vector<CoordinatedTask>& tasks) {
-  std::vector<CoordinatedTaskStateInfo> states_info;
-  states_info.reserve(tasks.size());
-
-  absl::MutexLock l(state_mu_);
-  for (const auto& task : tasks) {
-    states_info.push_back(
-        CreateTaskStateInfo(task, *cluster_state_[GetTaskName(task)]));
-  }
-  return states_info;
-}
-
 std::vector<CoordinatedTaskStateInfo> CoordinationService::GetJobState(
     absl::string_view job_name) {
   std::vector<CoordinatedTaskStateInfo> states_info;

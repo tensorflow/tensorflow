@@ -47,7 +47,6 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(ShutdownTask);
   ENQUEUE_REQUEST(ResetTask);
   ENQUEUE_REQUEST(Heartbeat);
-  ENQUEUE_REQUEST(GetTaskState);
   ENQUEUE_REQUEST(WatchJobState);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);

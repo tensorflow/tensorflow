@@ -111,7 +111,6 @@ class TestCoordinationClient : public CoordinationClient {
   }
 
   UNIMPLEMENTED(ResetTask);
-  UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(IncrementKeyValue);

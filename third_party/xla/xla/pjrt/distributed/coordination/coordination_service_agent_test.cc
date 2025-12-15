@@ -120,10 +120,6 @@ class TestCoordinationClient : public CoordinationClient {
               (const GetAliveTasksRequest*, GetAliveTasksResponse*,
                tsl::StatusCallback),
               (override));
-  MOCK_METHOD(void, GetTaskStateAsync,
-              (const GetTaskStateRequest*, GetTaskStateResponse*,
-               tsl::StatusCallback),
-              (override));
   MOCK_METHOD(void, WatchJobStateAsync,
               (tsl::CallOptions*, const WatchJobStateRequest*,
                WatchJobStateResponse*, tsl::StatusCallback),
@@ -152,8 +148,6 @@ class CoordinationServiceAgentTest : public ::testing::Test {
     ON_CALL(*client_, BarrierAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(absl::OkStatus()));
     ON_CALL(*client_, CancelBarrierAsync(_, _, _))
-        .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
-    ON_CALL(*client_, GetTaskStateAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(absl::OkStatus()));
   }
 

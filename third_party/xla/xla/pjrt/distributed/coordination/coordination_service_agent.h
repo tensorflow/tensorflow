@@ -163,10 +163,6 @@ class CoordinationServiceAgent {
   // Get task associated with this agent.
   absl::StatusOr<tensorflow::CoordinatedTask> GetOwnTask();
 
-  // Get status of a remote task.
-  absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
-  GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task);
-
   // Watches the status of a remote job.
   absl::StatusOr<tensorflow::WatchJobStateResponse> WatchJobState(
       absl::string_view job_name, std::optional<int64_t> version_number);
