@@ -64,6 +64,7 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
 absl::StatusOr<bool> IsDotSupportedByYnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape);
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the reduce op is supported by YNNPACK.
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);

@@ -246,6 +246,58 @@ static absl::StatusOr<uint32_t> DefineReduceOp(ynn_subgraph_t subgraph,
   return out;
 }
 
+static absl::StatusOr<uint32_t> DefineDotOp(ynn_subgraph_t subgraph,
+                                            TensorIdMap& tensor_ids,
+                                            const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for dot op: %s",
+                                instr->ToString());
+  CHECK_EQ(instr->opcode(), HloOpcode::kDot);
+  const HloInstruction* lhs = instr->operand(0);
+  const HloInstruction* rhs = instr->operand(1);
+  CHECK_EQ(lhs->shape().element_type(), instr->shape().element_type());
+  CHECK_EQ(rhs->shape().element_type(), instr->shape().element_type());
+
+  TF_ASSIGN_OR_RETURN(auto lhs_id, FindTensorValue(tensor_ids, lhs));
+  TF_ASSIGN_OR_RETURN(auto rhs_id, FindTensorValue(tensor_ids, rhs));
+  TF_ASSIGN_OR_RETURN(auto output_id, DefineTensorValue(subgraph, instr));
+
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
+  const Shape& out_shape = instr->shape();
+
+  DotDimensionNumbers dot_dimensions = instr->dot_dimension_numbers();
+  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
+                                                      rhs_shape, out_shape));
+
+  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
+                      GetDotCanonicalDims(dot_dimensions, dot_shape));
+
+  const size_t b_rank = rhs_shape.dimensions().size();
+  const bool transpose_b = !dot_canonical_dims.rhs_canonical;
+
+  if (transpose_b) {
+    uint32_t rhs_id_transposed = YNN_INVALID_VALUE_ID;
+    std::array<int32_t, YNN_MAX_TENSOR_RANK> perm;
+    absl::c_iota(perm, 0);
+    CHECK_LT(b_rank, YNN_MAX_TENSOR_RANK);
+    CHECK_GE(b_rank, 2);
+    std::swap(perm[b_rank - 1], perm[b_rank - 2]);
+    ynn_status status = ynn_define_static_transpose(
+        subgraph,
+        /*num_dims=*/b_rank, perm.data(), rhs_id, &rhs_id_transposed,
+        /*flags=*/0);
+    if (status != ynn_status_success) {
+      return status;
+    }
+    rhs_id = rhs_id_transposed;
+  }
+
+  YNN_RETURN_IF_ERROR(ynn_define_dot(subgraph, /*num_k_dims=*/1, lhs_id, rhs_id,
+                                     YNN_INVALID_VALUE_ID, &output_id,
+                                     /*flags=*/0));
+  return output_id;
+}
+
 //===----------------------------------------------------------------------===//
 // Emit YNNPACK subgraph for the given HLO computation.
 //===----------------------------------------------------------------------===//
@@ -318,6 +370,16 @@ static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBitcastOp(subgraph.get(), tensor_ids, instr));
+      } break;
+
+      case HloOpcode::kDot: {
+        if (!IsDotSupportedByYnn(instr).value_or(false)) {
+          return InvalidArgument(
+              "Unsupported dot instruction in YNN fusion: %s",
+              instr->ToString());
+        }
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineDotOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kReduce: {
@@ -432,6 +494,8 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
     std::vector<std::unique_ptr<Literal>>& literals,
     absl::Span<const se::DeviceAddressBase> arguments_buffers,
     bool capture_rhs) {
+  // TODO(b/468895209): Use the fusion emitter above instead of replicating the
+  // logic here.
   TF_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
         return ynn_create_subgraph(

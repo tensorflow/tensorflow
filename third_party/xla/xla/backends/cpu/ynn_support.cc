@@ -218,6 +218,13 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   return true;
 }
 
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
+  return IsDotSupportedByYnn(hlo->dot_dimension_numbers(),
+                             hlo->operand(0)->shape(), hlo->operand(1)->shape(),
+                             hlo->shape());
+}
+
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
   if (!YnnType(hlo->shape().element_type()).ok()) {
