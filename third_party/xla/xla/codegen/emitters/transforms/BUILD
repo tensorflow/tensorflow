@@ -43,28 +43,43 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "lower_to_llvm_cpu_pass",
-    srcs = ["lower_to_llvm_cpu.cc"],
-    hdrs = ["lower_to_llvm_cpu.h"],
+    name = "lower_to_llvm_common",
+    srcs = ["lower_to_llvm_common.cc"],
+    hdrs = ["lower_to_llvm_common.h"],
     deps = [
-        ":lower_to_llvm_cpu_inc_gen",
+        "@com_google_absl//absl/functional:function_ref",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
+        "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefToLLVM",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorToLLVM",
+    ],
+)
+
+cc_library(
+    name = "lower_to_llvm_cpu_pass",
+    srcs = ["lower_to_llvm_cpu.cc"],
+    hdrs = ["lower_to_llvm_cpu.h"],
+    deps = [
+        ":lower_to_llvm_common",
+        ":lower_to_llvm_cpu_inc_gen",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -86,6 +101,7 @@ cc_library(
     srcs = ["lower_to_llvm_gpu.cc"],
     hdrs = ["lower_to_llvm_gpu.h"],
     deps = [
+        ":lower_to_llvm_common",
         ":lower_to_llvm_gpu_inc_gen",
         "//xla/codegen:device_spec",
         "//xla/stream_executor:device_description",
@@ -95,13 +111,10 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ArithTransforms",
-        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
-        "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUToLLVMSPVTransforms",
@@ -110,7 +123,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMCommonConversion",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",

@@ -59,8 +59,9 @@ namespace eager {
 
 namespace {
 absl::Status GetNumRetvals(
-    FunctionLibraryDefinition* func_lib_def, const string& op_name,
-    const google::protobuf::Map<string, tensorflow::AttrValue>& attrs, int* num_retvals) {
+    FunctionLibraryDefinition* func_lib_def, const std::string& op_name,
+    const google::protobuf::Map<std::string, tensorflow::AttrValue>& attrs,
+    int* num_retvals) {
   const tensorflow::OpRegistrationData* op_reg_data = nullptr;
   auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (absl::IsNotFound(status)) {
@@ -189,10 +190,10 @@ absl::Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 
 absl::Status AddOpRetvalsToResponse(
     EagerContext* eager_context, int op_id, int num_retvals,
-    const std::vector<int32>& output_nums, TensorHandle** retvals,
+    const std::vector<int32_t>& output_nums, TensorHandle** retvals,
     std::function<TensorProto*()> add_tensor_proto_fn,
     std::function<TensorShapeProto*()> add_shape_proto_fn,
-    std::function<string*()> add_device_fn = nullptr) {
+    std::function<std::string*()> add_device_fn = nullptr) {
   // retvals hold references to the allocated output tensor handles. If errors
   // happen with adding some results to the response, aggregate the status in sg
   // instead of directly returning the error, to make sure unref or ownership
@@ -291,7 +292,7 @@ absl::Status EagerServiceImpl::CreateContext(
     TF_RETURN_IF_ERROR(env_->session_mgr->DeleteAllSessions());
 
     // Cleanup existing contexts if any.
-    std::unordered_map<uint64, ServerContext*> tmp_contexts;
+    std::unordered_map<uint64_t, ServerContext*> tmp_contexts;
     {
       mutex_lock l(contexts_mu_);
       if (!contexts_.empty()) {
@@ -372,7 +373,7 @@ absl::Status EagerServiceImpl::CreateContext(
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
 
-  std::vector<string> remote_workers;
+  std::vector<std::string> remote_workers;
   worker_session->worker_cache()->ListWorkers(&remote_workers);
   remote_workers.erase(std::remove(remote_workers.begin(), remote_workers.end(),
                                    worker_session->worker_name()),
@@ -500,7 +501,7 @@ absl::Status EagerServiceImpl::UpdateContext(
 
   const tensorflow::DeviceMgr* device_mgr = worker_session->device_mgr();
 
-  std::vector<string> remote_workers;
+  std::vector<std::string> remote_workers;
   worker_session->worker_cache()->ListWorkers(&remote_workers);
   remote_workers.erase(std::remove(remote_workers.begin(), remote_workers.end(),
                                    worker_session->worker_name()),
@@ -508,7 +509,7 @@ absl::Status EagerServiceImpl::UpdateContext(
   VLOG(1) << "On existing server " << worker_session->worker_name()
           << " updating remote workers";
   if (VLOG_IS_ON(2)) {
-    for (const string& rw : remote_workers) {
+    for (const std::string& rw : remote_workers) {
       VLOG(2) << "Remote worker " << rw;
     }
   }
@@ -546,8 +547,8 @@ absl::Status EagerServiceImpl::UpdateContext(
   return absl::OkStatus();
 }
 
-absl::Status EagerServiceImpl::CreateMasterContext(
-    const tensorflow::uint64 context_id, EagerContext* context) {
+absl::Status EagerServiceImpl::CreateMasterContext(const uint64_t context_id,
+                                                   EagerContext* context) {
   {
     mutex_lock l(contexts_mu_);
     auto iter = contexts_.find(context_id);
@@ -616,7 +617,7 @@ void EagerServiceImpl::RunComponentFunction(
   auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
-  std::vector<int32> output_nums;
+  std::vector<int32_t> output_nums;
   for (const int32_t output_num : request->output_num()) {
     output_nums.push_back(output_num);
   }
@@ -676,7 +677,7 @@ absl::Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
           num_retvals),
       &num_retvals));
 
-  std::function<string*()> add_device_fn = nullptr;
+  std::function<std::string*()> add_device_fn = nullptr;
   // Send the output devices of a function back to let a client know where the
   // outputs are. For a primitive op, an output devics is the op device which is
   // known on a client.
@@ -694,7 +695,7 @@ absl::Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
 absl::Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
                                        const EnqueueRequest* request,
                                        EnqueueResponse* response,
-                                       uint64 stream_id) {
+                                       uint64_t stream_id) {
   tsl::profiler::TraceMe activity(
       [&] {
         return absl::StrCat(
@@ -901,12 +902,12 @@ absl::Status EagerServiceImpl::SendPackedHandle(
 }
 
 absl::Status EagerServiceImpl::GetServerContext(
-    uint64 context_id, ServerContext** server_context) {
+    uint64_t context_id, ServerContext** server_context) {
   tf_shared_lock l(contexts_mu_);
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;
-    return errors::Aborted(strings::Printf(
+    return errors::Aborted(absl::StrFormat(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
         static_cast<unsigned long long>(context_id)));
