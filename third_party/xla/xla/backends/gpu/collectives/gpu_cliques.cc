@@ -492,6 +492,17 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   GpuCollectives::DeviceRank device_rank = {&gpu_device, rank};
   RankPair rank_pair = {parent_rank, device_rank};
 
+  // Synchronize the device to make sure no other collectives are
+  // running before we do the split.
+  {
+    tsl::profiler::TraceMe trace("SynchronizeAllActivityBeforeSplit");
+    if (!device->SynchronizeAllActivity()) {
+      return Internal(
+          "Failed to synchronize GPU before splitting communicators.");
+    }
+    VLOG(3) << "Synchronized device before splitting";
+  }
+
   // Current approach for communicator splitting works because of XLAs SPMD
   // programming model where all collective operations have replica groups that
   // include all ranks. This property guarantees that we'll split each
@@ -718,10 +729,16 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
-      if (clique_key.IsSubsetOf(acquired_clique_key)) {
+      // If the participant group is empty, we won't know if there are other
+      // ranks involved in the split. Proceed to normal initialization.
+      if (clique_key.IsSubsetOf(acquired_clique_key) &&
+          !clique_key.ParticipantGroups().empty()) {
         return InitializeGpuClique(collectives, device, run_id, clique_key,
                                    acquired_clique, num_local_participants,
                                    rank, config);
+      } else if (clique_key.ParticipantGroups().empty()) {
+        LOG(WARNING) << "Found empty participant groups."
+                     << " Skip splitting communicators.";
       }
     }
   }

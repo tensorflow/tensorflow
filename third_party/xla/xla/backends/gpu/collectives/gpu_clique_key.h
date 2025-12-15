@@ -62,6 +62,8 @@ class GpuCliqueKey : public CliqueKey {
 
   CollectiveStreamId stream_id() const;
 
+  std::vector<std::vector<GlobalDeviceId>> ParticipantGroups() const;
+
   // Device generating the unique id for this key
   GlobalDeviceId root_device() const;
 
