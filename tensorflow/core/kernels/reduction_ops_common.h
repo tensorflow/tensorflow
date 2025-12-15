@@ -114,7 +114,7 @@ class ReductionHelper {
   TensorShape shuffled_shape();
 
   // Permutation of reduced dims needed to put reduction dimensions at the end
-  absl::InlinedVector<int32, 8> permutation();
+  absl::InlinedVector<int32_t, 8> permutation();
 
  private:
   bool reduce_first_axis_;  // True if need to reduce the 0-th dimension.

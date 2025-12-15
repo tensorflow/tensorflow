@@ -32,7 +32,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
       const ConfigProto& config, const DeviceMgr* dev_mgr,
       DeviceResolverDistributed* dev_resolver,
       NcclCommunicatorInterface* nccl_communicator,
-      WorkerCacheInterface* worker_cache, const string& task_name);
+      WorkerCacheInterface* worker_cache, const std::string& task_name);
 
   void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
@@ -82,13 +82,14 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
   // Finish populating *cp.  Semantics are like those of
   // CompleteInstanceLocal but will make a remote call to the group
   // leader if necessary.
-  void CompleteInstanceDistributed(const string& device, CollectiveParams* cp,
+  void CompleteInstanceDistributed(const std::string& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done)
       TF_LOCKS_EXCLUDED(instance_mu_, group_mu_);
 
   WorkerCacheInterface* worker_cache_;  // Not owned
-  const string group_leader_;
+  const std::string group_leader_;
   CancellationManager abortion_cancel_mgr_;
 };
 

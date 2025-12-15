@@ -117,7 +117,7 @@ absl::Status EagerExecutor::SyncExecute(EagerNode* node) {
   }
   // NOTE: SyncExecute runs every node regardless of error status in executor.
 
-  uint64 id = next_node_id_++;
+  uint64_t id = next_node_id_++;
 
   absl::Status s = node->Prepare();
   if (!s.ok()) {
@@ -312,9 +312,9 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
   // a deadlock.
 }
 
-void EagerExecutor::NotifyWaiters(uint64 id) {
+void EagerExecutor::NotifyWaiters(uint64_t id) {
   if (!node_done_notifications_.empty()) {
-    uint64 upperbound_id = 0;
+    uint64_t upperbound_id = 0;
     if (!unfinished_nodes_.empty()) {
       upperbound_id = unfinished_nodes_.begin()->first - 1;
     } else if (!node_queue_.empty()) {

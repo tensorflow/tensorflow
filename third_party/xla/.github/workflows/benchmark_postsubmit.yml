@@ -235,7 +235,7 @@ jobs:
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@v5.0.0
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
           path: ${{ env.XSPACE_FILE }}
