@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -460,9 +461,13 @@ absl::Status ExecuteThunksImpl(
           collective_max_nchannels, p2p_max_nchannels));
 
   CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests};
+    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                        &multimem_registry, executor,
+                                        &buffer_allocations};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     TF_RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
@@ -488,6 +493,8 @@ absl::Status ExecuteThunksImpl(
                 : false));
   }
 
+  TF_RETURN_IF_ERROR(multimem_registry.Build());
+
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
         executor,
@@ -497,6 +504,7 @@ absl::Status ExecuteThunksImpl(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
+        &multimem_registry,
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count()};
 

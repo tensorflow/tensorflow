@@ -412,6 +412,7 @@ bool CanEnablePeerAccess(CUdevice from, CUdevice to) {
     LOG(ERROR) << "failed to detect peer access capability: " << status;
     return false;
   }
+
   return can_access_peer;
 }
 
@@ -949,7 +950,7 @@ absl::StatusOr<void*> CudaExecutor::VmmAllocateMemory(uint64_t bytes) {
   int device_count = 0;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetDeviceCount(&device_count)));
   for (int peer = 0; peer < device_count; peer++) {
-    if (peer == device_ordinal() || CanEnablePeerAccess(peer, device_)) {
+    if (peer == device_ordinal() || CanEnablePeerAccessTo(peer)) {
       CUmemAccessDesc accessDesc = GetVmmAccessDescriptor(peer);
       TF_RETURN_IF_ERROR(
           cuda::ToStatus(cuMemSetAccess(ptr, padded_size, &accessDesc, 1)));
@@ -1602,9 +1603,27 @@ fft::FftSupport* CudaExecutor::AsFft() {
   return fft_.get();
 }
 
+// TODO(468297175): Precalculate peer access in stream executor constructor.
 bool CudaExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
   CudaExecutor* cuda_other = static_cast<CudaExecutor*>(other);
   return CanEnablePeerAccess(cuda_context_, cuda_other->cuda_context_);
+}
+
+bool CudaExecutor::CanEnablePeerAccessTo(int other_device_ordinal) {
+  if (other_device_ordinal == device_ordinal()) {
+    // Self-access is always allowed.
+    return true;
+  }
+
+  auto it = peer_access_cache_.find(other_device_ordinal);
+  if (it != peer_access_cache_.end()) {
+    return it->second;
+  }
+
+  const bool result =
+      CanEnablePeerAccess(device_ordinal(), other_device_ordinal);
+  peer_access_cache_[other_device_ordinal] = result;
+  return result;
 }
 
 absl::Status CudaExecutor::EnablePeerAccessTo(StreamExecutor* other) {

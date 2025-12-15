@@ -84,23 +84,84 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
   ASSERT_EQ(first_result_data.size(), kNumElements);
   ASSERT_EQ(second_result_data.size(), kNumElements);
 
-  // Check the rank in the first position.
-  EXPECT_EQ(first_result_data[0], 0);
-  EXPECT_EQ(second_result_data[0], 1);
+  EXPECT_EQ(first_result_data[0], 0) << "First result rank is not 0.";
+  EXPECT_EQ(second_result_data[0], 1) << "Second result rank is not 1.";
 
-  // Check pointer to peers in the second position.
-  EXPECT_NE(first_result_data[1], 0);
-  EXPECT_NE(second_result_data[1], 0);
+  EXPECT_NE(first_result_data[1], 0)
+      << "First result pointer to peers is NULL.";
+  EXPECT_NE(second_result_data[1], 0)
+      << "Second result pointer to peers is NULL.";
 
-  // Check pointer to multimem metadata in the third position.
-  EXPECT_NE(first_result_data[2], 0);
-  EXPECT_NE(second_result_data[2], 0);
+  EXPECT_NE(first_result_data[2], 0)
+      << "First result pointer to multimem metadata is not set.";
+  EXPECT_NE(second_result_data[2], 0)
+      << "Second result pointer to multimem metadata is not set.";
 
-  // Check param_to_peers structure.
   for (int i = 3; i < kNumElements; ++i) {
-    EXPECT_NE(first_result_data[i], 0);
-    EXPECT_EQ(second_result_data[i], first_result_data[i]);
+    EXPECT_NE(first_result_data[i], 0)
+        << "First result param_to_peers is NULL.";
+    EXPECT_EQ(second_result_data[i], first_result_data[i])
+        << "Param_to_peers mismatch at index " << i
+        << " in the first result: " << first_result_data[i]
+        << " and in the second result: " << second_result_data[i];
   }
+}
+
+TEST_F(CollectiveMetadataTest, BuildMultimemOnlyOncePerModuleExecution) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test, replica_count=2
+
+  ENTRY test_computation {
+    param_0 = f32[1] parameter(0)
+    copy_1 = f32[1]{0:S(1)} copy(param_0)
+
+    first_result_tuple = (f32[1]{0:S(1)}, u64[5]) custom-call(copy_1), custom_call_target="CollectiveMetadata", output_to_operand_aliasing={{0}: (0, {})}
+    first_result = u64[5] get-tuple-element(first_result_tuple), index=1
+    second_result_tuple = (f32[1]{0:S(1)}, u64[5]) custom-call(copy_1), custom_call_target="CollectiveMetadata", output_to_operand_aliasing={{0}: (0, {})}
+    second_result = u64[5] get-tuple-element(second_result_tuple), index=1
+    ROOT result_tuple = (u64[5], u64[5]) tuple(first_result, second_result)
+  })";
+
+  constexpr int kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  Literal input_0 = LiteralUtil::CreateR1<float>({1.0f});
+  Literal input_1 = LiteralUtil::CreateR1<float>({1.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
+                        /*run_hlo_passes=*/false));
+
+  std::vector<Literal>& literals = execution_result.results;
+  ASSERT_EQ(literals.size(), kNumReplicas);
+
+  std::vector<Literal> first_result = literals[0].DecomposeTuple();
+  std::vector<Literal> second_result = literals[1].DecomposeTuple();
+
+  absl::Span<const uint64_t> first_device_first_result =
+      first_result[0].data<uint64_t>();
+  absl::Span<const uint64_t> first_device_second_result =
+      first_result[1].data<uint64_t>();
+  absl::Span<const uint64_t> second_device_first_result =
+      second_result[0].data<uint64_t>();
+  absl::Span<const uint64_t> second_device_second_result =
+      second_result[1].data<uint64_t>();
+  constexpr int kNumElements = 5;
+  ASSERT_EQ(first_device_first_result.size(), kNumElements);
+  ASSERT_EQ(first_device_second_result.size(), kNumElements);
+  ASSERT_EQ(second_device_first_result.size(), kNumElements);
+  ASSERT_EQ(second_device_second_result.size(), kNumElements);
+
+  EXPECT_EQ(first_device_first_result[2], first_device_second_result[2])
+      << "Multimem metadata should be the same for both results.";
+  EXPECT_EQ(second_device_first_result[2], second_device_second_result[2])
+      << "Multimem metadata should be the same for both results.";
 }
 
 TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataWithReplicaGroup) {

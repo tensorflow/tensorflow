@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_multimem.h"
 
-#include <any>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -74,7 +73,6 @@ struct AllocateParams {
   se::StreamExecutor* executor;
   RankId rank;
   se::DeviceAddressBase map_to;
-  std::any payload;
 };
 
 struct RankCmp {
@@ -100,9 +98,9 @@ struct MappedPtrFormatter {
 }  // namespace
 
 absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
-CollectiveMultimem::Allocate(se::StreamExecutor* executor,
+CollectiveMultimem::Allocate(se::StreamExecutor& executor,
                              const GpuCliqueKey& clique_key, RankId rank,
-                             se::DeviceAddressBase map_to, std::any payload) {
+                             se::DeviceAddressBase map_to) {
   VLOG(3) << absl::StrFormat(
       "rank=[%d] Allocate collective multimem for clique: %s", rank.value(),
       clique_key.ToString());
@@ -112,13 +110,13 @@ CollectiveMultimem::Allocate(se::StreamExecutor* executor,
   if (!clique_key.is_local()) {
     return Unimplemented(
         "%sMultimem is not supported in multi-process mode in clique %s",
-        XlaFormatDevice(executor->device_ordinal()), clique_key.ToString());
+        XlaFormatDevice(executor.device_ordinal()), clique_key.ToString());
   }
 
   std::string rendezvous_name = absl::StrFormat(
       "CollectiveMultimem::Allocate for clique %s", clique_key.ToString());
   AllocateRendezvousKey rendezvous_key = {clique_key};
-  AllocateParams params = {executor, rank, map_to, std::move(payload)};
+  AllocateParams params = {&executor, rank, map_to};
 
   // A callback for rendezvous to allocate and map the multicast memory.
   auto allocate = [&](absl::Span<const AllocateParams*> params)
@@ -159,12 +157,6 @@ CollectiveMultimem::Allocate(se::StreamExecutor* executor,
               dynamic_cast<se::gpu::GpuExecutor*>(param->executor)));
     }
 
-    // For all participating devices move payloads to the collective multimem.
-    absl::btree_map<RankId, std::any> payloads;
-    for (const auto* param : params) {
-      payloads[param->rank] = std::move(param->payload);
-    }
-
     VLOG(3) << absl::StrFormat(
         "Allocated collective multimem for clique: %s; mapped_ptrs: [%s]",
         clique_key.ToString(),
@@ -182,14 +174,13 @@ CollectiveMultimem::Allocate(se::StreamExecutor* executor,
 }
 
 absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
-CollectiveMultimem::Allocate(se::StreamExecutor* executor,
+CollectiveMultimem::Allocate(se::StreamExecutor& executor,
                              const GpuCliqueKey& clique_key,
                              GlobalDeviceId global_device_id,
-                             se::DeviceAddressBase map_to, std::any payload) {
+                             se::DeviceAddressBase map_to) {
   if (std::optional<RankId> rank = clique_key.rank(global_device_id)) {
-    return Allocate(executor, clique_key, *rank, map_to, std::move(payload));
+    return Allocate(executor, clique_key, *rank, map_to);
   }
   return InvalidArgument("Rank not found for device %v", global_device_id);
 }
-
 }  // namespace xla::gpu

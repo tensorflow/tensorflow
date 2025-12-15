@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -250,6 +251,12 @@ class Thunk {
     const CollectiveParams* collective_params = nullptr;
     // Clique requests for preparing collective communicators.
     CollectiveCliqueRequests* clique_requests = nullptr;
+    // Multimem registry for preparing multimem objects.
+    CollectiveMultimemRegistry* absl_nonnull multimem_registry = nullptr;
+    // Stream executor for the thunk.
+    se::StreamExecutor* absl_nonnull executor = nullptr;
+    // Buffer allocations for the thunk.
+    const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -281,6 +288,9 @@ class Thunk {
 
     // Collective cliques acquired based on resource requests.
     CollectiveCliques* collective_cliques = nullptr;
+
+    // Multimem registry for preparing collective communicators.
+    CollectiveMultimemRegistry* multicast_memory_registry = nullptr;
 
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;

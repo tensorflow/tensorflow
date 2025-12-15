@@ -153,9 +153,10 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, config()));
-  TF_ASSIGN_OR_RETURN(bool use_collective_kernel,
-                      collective_kernel_thunk_->IsSupported(
-                          clique_key, params.collective_cliques));
+  TF_ASSIGN_OR_RETURN(
+      bool use_collective_kernel,
+      collective_kernel_thunk_->IsSupported(clique_key, *params.executor,
+                                            *params.collective_params));
   if (use_collective_kernel) {
     TF_RETURN_IF_ERROR(collective_kernel_thunk_->Initialize(params));
   }
@@ -170,9 +171,10 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
 
-  TF_ASSIGN_OR_RETURN(bool use_collective_kernel,
-                      collective_kernel_thunk_->IsSupported(
-                          clique_key, params.collective_cliques));
+  TF_ASSIGN_OR_RETURN(
+      bool use_collective_kernel,
+      collective_kernel_thunk_->IsSupported(
+          clique_key, *params.stream->parent(), *params.collective_params));
 
   if (use_collective_kernel) {
     TF_RETURN_IF_ERROR(collective_kernel_thunk_->ExecuteOnStream(params));

@@ -26,12 +26,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -274,12 +276,26 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
+  Thunk::PrepareParams prepare_params;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
+  CollectiveCliqueRequests clique_requests;
+  prepare_params.executor = executor;
+  prepare_params.buffer_allocations = &buffer_allocations;
+  prepare_params.collective_params = &collective_params;
+  prepare_params.clique_requests = &clique_requests;
+  prepare_params.multimem_registry = &multimem_registry;
+  TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
+
+  TF_RETURN_IF_ERROR(multimem_registry.Build());
+
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
   initialize_params.src = {kKernelSource};
+  initialize_params.multicast_memory_registry = &multimem_registry;
 
   GpuExecutableRunOptions::DeviceIdMap global_device_id_map = {
       {LocalDeviceId(0), GlobalDeviceId(0)}};

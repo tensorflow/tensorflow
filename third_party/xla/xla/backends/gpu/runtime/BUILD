@@ -1269,6 +1269,7 @@ cc_library(
         ":collective_cliques",
         ":collective_metadata_thunk",
         ":collective_multimem",
+        ":collective_params",
         ":collective_thunk",
         ":thunk",
         "//xla:shape_util",
@@ -1278,7 +1279,7 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
-        "//xla/service:collective_ops_utils",
+        "//xla/runtime:device_id",
         "//xla/service/gpu:gpu_constants",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:stream_executor_util",
@@ -1316,12 +1317,15 @@ xla_test(
     backends = ["h100"],
     deps = [
         ":collective_kernel_thunk",
+        ":collective_multimem_registry",
         ":collective_params",
         ":collective_thunk",
         ":thunk",
         "//xla:array",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:collective_clique_requests",
+        "//xla/core/collectives:reduction_kind",
         "//xla/pjrt:worker_thread",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
@@ -1672,6 +1676,26 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "collective_multimem_registry",
+    srcs = ["collective_multimem_registry.cc"],
+    hdrs = ["collective_multimem_registry.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":collective_multimem",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -2034,6 +2058,7 @@ cc_library(
     hdrs = ["collective_metadata_thunk.h"],
     deps = [
         ":collective_multimem",
+        ":collective_multimem_registry",
         ":collective_thunk",
         ":thunk",
         "//xla:shape_util",
@@ -2052,6 +2077,7 @@ cc_library(
         "//xla/stream_executor/gpu:collective_kernel_metadata",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -2159,6 +2185,7 @@ cc_library(
     deps = [
         ":collective_clique_requests",
         ":collective_cliques",
+        ":collective_multimem_registry",
         ":collective_params",
         ":thunk_id",
         ":thunk_proto_cc",

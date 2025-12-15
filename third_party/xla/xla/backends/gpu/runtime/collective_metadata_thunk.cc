@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/backends/gpu/runtime/collective_multimem.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -143,6 +145,36 @@ CollectiveMetadataThunk::GetParameterDeviceMemoryBase(
       /*size_bytes=*/num_devices * sizeof(void*));
 }
 
+absl::Status CollectiveMetadataThunk::Prepare(const PrepareParams& params) {
+  // We currently support only a single memory space for multimem parameters.
+  // So we just pick the first one here.
+  auto fast_memory_parameter =
+      absl::c_find_if(parameters_, [](const Buffer& parameter) {
+        return parameter.memory_space == xla::Layout::kGenericFastMemorySpace;
+      });
+  if (fast_memory_parameter == parameters_.end()) {
+    return absl::OkStatus();
+  }
+
+  se::DeviceAddressBase memory_range;
+  TF_ASSIGN_OR_RETURN(memory_range,
+                      params.executor->GetMemoryRange(
+                          params.buffer_allocations->GetDeviceAddress(
+                              fast_memory_parameter->slice)));
+
+  // Since there is no parameter in the collective memory space, we don't need
+  // to set up the collective multimem.
+  if (memory_range.is_null()) {
+    return absl::OkStatus();
+  }
+  TF_ASSIGN_OR_RETURN(
+      const GpuCliqueKey clique_key,
+      GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
+                                /*include_participant_groups=*/false));
+  params.multimem_registry->Register({clique_key, /*map_to=*/memory_range});
+  return absl::OkStatus();
+}
+
 absl::Status CollectiveMetadataThunk::Initialize(
     const InitializeParams& params) {
   TF_ASSIGN_OR_RETURN(
@@ -164,11 +196,11 @@ absl::Status CollectiveMetadataThunk::Initialize(
       params.buffer_allocations->GetDeviceAddress(result_);
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+
+  TF_ASSIGN_OR_RETURN(auto multimem, GetCollectiveMultimem(clique_key, params));
+
   std::optional<RankId> rank = clique_key.rank(global_device_id);
-
-  TF_ASSIGN_OR_RETURN(auto multimem,
-                      AllocateMultimem(clique_key, *rank, params));
-
+  TF_RET_CHECK(rank.has_value());
   return ConstructCollectiveMetadata(clique_key, *rank, params.stream,
                                      std::move(parameters), std::move(multimem),
                                      result_ptr);
@@ -180,9 +212,8 @@ absl::Status CollectiveMetadataThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<std::shared_ptr<CollectiveMultimem>>
-CollectiveMetadataThunk::AllocateMultimem(const GpuCliqueKey& clique_key,
-                                          RankId rank,
-                                          const InitializeParams& params) {
+CollectiveMetadataThunk::GetCollectiveMultimem(const GpuCliqueKey& clique_key,
+                                               const InitializeParams& params) {
   se::DeviceAddressBase memory_range;
   for (const Buffer& parameter : parameters_) {
     if (parameter.memory_space == xla::Layout::kGenericFastMemorySpace) {
@@ -200,10 +231,9 @@ CollectiveMetadataThunk::AllocateMultimem(const GpuCliqueKey& clique_key,
     return nullptr;
   }
 
+  const MultimemRequest request{clique_key, memory_range};
   TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectiveMultimem> collective_multimem,
-                      CollectiveMultimem::Allocate(params.executor, clique_key,
-                                                   rank, memory_range));
-
+                      params.multicast_memory_registry->Get(request));
   absl::MutexLock lock(mutex_);
   return (collective_multimem_[params.executor] =
               std::move(collective_multimem));

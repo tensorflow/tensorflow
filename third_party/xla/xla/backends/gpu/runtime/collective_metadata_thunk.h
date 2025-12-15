@@ -45,15 +45,16 @@ class CollectiveMetadataThunk : public Thunk {
     int64_t memory_space;
   };
 
-  explicit CollectiveMetadataThunk(ThunkInfo thunk_info,
-                                   CollectiveConfig collective_config,
-                                   std::vector<Buffer> parameters,
-                                   BufferAllocation::Slice result)
+  CollectiveMetadataThunk(ThunkInfo thunk_info,
+                          CollectiveConfig collective_config,
+                          std::vector<Buffer> parameters,
+                          BufferAllocation::Slice result)
       : Thunk(Thunk::Kind::kCollectiveMetadata, thunk_info),
         collective_config_(std::move(collective_config)),
         parameters_(std::move(parameters)),
         result_(result) {}
 
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -75,9 +76,8 @@ class CollectiveMetadataThunk : public Thunk {
       int64_t num_devices, int64_t parameter_index);
 
  private:
-  absl::StatusOr<std::shared_ptr<CollectiveMultimem>> AllocateMultimem(
-      const GpuCliqueKey& clique_key, RankId rank,
-      const InitializeParams& params);
+  absl::StatusOr<std::shared_ptr<CollectiveMultimem>> GetCollectiveMultimem(
+      const GpuCliqueKey& clique_key, const InitializeParams& params);
 
   const CollectiveConfig collective_config_;
   std::vector<Buffer> parameters_;

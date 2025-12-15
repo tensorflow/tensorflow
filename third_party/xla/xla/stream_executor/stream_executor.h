@@ -235,6 +235,9 @@ class StreamExecutor {
   // StreamExecutor to memory allocated by another.
   virtual bool CanEnablePeerAccessTo(StreamExecutor* other) = 0;
 
+  // Same as above, but takes the device ordinal of the other device.
+  virtual bool CanEnablePeerAccessTo(int other_device_ordinal) { return false; }
+
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
   // initialized.
