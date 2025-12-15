@@ -30,6 +30,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -90,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TF {

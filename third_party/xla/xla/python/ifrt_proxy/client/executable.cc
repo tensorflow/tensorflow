@@ -135,7 +135,8 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   absl::CordReader reader(operand_buffer);
   for (const auto& spec : xla_host_callback.operands) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* p = tsl::port::AlignedMalloc(size, kAlignment);
+    void* p = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(kAlignment));
     CHECK(p != nullptr);
     std::unique_ptr<char, Deleter> buffer(reinterpret_cast<char*>(p));
 
@@ -163,7 +164,8 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
 
   for (const auto& spec : xla_host_callback.results) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* data = tsl::port::AlignedMalloc(size, kAlignment);
+    void* data = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(kAlignment));
     CHECK(data != nullptr);
 
     result_ptrs.push_back(data);
