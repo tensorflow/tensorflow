@@ -46,7 +46,7 @@ TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped,
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
-absl::StatusOr<OwningDeviceAddress> TfAllocatorAdapter::Allocate(
+absl::StatusOr<ScopedDeviceAddress<uint8_t>> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   tsl::AllocationAttributes attrs;
@@ -60,8 +60,8 @@ absl::StatusOr<OwningDeviceAddress> TfAllocatorAdapter::Allocate(
           size, memory_space == xla::Layout::kHostMemorySpace);
     }
   }
-  return OwningDeviceAddress(DeviceAddressBase(data, size), device_ordinal,
-                             this);
+  return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(data, size),
+                                      device_ordinal, this);
 }
 
 absl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,

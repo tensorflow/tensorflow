@@ -52,10 +52,9 @@ class TfAllocatorAdapter : public DeviceAddressAllocator {
 
   ~TfAllocatorAdapter() override;
 
-  absl::StatusOr<OwningDeviceAddress> Allocate(int device_ordinal,
-                                               uint64_t size,
-                                               bool retry_on_failure,
-                                               int64_t memory_space) override;
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override;
 
   absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override;
 
@@ -128,10 +127,9 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
     }
   }
 
-  absl::StatusOr<OwningDeviceAddress> Allocate(int device_ordinal,
-                                               uint64_t size,
-                                               bool retry_on_failure,
-                                               int64_t memory_space) override {
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
     // memory_space is used here to select allocator. This isn't a need to pass
     // it any lower to TfAllocatorAdapter.
     auto it = memory_space_to_per_device_allocators_.find(memory_space);
