@@ -2489,6 +2489,7 @@ cc_library(
         ":collective_opt_utils",
         ":hlo_module_config",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
