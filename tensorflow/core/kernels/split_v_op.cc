@@ -68,7 +68,7 @@ class SplitVOpBase : public OpKernel {
                 errors::InvalidArgument("split_dim_tensor must have "
                                         "exactly one element."));
 
-    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
@@ -231,7 +231,7 @@ class SplitVOpCPUImpl {
                   std::vector<Tlen>& split_sizes_vec,
                   const MakeSizesType& make_sizes,
                   const ReshapeResultType& reshape_result) const {
-    constexpr uint64 kMinimumSplitNum = 4;
+    constexpr uint64_t kMinimumSplitNum = 4;
 
     Eigen::DSizes<Eigen::DenseIndex, NDims> indices;
     for (int i = 0; i < NDims; ++i) {
@@ -308,7 +308,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(2).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
