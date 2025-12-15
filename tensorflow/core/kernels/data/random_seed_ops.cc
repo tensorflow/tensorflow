@@ -34,7 +34,7 @@ const char kReshuffle[] = "reshuffle";
 
 }  // namespace
 
-string SeedGeneratorManager::DebugString() const { return kSeedGenerator; }
+std::string SeedGeneratorManager::DebugString() const { return kSeedGenerator; }
 
 void FixedSeedGenerator::GenerateSeeds(int64_t* seed1, int64_t* seed2) {
   mutex_lock l(mu_);

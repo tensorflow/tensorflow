@@ -55,7 +55,8 @@ constexpr char kSlash[] = "/";
 constexpr char kSplitProvider[] = "split_provider";
 
 absl::Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
-                                std::vector<Tensor>* out_tensors, int64 value) {
+                                std::vector<Tensor>* out_tensors,
+                                int64_t value) {
   switch (output_dtypes[0]) {
 #define HANDLE_TYPE(type)                                \
   case DataTypeToEnum<type>::value: {                    \
@@ -198,7 +199,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -213,7 +214,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return *shapes;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(start_, stop_, step_);
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -238,12 +239,12 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
   absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     return Get(AnyContext(ctx), index, out_tensors);
   }
 
-  absl::Status Get(AnyContext ctx, int64 index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return ConvertOutputTypes(output_dtypes(), out_tensors,

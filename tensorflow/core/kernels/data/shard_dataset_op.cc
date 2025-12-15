@@ -71,9 +71,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         input_(input),
         require_non_empty_(require_non_empty),
         traceme_metadata_(
-            {{"index", strings::Printf("%lld", static_cast<long long>(index))},
+            {{"index", absl::StrFormat("%lld", static_cast<long long>(index))},
              {"num_shards",
-              strings::Printf("%lld", static_cast<long long>(num_shards))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(num_shards))}}) {
     input_->Ref();
     random_indexing_compatible_ = absl::OkStatus();
     if (input_ != nullptr) {
@@ -84,7 +84,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -97,7 +97,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(num_shards_, index_);
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -121,7 +121,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index_ + (num_shards_ * index), out_tensors);

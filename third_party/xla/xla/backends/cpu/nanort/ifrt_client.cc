@@ -509,7 +509,8 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // Allocates an aligned buffer of the given size.
   static absl::StatusOr<OwnedDataPtr> AllocateData(size_t size) {
     OwnedDataPtr owned_data(
-        tsl::port::AlignedMalloc(std::max<size_t>(size, Align()), Align()),
+        tsl::port::AlignedMalloc(std::max<size_t>(size, Align()),
+                                 static_cast<std::align_val_t>(Align())),
         [](void* ptr) { tsl::port::AlignedFree(ptr); });
     if (ABSL_PREDICT_FALSE(owned_data == nullptr)) {
       return Internal("Failed to allocate memory for NanoArray. Errno: %s",
