@@ -40,7 +40,7 @@ class StaticScheduleTest : public ::testing::Test {
     cpu_device.set_l1_cache_size(32 * 1024);
     cpu_device.set_l2_cache_size(256 * 1024);
     cpu_device.set_l3_cache_size(4 * 1024 * 1024);
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
     return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
