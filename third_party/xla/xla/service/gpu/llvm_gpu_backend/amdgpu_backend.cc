@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "amd_comgr/amd_comgr.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
@@ -48,6 +47,8 @@ limitations under the License.
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/BinaryFormat/ELF.h"
+#include "llvm/BinaryFormat/MsgPackDocument.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/CodeGen/CommandFlags.h"
@@ -63,9 +64,13 @@ limitations under the License.
 #include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Object/ELF.h"
+#include "llvm/Object/ELFObjectFile.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/AMDGPUMetadata.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/FileSystem.h"
@@ -150,6 +155,232 @@ struct HsacoCache {
 };
 
 static HsacoCache g_hsacoCache;  // NOLINT: static/global vars forbidden
+
+// Structure to hold register spilling and stack information from HSACO metadata
+struct RegisterSpillInfo {
+  uint64_t sgpr_spill_count = 0;
+  uint64_t vgpr_spill_count = 0;
+  uint64_t private_segment_size = 0;
+  bool uses_dynamic_stack = false;
+
+  bool HasSpilling() const {
+    return sgpr_spill_count > 0 || vgpr_spill_count > 0;
+  }
+
+  bool HasStackUsage() const {
+    return private_segment_size > 0 || uses_dynamic_stack;
+  }
+};
+
+// Parse NT_AMDGPU_METADATA note contents and extract register spill counts.
+// The metadata is in MessagePack format containing kernel information.
+RegisterSpillInfo ParseAMDGPUMetadataForSpills(llvm::StringRef metadata) {
+  RegisterSpillInfo spill_info;
+
+  // Parse the MsgPack metadata
+  llvm::msgpack::Document doc;
+  if (!doc.readFromBlob(metadata, /*Multi=*/false)) {
+    VLOG(2) << "Could not parse MsgPack metadata from NT_AMDGPU_METADATA note";
+    return spill_info;
+  }
+
+  llvm::msgpack::DocNode root = doc.getRoot();
+  if (!root.isMap()) {
+    VLOG(2) << "AMDGPU metadata root is not a map (unexpected format)";
+    return spill_info;
+  }
+
+  // Look for "amdhsa.kernels" array
+  llvm::msgpack::MapDocNode root_map = root.getMap();
+  auto kernels_it = root_map.find("amdhsa.kernels");
+
+  if (kernels_it == root_map.end() || !kernels_it->second.isArray()) {
+    VLOG(2) << "NT_AMDGPU_METADATA found but missing 'amdhsa.kernels' array";
+    return spill_info;
+  }
+
+  llvm::msgpack::ArrayDocNode kernels_array = kernels_it->second.getArray();
+
+  // Iterate through each kernel
+  for (auto& kernel_node : kernels_array) {
+    uint64_t kernel_sgpr_spill = 0;
+    uint64_t kernel_vgpr_spill = 0;
+    uint64_t kernel_sgpr_count = 0;
+    uint64_t kernel_vgpr_count = 0;
+    uint64_t kernel_private_size = 0;
+    bool kernel_uses_dynamic = false;
+
+    if (!kernel_node.isMap()) continue;
+
+    llvm::msgpack::MapDocNode kernel_map = kernel_node.getMap();
+
+    // Look for ".sgpr_spill_count"
+    auto sgpr_it = kernel_map.find(".sgpr_spill_count");
+    if (sgpr_it != kernel_map.end() &&
+        sgpr_it->second.getKind() == llvm::msgpack::Type::UInt) {
+      kernel_sgpr_spill = sgpr_it->second.getUInt();
+      spill_info.sgpr_spill_count =
+          std::max(spill_info.sgpr_spill_count, kernel_sgpr_spill);
+    }
+
+    // Look for ".vgpr_spill_count"
+    auto vgpr_it = kernel_map.find(".vgpr_spill_count");
+    if (vgpr_it != kernel_map.end() &&
+        vgpr_it->second.getKind() == llvm::msgpack::Type::UInt) {
+      kernel_vgpr_spill = vgpr_it->second.getUInt();
+      spill_info.vgpr_spill_count =
+          std::max(spill_info.vgpr_spill_count, kernel_vgpr_spill);
+    }
+
+    // Look for ".private_segment_fixed_size"
+    auto priv_it = kernel_map.find(".private_segment_fixed_size");
+    if (priv_it != kernel_map.end() &&
+        priv_it->second.getKind() == llvm::msgpack::Type::UInt) {
+      kernel_private_size = priv_it->second.getUInt();
+      spill_info.private_segment_size =
+          std::max(spill_info.private_segment_size, kernel_private_size);
+    }
+
+    // Look for ".uses_dynamic_stack"
+    auto dyn_it = kernel_map.find(".uses_dynamic_stack");
+    if (dyn_it != kernel_map.end() &&
+        dyn_it->second.getKind() == llvm::msgpack::Type::Boolean) {
+      kernel_uses_dynamic = dyn_it->second.getBool();
+      spill_info.uses_dynamic_stack =
+          spill_info.uses_dynamic_stack || kernel_uses_dynamic;
+    }
+
+    // Helper to get kernel name for logging (only when needed)
+    auto get_kernel_name = [&kernel_map]() -> std::string {
+      auto name_it = kernel_map.find(".name");
+      if (name_it != kernel_map.end() &&
+          name_it->second.getKind() == llvm::msgpack::Type::String) {
+        return name_it->second.getString().str();
+      }
+      return "unknown";
+    };
+
+    // Log per-kernel spill information with register usage
+    if (kernel_sgpr_spill > 0 || kernel_vgpr_spill > 0) {
+      // Look for ".sgpr_count" (total SGPRs used)
+      auto sgpr_count_it = kernel_map.find(".sgpr_count");
+      if (sgpr_count_it != kernel_map.end() &&
+          sgpr_count_it->second.getKind() == llvm::msgpack::Type::UInt) {
+        kernel_sgpr_count = sgpr_count_it->second.getUInt();
+      }
+
+      // Look for ".vgpr_count" (total VGPRs used)
+      auto vgpr_count_it = kernel_map.find(".vgpr_count");
+      if (vgpr_count_it != kernel_map.end() &&
+          vgpr_count_it->second.getKind() == llvm::msgpack::Type::UInt) {
+        kernel_vgpr_count = vgpr_count_it->second.getUInt();
+      }
+
+      VLOG(2) << "Kernel '" << get_kernel_name() << "' has register spilling: "
+              << "SGPR=" << kernel_sgpr_spill << ", VGPR=" << kernel_vgpr_spill
+              << ". Register count: SGPR=" << kernel_sgpr_count
+              << ", VGPR=" << kernel_vgpr_count;
+    }
+
+    // Log per-kernel stack usage
+    if (kernel_private_size > 0 || kernel_uses_dynamic) {
+      VLOG(2) << "Kernel '" << get_kernel_name() << "' stack usage: "
+              << "private=" << kernel_private_size
+              << ", dynamic=" << (kernel_uses_dynamic ? "true" : "false");
+    }
+  }
+
+  return spill_info;
+}
+
+// ELF note descriptor alignment per ELF specification
+constexpr int kElfNoteDescAlignment = 4;
+
+// Returns spill counts by parsing AMDGPU metadata from note sections of HSACO
+// ELF binary.
+//
+// HSACO file (ELF binary)
+//   -- .note section(s)
+//       -- ELF Note with type=NT_AMDGPU_METADATA
+//           -- MessagePack data
+//               -- Root map
+//                   -- "amdhsa.kernels" array
+//                       -- Each kernel object
+//                           - ".sgpr_spill_count"
+//                           - ".vgpr_spill_count"
+//                           - ... (other kernel properties)
+RegisterSpillInfo ExtractRegisterSpillingFromHsaco(
+    const std::vector<uint8_t>& hsaco) {
+  RegisterSpillInfo spill_info;
+
+  // Create memory buffer from HSACO data
+  std::unique_ptr<llvm::MemoryBuffer> mem_buffer =
+      llvm::MemoryBuffer::getMemBuffer(
+          llvm::StringRef(reinterpret_cast<const char*>(hsaco.data()),
+                          hsaco.size()),
+          "", /*RequiresNullTerminator=*/false);
+
+  // Parse as ELF object file
+  llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_or_err =
+      llvm::object::ObjectFile::createObjectFile(mem_buffer->getMemBufferRef());
+
+  if (!obj_or_err) {
+    VLOG(2) << "Could not parse HSACO as ELF object file: "
+            << llvm::toString(obj_or_err.takeError());
+    return spill_info;
+  }
+
+  llvm::object::ObjectFile* obj = obj_or_err->get();
+
+  // Cast to ELF64LE object file (AMDGPU uses 64-bit little-endian ELF)
+  auto* elf_obj = llvm::dyn_cast<llvm::object::ELF64LEObjectFile>(obj);
+  if (!elf_obj) {
+    VLOG(2) << "HSACO is not a 64-bit little-endian ELF file";
+    return spill_info;
+  }
+
+  // Get the underlying ELFFile to access the notes() API
+  const auto& elf_file = elf_obj->getELFFile();
+
+  for (const auto& section : elf_obj->sections()) {
+    llvm::Expected<const typename llvm::object::ELF64LEObjectFile::Elf_Shdr*>
+        shdr_or_err = elf_obj->getSection(section.getRawDataRefImpl());
+
+    if (!shdr_or_err) {
+      continue;  // Skip sections we can't access
+    }
+
+    const auto* shdr = *shdr_or_err;
+
+    if (shdr->sh_type != llvm::ELF::SHT_NOTE) {
+      continue;
+    }
+
+    llvm::Error err = llvm::Error::success();
+    for (const auto& note : elf_file.notes(*shdr, err)) {
+      if (note.getType() == llvm::ELF::NT_AMDGPU_METADATA) {
+        llvm::StringRef metadata =
+            note.getDescAsStringRef(kElfNoteDescAlignment);
+
+        if (metadata.empty()) {
+          VLOG(2) << "Found NT_AMDGPU_METADATA note but it contains no data";
+          continue;
+        }
+
+        // Parse the metadata and extract spill counts, return immediately
+        return ParseAMDGPUMetadataForSpills(metadata);
+      }
+    }
+
+    if (err) {
+      VLOG(2) << "Error parsing notes: " << llvm::toString(std::move(err));
+    }
+  }
+
+  // If we reach here, no metadata was found
+  VLOG(2) << "No AMDGPU metadata found in HSACO";
+  return spill_info;
+}
 
 bool HsacoCache::Find(const std::string& ir, uint64_t& hash,
                       const std::string& gfx, std::vector<uint8_t>& hsaco) {
@@ -332,136 +563,42 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   hsaco_file.close();
 
   // Check for register spilling using HSACO metadata
-  // Use amd_comgr library for fast in-process metadata extraction
   VLOG(2) << "Checking for register spilling in: "
           << module->getModuleIdentifier();
 
-  bool has_spilling = false;
-  int sgpr_spill_count = 0;
-  int vgpr_spill_count = 0;
-  int private_segment_size = 0;
+  RegisterSpillInfo spill_info = ExtractRegisterSpillingFromHsaco(hsaco);
 
-  // Use already-loaded HSACO data for amd_comgr parsing
-  {
-    // Create amd_comgr data object from HSACO
-    amd_comgr_data_t comgr_data;
-    amd_comgr_status_t status =
-        amd_comgr_create_data(AMD_COMGR_DATA_KIND_EXECUTABLE, &comgr_data);
-
-    if (status == AMD_COMGR_STATUS_SUCCESS) {
-      status = amd_comgr_set_data(comgr_data, hsaco.size(),
-                                  reinterpret_cast<const char*>(hsaco.data()));
-
-      if (status == AMD_COMGR_STATUS_SUCCESS) {
-        // Get metadata from the executable
-        amd_comgr_metadata_node_t metadata;
-        status = amd_comgr_get_data_metadata(comgr_data, &metadata);
-
-        if (status == AMD_COMGR_STATUS_SUCCESS) {
-          // Helper lambda to lookup integer value from metadata map
-          auto lookup_int_value = [](amd_comgr_metadata_node_t root,
-                                     const char* key) -> int {
-            amd_comgr_metadata_node_t value_node;
-            amd_comgr_status_t s =
-                amd_comgr_metadata_lookup(root, key, &value_node);
-            if (s != AMD_COMGR_STATUS_SUCCESS) {
-              return 0;
-            }
-
-            size_t size = 0;
-            s = amd_comgr_get_metadata_string(value_node, &size, nullptr);
-            if (s != AMD_COMGR_STATUS_SUCCESS || size == 0) {
-              amd_comgr_destroy_metadata(value_node);
-              return 0;
-            }
-
-            std::string str_value(size, '\0');
-            s = amd_comgr_get_metadata_string(value_node, &size,
-                                              str_value.data());
-            amd_comgr_destroy_metadata(value_node);
-
-            if (s != AMD_COMGR_STATUS_SUCCESS) {
-              return 0;
-            }
-
-            // Parse the integer value
-            try {
-              return std::stoi(str_value);
-            } catch (...) {
-              return 0;
-            }
-          };
-
-          // Navigate to amdhsa.kernels array and check each kernel
-          amd_comgr_metadata_node_t kernels_node;
-          if (amd_comgr_metadata_lookup(metadata, "amdhsa.kernels",
-                                        &kernels_node) ==
-              AMD_COMGR_STATUS_SUCCESS) {
-            size_t kernel_count = 0;
-            amd_comgr_get_metadata_list_size(kernels_node, &kernel_count);
-
-            for (size_t i = 0; i < kernel_count; ++i) {
-              amd_comgr_metadata_node_t kernel_node;
-              if (amd_comgr_index_list_metadata(kernels_node, i,
-                                                &kernel_node) ==
-                  AMD_COMGR_STATUS_SUCCESS) {
-                // Get spill counts for this kernel
-                int kernel_sgpr_spill =
-                    lookup_int_value(kernel_node, ".sgpr_spill_count");
-                int kernel_vgpr_spill =
-                    lookup_int_value(kernel_node, ".vgpr_spill_count");
-                int kernel_private_size = lookup_int_value(
-                    kernel_node, ".private_segment_fixed_size");
-
-                // Aggregate max values across all kernels
-                sgpr_spill_count =
-                    std::max(sgpr_spill_count, kernel_sgpr_spill);
-                vgpr_spill_count =
-                    std::max(vgpr_spill_count, kernel_vgpr_spill);
-                private_segment_size =
-                    std::max(private_segment_size, kernel_private_size);
-
-                amd_comgr_destroy_metadata(kernel_node);
-              }
-            }
-            amd_comgr_destroy_metadata(kernels_node);
-          }
-
-          amd_comgr_destroy_metadata(metadata);
-        } else {
-          VLOG(2) << "Could not get HSACO metadata via amd_comgr";
-        }
-      }
-      amd_comgr_release_data(comgr_data);
-    } else {
-      VLOG(2) << "Could not create amd_comgr data object";
-    }
-
-    if (sgpr_spill_count > 0 || vgpr_spill_count > 0 ||
-        private_segment_size > 0) {
-      has_spilling = true;
-    }
+  if (spill_info.HasSpilling()) {
+    // We can have SGPR spills without stack being used. They are saved to
+    // VGPRs. In that case, we don't want to discard such kernel, so just
+    // report such cases.
+    VLOG(1) << "Register spilling (SGPR: " << spill_info.sgpr_spill_count
+            << ", VGPR: " << spill_info.vgpr_spill_count << ") detected in "
+            << module->getModuleIdentifier();
+  } else {
+    VLOG(2) << "No register spilling detected in "
+            << module->getModuleIdentifier();
   }
 
-  if (has_spilling) {
-    VLOG(0) << "====== REGISTER SPILLING DETECTED ======";
-    VLOG(0) << "Module: " << module->getModuleIdentifier();
-    VLOG(0) << "SGPR spill count: " << sgpr_spill_count;
-    VLOG(0) << "VGPR spill count: " << vgpr_spill_count;
-    VLOG(0) << "Private segment size: " << private_segment_size << " bytes";
-    VLOG(0) << "Performance may be degraded due to register pressure";
-    VLOG(0) << "========================================";
+  if (spill_info.HasStackUsage()) {
+    VLOG(1) << "Stack usage (private: " << spill_info.private_segment_size
+            << ", dynamic: "
+            << (spill_info.uses_dynamic_stack ? "true" : "false")
+            << ") detected in " << module->getModuleIdentifier();
 
     // Filter out kernels with register spilling during autotuning
     // This matches NVIDIA's behavior in ptx_compiler_impl.cc
     // TODO: remove ptx from xla_gpu_fail_ptx_compilation_on_register_spilling
     // to make the flag more general
     if (debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
+      VLOG(0) << "Discard module " << module->getModuleIdentifier()
+              << " due register spilling or stack usage";
       return xla::Cancelled(
-          "Compilation result discarded due to register spilling");
+          "Compilation result discarded due to register spilling or stack "
+          "usage");
     }
   } else {
-    VLOG(2) << "No register spilling detected";
+    VLOG(2) << "No stack usage detected in " << module->getModuleIdentifier();
   }
 
   // Clean up temp files

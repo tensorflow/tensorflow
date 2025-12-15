@@ -55,7 +55,7 @@ const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
 BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
-                           size_t total_memory, const string& name,
+                           size_t total_memory, const std::string& name,
                            const Options& opts)
     : opts_(opts),
       coalesce_regions_(sub_allocator->SupportsCoalescing()),
@@ -253,7 +253,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     size_t unused_alignment, size_t num_bytes,
     const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
-  uint64 freed_by_count = 0;
+  uint64_t freed_by_count = 0;
   if (allocation_attr.freed_by_func != nullptr) {
     freed_by_count = (*allocation_attr.freed_by_func)();
   }
@@ -290,7 +290,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       // tolerate failing.  For example, we allocate convolution scratch memory
       // as non-retryable; if it fails, we'll just use a fallback algorithm that
       // uses no scratch.
-      static std::atomic<int32> log_counter{0};
+      static std::atomic<int32_t> log_counter{0};
       constexpr int kMaxFailureLogs = 10;
       bool dump_log_on_failure =
           (/*retry is globally disabled*/ !opts_.allow_retry_on_failure &&
@@ -298,14 +298,14 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
            log_counter.load(std::memory_order_relaxed) < kMaxFailureLogs) ||
           VLOG_IS_ON(2);
 
-      uint64 freed_by_count = 0;
+      uint64_t freed_by_count = 0;
       if (allocation_attr.freed_by_func != nullptr) {
         freed_by_count = (*allocation_attr.freed_by_func)();
       }
       void* res = AllocateRawInternal(unused_alignment, num_bytes,
                                       dump_log_on_failure, freed_by_count);
       if (res == nullptr) {
-        int32 counter_value = log_counter.load(std::memory_order_relaxed);
+        int32_t counter_value = log_counter.load(std::memory_order_relaxed);
         if (counter_value < kMaxFailureLogs) {
           log_counter.store(counter_value + 1, std::memory_order_relaxed);
           LOG(WARNING)
@@ -434,7 +434,7 @@ void BFCAllocator::DeallocateRegions(
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
                                         bool dump_log_on_failure,
-                                        uint64 freed_before) {
+                                        uint64_t freed_before) {
   if (num_bytes == 0) {
     VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
@@ -555,7 +555,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
-                               {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                               {"addr", reinterpret_cast<uint64_t>(chunk_ptr)},
                                {"tf_op", annotation.pending_op_name},
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
@@ -567,7 +567,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                 size_t num_bytes, uint64 freed_before) {
+                                 size_t num_bytes, uint64_t freed_before) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -857,8 +857,8 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
   return coalesced_chunk;
 }
 
-void BFCAllocator::SetSafeFrontier(uint64 count) {
-  uint64 current = safe_frontier_.load(std::memory_order_relaxed);
+void BFCAllocator::SetSafeFrontier(uint64_t count) {
+  uint64_t current = safe_frontier_.load(std::memory_order_relaxed);
   while (count > current) {
     if (safe_frontier_.compare_exchange_strong(current, count)) {
       retry_helper_.NotifyDealloc();
@@ -1089,9 +1089,9 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      string buf = absl::StrCat((c->in_use() ? "InUse" : "Free "), " at ",
-                                absl::Hex(reinterpret_cast<uint64>(c->ptr)),
-                                " of size ", c->size);
+      std::string buf = absl::StrCat(
+          (c->in_use() ? "InUse" : "Free "), " at ",
+          absl::Hex(reinterpret_cast<uint64_t>(c->ptr)), " of size ", c->size);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
         absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
@@ -1132,8 +1132,8 @@ void BFCAllocator::MaybeWriteMemoryMap() {
   const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
   if (gpu_memory_map_file != nullptr) {
     std::unique_ptr<WritableFile> dump_file;
-    string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
-                                    Env::Default()->NowMicros());
+    std::string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                         Env::Default()->NowMicros());
     absl::Status status =
         Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {
@@ -1187,7 +1187,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       const Chunk* c = ChunkFromHandle(h);
       tensorflow::MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
-      mc->set_address(reinterpret_cast<uint64>(c->ptr));
+      mc->set_address(reinterpret_cast<uint64_t>(c->ptr));
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);

@@ -32,8 +32,8 @@ namespace tensorflow {
 namespace strings {
 namespace {
 
-string RandomString(random::SimplePhilox* rnd, size_t len) {
-  string x;
+std::string RandomString(random::SimplePhilox* rnd, size_t len) {
+  std::string x;
   for (size_t i = 0; i < len; i++) {
     x += rnd->Uniform(256);
   }
@@ -45,33 +45,34 @@ string RandomString(random::SimplePhilox* rnd, size_t len) {
 
 // Read/WriteIncreasing are defined for string, uint64, int64 below.
 template <typename T>
-void OCWriteIncreasing(string* dest, const T& val);
+void OCWriteIncreasing(std::string* dest, const T& val);
 template <typename T>
 bool OCReadIncreasing(absl::string_view* src, T* result);
 
 // Read/WriteIncreasing<string>
 template <>
-void OCWriteIncreasing<string>(string* dest, const string& val) {
+void OCWriteIncreasing<std::string>(std::string* dest, const std::string& val) {
   OrderedCode::WriteString(dest, val);
 }
 template <>
-bool OCReadIncreasing<string>(absl::string_view* src, string* result) {
+bool OCReadIncreasing<std::string>(absl::string_view* src,
+                                   std::string* result) {
   return OrderedCode::ReadString(src, result);
 }
 
 // Read/WriteIncreasing<uint64>
 template <>
-void OCWriteIncreasing<uint64>(string* dest, const uint64& val) {
+void OCWriteIncreasing<uint64_t>(std::string* dest, const uint64_t& val) {
   OrderedCode::WriteNumIncreasing(dest, val);
 }
 template <>
-bool OCReadIncreasing<uint64>(absl::string_view* src, uint64* result) {
+bool OCReadIncreasing<uint64_t>(absl::string_view* src, uint64_t* result) {
   return OrderedCode::ReadNumIncreasing(src, result);
 }
 
 // Read/WriteIncreasing<int64_t>
 template <>
-void OCWriteIncreasing<int64_t>(string* dest, const int64_t& val) {
+void OCWriteIncreasing<int64_t>(std::string* dest, const int64_t& val) {
   OrderedCode::WriteSignedNumIncreasing(dest, val);
 }
 template <>
@@ -80,14 +81,14 @@ bool OCReadIncreasing<int64_t>(absl::string_view* src, int64_t* result) {
 }
 
 template <typename T>
-string OCWrite(T val) {
-  string result;
+std::string OCWrite(T val) {
+  std::string result;
   OCWriteIncreasing<T>(&result, val);
   return result;
 }
 
 template <typename T>
-void OCWriteToString(string* result, T val) {
+void OCWriteToString(std::string* result, T val) {
   OCWriteIncreasing<T>(result, val);
 }
 
@@ -100,7 +101,7 @@ bool OCRead(absl::string_view* s, T* val) {
 // Numbers
 
 template <typename T>
-T TestRead(const string& a) {
+T TestRead(const std::string& a) {
   // gracefully reject any proper prefix of an encoding
   for (int i = 0; i < a.size() - 1; ++i) {
     absl::string_view s(a.data(), i);
@@ -124,9 +125,9 @@ void TestWriteRead(T expected) {
 // output.
 template <typename T, typename U>
 void TestWriteAppends(T first, U second) {
-  string encoded;
+  std::string encoded;
   OCWriteToString<T>(&encoded, first);
-  string encoded_first_only = encoded;
+  std::string encoded_first_only = encoded;
   OCWriteToString<U>(&encoded, second);
   EXPECT_NE(encoded, encoded_first_only);
   EXPECT_TRUE(absl::StartsWith(encoded, encoded_first_only));
@@ -149,7 +150,7 @@ void TestNumbers(T multiplier) {
   random::SimplePhilox rnd(&philox);
   for (int bits = 1; bits <= std::numeric_limits<T>().digits; ++bits) {
     // test random non-negative numbers with given number of significant bits
-    const uint64 mask = (~0ULL) >> (64 - bits);
+    const uint64_t mask = (~0ULL) >> (64 - bits);
     for (int i = 0; i < 1000; i++) {
       T x = rnd.Rand64() & mask;
       TestWriteRead(multiplier * x);
@@ -160,16 +161,18 @@ void TestNumbers(T multiplier) {
 }
 
 // Return true iff 'a' is "before" 'b'
-bool CompareStrings(const string& a, const string& b) { return (a < b); }
+bool CompareStrings(const std::string& a, const std::string& b) {
+  return (a < b);
+}
 
 template <typename T>
 void TestNumberOrdering() {
   // first the negative numbers (if T is signed, otherwise no-op)
-  string laststr = OCWrite<T>(std::numeric_limits<T>().min());
+  std::string laststr = OCWrite<T>(std::numeric_limits<T>().min());
   for (T num = std::numeric_limits<T>().min() / 2; num != 0; num /= 2) {
-    string strminus1 = OCWrite<T>(num - 1);
-    string str = OCWrite<T>(num);
-    string strplus1 = OCWrite<T>(num + 1);
+    std::string strminus1 = OCWrite<T>(num - 1);
+    std::string str = OCWrite<T>(num);
+    std::string strplus1 = OCWrite<T>(num + 1);
 
     CHECK(CompareStrings(strminus1, str));
     CHECK(CompareStrings(str, strplus1));
@@ -185,9 +188,9 @@ void TestNumberOrdering() {
   T num = 1;
   while (num < std::numeric_limits<T>().max() / 2) {
     num *= 2;
-    string strminus1 = OCWrite<T>(num - 1);
-    string str = OCWrite<T>(num);
-    string strplus1 = OCWrite<T>(num + 1);
+    std::string strminus1 = OCWrite<T>(num - 1);
+    std::string str = OCWrite<T>(num);
+    std::string strplus1 = OCWrite<T>(num + 1);
 
     CHECK(CompareStrings(strminus1, str));
     CHECK(CompareStrings(str, strplus1));
@@ -199,7 +202,7 @@ void TestNumberOrdering() {
 }
 
 // Helper routine for testing TEST_SkipToNextSpecialByte
-size_t FindSpecial(const string& x) {
+size_t FindSpecial(const std::string& x) {
   const char* p = x.data();
   const char* limit = p + x.size();
   const char* result = OrderedCode::TEST_SkipToNextSpecialByte(p, limit);
@@ -209,15 +212,15 @@ size_t FindSpecial(const string& x) {
 // Helper function template to create strings from string literals (excluding
 // the terminal zero byte of the underlying character array).
 template <size_t N>
-string ByteSequence(const char (&arr)[N]) {
-  return string(arr, N - 1);
+std::string ByteSequence(const char (&arr)[N]) {
+  return std::string(arr, N - 1);
 }
 
 TEST(OrderedCode, SkipToNextSpecialByte) {
   for (size_t len = 0; len < 256; len++) {
     random::PhiloxRandom philox(301, 17);
     random::SimplePhilox rnd(&philox);
-    string x;
+    std::string x;
     while (x.size() < len) {
       char c = 1 + rnd.Uniform(254);
       ASSERT_NE(c, 0);
@@ -228,7 +231,7 @@ TEST(OrderedCode, SkipToNextSpecialByte) {
     for (size_t special_pos = 0; special_pos < len; special_pos++) {
       for (size_t special_test = 0; special_test < 2; special_test++) {
         const char special_byte = (special_test == 0) ? 0 : 255;
-        string y = x;
+        std::string y = x;
         y[special_pos] = special_byte;
         EXPECT_EQ(FindSpecial(y), special_pos);
         if (special_pos < 16) {
@@ -283,9 +286,9 @@ TEST(OrderedCode, ExhaustiveFindSpecial) {
   EXPECT_EQ(count, 256 * 256 * 256 * 2);
 }
 
-TEST(Uint64, EncodeDecode) { TestNumbers<uint64>(1); }
+TEST(Uint64, EncodeDecode) { TestNumbers<uint64_t>(1); }
 
-TEST(Uint64, Ordering) { TestNumberOrdering<uint64>(); }
+TEST(Uint64, Ordering) { TestNumberOrdering<uint64_t>(); }
 
 TEST(Int64, EncodeDecode) {
   TestNumbers<int64_t>(1);
@@ -295,15 +298,15 @@ TEST(Int64, EncodeDecode) {
 TEST(Int64, Ordering) { TestNumberOrdering<int64_t>(); }
 
 // Returns the bitwise complement of s.
-inline string StrNot(const string& s) {
-  string result;
-  for (string::const_iterator it = s.begin(); it != s.end(); ++it)
+inline std::string StrNot(const std::string& s) {
+  std::string result;
+  for (std::string::const_iterator it = s.begin(); it != s.end(); ++it)
     result.push_back(~*it);
   return result;
 }
 
 template <typename T>
-void TestInvalidEncoding(const string& s) {
+void TestInvalidEncoding(const std::string& s) {
   absl::string_view p(s);
   EXPECT_FALSE(OCRead<T>(&p, nullptr));
   EXPECT_EQ(s, p);
@@ -311,11 +314,11 @@ void TestInvalidEncoding(const string& s) {
 
 TEST(OrderedCodeInvalidEncodingsTest, Overflow) {
   // 1U << 64, increasing and decreasing
-  const string k2xx64U = "\x09\x01" + string(8, 0);
-  TestInvalidEncoding<uint64>(k2xx64U);
+  const std::string k2xx64U = "\x09\x01" + std::string(8, 0);
+  TestInvalidEncoding<uint64_t>(k2xx64U);
 
   // 1 << 63 and ~(1 << 63), increasing and decreasing
-  const string k2xx63 = "\xff\xc0\x80" + string(7, 0);
+  const std::string k2xx63 = "\xff\xc0\x80" + std::string(7, 0);
   TestInvalidEncoding<int64_t>(k2xx63);
   TestInvalidEncoding<int64_t>(StrNot(k2xx63));
 }
@@ -332,11 +335,11 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
   for (int n = 2; n <= 9; ++n) {
     // The zero in non_minimal[1] is "redundant".
-    string non_minimal =
-        string(1, n - 1) + string(1, 0) + RandomString(&rnd, n - 2);
+    std::string non_minimal =
+        std::string(1, n - 1) + std::string(1, 0) + RandomString(&rnd, n - 2);
     EXPECT_EQ(n, non_minimal.length());
 
-    EXPECT_NE(OCWrite<uint64>(0), non_minimal);
+    EXPECT_NE(OCWrite<uint64_t>(0), non_minimal);
 #ifndef NDEBUG
     absl::string_view s(non_minimal);
     EXPECT_DEATH(OrderedCode::ReadNumIncreasing(&s, nullptr),
@@ -348,11 +351,12 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
   for (int n = 2; n <= 10; ++n) {
     // Header with 1 sign bit and n-1 size bits.
-    string header = string(n / 8, 0xff) + string(1, 0xff << (8 - (n % 8)));
+    std::string header =
+        std::string(n / 8, 0xff) + std::string(1, 0xff << (8 - (n % 8)));
     // There are more than 7 zero bits between header bits and "payload".
-    string non_minimal = header +
-                         string(1, rnd.Uniform(256) & ~*header.rbegin()) +
-                         RandomString(&rnd, n - header.length() - 1);
+    std::string non_minimal =
+        header + std::string(1, rnd.Uniform(256) & ~*header.rbegin()) +
+        RandomString(&rnd, n - header.length() - 1);
     EXPECT_EQ(n, non_minimal.length());
 
     EXPECT_NE(OCWrite<int64_t>(0), non_minimal);
@@ -369,7 +373,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
 
 // Returns random number with specified number of bits,
 // i.e., in the range [2^(bits-1),2^bits).
-uint64 NextBits(random::SimplePhilox* rnd, int bits) {
+uint64_t NextBits(random::SimplePhilox* rnd, int bits) {
   return (bits != 0)
              ? (rnd->Rand64() % (1LL << (bits - 1))) + (1LL << (bits - 1))
              : 0;
@@ -385,7 +389,7 @@ void BM_WriteNum(::testing::benchmark::State& state, T multiplier) {
   for (int i = 0; i < kValues; i++) {
     values[i] = NextBits(&rnd, state.max_iterations % 64) * multiplier;
   }
-  string result;
+  std::string result;
   int index = 0;
   for (auto i : state) {
     result.clear();
@@ -400,12 +404,12 @@ void BM_ReadNum(::testing::benchmark::State& state, T multiplier) {
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor
   constexpr int kValues = 64;
-  string values[kValues];
+  std::string values[kValues];
   for (int i = 0; i < kValues; i++) {
     T val = NextBits(&rnd, i % 64) * multiplier;
     values[i] = OCWrite<T>(val);
   }
-  uint32 index = 0;
+  uint32_t index = 0;
   for (auto i : state) {
     T val;
     absl::string_view s = values[index++ % kValues];
@@ -423,7 +427,7 @@ void BM_ReadNum(::testing::benchmark::State& state, T multiplier) {
   }                                                         \
   BENCHMARK(BM_Read##name)
 
-BENCHMARK_NUM(NumIncreasing, uint64, 1);
+BENCHMARK_NUM(NumIncreasing, uint64_t, 1);
 BENCHMARK_NUM(SignedNum, int64_t, 1);
 BENCHMARK_NUM(SignedNumNegative, int64_t, -1);
 
@@ -437,30 +441,30 @@ TEST(String, EncodeDecode) {
   random::SimplePhilox rnd(&philox);
 
   for (int len = 0; len < 256; len++) {
-    const string a = RandomString(&rnd, len);
+    const std::string a = RandomString(&rnd, len);
     TestWriteRead(a);
     for (int len2 = 0; len2 < 64; len2++) {
-      const string b = RandomString(&rnd, len2);
+      const std::string b = RandomString(&rnd, len2);
 
       TestWriteAppends(a, b);
 
-      string out;
-      OCWriteToString<string>(&out, a);
-      OCWriteToString<string>(&out, b);
+      std::string out;
+      OCWriteToString<std::string>(&out, a);
+      OCWriteToString<std::string>(&out, b);
 
-      string a2, b2, dummy;
+      std::string a2, b2, dummy;
       absl::string_view s = out;
       absl::string_view s2 = out;
-      CHECK(OCRead<string>(&s, &a2));
-      CHECK(OCRead<string>(&s2, nullptr));
+      CHECK(OCRead<std::string>(&s, &a2));
+      CHECK(OCRead<std::string>(&s2, nullptr));
       CHECK_EQ(s, s2);
 
-      CHECK(OCRead<string>(&s, &b2));
-      CHECK(OCRead<string>(&s2, nullptr));
+      CHECK(OCRead<std::string>(&s, &b2));
+      CHECK(OCRead<std::string>(&s2, nullptr));
       CHECK_EQ(s, s2);
 
-      CHECK(!OCRead<string>(&s, &dummy));
-      CHECK(!OCRead<string>(&s2, nullptr));
+      CHECK(!OCRead<std::string>(&s, &dummy));
+      CHECK(!OCRead<std::string>(&s2, nullptr));
       CHECK_EQ(a, a2);
       CHECK_EQ(b, b2);
       CHECK(s.empty());
@@ -472,8 +476,8 @@ TEST(String, EncodeDecode) {
 // 'str' is a string literal that may contain '\0'.
 #define STATIC_STR(str) StringPiece((str), sizeof(str) - 1)
 
-string EncodeStringIncreasing(absl::string_view value) {
-  string encoded;
+std::string EncodeStringIncreasing(absl::string_view value) {
+  std::string encoded;
   OrderedCode::WriteString(&encoded, value);
   return encoded;
 }
@@ -515,19 +519,20 @@ TEST(String, Increasing) {
 }
 
 TEST(EncodingIsExpected, String) {
-  std::vector<std::pair<string, string>> data = {
-      {"", string("\x00\x01", 2)},
-      {"foo", string("foo\x00\x01", 5)},
-      {"hello", string("hello\x00\x01", 7)},
-      {string("\x00\x01\xff", 3), string("\x00\xff\x01\xff\x00\x00\x01", 7)},
+  std::vector<std::pair<std::string, std::string>> data = {
+      {"", std::string("\x00\x01", 2)},
+      {"foo", std::string("foo\x00\x01", 5)},
+      {"hello", std::string("hello\x00\x01", 7)},
+      {std::string("\x00\x01\xff", 3),
+       std::string("\x00\xff\x01\xff\x00\x00\x01", 7)},
   };
   for (const auto& t : data) {
-    string result;
+    std::string result;
     OrderedCode::WriteString(&result, t.first);
     EXPECT_EQ(t.second, result);
 
     absl::string_view in = result;
-    string decoded;
+    std::string decoded;
     EXPECT_TRUE(OrderedCode::ReadString(&in, &decoded));
     EXPECT_EQ(t.first, decoded);
     EXPECT_EQ("", in);
@@ -535,7 +540,7 @@ TEST(EncodingIsExpected, String) {
 }
 
 TEST(EncodingIsExpected, Unsigned) {
-  std::vector<std::pair<uint64, string>> data = {
+  std::vector<std::pair<uint64_t, std::string>> data = {
       {0x0ull, ByteSequence("\000")},
       {0x1ull, ByteSequence("\001\001")},
       {0x2ull, ByteSequence("\001\002")},
@@ -753,13 +758,13 @@ TEST(EncodingIsExpected, Unsigned) {
        ByteSequence("\010\200\000\000\000\000\000\000\001")},
   };
   for (const auto& t : data) {
-    uint64 num = t.first;
-    string result;
+    uint64_t num = t.first;
+    std::string result;
     OrderedCode::WriteNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
     absl::string_view in = result;
-    uint64 decoded;
+    uint64_t decoded;
     EXPECT_TRUE(OrderedCode::ReadNumIncreasing(&in, &decoded));
     EXPECT_EQ(num, decoded);
     EXPECT_EQ("", in);
@@ -767,7 +772,7 @@ TEST(EncodingIsExpected, Unsigned) {
 }
 
 TEST(EncodingIsExpected, Signed) {
-  std::vector<std::pair<int64_t, string>> data = {
+  std::vector<std::pair<int64_t, std::string>> data = {
       {0ll, ByteSequence("\200")},
       {1ll, ByteSequence("\201")},
       {2ll, ByteSequence("\202")},
@@ -1201,7 +1206,7 @@ TEST(EncodingIsExpected, Signed) {
   };
   for (const auto& t : data) {
     int64_t num = t.first;
-    string result;
+    std::string result;
     OrderedCode::WriteSignedNumIncreasing(&result, num);
     EXPECT_EQ(t.second, result) << std::hex << num;
 
@@ -1216,15 +1221,15 @@ TEST(EncodingIsExpected, Signed) {
 void BM_WriteString(::testing::benchmark::State& state, int len) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  string x;
+  std::string x;
   for (int i = 0; i < len; i++) {
     x += rnd.Uniform(256);
   }
-  string y;
+  std::string y;
 
   for (auto s : state) {
     y.clear();
-    OCWriteToString<string>(&y, x);
+    OCWriteToString<std::string>(&y, x);
   }
   state.SetBytesProcessed(state.iterations() * len);
 }
@@ -1232,18 +1237,18 @@ void BM_WriteString(::testing::benchmark::State& state, int len) {
 void BM_ReadString(::testing::benchmark::State& state, int len) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  string x;
+  std::string x;
   for (int i = 0; i < len; i++) {
     x += rnd.Uniform(256);
   }
-  string data;
-  OCWriteToString<string>(&data, x);
-  string result;
+  std::string data;
+  OCWriteToString<std::string>(&data, x);
+  std::string result;
 
   for (auto i : state) {
     result.clear();
     absl::string_view s = data;
-    OCRead<string>(&s, &result);
+    OCRead<std::string>(&s, &result);
   }
   state.SetBytesProcessed(state.iterations() * len);
 }
