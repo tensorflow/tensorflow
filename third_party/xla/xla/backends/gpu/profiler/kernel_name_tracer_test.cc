@@ -172,7 +172,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  stream_executor::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(

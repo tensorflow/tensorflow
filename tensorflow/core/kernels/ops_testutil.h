@@ -119,7 +119,7 @@ class OpsTestBase : public ::testing::Test {
   // Adds a Resource type as input. If <container> is empty, uses the default
   // container name.
   template <typename T>
-  void AddResourceInput(const string& container, const string& name,
+  void AddResourceInput(const std::string& container, const std::string& name,
                         T* resource) {
     CHECK_GT(input_types_.size(), inputs_.size())
         << "Adding more inputs than types; perhaps you need to call MakeOp";

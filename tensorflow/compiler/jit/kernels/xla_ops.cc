@@ -166,7 +166,7 @@ class ExecutableClosureStore {
  public:
   ExecutableClosureStore() : key_counter_(0) {}
 
-  using KeyT = string;
+  using KeyT = std::string;
 
   KeyT Produce(ExecutableClosure<ExecutableType, ClientType> result) {
     mutex_lock l(mutex_);
@@ -217,7 +217,8 @@ se::Stream* GetStream(OpKernelContext* ctx) {
 
 XlaComputationLaunchContext GetLaunchContext(
     const XlaPlatformInfo& platform_info, OpKernelContext* ctx,
-    xla::LocalClient* client, se::DeviceMemoryAllocator* allocator) {
+    xla::LocalClient* client,
+    stream_executor::DeviceAddressAllocator* allocator) {
   se::Stream* stream = GetStream(ctx);
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : client->default_device_ordinal();
@@ -230,7 +231,7 @@ XlaComputationLaunchContext GetLaunchContext(
 
 absl::Status GetTaskName(const absl::string_view device_name,
                          std::string* task_name) {
-  string ignored;
+  std::string ignored;
   if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {
     return errors::InvalidArgument("Unable to parse device name: ",
                                    device_name);
@@ -246,7 +247,7 @@ xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
   return
       [ctx, program_key](
           int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
-          const se::DeviceMemoryBase& device_memory_base,
+          const stream_executor::DeviceAddressBase& device_memory_base,
           const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
           -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
@@ -293,7 +294,7 @@ xla::RecvDeviceMemoryFunction GetRecvDeviceMemoryFunction(
   return
       [ctx, program_key](
           int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
-          se::DeviceMemoryBase* device_memory_base,
+          stream_executor::DeviceAddressBase* device_memory_base,
           const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
           -> absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<se::Event>>> {
         auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
@@ -339,7 +340,7 @@ absl::StatusOr<xla::ExecutionOutput> RunExecutable(
     const XlaComputationLaunchContext& launch_context,
     std::vector<xla::ExecutionInput> execution_inputs,
     xla::ExecutableRunOptions run_options, xla::LocalExecutable* executable,
-    OpKernelContext* ctx, se::DeviceMemoryAllocator* allocator) {
+    OpKernelContext* ctx, stream_executor::DeviceAddressAllocator* allocator) {
   VLOG(2) << "Executing Xla Computation.";
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
@@ -620,7 +621,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
       }
 
-      std::shared_ptr<se::DeviceMemoryAllocator> allocator =
+      std::shared_ptr<stream_executor::DeviceAddressAllocator> allocator =
           GetAllocator(ctx->device(), GetStream(ctx), platform_info);
       XlaComputationLaunchContext launch_context =
           GetLaunchContext(platform_info, ctx, client, allocator.get());
@@ -928,7 +929,7 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 
   XlaExecutableClosure closure =
       XlaExecutableClosureStore::Global()->Consume(key);
-  std::shared_ptr<se::DeviceMemoryAllocator> allocator =
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> allocator =
       GetAllocator(ctx->device(), GetStream(ctx), platform_info_);
   XlaComputationLaunchContext launch_context =
       GetLaunchContext(platform_info_, ctx, closure.client(), allocator.get());
