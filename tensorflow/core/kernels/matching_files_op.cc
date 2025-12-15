@@ -43,7 +43,7 @@ class MatchingFilesOp : public OpKernel {
     const auto patterns = patterns_t->flat<tstring>();
     int num_patterns = patterns.size();
     int num_files = 0;
-    std::vector<std::vector<string>> all_fnames(num_patterns);
+    std::vector<std::vector<std::string>> all_fnames(num_patterns);
     for (int i = 0; i < num_patterns; i++) {
       OP_REQUIRES_OK(context, context->env()->GetMatchingPaths(patterns(i),
                                                                &all_fnames[i]));

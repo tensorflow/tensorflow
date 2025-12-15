@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_EMITTERS_TRANSFORMS_LOWER_TO_LLVM_GPU_H_
 #define XLA_CODEGEN_EMITTERS_TRANSFORMS_LOWER_TO_LLVM_GPU_H_
 
-#include <cstdint>
 #include <memory>
 #include <string>
 

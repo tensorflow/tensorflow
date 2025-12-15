@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Node* GetNodeByName(const string& name, Graph* graph) {
+Node* GetNodeByName(const std::string& name, Graph* graph) {
   for (Node* node : graph->op_nodes()) {
     if (node->name() == name) return node;
   }
@@ -132,7 +132,7 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
   // through the graph to verify inputs.
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
-  std::unordered_map<string, const NodeDef*> map;
+  std::unordered_map<std::string, const NodeDef*> map;
   for (auto& node : graph_def.node()) {
     map[node.name()] = &node;
   }
@@ -180,7 +180,7 @@ TEST(OptimizeCrossHostControlDepsTest,
 
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
-  std::unordered_map<string, const NodeDef*> map;
+  std::unordered_map<std::string, const NodeDef*> map;
   for (auto& node : graph_def.node()) {
     map[node.name()] = &node;
   }

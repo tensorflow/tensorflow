@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace lookup {
 
 // Helper function to initialize an InitializableLookupTable from a text file.
-absl::Status InitializeTableFromTextFile(const string& filename,
+absl::Status InitializeTableFromTextFile(const std::string& filename,
                                          int64_t vocab_size, char delimiter,
                                          int32_t key_index, int32_t value_index,
                                          Env* env,
