@@ -42,7 +42,7 @@ TEST(EvaluationUtilsTest, DeviceSimple_MakeTensorFromProto) {
   EXPECT_FALSE(dsimple.MakeTensorFromProto(proto, {}, &tensor).ok());
 
   Tensor original(tensorflow::DT_INT16, TensorShape{4, 2});
-  original.flat<int16>().setRandom();
+  original.flat<int16_t>().setRandom();
 
   original.AsProtoTensorContent(&proto);
   TF_ASSERT_OK(dsimple.MakeTensorFromProto(proto, {}, &tensor));
@@ -50,8 +50,8 @@ TEST(EvaluationUtilsTest, DeviceSimple_MakeTensorFromProto) {
   ASSERT_EQ(tensor.dtype(), original.dtype());
   ASSERT_EQ(tensor.shape(), original.shape());
 
-  auto buf0 = original.flat<int16>();
-  auto buf1 = tensor.flat<int16>();
+  auto buf0 = original.flat<int16_t>();
+  auto buf1 = tensor.flat<int16_t>();
   ASSERT_EQ(buf0.size(), buf1.size());
   for (int i = 0; i < buf0.size(); ++i) {
     EXPECT_EQ(buf0(i), buf1(i));

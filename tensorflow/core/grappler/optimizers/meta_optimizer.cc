@@ -90,7 +90,8 @@ int64_t NumEdges(const GraphDef& graph) {
   return num_edges;
 }
 
-string PrintSizesBeforeAfter(const GraphDef& before, const GraphDef& after) {
+std::string PrintSizesBeforeAfter(const GraphDef& before,
+                                  const GraphDef& after) {
   return absl::StrCat("Graph size after: ", after.node_size(), " nodes (",
                       after.node_size() - before.node_size(), "), ",
                       NumEdges(after), " edges (",
@@ -104,7 +105,7 @@ int NumIterations(const RewriterConfig& cfg) {
 }
 
 // Check if optimizer is allowed to run only once.
-bool IsRunOnceOptimizer(const string& name) {
+bool IsRunOnceOptimizer(const std::string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer" ||
          absl::StartsWith(name, "auto_mixed_precision");
@@ -128,7 +129,7 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
   return stub;
 }
 
-uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
+uint64_t DeadlineMicroSeconds(const RewriterConfig& cfg) {
   if (cfg.meta_optimizer_timeout_ms() <= 0) return 0;  // no deadline
   return Env::Default()->NowMicros() + cfg.meta_optimizer_timeout_ms() * 1000;
 }
@@ -207,7 +208,8 @@ bool MetaOptimizer::LowerControlFlow() const {
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
-    const string& optimizer, const std::set<string>& device_types) const {
+    const std::string& optimizer,
+    const std::set<std::string>& device_types) const {
   ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
       cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
   if (optimizer == "pruning" && !plugin_configs.disable_model_pruning)
@@ -279,7 +281,7 @@ MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg)
 }
 
 absl::Status MetaOptimizer::InitializeOptimizers(
-    const std::set<string>& device_types,
+    const std::set<std::string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (cfg_.disable_meta_optimizer()) {
     return absl::OkStatus();
@@ -506,15 +508,15 @@ absl::Status MetaOptimizer::InitializeOptimizers(
 #undef PLUGIN_NOT_OFF
 #undef BOTH_ARE_ON
 #undef BOTH_NOT_OFF
-  return InitializeCustomGraphOptimizers(device_types, std::set<string>(),
+  return InitializeCustomGraphOptimizers(device_types, std::set<std::string>(),
                                          optimizers);
 }
 
 absl::Status MetaOptimizer::InitializeOptimizersByName(
-    const std::set<string>& device_types,
+    const std::set<std::string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
-  std::set<string> initialized_custom_optimizers;
-  for (const string& optimizer_name : cfg_.optimizers()) {
+  std::set<std::string> initialized_custom_optimizers;
+  for (const std::string& optimizer_name : cfg_.optimizers()) {
     auto optimizer = MakeNewOptimizer(optimizer_name, device_types);
     if (optimizer) {
       VLOG(2) << "Registered default graph optimizer: " << optimizer_name;
@@ -540,8 +542,8 @@ absl::Status MetaOptimizer::InitializeOptimizersByName(
 }
 
 absl::Status MetaOptimizer::InitializeCustomGraphOptimizers(
-    const std::set<string>& device_types,
-    const std::set<string>& pre_initialized_optimizers,
+    const std::set<std::string>& device_types,
+    const std::set<std::string>& pre_initialized_optimizers,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
     if (pre_initialized_optimizers.find(optimizer_config.name()) !=
@@ -577,7 +579,7 @@ absl::Status MetaOptimizer::InitializeCustomGraphOptimizers(
 }
 
 absl::Status MetaOptimizer::InitializePluginGraphOptimizers(
-    const std::set<string>& device_types,
+    const std::set<std::string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF)
     return absl::OkStatus();
@@ -590,7 +592,7 @@ absl::Status MetaOptimizer::InitializePluginGraphOptimizers(
 }
 
 const RewriterConfig::CustomGraphOptimizer*
-MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
+MetaOptimizer::GetCustomGraphOptimizerConfig(const std::string& name) const {
   for (const auto& config : cfg_.custom_optimizers()) {
     if (config.name() == name) {
       return &config;
@@ -615,7 +617,7 @@ void MetaOptimizer::InitializeVerifiers(
 }
 
 void MetaOptimizer::PrintUserAndPluginConfigs(
-    const std::set<string>& device_types) const {
+    const std::set<std::string>& device_types) const {
   if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return;
   ConfigList plugin_cfg = PluginGraphOptimizerRegistry::GetPluginConfigs(
       cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
@@ -670,7 +672,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
                                                   ? RewriterConfig::ON
                                                   : RewriterConfig::OFF;
   } else {
-    for (const string& optimizer_name : cfg_.optimizers()) {
+    for (const std::string& optimizer_name : cfg_.optimizers()) {
       if (optimizer_name == "pruning") user_cfg.disable_model_pruning = true;
 
 #define PRINT_CFG(NAME, CONFIG) \
@@ -717,7 +719,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       final_cfg.toggle_config[pair.first] = RewriterConfig::OFF;
   }
 
-  string logs =
+  std::string logs =
       "\nConfig of optimizers\t\tUser's config\tPlugin's config\tFinal "
       "config(User & Plugin)\n";
   absl::StrAppend(&logs, "disable_model_pruning\t\t",
@@ -736,7 +738,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       // TODO(penporn): Remove the hard-coded length and change it to max length
       // of all option strings.
       absl::StrAppend(
-          &logs, pair.first, string(40 - pair.first.size(), ' '),
+          &logs, pair.first, std::string(40 - pair.first.size(), ' '),
           (pair.second == RewriterConfig::ON), "\t\t",
           (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
           (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
@@ -745,7 +747,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       // TODO(penporn): Remove the hard-coded length and change it to max length
       // of all option strings.
       absl::StrAppend(
-          &logs, pair.first, string(40 - pair.first.size(), ' '),
+          &logs, pair.first, std::string(40 - pair.first.size(), ' '),
           (pair.second != RewriterConfig::OFF), "\t\t",
           (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
           (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
@@ -947,7 +949,7 @@ absl::Status MetaOptimizer::RunOptimizer(
   auto duration_ms = timings.DurationMicroSec().value() / 1000.0f;
   timings.ReportAndStop();
 
-  string message;
+  std::string message;
   if (!status.ok()) {
     *optimized_graph = std::move(optimized_item->graph);
     if (absl::IsAborted(status)) {
@@ -1097,7 +1099,7 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
   using NodeDefs = protobuf::RepeatedPtrField<NodeDef>;
 
   // Find functions for which we might need to compute a gradient at runtime.
-  absl::flat_hash_set<string> differentiable_functions;
+  absl::flat_hash_set<std::string> differentiable_functions;
 
   const auto find_differentiable_functions =
       [&](const NodeDefs& nodes) -> void {
@@ -1122,9 +1124,9 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
   // Grappler rewrites can potentially add nodes that are
   // not supported by XLA, so we choose to skip such functions when we optimize
   // the function library.
-  absl::flat_hash_set<string> xla_compiled_functions;
-  std::function<void(const string&)> find_all_functions;
-  find_all_functions = [&](const string& func) -> void {
+  absl::flat_hash_set<std::string> xla_compiled_functions;
+  std::function<void(const std::string&)> find_all_functions;
+  find_all_functions = [&](const std::string& func) -> void {
     // Ignore call cycles in the graph
     if (xla_compiled_functions.contains(func)) return;
     // Find func in the flib
@@ -1167,7 +1169,7 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
   bool is_tpu_graph = IsLegacyTPUBridgeGraphDef(*optimized_graph);
 
   // Optimize each function only once.
-  absl::flat_hash_set<string> optimized_funcs;
+  absl::flat_hash_set<std::string> optimized_funcs;
   while (optimize_function_library) {
     optimize_function_library = false;
 
@@ -1175,7 +1177,7 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
     for (const FunctionDef& func : optimized_graph->library().function()) {
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
-      const string& func_name = func.signature().name();
+      const std::string& func_name = func.signature().name();
 
       // Skip functions that are not reachable from the optimized graph.
       if (!flib.Contains(func_name)) continue;
@@ -1321,7 +1323,7 @@ absl::Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster,
   return absl::OkStatus();
 }
 
-string MetaOptimizer::GetResultString() const {
+std::string MetaOptimizer::GetResultString() const {
   std::string result_string;
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
     absl::StrAppend(&result_string,
@@ -1379,10 +1381,10 @@ absl::Status RunMetaOptimizer(GrapplerItem&& item, const ConfigProto& cfg,
 }
 
 absl::Status OptimizeGraph(
-    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
-    FunctionLibraryDefinition* flib, const DeviceSet& device_set,
-    Device* cpu_device, const ConfigProto& config_proto,
-    const string& grappler_item_id,
+    std::vector<std::string> ret_node_names,
+    std::vector<std::string> keep_node_names, FunctionLibraryDefinition* flib,
+    const DeviceSet& device_set, Device* cpu_device,
+    const ConfigProto& config_proto, const std::string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -1433,7 +1435,7 @@ absl::Status OptimizeGraph(
   // Copy optimized functions back to the overlay lib.
   if (flib) {
     for (const FunctionDef& fdef : out_graph.library().function()) {
-      const string& func_name = fdef.signature().name();
+      const std::string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
         StackTracesMap stack_traces = *flib->GetStackTraces(func_name);
         TF_RETURN_IF_ERROR(

@@ -114,12 +114,13 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
 // Placer.
 class FakeDevice : public Device {
  public:
-  FakeDevice(Env* env, const string& device) : Device(env, attr(device)) {}
-  explicit FakeDevice(const string& device) : FakeDevice(nullptr, device) {}
+  FakeDevice(Env* env, const std::string& device) : Device(env, attr(device)) {}
+  explicit FakeDevice(const std::string& device)
+      : FakeDevice(nullptr, device) {}
   absl::Status Sync() override { return absl::OkStatus(); }
 
  private:
-  static DeviceAttributes attr(const string& device) {
+  static DeviceAttributes attr(const std::string& device) {
     DeviceNameUtils::ParsedName parsed_name;
     bool parsed = DeviceNameUtils::ParseFullName(device, &parsed_name);
     DCHECK(parsed) << "Failed to parse full device name: " << device;
@@ -162,12 +163,12 @@ struct FunctionSpecializationSignature {
   using InputPort = int;
   using OutputPort = int;
 
-  string func_name;
+  std::string func_name;
   bool is_in_fetch_set;
   absl::flat_hash_set<OutputPort> active_outputs;
-  absl::flat_hash_map<string, DataType> type_parameters;
-  absl::flat_hash_map<string, AttrValue> body_parameters;
-  absl::flat_hash_map<InputPort, string> const_inputs;
+  absl::flat_hash_map<std::string, DataType> type_parameters;
+  absl::flat_hash_map<std::string, AttrValue> body_parameters;
+  absl::flat_hash_map<InputPort, std::string> const_inputs;
 
   bool operator==(const FunctionSpecializationSignature& other) const {
     bool equals = func_name == other.func_name &&
@@ -199,7 +200,7 @@ struct FunctionSpecializationSignature {
 
     // First pre-compute hashes for all values in collections with
     // non-deterministic iteration order.
-    std::vector<uint64> hashes;
+    std::vector<uint64_t> hashes;
     hashes.reserve(s.active_outputs.size()         //
                    + s.type_parameters.size() * 2  //
                    + s.body_parameters.size() * 2  //
@@ -208,7 +209,7 @@ struct FunctionSpecializationSignature {
     absl::c_transform(s.active_outputs, std::back_inserter(hashes),
                       hash<OutputPort>());
 
-    using TypeParam = std::pair<const string, DataType>;
+    using TypeParam = std::pair<const std::string, DataType>;
     absl::c_for_each(s.type_parameters, [&hashes](const TypeParam& type_param) {
       AttrValue attr_value;
       attr_value.set_type(type_param.second);
@@ -216,13 +217,13 @@ struct FunctionSpecializationSignature {
       hashes.push_back(AttrValueHash(attr_value));
     });
 
-    using BodyParam = std::pair<const string, AttrValue>;
+    using BodyParam = std::pair<const std::string, AttrValue>;
     absl::c_for_each(s.body_parameters, [&hashes](const BodyParam& body_param) {
       hashes.push_back(Hash64(body_param.first));
       hashes.push_back(FastAttrValueHash(body_param.second));
     });
 
-    using ConstInput = std::pair<const InputPort, string>;
+    using ConstInput = std::pair<const InputPort, std::string>;
     absl::c_for_each(s.const_inputs, [&hashes](const ConstInput& const_input) {
       hashes.push_back(hash<InputPort>()(const_input.first));
       hashes.push_back(Hash64(const_input.second));
@@ -235,14 +236,14 @@ struct FunctionSpecializationSignature {
 };
 
 struct FunctionSpecialization {
-  string specialized_func_name;
+  std::string specialized_func_name;
   // True if the function caller node is in GrapplerItem fetch set.
   bool is_in_fetch_set;
   // Names of the tensors that were pushed down into the function body.
-  absl::flat_hash_set<string> const_inputs;
+  absl::flat_hash_set<std::string> const_inputs;
   // Control dependencies of pushed down const inputs have to be attached to
   // function caller node.
-  absl::flat_hash_set<string> control_deps;
+  absl::flat_hash_set<std::string> control_deps;
   // Output tensors (ports) that consumed by other nodes in the graph or in a
   // GrapplerItem fetch set.
   absl::flat_hash_set<int> active_outputs;
@@ -285,24 +286,24 @@ class FunctionOptimizerContext {
 
   const GraphView& graph_view() const { return graph_view_; }
 
-  bool IsFeedNode(const string& node_name) const {
+  bool IsFeedNode(const std::string& node_name) const {
     return absl::c_any_of(
         item_->feed, [&](const std::pair<std::string, Tensor>& feed) {
           return ParseTensorName(feed.first).node() == node_name;
         });
   }
 
-  bool IsFetchNode(const string& node_name) const {
-    return absl::c_any_of(item_->fetch, [&](const string& fetch) {
+  bool IsFetchNode(const std::string& node_name) const {
+    return absl::c_any_of(item_->fetch, [&](const std::string& fetch) {
       return ParseTensorName(fetch).node() == node_name;
     });
   }
 
-  bool IsTrulyConst(const string& name) const {
+  bool IsTrulyConst(const std::string& name) const {
     return TrulyConstNode(name) != nullptr;
   }
 
-  const NodeDef* TrulyConstNode(const string& name) const {
+  const NodeDef* TrulyConstNode(const std::string& name) const {
     return gtl::FindWithDefault(truly_const_nodes_, name, nullptr);
   }
 
@@ -328,7 +329,7 @@ class FunctionOptimizerContext {
         << "from=" << from.ToString() << " to=" << to.ToString();
   }
 
-  void AddTensorMapping(const string& func_node,
+  void AddTensorMapping(const std::string& func_node,
                         const FunctionSpecialization& specialized_func) {
     for (const auto& pair : specialized_func.output_mapping) {
       int from_idx = pair.first;
@@ -342,14 +343,14 @@ class FunctionOptimizerContext {
   }
 
  private:
-  static absl::flat_hash_map<string, const NodeDef*> InferTrulyConstNodes(
+  static absl::flat_hash_map<std::string, const NodeDef*> InferTrulyConstNodes(
       const GrapplerItem& item, const GraphDef& graph) {
     absl::flat_hash_set<absl::string_view> feed_nodes;
     for (const auto& feed : item.feed) {
       feed_nodes.insert(feed.first);
     }
 
-    absl::flat_hash_map<string, const NodeDef*> const_nodes;
+    absl::flat_hash_map<std::string, const NodeDef*> const_nodes;
     for (const NodeDef& node : graph.node()) {
       if (IsConstant(node) && !feed_nodes.contains(node.name())) {
         const_nodes[node.name()] = &node;
@@ -366,7 +367,7 @@ class FunctionOptimizerContext {
   FunctionLibraryDefinition function_library_;
 
   // Nodes that are Const and not in feed.
-  absl::flat_hash_map<string, const NodeDef*> truly_const_nodes_;
+  absl::flat_hash_map<std::string, const NodeDef*> truly_const_nodes_;
   // Specialized functions.
   absl::flat_hash_map<FunctionSpecializationSignature,
                       const FunctionSpecialization>
@@ -418,7 +419,7 @@ absl::flat_hash_set<int> GetActiveOutputs(const NodeDef& node,
   }
 
   // 2. Or it can be in a fetch set.
-  for (const string& fetch : ctx.item().fetch) {
+  for (const std::string& fetch : ctx.item().fetch) {
     TensorId fetch_tensor = ParseTensorName(fetch);
     if (fetch_tensor.node() == node.name()) {
       active_outputs.insert(fetch_tensor.index());
@@ -430,7 +431,7 @@ absl::flat_hash_set<int> GetActiveOutputs(const NodeDef& node,
 
 bool HasTrulyConstInputs(const NodeDef& node,
                          const FunctionOptimizerContext& ctx) {
-  const auto is_truly_const = [&ctx](const string& input) {
+  const auto is_truly_const = [&ctx](const std::string& input) {
     return ctx.IsTrulyConst(NodeName(input));
   };
   return absl::c_any_of(node.input(), is_truly_const);
@@ -465,15 +466,14 @@ FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
 }
 
 // Push all constant inputs of an instantiating node into the function body.
-absl::Status PushDownConstInputs(const NodeDef& func_node,
-                                 const FunctionOptimizerContext& ctx,
-                                 GrapplerFunctionItem* item,
-                                 absl::flat_hash_set<string>* const_inputs,
-                                 absl::flat_hash_set<string>* control_deps) {
+absl::Status PushDownConstInputs(
+    const NodeDef& func_node, const FunctionOptimizerContext& ctx,
+    GrapplerFunctionItem* item, absl::flat_hash_set<std::string>* const_inputs,
+    absl::flat_hash_set<std::string>* control_deps) {
   // Record node control dependencies in the control_deps set.
   const auto record_control_deps = [&](const NodeDef* const_input) {
     for (int i = const_input->input_size() - 1; i >= 0; --i) {
-      const string& input = const_input->input(i);
+      const std::string& input = const_input->input(i);
       if (IsControlInput(input))
         control_deps->insert(input);
       else
@@ -482,10 +482,10 @@ absl::Status PushDownConstInputs(const NodeDef& func_node,
   };
 
   for (int i = func_node.input_size() - 1; i >= 0; --i) {
-    const string& input = func_node.input(i);
+    const std::string& input = func_node.input(i);
     if (IsControlInput(input)) continue;
 
-    const string node_name = NodeName(input);
+    const std::string node_name = NodeName(input);
     if (ctx.IsTrulyConst(node_name)) {
       VLOG(3) << "Push const into function body: input=" << input;
       const auto* const_input = CHECK_NOTNULL(ctx.TrulyConstNode(node_name));
@@ -506,10 +506,10 @@ void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
   if (specialization.const_inputs.empty()) return;
 
   // Keep only non-const inputs.
-  std::vector<string> keep_inputs;
+  std::vector<std::string> keep_inputs;
   const auto& inputs = specialized_func_node->input();
   absl::c_copy_if(inputs, std::back_inserter(keep_inputs),
-                  [&](const string& input) {
+                  [&](const std::string& input) {
                     return !specialization.const_inputs.contains(input);
                   });
 
@@ -518,13 +518,13 @@ void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
 
   // Attach control dependencies of pushed down const input to the caller node.
   if (!specialization.control_deps.empty()) {
-    absl::flat_hash_set<string> existing_control_deps;
+    absl::flat_hash_set<std::string> existing_control_deps;
 
-    for (const string& input : keep_inputs) {
+    for (const std::string& input : keep_inputs) {
       existing_control_deps.insert(AsControlDependency(NodeName(input)));
     }
 
-    for (const string& ctrl : specialization.control_deps) {
+    for (const std::string& ctrl : specialization.control_deps) {
       if (!existing_control_deps.contains(ctrl)) {
         VLOG(3) << "Forward control dependency: input=" << ctrl;
         specialized_func_node->add_input(ctrl);
@@ -550,7 +550,7 @@ void RemovePushedDownConstInputTypes(
 
   // Keep types of non-const inputs.
   for (int i = 0; i < func_node.input_size(); ++i) {
-    const string& input = func_node.input(i);
+    const std::string& input = func_node.input(i);
     if (IsControlInput(input)) break;
 
     if (!specialization.const_inputs.contains(input)) {
@@ -587,7 +587,7 @@ void RemoveUnusedOutputsTypes(const FunctionSpecialization& specialization,
 
 absl::Status UpdateSpecializedFunctionCallSite(
     const FunctionDef& func, const NodeDef& func_node,
-    const string& specialized_func_name, NodeDef* specialized_func_node) {
+    const std::string& specialized_func_name, NodeDef* specialized_func_node) {
   if (IsDirectFunctionCall(func, func_node)) {
     specialized_func_node->set_op(specialized_func_name);
 
@@ -659,7 +659,7 @@ absl::Status InitializeFunctionSpecializationSignature(
                                                  &sig->body_parameters));
 
   for (int i = 0; i < func_node.input_size(); ++i) {
-    const string& input = func_node.input(i);
+    const std::string& input = func_node.input(i);
     if (IsControlInput(input)) break;
     if (ctx.IsTrulyConst(input)) {
       sig->const_inputs.emplace(i, input);
@@ -674,9 +674,9 @@ absl::Status InitializeFunctionSpecializationSignature(
 // function name. Meta optimizer might create multiple Grappler items for the
 // same graph when optimizing functions, but it's guaranteed that they all will
 // have unique ids.
-string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
-                               const FunctionDef& func,
-                               const NodeDef& func_node) {
+std::string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
+                                    const FunctionDef& func,
+                                    const NodeDef& func_node) {
   return absl::Substitute(
       "$0_specialized_for_$1_at_$2", func.signature().name(),
       absl::StrReplaceAll(func_node.name(), {{"/", "_"}}), ctx.item().id);
@@ -727,8 +727,8 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
-  absl::flat_hash_set<string> const_inputs;
-  absl::flat_hash_set<string> control_deps;
+  absl::flat_hash_set<std::string> const_inputs;
+  absl::flat_hash_set<std::string> control_deps;
   TF_RETURN_IF_ERROR(PushDownConstInputs(func_node, *ctx, &item, &const_inputs,
                                          &control_deps));
 
@@ -751,7 +751,7 @@ absl::Status SpecializeFunction(const NodeDef& func_node,
   TF_RETURN_IF_ERROR(MakeFunctionDef(item, flib, &specialized_func));
 
   // Find a name for specialized function.
-  const string specialized_func_name =
+  const std::string specialized_func_name =
       SpecializedFunctionName(*ctx, func, func_node);
   if (flib.Contains(specialized_func_name)) {
     // NOTE(ezhulenev): This should never happen. If it happens, it's a sign of
@@ -808,7 +808,7 @@ bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
-  const string& value = GetNodeAttrString(n->attrs(), attr_name);
+  const std::string& value = GetNodeAttrString(n->attrs(), attr_name);
   return !value.empty();
 }
 
@@ -829,8 +829,8 @@ bool MarkedForXlaCompilation(const NodeDef& n) {
          is_enabled(kXlaMustCompileAttr);
 }
 
-const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
-  static const auto* exemption = new absl::flat_hash_set<string>(
+const bool IsExemptFromSideEffectsExecutionValidation(const std::string& op) {
+  static const auto* exemption = new absl::flat_hash_set<std::string>(
       {// LINT.IfChange
        // Op types that should not run in program order, e.g. because they need
        // to run asynchronously to avoid deadlock.
@@ -899,7 +899,7 @@ absl::Status ValidateSideEffectsExecution(
   // interested in observing side effects, so it is safe to inline the function
   // body, even if some side-effects will not be executed.
   if (!fbody_side_effects.empty() && !has_outgoing_control_edges) {
-    const string error_message =
+    const std::string error_message =
         "Can't guarantee execution of function side-effects after inlining. "
         "Function call node has no outgoing control edges.";
     if (validate_outgoing_control_edge) {
@@ -1019,7 +1019,7 @@ absl::Status MakeFunctionBodyForInlining(
 
   // Finds a FunctionDef in a library and verifies that it exists.
   const auto find_fdef = [&flib_def, &node](
-                             const string& name,
+                             const std::string& name,
                              const FunctionDef** fdef) -> absl::Status {
     if ((*fdef = flib_def.Find(name)) == nullptr) {
       return absl::InternalError(absl::StrCat(
@@ -1035,7 +1035,7 @@ absl::Status MakeFunctionBodyForInlining(
     NameAttrList func;
     TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), kFuncAttr, &func));
 
-    const string grad = flib_def.FindGradient(func.name());
+    const std::string grad = flib_def.FindGradient(func.name());
 
     if (!grad.empty()) {
       // Function has a custom gradient registered in a library.
@@ -1228,7 +1228,7 @@ absl::Status InlineFunctionCalls(const GrapplerItem& item,
   using NodeNames = absl::flat_hash_set<absl::string_view>;
   NodeNames fetch_nodes;
   fetch_nodes.reserve(item.fetch.size());
-  for (const string& fetch : item.fetch) {
+  for (const std::string& fetch : item.fetch) {
     fetch_nodes.insert(ParseTensorName(fetch).node());
   }
   NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
@@ -1239,7 +1239,7 @@ absl::Status InlineFunctionCalls(const GrapplerItem& item,
     keep_nodes.insert(item.restore_op);
   }
 
-  std::vector<string> inlined_function_names;
+  std::vector<std::string> inlined_function_names;
 
   // Do not inline function call nodes that are part of a feed set.
   NodeNames feed_nodes;
@@ -1403,7 +1403,7 @@ absl::Status InlineFunctionCalls(const GrapplerItem& item,
     DeviceSet device_set;                               // does not own devices
     std::vector<std::unique_ptr<Device>> fake_devices;  // owns fake devices
 
-    for (const string& name : item.devices()) {
+    for (const std::string& name : item.devices()) {
       auto device = std::make_unique<FakeDevice>(name);
       device_set.AddDevice(device.get());
       fake_devices.push_back(std::move(device));
@@ -1481,7 +1481,7 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
       continue;
     }
 
-    const string& func_name = func->signature().name();
+    const std::string& func_name = func->signature().name();
 
     // Specialize it to its instantiation context if it has something worth
     // specializing.
@@ -1490,7 +1490,8 @@ absl::Status FunctionOptimizer::RunFunctionOptimizerPass(
                                        HasUnusedOutputs(node, *func, ctx);
 
     // Do not specialize if function has custom gradient or marked nospecialize.
-    const string grad_func = ctx.function_library().FindGradient(func_name);
+    const std::string grad_func =
+        ctx.function_library().FindGradient(func_name);
     const bool no_specialize =
         !grad_func.empty() || ctx.IsFeedNode(node.name()) ||
         MarkedNoSpecialize(*func) || MarkedForXlaCompilation(node);

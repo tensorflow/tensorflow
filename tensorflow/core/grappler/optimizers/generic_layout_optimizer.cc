@@ -87,9 +87,9 @@ inline bool ConvBackpropExists(const TransposeContext& context,
       continue;
     }
 
-    const string& device_name = GetDeviceName(*node_def);
-    string device_type;
-    string task;
+    const std::string& device_name = GetDeviceName(*node_def);
+    std::string device_type;
+    std::string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
         !absl::StrContains(absl::AsciiStrToLower(device_type),
                            absl::AsciiStrToLower(device))) {
@@ -107,10 +107,10 @@ inline bool ConvBackpropExists(const TransposeContext& context,
   return false;
 }
 
-inline std::pair<string, string> GetSrcAndDstDataFormats(
+inline std::pair<std::string, std::string> GetSrcAndDstDataFormats(
     const TransposeContext& context, GpuStats gpu_stats) {
-  string src_format = kNHWC;
-  string dst_format = kNCHW;
+  std::string src_format = kNHWC;
+  std::string dst_format = kNCHW;
 
   const bool is_NHWC_enforced =
       (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
@@ -135,9 +135,9 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
     if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
-    const string& device_name = GetDeviceName(*node_def);
-    string device_type;
-    string task;
+    const std::string& device_name = GetDeviceName(*node_def);
+    std::string device_type;
+    std::string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
         !absl::StrContains(absl::AsciiStrToLower(device_type),
                            absl::AsciiStrToLower(kGPU))) {
@@ -237,8 +237,8 @@ inline bool IsCancellableConstPermTransposeNodePair(
 
   // Using dst->src to permute on src->dst will result in
   // seq(0, ..., num_elements - 1) if they are cancellable.
-  const auto& fanout_tensor_data = fanout_tensor.unaligned_flat<int32>();
-  const auto& fanin_tensor_data = fanin_tensor.unaligned_flat<int32>();
+  const auto& fanout_tensor_data = fanout_tensor.unaligned_flat<int32_t>();
+  const auto& fanin_tensor_data = fanin_tensor.unaligned_flat<int32_t>();
   const int num_elements = fanout_tensor.NumElements();
   for (int i = 0; i < num_elements; ++i) {
     if (fanout_tensor_data(fanin_tensor_data(i)) != i) {
@@ -407,10 +407,10 @@ absl::Status EraseCancellableNodesAroundPad(TransposeContext* context) {
                              MutableNodeViewFormatter());
 
     // Permute paddings in place according to permutation in second transpose.
-    auto permutation_s = absl::Span<int32>(permute_t.flat<int32>().data(),
-                                           permute_t.NumElements());
-    auto paddings_s = absl::Span<int32>(paddings_t.flat<int32>().data(),
-                                        paddings_t.NumElements());
+    auto permutation_s = absl::Span<int32_t>(permute_t.flat<int32_t>().data(),
+                                             permute_t.NumElements());
+    auto paddings_s = absl::Span<int32_t>(paddings_t.flat<int32_t>().data(),
+                                          paddings_t.NumElements());
     TF_RETURN_IF_ERROR(
         PermuteDouble(absl::StrCat("paddings in ", pad->GetName()),
                       permutation_s, &paddings_s));

@@ -38,7 +38,7 @@ class LoopOptimizer : public GraphOptimizer {
 
   ~LoopOptimizer() override {}
 
-  string name() const override { return "loop_optimizer"; };
+  std::string name() const override { return "loop_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -61,8 +61,9 @@ class LoopOptimizer : public GraphOptimizer {
   };
 
   absl::Status RemoveDeadBranches(
-      const std::unordered_set<string>& nodes_to_preserve, NodeMap& node_map,
-      const absl::flat_hash_set<string>& feed_nodes, GraphDef* optimized_graph);
+      const std::unordered_set<std::string>& nodes_to_preserve,
+      NodeMap& node_map, const absl::flat_hash_set<std::string>& feed_nodes,
+      GraphDef* optimized_graph);
 
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;
