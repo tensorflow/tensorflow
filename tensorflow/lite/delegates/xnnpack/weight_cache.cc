@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 
 #include <fcntl.h>
+
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
 #if defined(_MSC_VER)
 #include <io.h>
 #define F_OK 0
@@ -38,27 +41,9 @@ limitations under the License.
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#define XNNPACK_ABORT_CHECK(TEST, ...)                      \
-  if (!(TEST)) {                                            \
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, __VA_ARGS__); \
-    std::abort();                                           \
-  }
-
-#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
-
-#define XNNPACK_RETURN_CHECK(TEST, ...)                              \
-  if (!(TEST)) {                                                     \
-    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) { \
-      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,                      \
-                      "XNNPack weight cache: " __VA_ARGS__);         \
-    }                                                                \
-    return false;                                                    \
-  }
 
 namespace tflite::xnnpack {
 
@@ -697,7 +682,7 @@ bool IsCompatibleCacheFile(const FileDescriptor& fd) {
                        "Couldn't read file header.");
   XNNPACK_RETURN_CHECK(
       header.version == XNNPackCacheHeader::kVersion,
-      "Cache header version is incompatible. Expected %llu, got %llu.",
+      "Cache header version is incompatible. Expected %lu, got %lu.",
       XNNPackCacheHeader::kVersion, header.version);
   XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
                            header.xnnpack_build_identifier,
