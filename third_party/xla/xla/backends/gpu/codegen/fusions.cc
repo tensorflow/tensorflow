@@ -53,8 +53,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
       return std::nullopt;
     }
 
-    return std::make_unique<DynamicMemcpyFusion>(analysis(),
-                                                 buffer_assignment_);
+    return std::make_unique<DynamicMemcpyFusion>(analysis());
   }
 
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
@@ -67,7 +66,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     }
   }
 
-  return std::make_unique<MemcpyFusion>(analysis(), buffer_assignment_);
+  return std::make_unique<MemcpyFusion>(analysis());
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {

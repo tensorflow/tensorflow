@@ -48,7 +48,7 @@ namespace data {
 class DataServiceContext {
  public:
   virtual ~DataServiceContext() = default;
-  virtual std::unique_ptr<Thread> StartThread(const string& name,
+  virtual std::unique_ptr<Thread> StartThread(const std::string& name,
                                               std::function<void()> fn) = 0;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;

@@ -58,10 +58,10 @@ class GraphRunner {
   //
   // REQUIRES: `graph`, `env`, and `outputs` are not nullptr.
   // `function_library` may be nullptr.
-  typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
+  typedef std::vector<std::pair<std::string, Tensor>> NamedTensorList;
   absl::Status Run(Graph* graph, FunctionLibraryRuntime* function_library,
                    const NamedTensorList& inputs,
-                   const std::vector<string>& output_names,
+                   const std::vector<std::string>& output_names,
                    std::vector<Tensor>* outputs);
 
  private:

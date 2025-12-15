@@ -40,13 +40,13 @@ class LRNFloatTest : public OpsTestBase {
  protected:
   LRNFloatTest() : philox_(123, 17), rand_(&philox_) {}
 
-  int GetIntAttr(const string& name) {
+  int GetIntAttr(const std::string& name) {
     int value;
     TF_CHECK_OK(GetNodeAttr(*node_def(), name, &value));
     return value;
   }
 
-  float GetFloatAttr(const string& name) {
+  float GetFloatAttr(const std::string& name) {
     float value;
     TF_CHECK_OK(GetNodeAttr(*node_def(), name, &value));
     return value;
