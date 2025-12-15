@@ -505,7 +505,8 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
             int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
             if (transpose != nullptr) {
               buffer = tsl::port::AlignedMalloc(
-                  unpacked_size, tsl::Allocator::kAllocatorAlignment);
+                  unpacked_size, static_cast<std::align_val_t>(
+                                     tsl::Allocator::kAllocatorAlignment));
             } else {
               buffer = literal->untyped_data();
             }
@@ -747,7 +748,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                        PjRtBuffer::ToLiteral().Await());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(

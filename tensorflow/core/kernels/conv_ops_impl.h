@@ -178,13 +178,13 @@ struct LaunchGrouped {
     std::array<int64_t, 5> shuffle({3, 0, 1, 2, 4});
 
     // Compute pre shuffle dimemnsions.
-    auto pre_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
+    auto pre_shuffle = [&](const Tensor& tensor) -> std::array<int64_t, 5> {
       return {tensor.dim_size(0), tensor.dim_size(1), tensor.dim_size(2),
               num_groups, tensor.dim_size(3) / num_groups};
     };
 
     // Compute post shuffle dimemnsions.
-    auto post_shuffle = [&](const Tensor& tensor) -> std::array<int64, 5> {
+    auto post_shuffle = [&](const Tensor& tensor) -> std::array<int64_t, 5> {
       return {num_groups, tensor.dim_size(0), tensor.dim_size(1),
               tensor.dim_size(2), tensor.dim_size(3) / num_groups};
     };
@@ -262,8 +262,8 @@ template <typename T>
 struct LaunchConvOp<CPUDevice, T> {
   void operator()(OpKernelContext* context, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter,
-                  const std::vector<int64>& dilations,
-                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& dilations,
+                  const std::vector<int64_t>& strides, const Padding padding,
                   const std::vector<int64_t>& explicit_paddings,
                   TensorFormat data_format, Tensor* output) {
     // For now just calling existing launchers based on spatial dimensions.
@@ -292,7 +292,7 @@ class ConvOp : public BinaryOp<T> {
     OP_REQUIRES(context, groups_ == 1,
                 absl::UnimplementedError(
                     "Grouped/Depthwise Convolutions are not supported yet."));
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context,
                 data_format_str == "CHANNELS_LAST" ||

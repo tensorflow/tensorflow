@@ -307,7 +307,7 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 };
 
 template <>
-struct LaunchFusedConv2DOp<CPUDevice, int8>;
+struct LaunchFusedConv2DOp<CPUDevice, int8_t>;
 
 template <>
 struct LaunchFusedConv2DOp<CPUDevice, qint8>;
@@ -732,7 +732,7 @@ class FusedConv2DOp : public OpKernel {
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      if (std::is_same<T, int8>::value || std::is_same<T, qint8>::value) {
+      if (std::is_same<T, int8_t>::value || std::is_same<T, qint8>::value) {
         patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
                     {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
       } else {

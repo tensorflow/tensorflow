@@ -405,7 +405,7 @@ TEST_F(TestKernelAttr, String) {
                                           /*max_length*/ 5, status);
 
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    EXPECT_EQ("bunny", string(static_cast<const char*>(val.get()), 5));
+    EXPECT_EQ("bunny", std::string(static_cast<const char*>(val.get()), 5));
     TF_DeleteStatus(status);
     return static_cast<void*>(s);
   };
@@ -421,7 +421,7 @@ TEST_F(TestKernelAttr, StringList) {
     s->created = true;
     s->compute_called = false;
 
-    std::vector<string> list = {"bugs", "bunny", "duck"};
+    std::vector<std::string> list = {"bugs", "bunny", "duck"};
     int list_total_size = 0;
     for (const auto& s : list) {
       list_total_size += s.size();
@@ -440,7 +440,8 @@ TEST_F(TestKernelAttr, StringList) {
 
     for (size_t i = 0; i < list.size(); ++i) {
       EXPECT_EQ(list[i].size(), lens[i]) << i;
-      EXPECT_EQ(list[i], string(static_cast<const char*>(values[i]), lens[i]))
+      EXPECT_EQ(list[i],
+                std::string(static_cast<const char*>(values[i]), lens[i]))
           << i;
     }
     TF_DeleteStatus(status);
@@ -823,7 +824,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     TF_Status* s = TF_NewStatus();
     TF_GetInput(ctx, 0, &input, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s)) << "Failed to get input: " << TF_Message(s);
-    EXPECT_EQ(123, *static_cast<tensorflow::uint8*>(TF_TensorData(input)));
+    EXPECT_EQ(123, *static_cast<uint8_t*>(TF_TensorData(input)));
     TF_GetInput(ctx, -1, &input, s);
     EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s));
     TF_GetInput(ctx, 3, &input, s);
@@ -866,7 +867,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
     p.device = &dummy_device;
     p.step_id = 43;
 
-    Tensor t(tensorflow::uint8(123));
+    Tensor t(uint8_t(123));
 
     absl::InlinedVector<TensorValue, 4UL> inputs;
     // Simulate 2 inputs
@@ -886,7 +887,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     ASSERT_EQ(2, num_inputs);
     ASSERT_EQ(1, num_outputs);
-    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<tensorflow::uint8>()());
+    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<uint8_t>()());
   }
 }
 

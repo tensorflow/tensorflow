@@ -24,58 +24,58 @@ namespace tensorflow {
 // Creates a Graph which "reduce"s a 3D float tensor of "num" elements
 // into a scalar.
 template <typename T>
-static Graph* ToScalar(const string& reduce, int num_x, int num_y) {
+static Graph* ToScalar(const std::string& reduce, int num_x, int num_y) {
   auto* g = new Graph(OpRegistry::Global());
   Tensor data(DataTypeToEnum<T>::value, TensorShape({num_x, num_y}));
   data.flat<T>().setRandom();
   Tensor axes(DT_INT32, TensorShape({2}));
-  axes.flat<int32>()(0) = 0;
-  axes.flat<int32>()(1) = 1;
+  axes.flat<int32_t>()(0) = 0;
+  axes.flat<int32_t>()(1) = 1;
   test::graph::Reduce(g, reduce, test::graph::Constant(g, data),
                       test::graph::Constant(g, axes));
   return g;
 }
 
-static Graph* ColReduce(const string& reduce, int num_x, int num_y) {
+static Graph* ColReduce(const std::string& reduce, int num_x, int num_y) {
   auto* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, TensorShape({num_x, num_y}));
   data.flat<float>().setRandom();
   Tensor axes(DT_INT32, TensorShape({1}));
-  axes.flat<int32>()(0) = 0;
+  axes.flat<int32_t>()(0) = 0;
   test::graph::Reduce(g, reduce, test::graph::Constant(g, data),
                       test::graph::Constant(g, axes));
   return g;
 }
 
-static Graph* RowReduce(const string& reduce, int num_x, int num_y) {
+static Graph* RowReduce(const std::string& reduce, int num_x, int num_y) {
   auto* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, TensorShape({num_x, num_y}));
   data.flat<float>().setRandom();
   Tensor axes(DT_INT32, TensorShape({1}));
-  axes.flat<int32>()(0) = 1;
+  axes.flat<int32_t>()(0) = 1;
   test::graph::Reduce(g, reduce, test::graph::Constant(g, data),
                       test::graph::Constant(g, axes));
   return g;
 }
 
-static Graph* ThreeDYReduce(const string& reduce, int num_y, int num_z) {
+static Graph* ThreeDYReduce(const std::string& reduce, int num_y, int num_z) {
   auto* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, TensorShape({4, num_y, num_z}));
   data.flat<float>().setRandom();
   Tensor axes(DT_INT32, TensorShape({1}));
-  axes.flat<int32>()(0) = 1;
+  axes.flat<int32_t>()(0) = 1;
   test::graph::Reduce(g, reduce, test::graph::Constant(g, data),
                       test::graph::Constant(g, axes));
   return g;
 }
 
-static Graph* ThreeDXZReduce(const string& reduce, int num_y, int num_z) {
+static Graph* ThreeDXZReduce(const std::string& reduce, int num_y, int num_z) {
   auto* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, TensorShape({4, num_y, num_z}));
   data.flat<float>().setRandom();
   Tensor axes(DT_INT32, TensorShape({2}));
-  axes.flat<int32>()(0) = 0;
-  axes.flat<int32>()(1) = 2;
+  axes.flat<int32_t>()(0) = 0;
+  axes.flat<int32_t>()(1) = 2;
   test::graph::Reduce(g, reduce, test::graph::Constant(g, data),
                       test::graph::Constant(g, axes));
   return g;
@@ -85,7 +85,7 @@ static Graph* ThreeDXZReduce(const string& reduce, int num_y, int num_z) {
 // into a scalar on a "device". Runs the bench for "iters" times.
 template <typename T>
 static void ReduceToScalar(::testing::benchmark::State& state,
-                           const string& device, const string& reduce,
+                           const std::string& device, const std::string& reduce,
                            int num_x, int num_y) {
   test::Benchmark(device, ToScalar<T>(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
@@ -97,8 +97,8 @@ static void ReduceToScalar(::testing::benchmark::State& state,
 }
 
 static void DoRowReduce(::testing::benchmark::State& state,
-                        const string& device, const string& reduce, int num_x,
-                        int num_y) {
+                        const std::string& device, const std::string& reduce,
+                        int num_x, int num_y) {
   test::Benchmark(device, RowReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
@@ -109,8 +109,8 @@ static void DoRowReduce(::testing::benchmark::State& state,
 }
 
 static void DoColReduce(::testing::benchmark::State& state,
-                        const string& device, const string& reduce, int num_x,
-                        int num_y) {
+                        const std::string& device, const std::string& reduce,
+                        int num_x, int num_y) {
   test::Benchmark(device, ColReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
@@ -121,8 +121,8 @@ static void DoColReduce(::testing::benchmark::State& state,
 }
 
 static void Do3DYReduce(::testing::benchmark::State& state,
-                        const string& device, const string& reduce, int num_x,
-                        int num_y) {
+                        const std::string& device, const std::string& reduce,
+                        int num_x, int num_y) {
   test::Benchmark(device, ThreeDYReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);
@@ -133,8 +133,8 @@ static void Do3DYReduce(::testing::benchmark::State& state,
 }
 
 static void Do3DXZReduce(::testing::benchmark::State& state,
-                         const string& device, const string& reduce, int num_x,
-                         int num_y) {
+                         const std::string& device, const std::string& reduce,
+                         int num_x, int num_y) {
   test::Benchmark(device, ThreeDXZReduce(reduce, num_x, num_y),
                   /*old_benchmark_api*/ false)
       .Run(state);

@@ -93,7 +93,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
 
     // Allocate batch pointers.
     Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    auto batch_ptr_vec = batch_ptr.vec<int32>();
+    auto batch_ptr_vec = batch_ptr.vec<int32_t>();
     batch_ptr_vec(0) = 0;
 
     // Temporary vector of Eigen SparseMatrices to store the Sparse Cholesky
@@ -130,7 +130,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
                                    Eigen::NaturalOrdering<int>>
                   solver;
               auto permutation_indices_flat =
-                  input_permutation_indices.flat<int32>().data();
+                  input_permutation_indices.flat<int32_t>().data();
 
               // Invert the fill-in reducing ordering and apply it to the input
               // sparse matrix.
@@ -183,8 +183,8 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
     Tensor output_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
     Tensor output_values(cpu_allocator(), DataTypeToEnum<T>::value,
                          TensorShape({total_nnz}));
-    auto output_row_ptr_ptr = output_row_ptr.flat<int32>().data();
-    auto output_col_ind_ptr = output_col_ind.flat<int32>().data();
+    auto output_row_ptr_ptr = output_row_ptr.flat<int32_t>().data();
+    auto output_col_ind_ptr = output_col_ind.flat<int32_t>().data();
     auto output_values_ptr = output_values.flat<T>().data();
 
     // Copy the output matrices from each batch into the CSRSparseMatrix
