@@ -129,11 +129,11 @@ class DecodeRawOp : public OpKernel {
 REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
-REGISTER(int32);
-REGISTER(uint16);
-REGISTER(uint8);
-REGISTER(int16);
-REGISTER(int8);
+REGISTER(int32_t);
+REGISTER(uint16_t);
+REGISTER(uint8_t);
+REGISTER(int16_t);
+REGISTER(int8_t);
 REGISTER(int64_t);
 REGISTER(bool);
 REGISTER(complex64);

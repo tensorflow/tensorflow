@@ -46,7 +46,7 @@ template <typename Device, typename T>
 class DepthToSpaceOp : public OpKernel {
  public:
   explicit DepthToSpaceOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -122,9 +122,10 @@ class DepthToSpaceOp : public OpKernel {
     if (std::is_same<Device, GPUDevice>::value) {
       if (is_int8x4) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
-        auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
-        auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::DepthToSpaceOpFunctor<Device, int32, FORMAT_NCHW> functor;
+        auto Tinput_v = input.template reinterpret_last_dimension<int32_t, 4>();
+        auto Toutput_v =
+            outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
+        functor::DepthToSpaceOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
         functor(context->eigen_device<Device>(), Tinput_v, block_size_,
                 Toutput_v);
         return;
