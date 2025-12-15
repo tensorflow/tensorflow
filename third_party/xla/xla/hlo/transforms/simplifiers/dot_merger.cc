@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <numeric>
 #include <set>
 #include <string>
 #include <utility>
@@ -478,7 +479,14 @@ absl::StatusOr<bool> MergeDots(
   }
 
   VLOG(0) << "Merging Dots in computation: " << comp->name();
-  VLOG(1) << "Found " << equivalence_classes.size() << " equivalence classes.";
+  VLOG(1) << "Found " << equivalence_classes.size()
+          << " equivalence classes with "
+          << std::accumulate(equivalence_classes.begin(),
+                             equivalence_classes.end(), std::uint64_t{0},
+                             [](std::uint64_t total, auto const& values) {
+                               return values.second.size() + total;
+                             })
+          << " dots in total.";
 
   // Build a dependency graph representing the whole computation.
   GraphCycles graph;
@@ -567,10 +575,6 @@ absl::StatusOr<bool> MergeDots(
           dead_instrs.insert(b);
           dots[i] = merged;
           dots[j] = nullptr;
-          if (!is_merge_candidate(merged)) {
-            // The merged dot is not a candidate for futher merging.
-            break;
-          }
         }
       }
     }

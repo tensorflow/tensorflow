@@ -18,8 +18,8 @@ limitations under the License.
 namespace tensorflow {
 REGISTER4(BinaryOp, CPU, "Maximum", functor::maximum, float, Eigen::half,
           bfloat16, double);
-REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, int8, uint8, int16,
-          uint16, int32, uint32, int64_t, uint64);
+REGISTER8(BinaryOp, CPU, "Maximum", functor::maximum, int8_t, uint8_t, int16_t,
+          uint16_t, int32_t, uint32_t, int64_t, uint64_t);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER6(BinaryOp, GPU, "Maximum", functor::maximum, float, Eigen::half,
@@ -44,7 +44,7 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::maximum<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::maximum<int32_t>>);
 
 }  // namespace tensorflow

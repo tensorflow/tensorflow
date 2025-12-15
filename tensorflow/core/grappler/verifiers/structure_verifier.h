@@ -32,7 +32,7 @@ class StructureVerifier : public GraphVerifier {
   StructureVerifier() {}
   ~StructureVerifier() override {}
 
-  string name() const override { return "structure_verifier"; };
+  std::string name() const override { return "structure_verifier"; };
 
   absl::Status Verify(const GraphDef& graph) override;
 };

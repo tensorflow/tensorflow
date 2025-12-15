@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Acos", functor::acos, Eigen::half, bfloat16, float,
-          double, int8);
-REGISTER5(UnaryOp, CPU, "Acos", functor::acos, int16, int32, int64_t, complex64,
-          complex128);
+          double, int8_t);
+REGISTER5(UnaryOp, CPU, "Acos", functor::acos, int16_t, int32_t, int64_t,
+          complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

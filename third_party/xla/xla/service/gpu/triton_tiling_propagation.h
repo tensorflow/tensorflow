@@ -249,6 +249,8 @@ struct DotProperties {
   // Index of dot dimension that can be split.
   // Currently typically LHS non-contracting one.
   const int splittable_dimension_index;
+  // Size of the contracting dimension (K).
+  const int64_t contracting_dim_size;
 };
 
 // A special value for splittable_dimension_major_part_size.
