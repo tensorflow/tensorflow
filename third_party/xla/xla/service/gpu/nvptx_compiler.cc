@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
+#include "xla/service/gpu/transforms/gemm_workspace_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -375,6 +376,11 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
                             thread_pool, should_autotune, target_config,
                             options.device_allocator));
   pipeline->AddPass(std::move(autotuner_pass));
+
+  // After autotuning, update GEMM workspace sizes to match the exact
+  // requirements of the selected algorithms, potentially reducing memory usage.
+  pipeline->AddPass<GemmWorkspaceRewriter>(gpu_version, stream_exec);
+
   return absl::OkStatus();
 }
 
