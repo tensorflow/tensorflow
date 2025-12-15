@@ -3352,6 +3352,8 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
       tpu_topology_extension_(pjrt::FindExtension<PJRT_TpuTopology_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_TpuTopology)),
       c_topology_(c_topology),
+      platform_version_(absl::StrCat(
+          "PJRT C API\n", ::pjrt::GetPlatformVersion(c_topology, c_api))),
       platform_name_(::pjrt::PlatformName(c_api, c_topology)),
       platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {
@@ -3363,13 +3365,7 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
 }
 
 absl::string_view PjRtCApiTopologyDescription::platform_version() const {
-  PJRT_TopologyDescription_PlatformVersion_Args args;
-  args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.topology = c_topology_;
-  pjrt::LogFatalIfPjrtError(
-      c_api_->PJRT_TopologyDescription_PlatformVersion(&args), c_api_);
-  return absl::string_view(args.platform_version, args.platform_version_size);
+  return platform_version_;
 }
 
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>

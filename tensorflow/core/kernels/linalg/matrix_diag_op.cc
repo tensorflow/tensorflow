@@ -76,7 +76,7 @@ class MatrixDiagPartOp : public OpKernel {
       OP_REQUIRES(context, diag_index.NumElements() > 0,
                   errors::InvalidArgument(
                       "Expected diag_index to have at least 1 element"));
-      lower_diag_index = diag_index.flat<int32>()(0);
+      lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
         auto diag_index_size = diag_index.dim_size(0);
@@ -86,7 +86,7 @@ class MatrixDiagPartOp : public OpKernel {
                 "diag_index must have only one or two elements, received ",
                 diag_index_size, " elements."));
         if (diag_index_size > 1) {
-          upper_diag_index = diag_index.flat<int32>()(1);
+          upper_diag_index = diag_index.flat<int32_t>()(1);
         }
       }
       const Tensor& padding_in = context->input(2);
@@ -192,7 +192,7 @@ class MatrixDiagOp : public OpKernel {
       OP_REQUIRES(context, diag_index.NumElements() > 0,
                   errors::InvalidArgument(
                       "Expected diag_index to have at least 1 element"));
-      lower_diag_index = diag_index.flat<int32>()(0);
+      lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
         auto diag_index_size = diag_index.dim_size(0);
@@ -202,19 +202,19 @@ class MatrixDiagOp : public OpKernel {
                 "diag_index must have only one or two elements, received ",
                 diag_index_size, " elements."));
         if (diag_index_size > 1) {
-          upper_diag_index = diag_index.flat<int32>()(1);
+          upper_diag_index = diag_index.flat<int32_t>()(1);
         }
       }
 
       auto& num_rows_tensor = context->input(2);
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_rows_tensor.shape()),
                   errors::InvalidArgument("num_rows must be a scalar"));
-      num_rows = num_rows_tensor.flat<int32>()(0);
+      num_rows = num_rows_tensor.flat<int32_t>()(0);
 
       auto& num_cols_tensor = context->input(3);
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_cols_tensor.shape()),
                   errors::InvalidArgument("num_cols must be a scalar"));
-      num_cols = num_cols_tensor.flat<int32>()(0);
+      num_cols = num_cols_tensor.flat<int32_t>()(0);
 
       auto& padding_value_tensor = context->input(4);
       OP_REQUIRES(context,
@@ -338,7 +338,7 @@ namespace functor {
 void ReadAlignment(OpKernelConstruction* context,
                    bool* left_align_superdiagonal,
                    bool* left_align_subdiagonal) {
-  string align;
+  std::string align;
   OP_REQUIRES_OK(context, context->GetAttr("align", &align));
 
   *left_align_superdiagonal = align == "LEFT_LEFT" || align == "LEFT_RIGHT";
