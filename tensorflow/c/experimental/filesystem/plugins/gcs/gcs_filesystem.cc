@@ -214,7 +214,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
   if (gcs_file->is_cache_enable || n > gcs_file->buffer_size) {
     return gcs_file->read_fn(gcs_file->path, offset, n, buffer, status);
   } else {
-    absl::MutexLock l(&gcs_file->buffer_mutex);
+    absl::MutexLock l(gcs_file->buffer_mutex);
     size_t buffer_end = gcs_file->buffer_start + gcs_file->buffer.size();
     size_t copy_size = 0;
     if (offset < buffer_end && gcs_file->buffer_start) {
@@ -582,7 +582,7 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   bool is_cache_enabled;
   {
-    absl::MutexLock l(&gcs_file->block_cache_lock);
+    absl::MutexLock l(gcs_file->block_cache_lock);
     is_cache_enabled = gcs_file->file_block_cache->IsCacheEnabled();
   }
   auto read_fn = [gcs_file, is_cache_enabled, bucket, object](
@@ -590,7 +590,7 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                      char* buffer, TF_Status* status) -> int64_t {
     int64_t read = 0;
     if (is_cache_enabled) {
-      absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+      absl::ReaderMutexLock l(gcs_file->block_cache_lock);
       GcsFileStat stat;
       gcs_file->stat_cache->LookupOrCompute(
           path, &stat,
@@ -844,7 +844,7 @@ static bool FolderExists(GCSFile* gcs_file, std::string dir,
 }
 
 static void ClearFileCaches(GCSFile* gcs_file, const std::string& path) {
-  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  absl::ReaderMutexLock l(gcs_file->block_cache_lock);
   gcs_file->file_block_cache->RemoveFile(path);
   gcs_file->stat_cache->Delete(path);
 }
@@ -1161,7 +1161,7 @@ static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
 
 static void FlushCaches(const TF_Filesystem* filesystem) {
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  absl::ReaderMutexLock l(gcs_file->block_cache_lock);
   gcs_file->file_block_cache->Flush();
   gcs_file->stat_cache->Clear();
 }
