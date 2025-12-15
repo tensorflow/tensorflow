@@ -67,7 +67,6 @@ xla_cc_test(
         ":type_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_googletest//:gtest",

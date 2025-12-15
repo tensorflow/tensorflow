@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -48,8 +47,8 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -68,8 +67,8 @@ ENTRY %entrycomp (x: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -87,8 +86,8 @@ ENTRY %entrycomp (x: f32[], y: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -108,8 +107,8 @@ ENTRY %entrycomp (p: f32[2,2]) -> ((f32[2,2]), (f32[2,2], f32[2,2])) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -128,8 +127,8 @@ ENTRY %entrycomp (p: f32[2]) -> (f32[1], f32[1]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -148,8 +147,8 @@ ENTRY %entrycomp (p: f32[2]) -> (f32[1], f32[1]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -170,8 +169,8 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -192,8 +191,8 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -215,8 +214,8 @@ ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_tuple = module->entry_computation()->root_instruction();
   auto i1 = root_tuple->operands()[0];
   auto i2 = root_tuple->operands()[1];
@@ -251,8 +250,8 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_while = module->entry_computation()->root_instruction();
   auto body_tuple = root_while->while_body()->root_instruction();
   auto i1 = body_tuple->operands()[0];
@@ -289,8 +288,8 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_while = module->entry_computation()->root_instruction();
   auto body_tuple = root_while->while_body()->root_instruction();
   auto i1 = body_tuple->operands()[0];
@@ -327,8 +326,8 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto root_while = module->entry_computation()->root_instruction();
   auto body_tuple = root_while->while_body()->root_instruction();
   auto i1 = body_tuple->operands()[0]->operands()[0];  // %get-tuple-element.1
@@ -372,8 +371,8 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
 
   auto root_while = module->entry_computation()->root_instruction();
   auto inner_while = root_while->while_body()->root_instruction();
@@ -457,7 +456,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -508,7 +507,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -576,7 +575,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -645,7 +644,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -688,7 +687,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -770,7 +769,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -824,7 +823,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -907,7 +906,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -946,7 +945,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1005,7 +1004,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1081,7 +1080,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1130,7 +1129,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1201,7 +1200,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1246,7 +1245,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1335,7 +1334,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1387,7 +1386,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1477,7 +1476,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1528,7 +1527,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   auto crs_before =
@@ -1606,7 +1605,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1644,7 +1643,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1680,8 +1679,8 @@ ENTRY Parameters1.v4 {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   auto cond = module->entry_computation()->root_instruction();
 
   auto branch_true = cond->branch_computation(0)->root_instruction();
@@ -1720,7 +1719,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1749,7 +1748,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1777,7 +1776,7 @@ ENTRY %entrycomp (p: f32[2,4]) -> f32[2,4] {
 
   // Replacing replicated all-reduce is only triggered when there are enough
   // replicas (currently > num_partitions * 8).
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/32));
   ArCrsCombiner combiner(/*num_spatial_partitions=*/2,
@@ -1816,7 +1815,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_str, /*replica_count=*/2,
                                    /*num_partitions=*/4));

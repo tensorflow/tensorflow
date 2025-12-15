@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -37,12 +38,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -161,8 +162,8 @@ TEST_F(XLAOpsTest, BackendKindGetAndSet) {
       return %arg0 : f32
     }
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseMlirModuleString(kHloModule, &mlir_context_));
   auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(func);
   EXPECT_EQ(GetBackendKind(func), xla::BackendKind::kCpu);
@@ -180,8 +181,8 @@ TEST_F(XLAOpsTest, BackendKindGetAndSet) {
     CHECK:     {xla.backend_kind = #xla.backend_kind<gpu>}
     CHECK-NOT: {xla.backend_kind = #xla.backend_kind<cpu>}
   )";
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(mlir_dump, kExpected));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(mlir_dump, kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -193,8 +194,8 @@ TEST_F(XLAOpsTest, BackendKindCannotGetWrongAttributeName) {
       return %arg0 : f32
     }
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseMlirModuleString(kHloModule, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseMlirModuleString(kHloModule, &mlir_context_));
   auto func = module->lookupSymbol<mlir::func::FuncOp>("main");
   ASSERT_TRUE(func);
   EXPECT_FALSE(GetBackendKind(func).has_value());

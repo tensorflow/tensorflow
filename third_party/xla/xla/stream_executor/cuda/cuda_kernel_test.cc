@@ -22,19 +22,18 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 using testing::Ge;
 
 TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
-  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
-                          PlatformManager::PlatformWithName("CUDA"));
-  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(Platform * platform,
+                       PlatformManager::PlatformWithName("CUDA"));
+  ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                       platform->ExecutorForDevice(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cuda_kernel, LoadAddI32TestKernel(executor));
+  ASSERT_OK_AND_ASSIGN(auto cuda_kernel, LoadAddI32TestKernel(executor));
 
   EXPECT_EQ(cuda_kernel->Arity(), 3);
   EXPECT_THAT(cuda_kernel->GetMaxOccupiedBlocksPerCore(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -61,7 +61,7 @@ IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
 }
 
 void IfrtIrExecutableImplTestBase::SetUp() {
-  TF_ASSERT_OK_AND_ASSIGN(client_, GetClient());
+  ASSERT_OK_AND_ASSIGN(client_, GetClient());
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>

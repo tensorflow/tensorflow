@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -42,7 +42,7 @@ TEST(ConvertTensorShapeToType, Simple) {
   // Static shape.
   {
     auto shape = ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128});
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));
 
@@ -56,7 +56,7 @@ TEST(ConvertTensorShapeToType, Simple) {
   {
     auto shape =
         ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128}, {true, false});
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));
 

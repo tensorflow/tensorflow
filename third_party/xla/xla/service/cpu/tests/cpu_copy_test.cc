@@ -17,10 +17,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
@@ -37,10 +38,9 @@ ENTRY entry {
 }
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(
-      const Literal result,
-      Execute(std::move(module), {}, /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {},
+                                                     /*run_hlo_passes=*/false));
 
   absl::Span<const uint8_t> result_data = result.data<uint8_t>();
   for (int64_t row = 0; row < 20; ++row) {

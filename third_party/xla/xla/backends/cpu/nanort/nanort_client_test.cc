@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -113,11 +114,11 @@ TEST_P(NanoRtClientTest, CompileAndRunScalarComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   // Storage for executable parameters and results.
   alignas(32) float p0_value = 1.0f;
@@ -149,11 +150,11 @@ TEST_P(NanoRtClientTest, CompileAndRunTupledComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   // Storage for executable parameters and results.
   alignas(32) float p0_value = 2.0f;
@@ -182,11 +183,11 @@ TEST_P(NanoRtClientTest, CompileAndRunConstantComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   // Storage for executable results.
   alignas(32) float r0_value = 0.0f;
@@ -224,11 +225,11 @@ TEST_P(NanoRtClientTest, CompileAndRunConditionalComputation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   // Storage for executable parameters and results.
   alignas(32) int32_t p0_value = 0;
@@ -261,11 +262,11 @@ ENTRY test_module {
   ROOT add = f32[1024,4096] add(matmul_1, matmul_2)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   xla::Literal first_literal =
       LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(1024, 4096, 1.0f));
@@ -315,16 +316,16 @@ ENTRY ReplicaAndPartitionId {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   ComputationPlacer computation_placer;
   constexpr int kReplicaCount = 2;
   constexpr int kComputationCount = 2;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_assignment,
       computation_placer.AssignDevices(kReplicaCount, kComputationCount));
 
@@ -390,12 +391,11 @@ TEST_P(NanoRtClientTest, CustomCallTest) {
         api_version=API_VERSION_TYPED_FFI
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
 
   int32_t a = 1.0f;
   int32_t b = 2.0f;
@@ -431,12 +431,11 @@ TEST_P(NanoRtClientTest, ProgramShapeTestInt4) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kModuleStr));
   XlaComputation computation(module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
   ASSERT_TRUE(executable->program_shape().has_value());
 
   auto program_shape = executable->program_shape();
@@ -461,12 +460,12 @@ TEST_P(NanoRtClientTest, ProgramShapeKeepsLayout) {
     }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
   XlaComputation computation(hlo_module->ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
-                          GetExecutable(computation, GetParam()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                       GetExecutable(computation, GetParam()));
   ASSERT_TRUE(executable->program_shape().has_value());
 
   auto program_shape = executable->program_shape();

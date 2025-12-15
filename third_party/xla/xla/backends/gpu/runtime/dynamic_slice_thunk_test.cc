@@ -120,12 +120,12 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
                                  /*platform_name=*/"TEST_PLATFORM");
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk_from_proto,
       DynamicSliceThunk::FromProto(Thunk::ThunkInfo(), proto,
                                    /*buffer_allocations=*/buffer_allocations,
                                    deserializer));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto_roundtrip, thunk_from_proto->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto proto_roundtrip, thunk_from_proto->ToProto());
   auto dynamic_slice_thunk_proto_roundtrip =
       proto_roundtrip.dynamic_slice_thunk();
   auto proto_no_ids = proto;
@@ -244,18 +244,16 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          CreateSlicedGemmThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto thunk, CreateSlicedGemmThunk(backing_allocations));
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemm) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          CreateSlicedGemmThunk(backing_allocations));
+  ASSERT_OK_AND_ASSIGN(auto thunk, CreateSlicedGemmThunk(backing_allocations));
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -417,9 +415,9 @@ CreateMultipleSlicedOperandsGemmThunk(
 
 TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemmProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, CreateMultipleSlicedOperandsGemmThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
@@ -430,9 +428,9 @@ TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemm) {
   // f32[1,3]{1,0} slice(lhs), slice={[0:1], [1:4]}
 
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, CreateMultipleSlicedOperandsGemmThunk(backing_allocations));
 
   int64_t length = sizeof(float) * 2 * 4;
@@ -531,7 +529,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
 TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 8;
   int64_t dst_count = 8 * 8;
@@ -572,7 +570,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
@@ -583,7 +581,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
@@ -666,7 +664,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 2;
   int64_t dst_count = 2 * 2 * 2 * 2;
@@ -732,7 +730,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
@@ -743,7 +741,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
@@ -951,18 +949,17 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrderProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      CreateSlicedGemmArbitraryArgumentOrderThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto thunk, CreateSlicedGemmArbitraryArgumentOrderThunk(
+                                       backing_allocations));
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DynamicSliceThunk> thunk,
       CreateSlicedGemmArbitraryArgumentOrderThunk(backing_allocations));
 
@@ -1125,10 +1122,10 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
 TEST_F(DynamicSliceThunkTest,
        SlicedGemmArbitraryNumberOfArgumentsProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DynamicSliceThunk> thunk,
       CreateSlicedGemmArbitraryNumberOfArgumentsThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
@@ -1139,9 +1136,9 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
   // f32[1,3]{1,0} slice(lhs), slice={[0:1], [1:4]}
 
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<DynamicSliceThunk> thunk,
       CreateSlicedGemmArbitraryNumberOfArgumentsThunk(backing_allocations));
 
@@ -1288,18 +1285,18 @@ CreateSlicedTupledOperandGemmThunk(
 
 TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemmProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, CreateSlicedTupledOperandGemmThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CreateSlicedTupledOperandGemmThunk(backing_allocations));
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, CreateSlicedTupledOperandGemmThunk(backing_allocations));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       CreateSlicedTupledOperandGemmThunk(backing_allocations));
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
   int64_t rhs_length = sizeof(float) * 3 * 1;
@@ -1374,7 +1371,7 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
 TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   se::StreamExecutor* executor = GpuExecutor();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   int64_t src_count = 8 * 8 * 10 * 2;
   int64_t dst_count = 2 * 2 * 2 * 2;
@@ -1440,7 +1437,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto registration,
       xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName()));
 
@@ -1451,7 +1448,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
@@ -1664,17 +1661,17 @@ CreateSlicedOperandsSameBufferGemmThunk(
 
 TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemmProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, CreateSlicedOperandsSameBufferGemmThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, CreateSlicedOperandsSameBufferGemmThunk(backing_allocations));
 
   int64_t lhs_length = sizeof(float) * 2 * 4;
@@ -1886,10 +1883,10 @@ TEST_F(
     DynamicSliceThunkTest,
     HostInductionVariableAndOffsetEvaluationExecutesCorrectlyProtoRoundTrip) {
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       CreateHostInductionVariableAndOffsetEvaluationThunk(backing_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto proto, thunk->ToProto());
   CheckProtoRoundTrip(*thunk, proto.dynamic_slice_thunk());
 }
 
@@ -1901,9 +1898,9 @@ TEST_F(DynamicSliceThunkTest,
   // f32[1,3]{1,0} slice(lhs), slice={[0:1], [0:4]}
 
   se::StreamExecutor* executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   std::vector<std::unique_ptr<BufferAllocation>> backing_allocations;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       CreateHostInductionVariableAndOffsetEvaluationThunk(backing_allocations));
 
@@ -1982,10 +1979,9 @@ TEST_F(DynamicSliceThunkTest,
        SerializeAndDeserializeOptionalOffsetsWithNullopt) {
   std::optional<std::vector<DynamicSliceThunk::Offset>> offsets_item =
       std::nullopt;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto proto,
-      SerializeOptionalDynamicSliceOffsetsToProto(offsets_item, std::nullopt));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto proto, SerializeOptionalDynamicSliceOffsetsToProto(
+                                       offsets_item, std::nullopt));
+  ASSERT_OK_AND_ASSIGN(
       auto deserialized_offsets,
       DeserializeOptionalDynamicSliceOffsetsFromProto(proto, {}, std::nullopt));
   EXPECT_FALSE(deserialized_offsets.has_value());
@@ -1995,11 +1991,10 @@ TEST_F(DynamicSliceThunkTest,
        SerializeAndDeserializeOptionalOffsetsWithConstOffset) {
   std::optional<std::vector<DynamicSliceThunk::Offset>> offsets_item =
       std::vector<DynamicSliceThunk::Offset>{123l};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto proto,
-      SerializeOptionalDynamicSliceOffsetsToProto(offsets_item, std::nullopt));
+  ASSERT_OK_AND_ASSIGN(auto proto, SerializeOptionalDynamicSliceOffsetsToProto(
+                                       offsets_item, std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto deserialized_offsets,
       DeserializeOptionalDynamicSliceOffsetsFromProto(proto, {}, std::nullopt));
   ASSERT_TRUE(deserialized_offsets.has_value());
@@ -2014,12 +2009,11 @@ TEST_F(DynamicSliceThunkTest,
   BufferAllocation::Slice slice(&allocations.back(), 128, 256);
   std::optional<std::vector<DynamicSliceThunk::Offset>> offsets_item =
       std::vector<DynamicSliceThunk::Offset>{slice};
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto proto,
-      SerializeOptionalDynamicSliceOffsetsToProto(offsets_item, std::nullopt));
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_offsets,
-                          DeserializeOptionalDynamicSliceOffsetsFromProto(
-                              proto, allocations, std::nullopt));
+  ASSERT_OK_AND_ASSIGN(auto proto, SerializeOptionalDynamicSliceOffsetsToProto(
+                                       offsets_item, std::nullopt));
+  ASSERT_OK_AND_ASSIGN(auto deserialized_offsets,
+                       DeserializeOptionalDynamicSliceOffsetsFromProto(
+                           proto, allocations, std::nullopt));
   ASSERT_TRUE(deserialized_offsets.has_value());
   ASSERT_EQ(deserialized_offsets->size(), 1);
   auto deserialized_slice =
@@ -2037,8 +2031,8 @@ TEST_F(DynamicSliceThunkTest,
         ROOT c = f32[] constant(0.0)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(hlo_text));
   HloModule* hlo_module_ptr = hlo_module.get();
 
   std::vector<std::unique_ptr<HloModule>> modules;
@@ -2050,8 +2044,8 @@ TEST_F(DynamicSliceThunkTest,
         ROOT c0 = s32[] constant(0)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto indvar_init_module,
-                          ParseAndReturnUnverifiedModule(indvar_init_hlo));
+  ASSERT_OK_AND_ASSIGN(auto indvar_init_module,
+                       ParseAndReturnUnverifiedModule(indvar_init_hlo));
 
   const char* indvar_update_hlo = R"(
       HloModule indvar_update
@@ -2061,8 +2055,8 @@ TEST_F(DynamicSliceThunkTest,
         ROOT add = s32[] add(p0, c1)
       }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(auto indvar_update_module,
-                          ParseAndReturnUnverifiedModule(indvar_update_hlo));
+  ASSERT_OK_AND_ASSIGN(auto indvar_update_module,
+                       ParseAndReturnUnverifiedModule(indvar_update_hlo));
 
   DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata metadata(
       std::move(indvar_init_module), std::move(indvar_update_module),
@@ -2071,24 +2065,23 @@ TEST_F(DynamicSliceThunkTest,
   std::optional<std::vector<DynamicSliceThunk::Offset>> offsets_item =
       std::vector<DynamicSliceThunk::Offset>{hlo_module_ptr};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto proto,
-                          SerializeOptionalDynamicSliceOffsetsToProto(
-                              offsets_item, std::move(metadata)));
+  ASSERT_OK_AND_ASSIGN(auto proto, SerializeOptionalDynamicSliceOffsetsToProto(
+                                       offsets_item, std::move(metadata)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module2,
-                          ParseAndReturnUnverifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(auto hlo_module2,
+                       ParseAndReturnUnverifiedModule(hlo_text));
   std::vector<std::unique_ptr<HloModule>> modules2;
   modules2.push_back(std::move(hlo_module2));
-  TF_ASSERT_OK_AND_ASSIGN(auto indvar_init_module2,
-                          ParseAndReturnUnverifiedModule(indvar_init_hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto indvar_update_module2,
-                          ParseAndReturnUnverifiedModule(indvar_update_hlo));
+  ASSERT_OK_AND_ASSIGN(auto indvar_init_module2,
+                       ParseAndReturnUnverifiedModule(indvar_init_hlo));
+  ASSERT_OK_AND_ASSIGN(auto indvar_update_module2,
+                       ParseAndReturnUnverifiedModule(indvar_update_hlo));
   DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata metadata2(
       std::move(indvar_init_module2), std::move(indvar_update_module2),
       std::move(modules2));
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_offsets,
-                          DeserializeOptionalDynamicSliceOffsetsFromProto(
-                              proto, {}, std::move(metadata2)));
+  ASSERT_OK_AND_ASSIGN(auto deserialized_offsets,
+                       DeserializeOptionalDynamicSliceOffsetsFromProto(
+                           proto, {}, std::move(metadata2)));
   ASSERT_TRUE(deserialized_offsets.has_value());
   ASSERT_EQ(deserialized_offsets->size(), 1);
   EXPECT_TRUE(std::holds_alternative<HloModule*>((*deserialized_offsets)[0]));

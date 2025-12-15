@@ -18,13 +18,13 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -608,8 +608,8 @@ TEST_F(LayoutNormalizationTest, ZeroSizedConstant) {
   ENTRY main() -> s32[0,179] {
     ROOT %constant = s32[0,179]{1,0} constant({  })
   })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto status, LayoutNormalization().Run(module.get()));
   EXPECT_FALSE(status);
 }
 

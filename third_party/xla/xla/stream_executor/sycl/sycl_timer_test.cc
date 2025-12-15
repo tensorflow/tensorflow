@@ -190,7 +190,7 @@ class SyclTimerTest : public ::testing::Test {
                                   kAddSpvSize),
         "wrapped_add", 3);
 
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, spec));
+    ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor, spec));
 
     const int64_t kLength = 4;
     const int64_t kByteLength = sizeof(float) * kLength;
@@ -209,13 +209,13 @@ class SyclTimerTest : public ::testing::Test {
 
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_,
-                            platform->ExecutorForDevice(kDefaultDeviceOrdinal));
-    TF_ASSERT_OK_AND_ASSIGN(stream_,
-                            executor_->CreateStream(/*priority=*/std::nullopt));
+    ASSERT_OK_AND_ASSIGN(executor_,
+                         platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    ASSERT_OK_AND_ASSIGN(stream_,
+                         executor_->CreateStream(/*priority=*/std::nullopt));
   }
 
   // TODO(intel-tf): Use SyclExecutor instead of StreamExecutor.
@@ -224,15 +224,14 @@ class SyclTimerTest : public ::testing::Test {
 };
 
 TEST_F(SyclTimerTest, Create) {
-  TF_ASSERT_OK_AND_ASSIGN(SyclTimer timer,
-                          SyclTimer::Create(executor_, stream_.get()));
+  ASSERT_OK_AND_ASSIGN(SyclTimer timer,
+                       SyclTimer::Create(executor_, stream_.get()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
   LaunchSomeKernel(executor_, stream_.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
-                          timer.GetElapsedDuration());
+  ASSERT_OK_AND_ASSIGN(absl::Duration timer_result, timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
               absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));

@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -102,7 +102,7 @@ ENTRY main {
 
 TEST_F(HloDecomposerTest, DecomposeNoDedup) {
   auto module = GetModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto decomposed,
       DecomposeHloModule(*module, /*deduplicate_modules=*/false));
   EXPECT_EQ(decomposed.size(), 3);
@@ -135,7 +135,7 @@ CHECK-THEN: ROOT %e.1
 
 TEST_F(HloDecomposerTest, DecomposeDedup) {
   auto module = GetModule();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto decomposed,
       DecomposeHloModule(*module, /*deduplicate_modules=*/true));
   EXPECT_EQ(decomposed.size(), 2);

@@ -165,14 +165,14 @@ class GpuAotCompilationResultTest : public ::testing::Test {
 };
 
 TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
-                          CreateGpuExecutableProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_result,
-                          result->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(std::string serialized_result,
+                       result->SerializeAsString());
   GpuExecutableProto deserialized_executable;
   ASSERT_TRUE(deserialized_executable.ParseFromString(serialized_result))
       << "Failed to parse serialized result.";
@@ -181,22 +181,22 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
 }
 
 TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
-                          CreateGpuExecutableProto());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto reference_executable,
+                       CreateGpuExecutableProto());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
 
   EnsureCudaSymbolIsRegistered();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*result).LoadExecutable(&executor_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*result).LoadExecutable(&executor_));
 
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto executable_proto,
-                          gpu_executable->ToProto());
+  ASSERT_OK_AND_ASSIGN(GpuExecutableProto executable_proto,
+                       gpu_executable->ToProto());
   // HLO module is re-created from proto, and will have a new ID, so we clear
   // it for comparison purposes.
   executable_proto.mutable_hlo_module_with_config()

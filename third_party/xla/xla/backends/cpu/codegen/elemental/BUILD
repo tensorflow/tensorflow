@@ -115,7 +115,6 @@ xla_cc_test(
         "//xla/service:logical_buffer",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:target_machine_features_stub",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

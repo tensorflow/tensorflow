@@ -15,24 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/nvptx_alias_info.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/service/copy_insertion.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -75,8 +70,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* matmul = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(1), {0}));
@@ -94,8 +89,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* matmul = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(1), {0}));

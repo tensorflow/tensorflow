@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 using AsyncExecutionStreamIds =
     ::xla::gpu::ExecutionStreamAssignment::AsyncExecutionStreamIds;
@@ -89,8 +88,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
           custom_call_target="target"
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -149,8 +148,8 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
     ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_copy_start_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_copy_start_string));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -185,8 +184,8 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
       ROOT done = f32[] fusion(p0), kind=kLoop, calls=fusion
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
 
@@ -222,8 +221,8 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
       ROOT add = f32[2,2] add(p0, p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(module.get());
   ExpectExecutionStreamForSyncInstructions(
@@ -263,8 +262,8 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
     ROOT %call-done-2 = f32[2048,2048]{1,0} call-done(((f32[2048,2048]{1,0}, f32[2048,2048]{1,0}), f32[2048,2048]{1,0}) %call-start.2)
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleStr));
 
   ExecutionStreamAssignment assignment(
       module.get(),
@@ -317,8 +316,8 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
       ROOT _ = (f32[], f32[1], f32[2]) tuple(ar-done, rs-done, add.0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Expect ar-start and rs-start to be scheduled on stream 5 (4 + 1) and 6 (4 +
   // 2), respectively.

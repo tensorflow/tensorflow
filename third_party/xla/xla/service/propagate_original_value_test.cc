@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,8 +68,7 @@ ENTRY %main (param: s32[2,8], param.1: s32[8,8]) -> s32[2,8] {
 }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* entry_computation = module->entry_computation();
   HloInstruction* root = entry_computation->root_instruction();
   HloInstruction* new_root = entry_computation->AddInstruction(root->Clone());

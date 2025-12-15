@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -82,12 +82,12 @@ ENTRY main {
       primitive_util::LowercasePrimitiveTypeName(std::get<0>(GetParam())),
       std::get<1>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(hlo_str));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
@@ -115,12 +115,12 @@ ENTRY main {
   values = bf16[16] concatenate(p, nans_and_zeros), dimensions={0}
   ROOT sort = bf16[16] sort(values), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(kHlo));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
@@ -145,12 +145,12 @@ ENTRY main {
   values = f32[16] concatenate(p, nans_and_zeros), dimensions={0}
   ROOT sort = f32[16] sort(values), dimensions={0}, is_stable=true, to_apply=compare
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(kHlo));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
@@ -177,12 +177,12 @@ ENTRY m {
       kHloTpl,
       primitive_util::LowercasePrimitiveTypeName(std::get<0>(GetParam())),
       std::get<1>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(hlo_str));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
@@ -246,12 +246,12 @@ ENTRY main {
       primitive_util::LowercasePrimitiveTypeName(std::get<1>(GetParam())),
       std::get<2>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(hlo_str));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 
@@ -295,12 +295,12 @@ ENTRY m {
       primitive_util::LowercasePrimitiveTypeName(std::get<0>(GetParam())),
       primitive_util::LowercasePrimitiveTypeName(std::get<1>(GetParam())),
       std::get<2>(GetParam()) ? "LT" : "GT", batch_size, segment_size);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
-                          GetOptimizedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_hlo_module,
+                       GetOptimizedModule(hlo_str));
   EXPECT_TRUE(HloWasRewrittenToUseCubSort(*optimized_hlo_module));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
 }
 

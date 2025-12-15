@@ -97,7 +97,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/c_api_client:pjrt_c_api_client",
         "//xla/pjrt/plugin/xla_tpu:tpu_static_registration",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],

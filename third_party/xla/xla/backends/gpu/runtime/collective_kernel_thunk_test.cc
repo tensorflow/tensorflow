@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -29,9 +30,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -351,12 +352,12 @@ TEST_P(CollectiveKernelThunkParameterizedTest, ExecutesPtxKernel) {
       /*is_multimem_enabled=*/false, /*use_ptx=*/GetParam());
 
   se::StreamExecutor* executor0 = GetGpuExecutor(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       se::DeviceAddressBase result_buffer,
       RunCollectiveKernelThunk(metadata, executor0, input_data));
 
   std::vector<uint64_t> output_data(kNumElements);
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
   TF_ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer,
                               metadata.input_data_size_bytes));
   TF_ASSERT_OK(stream->BlockHostUntilDone());

@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -67,9 +67,9 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   // Try copying the elements back and comparing it
   auto handles = std::move(result_status).value();
   Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 }
 
@@ -89,17 +89,17 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto handles2 = std::move(result_status2).value();
 
   Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 
   handles1[0].reset();
   handles1[1].reset();
 
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 }
 
@@ -119,13 +119,13 @@ TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   auto handles = std::move(result_status).value();
 
   Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 }
 
@@ -145,17 +145,17 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   global_data.reset();
 
   Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 
   /// Try deallocating one of the repeated elements, then copy
   handles[0].reset();
 
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
+  ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 }
 

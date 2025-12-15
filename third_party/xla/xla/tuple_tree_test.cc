@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -428,12 +427,12 @@ TEST_F(TupleTreeTest, SubTree) {
       {{0}, 10}, {{1, 0}, 20}, {{1, 1}, 30}};
   TupleTree<int> tree(absl::MakeSpan(leaves));
 
-  TF_ASSERT_OK_AND_ASSIGN(TupleTree<int> sub_tree, tree.Subtree({1}));
+  ASSERT_OK_AND_ASSIGN(TupleTree<int> sub_tree, tree.Subtree({1}));
   EXPECT_FALSE(sub_tree.IsLeaf({}));
   EXPECT_EQ(sub_tree.element({0}), 20);
   EXPECT_EQ(sub_tree.element({1}), 30);
 
-  TF_ASSERT_OK_AND_ASSIGN(TupleTree<int> leaf_sub_tree, tree.Subtree({0}));
+  ASSERT_OK_AND_ASSIGN(TupleTree<int> leaf_sub_tree, tree.Subtree({0}));
   EXPECT_TRUE(leaf_sub_tree.IsLeaf({}));
   EXPECT_EQ(leaf_sub_tree.element({}), 10);
 
@@ -665,7 +664,7 @@ TEST_F(TupleTreeTest, MapWithStatusSuccess) {
   using Node = TupleTree<int>::Node;
   TupleTree<int> tree({Node::Leaf(1), Node::Leaf(2)});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TupleTree<int> mapped_tree,
       tree.MapWithStatus<int>(
           [](int val) -> absl::StatusOr<int> { return val * 2; }));
@@ -719,18 +718,18 @@ TEST_F(TupleTreeTest, ToNode) {
                         Node::Leaf(4)}));                   // {2}
 
   // ToNode on root
-  TF_ASSERT_OK_AND_ASSIGN(Node root_node, tree.ToNode());
+  ASSERT_OK_AND_ASSIGN(Node root_node, tree.ToNode());
   EXPECT_EQ(root_node.value(), 100);
   EXPECT_FALSE(root_node.IsLeaf());
   EXPECT_EQ(root_node.children().size(), 3);
 
   // ToNode on a leaf node
-  TF_ASSERT_OK_AND_ASSIGN(Node leaf_node, tree.ToNode({0}));
+  ASSERT_OK_AND_ASSIGN(Node leaf_node, tree.ToNode({0}));
   EXPECT_EQ(leaf_node.value(), 1);
   EXPECT_TRUE(leaf_node.IsLeaf());
 
   // ToNode on a tuple node
-  TF_ASSERT_OK_AND_ASSIGN(Node tuple_node, tree.ToNode({1}));
+  ASSERT_OK_AND_ASSIGN(Node tuple_node, tree.ToNode({1}));
   EXPECT_EQ(tuple_node.value(), 200);
   EXPECT_FALSE(tuple_node.IsLeaf());
   EXPECT_EQ(tuple_node.children().size(), 2);
@@ -738,7 +737,7 @@ TEST_F(TupleTreeTest, ToNode) {
   EXPECT_EQ(tuple_node.children()[1].value(), 3);
 
   // ToNode on nested leaf node
-  TF_ASSERT_OK_AND_ASSIGN(Node nested_leaf_node, tree.ToNode({1, 1}));
+  ASSERT_OK_AND_ASSIGN(Node nested_leaf_node, tree.ToNode({1, 1}));
   EXPECT_EQ(nested_leaf_node.value(), 3);
   EXPECT_TRUE(nested_leaf_node.IsLeaf());
 

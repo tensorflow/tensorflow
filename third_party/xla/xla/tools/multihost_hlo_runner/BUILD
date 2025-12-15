@@ -28,9 +28,6 @@ build_test(
 cc_library(
     name = "profiler_interface",
     hdrs = ["profiler_interface.h"],
-    deps = [
-        "@com_google_absl//absl/status:statusor",
-    ],
 )
 
 cc_library(
@@ -250,6 +247,9 @@ xla_test(
         ":hlo_input_output_format",
         ":profiler_interface",
         "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_layout",
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
@@ -257,11 +257,13 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tests:test_utils",
         "//xla/tests:xla_test_backend_predicates",
@@ -280,7 +282,11 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//io",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
     ] + if_cuda(["//xla/tsl/cuda:nvml"]),

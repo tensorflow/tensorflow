@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -42,9 +41,8 @@ void set_xla_flags_env_var(const std::string& xla_flags) {
 TEST(CreateGpuCompEnvFromFlagStringsTest, ValidFlags) {
   std::vector<std::string> flags = {"--dummy_flag=2"};
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      GpuCompilationEnvironment gpu_comp_env,
-      CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/true));
+  ASSERT_OK_AND_ASSIGN(GpuCompilationEnvironment gpu_comp_env,
+                       CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/true));
 
   ASSERT_EQ(gpu_comp_env.dummy_flag(), 2);
   ASSERT_TRUE(flags.empty());
@@ -53,9 +51,8 @@ TEST(CreateGpuCompEnvFromFlagStringsTest, ValidFlags) {
 TEST(CreateGpuCompEnvFromFlagStringsTest, EmptyFlags) {
   std::vector<std::string> flags;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      GpuCompilationEnvironment gpu_comp_env,
-      CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/true));
+  ASSERT_OK_AND_ASSIGN(GpuCompilationEnvironment gpu_comp_env,
+                       CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/true));
 }
 
 TEST(CreateGpuCompEnvFromFlagStringsTest, InvalidFlagName) {
@@ -64,7 +61,7 @@ TEST(CreateGpuCompEnvFromFlagStringsTest, InvalidFlagName) {
   EXPECT_THAT(CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/true),
               absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       GpuCompilationEnvironment gpu_comp_env,
       CreateGpuCompEnvFromFlagStrings(flags, /*strict=*/false));
   ASSERT_EQ(flags.size(), 1);
@@ -73,8 +70,8 @@ TEST(CreateGpuCompEnvFromFlagStringsTest, InvalidFlagName) {
 TEST(CreateGpuCompEnvFromEnvVarTest, ValidFlags) {
   set_xla_flags_env_var("--dummy_flag=4");
 
-  TF_ASSERT_OK_AND_ASSIGN(GpuCompilationEnvironment gpu_comp_env,
-                          CreateGpuCompEnvFromEnvVar());
+  ASSERT_OK_AND_ASSIGN(GpuCompilationEnvironment gpu_comp_env,
+                       CreateGpuCompEnvFromEnvVar());
 
   ASSERT_EQ(gpu_comp_env.dummy_flag(), 4);
 }

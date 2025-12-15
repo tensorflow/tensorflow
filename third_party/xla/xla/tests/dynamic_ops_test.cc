@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/types.h"
@@ -1043,7 +1043,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
   DynamicSlice(input, start_indices, {1, 1, 1, 1});
   auto computation = builder.Build().value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       client->Compile(computation, host_shapes, ExecutableBuildOptions()));
   auto executable = std::move(executables[0]);

@@ -26,10 +26,10 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -150,9 +150,9 @@ TEST(CustomKernelThunkTest, FromProto) {
   std::vector<BufferAllocation> buffer_allocations;
   buffer_allocations.emplace_back(/*index=*/0, /*size=*/1024, /*color=*/0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CustomKernelThunk> thunk,
-                          CustomKernelThunk::FromProto(
-                              Thunk::ThunkInfo{}, proto, buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CustomKernelThunk> thunk,
+                       CustomKernelThunk::FromProto(Thunk::ThunkInfo{}, proto,
+                                                    buffer_allocations));
 
   EXPECT_THAT(thunk->custom_kernel().name(), "test_kernel");
   EXPECT_THAT(thunk->arguments(), testing::ElementsAre(BufferAllocation::Slice(

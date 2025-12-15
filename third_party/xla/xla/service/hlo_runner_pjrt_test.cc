@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -166,7 +166,7 @@ using CompilePhaseHloRunnerPjRtTest = ArtifactDirTest;
 TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false).status());
 
@@ -182,7 +182,7 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
        CreateExecutablePlacesFilesCorrectlyWithDifferentRunHloPasses) {
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/true));
 
   std::vector<std::string> children;
@@ -197,7 +197,7 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
        CreateExecutablePlacesFilesCorrectlyWithCompilationEnvironment) {
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   m->comp_envs().RegisterProcessNewEnvFn(
       test::TestCompilationEnvironment1::GetDescriptor(),
       [](std::unique_ptr<tsl::protobuf::Message> msg) {
@@ -237,8 +237,8 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
             notification.Notify();
           }),
       artifact_dir_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<OpaqueExecutable> executable,
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
 
@@ -254,7 +254,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest,
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   ExecutePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   EXPECT_THAT(
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false),
@@ -273,7 +273,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest,
   ExecutePhaseHloRunnerPjRt runner(
       std::make_unique<FakeClient>(), artifact_dir_,
       /*compile_if_not_found=*/false, /*fail_duplicate_loads=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   TF_EXPECT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
 }

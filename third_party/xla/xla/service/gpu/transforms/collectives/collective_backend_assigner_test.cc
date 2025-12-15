@@ -69,7 +69,7 @@ TEST_F(CollectiveBackendAssignerTest, SmallAllReduceUsesNvshmem) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_THAT(RunCollectiveBackendAssigner(
                   module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
@@ -97,7 +97,7 @@ TEST_F(CollectiveBackendAssignerTest, LargeAllReduceUsesDefault) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_THAT(RunCollectiveBackendAssigner(
                   module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
@@ -120,7 +120,7 @@ TEST_F(CollectiveBackendAssignerTest, SmallCollectivePermuteUsesNvshmem) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_THAT(RunCollectiveBackendAssigner(
                   module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
@@ -143,7 +143,7 @@ TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesNvshmem) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   EXPECT_THAT(RunCollectiveBackendAssigner(
                   module.get(), /*num_devices_per_host=*/1, /*slice_size=*/0),
@@ -171,7 +171,7 @@ TEST_F(CollectiveBackendAssignerTest, IntraNvlinkDomainUsesNvshmem) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config().set_num_partitions(2);
   module->mutable_config().set_replica_count(2);
 
@@ -202,7 +202,7 @@ TEST_F(CollectiveBackendAssignerTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config().set_num_partitions(2);
   module->mutable_config().set_replica_count(2);
 
@@ -232,7 +232,7 @@ TEST_F(CollectiveBackendAssignerTest, NonIntraNvlinkDomainUsesDefault) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   module->mutable_config().set_num_partitions(1);
   module->mutable_config().set_replica_count(4);
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -38,7 +39,7 @@ absl::StatusOr<stream_executor::DeviceDescription> MakeDeviceDescription() {
 class FusionWrapperTest : public HloHardwareIndependentTestBase {
  public:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+    ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
   }
 
   const stream_executor::DeviceDescription& device_description() const {

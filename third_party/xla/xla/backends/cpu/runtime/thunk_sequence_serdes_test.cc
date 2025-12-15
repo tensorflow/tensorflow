@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -573,8 +574,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1]),
         /*batch_size=*/1,
         /*input_size=*/1,
-        /*k=*/2
-    );
+        /*k=*/2);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateWhileThunk(
@@ -1269,12 +1269,11 @@ using Implementations = ::testing::Types<ThunkSequenceSerDesProtobuf>;
 TYPED_TEST_SUITE(ThunkSequenceSerdesTest, Implementations, );
 
 TYPED_TEST(ThunkSequenceSerdesTest, SerializeAndDeserialize) {
-  TF_ASSERT_OK_AND_ASSIGN(ThunkSequence thunk_sequence,
-                          this->CreateThunkSequenceFromAllThunkTypes());
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          this->Serialize(thunk_sequence));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
-                          this->Deserialize(serialized));
+  ASSERT_OK_AND_ASSIGN(ThunkSequence thunk_sequence,
+                       this->CreateThunkSequenceFromAllThunkTypes());
+  ASSERT_OK_AND_ASSIGN(std::string serialized, this->Serialize(thunk_sequence));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
+                       this->Deserialize(serialized));
   EXPECT_TRUE(this->VerifyThunkSequenceEquality(thunk_sequence, *deserialized));
 }
 
@@ -1310,16 +1309,16 @@ TYPED_TEST(ThunkSequenceSerdesTest, ResourceSharingRecounstruction) {
 
     // We share one communicator resource between All* thunks and the other with
     // ReduceScatter and CollectivePermute.
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         collectives_thunk_sequence,
         this->CreateThunkSequenceFromCollectiveThunkTypes(
             std::move(collective_kind_to_communicator_resource)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          this->Serialize(collectives_thunk_sequence));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
-                          this->Deserialize(serialized));
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       this->Serialize(collectives_thunk_sequence));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<ThunkSequence> deserialized,
+                       this->Deserialize(serialized));
   EXPECT_TRUE(this->VerifyThunkSequenceEquality(collectives_thunk_sequence,
                                                 *deserialized));
 
@@ -1366,8 +1365,8 @@ void ForEachThunkProtoCountTestHelper(
 
   EXPECT_TRUE(thunk_sequence_proto_serdes != nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkSequenceProto thunk_sequence_proto,
-                          thunk_sequence_proto_serdes->ToProto(thunk_sequence));
+  ASSERT_OK_AND_ASSIGN(ThunkSequenceProto thunk_sequence_proto,
+                       thunk_sequence_proto_serdes->ToProto(thunk_sequence));
 
   int count = 0;
   ForEachThunkProto(thunk_sequence_proto,
@@ -1385,8 +1384,7 @@ TYPED_TEST(ThunkSequenceSerdesTest, CallThunkForEachThunkProto) {
 
   ThunkSequence thunk_sequence;
 
-  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
-                          this->CreateCallThunk());
+  ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(), this->CreateCallThunk());
 
   // NOTE: We expect 4 thunks: 1 for the call thunk, and 3 for the
   // nested thunk sequence.
@@ -1405,8 +1403,7 @@ TYPED_TEST(ThunkSequenceSerdesTest, WhileThunkForEachThunkProto) {
 
   ThunkSequence thunk_sequence;
 
-  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
-                          this->CreateWhileThunk());
+  ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(), this->CreateWhileThunk());
 
   // NOTE: We expect 5 thunks: 1 for the while thunk, and 1 for the
   // condition thunk, and 3 for the body thunk.
@@ -1425,8 +1422,8 @@ TYPED_TEST(ThunkSequenceSerdesTest, ConditionalThunkForEachThunkProto) {
 
   ThunkSequence thunk_sequence;
 
-  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
-                          this->CreateConditionalThunk());
+  ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                       this->CreateConditionalThunk());
 
   // NOTE: We expect 7 thunks: 1 for the conditional thunk, and 6 for
   // the branch thunk sequences.

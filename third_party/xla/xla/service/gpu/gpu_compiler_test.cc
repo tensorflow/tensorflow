@@ -179,7 +179,7 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   auto before = GetCompiledProgramsCount();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -271,7 +271,7 @@ ENTRY main {
 
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -303,7 +303,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -325,7 +325,7 @@ ENTRY main {
   int module_id = module->unique_id();
   Compiler::CompileOptions compile_options;
   compile_options.embed_hlo_module = false;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -350,8 +350,8 @@ TEST_F(GpuCompilerTest, CanRunScheduledModules) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_disable_all_hlo_passes(true);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m, is_scheduled=true
 
 w {
@@ -363,25 +363,25 @@ ENTRY e {
   p = s8[] parameter(0)
   ROOT _ = s8[] fusion(p), kind=kLoop, calls=w
 })",
-                                                       config));
+                                                    config));
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/true));
 }
 
 TEST_F(GpuCompilerTest, NonFusedInstructionsAreWrapped) {
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 ENTRY e {
   p = f32[2,4,4] parameter(0)
   ROOT _ = f32[2,4,4]{2,1,0} transpose(p), dimensions={0,2,1}
 })",
-                                                       config));
+                                                    config));
 
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -433,9 +433,8 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   // Check that it writes the results on the first compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::string autotune_results_str,
-        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+    ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                         ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
@@ -449,9 +448,8 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   // Check that it writes the results on the second compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
   {
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::string autotune_results_str,
-        ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+    ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                         ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
@@ -468,8 +466,8 @@ e {
 })")
                    .status());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
-                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+  ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                       ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
   AutotuneResults results;
   EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                          &results));
@@ -544,10 +542,10 @@ TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
   auto& debug_options = config.mutable_debug_options();
   debug_options.set_xla_gpu_enable_pipelined_all_reduce(true);
   debug_options.set_xla_gpu_all_reduce_combine_threshold_bytes(0);
-  TF_ASSERT_OK_AND_ASSIGN(auto parsed,
-                          ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(std::move(parsed)));
+  ASSERT_OK_AND_ASSIGN(auto parsed,
+                       ParseAndReturnVerifiedModule(kHloString, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(std::move(parsed)));
 
   absl::string_view kExpected = R"(
     CHECK: all-reduce-start{{.*}}"is_pipelined":true
@@ -555,8 +553,8 @@ TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
   HloPrintOptions options;
   options.set_print_operand_shape(false);
   options.set_print_result_shape(false);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(options), kExpected));
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(options), kExpected));
   EXPECT_TRUE(filecheck_matched);
 }
 
@@ -605,10 +603,10 @@ ENTRY main {
   HloModuleConfig config = GetModuleConfigForTest();
   auto& debug_options = config.mutable_debug_options();
   debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
-  TF_ASSERT_OK_AND_ASSIGN(auto parsed,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          GetOptimizedModule(std::move(parsed)));
+  ASSERT_OK_AND_ASSIGN(auto parsed,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       GetOptimizedModule(std::move(parsed)));
 
   EXPECT_EQ(CountCopies(*module), 7);
 
@@ -708,18 +706,18 @@ ENTRY main {
   config.set_replica_count(1);
   config.set_num_partitions(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
+                       GetOptimizedModule(std::move(module)));
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
+                       GetOptimizedModule(std::move(module)));
   // Make sure autotuner falls back to cuBLAS when enabling triton gemm
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
@@ -759,20 +757,20 @@ ENTRY main {
       .set_xla_gpu_require_complete_aot_autotune_results(true);
   config.set_debug_options(triton_enabled_debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
+                       GetOptimizedModule(std::move(module)));
 
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   triton_disabled_debug_options.set_xla_gpu_cublas_fallback(true);
   config.set_debug_options(triton_disabled_debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
+                       GetOptimizedModule(std::move(module)));
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_enabled_module),
                                       std::move(triton_disabled_module),
@@ -863,10 +861,10 @@ ENTRY main {
       HloPrintOptions().set_print_operand_shape(true);
   if (is_cuda) {
     // Triton enabled, no fallback.
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
-                            optimize_module(/*enable_triton=*/true,
-                                            /*enable_blas=*/true,
-                                            /*enable_blas_fallback=*/false));
+    ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
+                         optimize_module(/*enable_triton=*/true,
+                                         /*enable_blas=*/true,
+                                         /*enable_blas_fallback=*/false));
     // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
     const std::string triton_expected_check =
         (cuda_cc.IsAtLeastHopper() ||
@@ -874,7 +872,7 @@ ENTRY main {
           rhs_type == F8E5M2))
             ? triton_keep_types
             : cublas_convert_to_f16;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
         RunFileCheck(optimized_module_no_fallback->ToString(print_options),
                      triton_expected_check));
@@ -883,10 +881,10 @@ ENTRY main {
 
   {
     // Triton disabled, BLAS enabled.
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_triton,
-                            optimize_module(/*enable_triton=*/false,
-                                            /*enable_blas=*/true,
-                                            /*enable_blas_fallback=*/true));
+    ASSERT_OK_AND_ASSIGN(auto optimized_module_no_triton,
+                         optimize_module(/*enable_triton=*/false,
+                                         /*enable_blas=*/true,
+                                         /*enable_blas_fallback=*/true));
     // cuBLASlt is only available on Hopper and it doesn't support
     // f8e5m2×f8e5m2.
     const std::string blas_expected_check =
@@ -895,7 +893,7 @@ ENTRY main {
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
         RunFileCheck(optimized_module_no_triton->ToString(print_options),
                      blas_expected_check));
@@ -904,11 +902,11 @@ ENTRY main {
 
   {
     // Neither Triton nor BLAS enabled, always fall back.
-    TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_nothing,
-                            optimize_module(/*enable_triton=*/false,
-                                            /*enable_blas=*/false,
-                                            /*enable_blas_fallback=*/false));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto optimized_module_nothing,
+                         optimize_module(/*enable_triton=*/false,
+                                         /*enable_blas=*/false,
+                                         /*enable_blas_fallback=*/false));
+    ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
         RunFileCheck(optimized_module_nothing->ToString(print_options),
                      fallback_convert_to_f16));
@@ -945,9 +943,8 @@ INSTANTIATE_TEST_SUITE_P(NewAotFlow, AotCompilationTest, ::testing::Bool(),
                          });
 
 TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> add_1_hlo,
-      ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> add_1_hlo,
+                       ParseAndReturnVerifiedModule(R"hlo(
     add1 {
       p = s32[] parameter(0)
       c = s32[] constant(1)
@@ -958,37 +955,36 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
       p = s32[] parameter(0)
       ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
     })hlo",
-                                   GetModuleConfigForTest()));
+                                                    GetModuleConfigForTest()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
   ASSERT_THAT(aot_results, SizeIs(1));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                          std::move(aot_results[0])->SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                       std::move(aot_results[0])->SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler_->LoadAotCompilationResult(serialized_aot_result));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*aot_result).LoadExecutable(stream_exec_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
   const xla::Literal literal_input = xla::LiteralUtil::CreateR0<int32_t>(1);
   const xla::Literal literal_expected_result =
       xla::LiteralUtil::CreateR0<int32_t>(2);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          test_runner_as_hlo_runner().ExecuteWithExecutable(
-                              wrapped_executable.get(), {&literal_input}));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       test_runner_as_hlo_runner().ExecuteWithExecutable(
+                           wrapped_executable.get(), {&literal_input}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
 }
 
 TEST_P(AotCompilationTest, ExportAndImportAotResult) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> add_1_hlo,
-      ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> add_1_hlo,
+                       ParseAndReturnVerifiedModule(R"hlo(
     add1 {
       p = s32[] parameter(0)
       c = s32[] constant(1)
@@ -999,33 +995,31 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
       p = s32[] parameter(0)
       ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
     })hlo",
-                                   GetModuleConfigForTest()));
+                                                    GetModuleConfigForTest()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      compiler_->RunBackend(std::move(add_1_hlo), stream_exec_,
-                            /*device_allocator=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
-                          compiler_->Export(executable.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       compiler_->RunBackend(std::move(add_1_hlo), stream_exec_,
+                                             /*device_allocator=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
+                       compiler_->Export(executable.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
-                          std::move(*aot_result).LoadExecutable(stream_exec_));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
+                       std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(new_executable));
 
   const xla::Literal literal_input = xla::LiteralUtil::CreateR0<int32_t>(1);
   const xla::Literal literal_expected_result =
       xla::LiteralUtil::CreateR0<int32_t>(2);
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          test_runner_as_hlo_runner().ExecuteWithExecutable(
-                              wrapped_executable.get(), {&literal_input}));
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       test_runner_as_hlo_runner().ExecuteWithExecutable(
+                           wrapped_executable.get(), {&literal_input}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
 }
 
 TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> add_1_hlo,
-      ParseAndReturnVerifiedModule(R"hlo(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> add_1_hlo,
+                       ParseAndReturnVerifiedModule(R"hlo(
     add1 {
       p = s32[] parameter(0)
       c = s32[] constant(1)
@@ -1036,11 +1030,11 @@ TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
       p = s32[] parameter(0)
       ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
     })hlo",
-                                   GetModuleConfigForTest()));
+                                                    GetModuleConfigForTest()));
 
   aot_options_->set_early_exit_point(
       AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
   EXPECT_THAT(aot_results,
@@ -1054,7 +1048,7 @@ class KernelCacheTest : public HloTestBase {
     CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         bool can_use_link_modules,
         dynamic_cast<GpuCompiler*>(backend().compiler())
             ->CanUseLinkModules(
@@ -1176,10 +1170,10 @@ ENTRY e {
   ROOT r = s32[] fusion(p), kind=kLoop, calls=add2
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("cuda"));
-  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
-                          platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("cuda"));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                       platform->ExecutorForDevice(0));
 
   Compiler* compiler = backend().compiler();
   AotCompilationOptions aot_options(compiler->PlatformId());
@@ -1187,19 +1181,19 @@ ENTRY e {
 
   auto test = [this, &compiler, &aot_options](absl::string_view hlo, int input,
                                               int expected_result) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(
         std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
         compiler->CompileAheadOfTime(std::move(module), aot_options));
 
-    TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
-                            aot_results[0]->SerializeAsString());
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                         aot_results[0]->SerializeAsString());
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AotCompilationResult> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
         std::move(*aot_result).LoadExecutable(aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
@@ -1210,9 +1204,9 @@ ENTRY e {
     const xla::Literal literal_expected_result =
         xla::LiteralUtil::CreateR0<int32_t>(expected_result);
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                            test_runner_as_hlo_runner().ExecuteWithExecutable(
-                                wrapped_executable.get(), {&literal_input}));
+    ASSERT_OK_AND_ASSIGN(Literal result,
+                         test_runner_as_hlo_runner().ExecuteWithExecutable(
+                             wrapped_executable.get(), {&literal_input}));
 
     EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
   };
@@ -1281,7 +1275,7 @@ ENTRY main {
   // autotuning tests both cases, and is not guaranteed to be deterministic.
   auto config = GetModuleConfigForTest();
   config.mutable_debug_options().set_xla_gpu_autotune_level(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module_and_executable,
       GetOptimizedModuleForExecutable(transpose_fusion_module, config));
   const HloModule* optimized_module = module_and_executable.first;
@@ -1318,7 +1312,7 @@ ENTRY main {
   // autotuning tests both cases, and is not guaranteed to be deterministic.
   auto config = GetModuleConfigForTest();
   config.mutable_debug_options().set_xla_gpu_autotune_level(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto rewritable_transpose_module_and_executable,
       GetOptimizedModuleForExecutable(rewritable_transpose_string, config));
   const HloModule* rewritable_transpose_optimized_module =
@@ -1336,11 +1330,11 @@ ENTRY main {
   ROOT transpose = f32[6,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> unrewritable_transpose_module,
       ParseAndReturnVerifiedModule(unrewritable_transpose_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto unrewritable_transpose_module_and_executable,
       GetOptimizedModuleForExecutable(unrewritable_transpose_string, config));
   const HloModule* unrewritable_transpose_optimized_module =
@@ -1366,8 +1360,8 @@ TEST_F(GpuCompilerTest, NoRaceConditionInParallelCompilation) {
       config.set_debug_options(debug_options);
       // The contents on this module don't matter that much, but it should
       // be something going through the autotuner.
-      TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                              ParseAndReturnVerifiedModule(R"(
+      ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                           ParseAndReturnVerifiedModule(R"(
 HloModule module
 
 triton_gemm_dot {
@@ -1385,7 +1379,7 @@ ENTRY entry {
   d = f32[10,10] fusion(p0, p1), kind=kCustom, calls=triton_gemm_dot
   ROOT r = f32[10,10] add(d, s)
 })",
-                                                           config));
+                                                        config));
       std::unique_ptr<HloModule> compiled_module =
           backend()
               .compiler()
@@ -1393,7 +1387,7 @@ ENTRY entry {
                              backend().default_stream_executor(),
                              /*device_allocator=*/nullptr)
               .value();
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<Executable> executable,
           backend().compiler()->RunBackend(std::move(compiled_module),
                                            backend().default_stream_executor(),
@@ -1434,7 +1428,7 @@ ENTRY main {
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -1494,7 +1488,7 @@ ENTRY main {
 
   auto module = ParseAndReturnVerifiedModule(hlo_text, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
@@ -1538,10 +1532,10 @@ ENTRY main {
   ROOT constant = f32[] constant(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(constant_module));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(constant_module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(module)));
   const HloModuleMetadataProto& module_metadata =
       optimized_module->metadata()->proto();
 
@@ -1566,10 +1560,10 @@ ENTRY main {
   ROOT constant = f32[] constant(0)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(constant_module));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(constant_module));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(module)));
   const HloModuleMetadataProto& module_metadata =
       optimized_module->metadata()->proto();
 
@@ -1709,7 +1703,7 @@ class PassOrderTest : public GpuCompilerTest {
         ENTRY main {
           ROOT constant = f32[] constant(0)
         })";
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::tie(optimized_module_, compiled_executable_),
         GetOptimizedModuleForExecutable(constant_module, config));
   }
@@ -1897,11 +1891,11 @@ class FixPointTest : public HloTestBase {
  public:
   void ExpectPipelinesReachFixedPoint(absl::string_view module_text) {
     std::unique_ptr<HloModule> optimized_module;
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<VerifiedHloModule> module,
         ParseAndReturnVerifiedModule(module_text, GetModuleConfigForTest()));
-    TF_ASSERT_OK_AND_ASSIGN(optimized_module,
-                            GetOptimizedModule(std::move(module)));
+    ASSERT_OK_AND_ASSIGN(optimized_module,
+                         GetOptimizedModule(std::move(module)));
 
     std::string last_pipeline_name;
     int count = 0;
@@ -1992,18 +1986,17 @@ TEST_F(GpuCompilerTest,
       ROOT tuple = tuple(dus,dot)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   std::unique_ptr<HloModule> m_ref = m->Clone();
   m->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<OpaqueExecutable> wrapped_exec,
-      CreateExecutable(m->Clone(), /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
-                          test_runner_as_hlo_runner().ExecutableFromWrapped(
-                              std::move(wrapped_exec)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                       CreateExecutable(m->Clone(), /*run_hlo_passes=*/true));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+                       test_runner_as_hlo_runner().ExecutableFromWrapped(
+                           std::move(wrapped_exec)));
   const char* kExpected = R"(
     // CHECK:      dynamic-slice-fusion{{.+}} {
     // CHECK:        %[[slice:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
@@ -2051,12 +2044,12 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
       ROOT tuple = tuple(rs1, rs2)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   m->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+  ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
   const char* kExpected = R"(
     // CHECK: dynamic-slice-fusion{{.*}} {
     // CHECK-DAG: %[[slice1:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
@@ -2097,8 +2090,8 @@ ENTRY %main {
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, config));
 
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log,
@@ -2135,8 +2128,8 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
           .ToProto()));
   debug_options.set_xla_gpu_target_config_filename(target_file);
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHlo, config));
 
   auto status_or_module = backend().compiler()->RunHloPasses(
       std::move(module), nullptr, GetAllocator());
@@ -2153,7 +2146,7 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
     EXPECT_LE(pass_metadata.start_timestamp_usec(),
               pass_metadata.end_timestamp_usec());
   }
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(opt_module),
                                        backend().default_stream_executor(),
@@ -2193,7 +2186,7 @@ ENTRY main {
 
   hlo_module->mutable_config().set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(hlo_module),
                                        backend().default_stream_executor(),
@@ -2219,8 +2212,8 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
   })")
                     .value();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(module)));
+  ASSERT_OK_AND_ASSIGN(auto optimized_module,
+                       GetOptimizedModule(std::move(module)));
 
   constexpr absl::string_view kVectorizationdExpected = R"(
     CHECK: (f32[10,64,19,29]{3,2,1,0}, u8[{{[0-9]*}}]{0}) custom-call
@@ -2243,8 +2236,8 @@ m {
   c = s8[3,5]{1,0} copy(b)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(kHloText));
   EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
               GmockMatch(m::Copy(m::Bitcast(m::Parameter()))));
 
@@ -2252,10 +2245,9 @@ m {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.add_xla_disable_hlo_passes("algsimp");
   config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
-                          ParseAndReturnVerifiedModule(kHloText, config));
-  TF_ASSERT_OK_AND_ASSIGN(ref_module,
-                          GetOptimizedModule(std::move(ref_module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                       ParseAndReturnVerifiedModule(kHloText, config));
+  ASSERT_OK_AND_ASSIGN(ref_module, GetOptimizedModule(std::move(ref_module)));
   EXPECT_THAT(ref_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter())));
 
@@ -2307,16 +2299,15 @@ ENTRY main {
   debug_options.set_xla_gpu_experimental_use_raft_select_k(true);
   config.set_debug_options(debug_options);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_text, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> compiled_module,
-      backend().compiler()->RunHloPasses(module->Clone(),
-                                         backend().default_stream_executor(),
-                                         /*device_allocator=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> compiled_module,
+                       backend().compiler()->RunHloPasses(
+                           module->Clone(), backend().default_stream_executor(),
+                           /*device_allocator=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module),
                                        backend().default_stream_executor(),

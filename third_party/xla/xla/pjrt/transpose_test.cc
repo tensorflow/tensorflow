@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -35,17 +36,19 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "benchmark/benchmark.h"
+#include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -400,7 +403,7 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
     options.output_tiling = TransposePlan::Tiling{test.output_tiling};
     options.transformation = TransposePlan::Transformation::kNone;
     options.num_threads = parallelism;
-    TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+    ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
     VLOG(1) << plan->ToString();
     xla::Array<T> untiled_input(test.dims);
     untiled_input.FillIota(0);
@@ -449,7 +452,7 @@ TEST(TransposeTest, NegativeStrides1D) {
   options.permutation = permutation;
   std::vector<int64_t> strides = {-int64_t{sizeof(int32_t)}};
   options.input_layout = TransposePlan::Striding{strides};
-  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + (n - 1), output.data());
   EXPECT_EQ(expected, output);
 }
@@ -476,7 +479,7 @@ TEST(TransposeTest, NegativeStrides2D) {
   std::vector<int64_t> strides = {4 * sizeof(int16_t),
                                   -int64_t{sizeof(int16_t)}};
   options.input_layout = TransposePlan::Striding{strides};
-  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + 3, output.data());
   EXPECT_EQ(expected, output);
 }
@@ -550,7 +553,7 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   options.output_tiling = TransposePlan::Tiling{};
   options.transformation = TransposePlan::Transformation::kNone;
   options.num_threads = parallelism;
-  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+  ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   Array<T> input(bm.dims);
   input.FillIota(0);
   std::vector<int64_t> output_dims = Permute(bm.dims, bm.permutation);
@@ -614,22 +617,22 @@ TEST(TransposePlanCache, Basics) {
   o.elem_size_in_bytes = 4;
   o.dims = dims;
   o.permutation = permutation_210;
-  TF_ASSERT_OK_AND_ASSIGN(auto p1, cache.GetOrCreate(o));
-  TF_ASSERT_OK_AND_ASSIGN(auto p1a, cache.GetOrCreate(o));
+  ASSERT_OK_AND_ASSIGN(auto p1, cache.GetOrCreate(o));
+  ASSERT_OK_AND_ASSIGN(auto p1a, cache.GetOrCreate(o));
   EXPECT_TRUE(p1.get() == p1a.get());
   TransposePlan::Options o2;
   o2.elem_size_in_bytes = 4;
   o2.dims = dims;
   o2.permutation = permutation_120;
-  TF_ASSERT_OK_AND_ASSIGN(auto p2, cache.GetOrCreate(o2));
+  ASSERT_OK_AND_ASSIGN(auto p2, cache.GetOrCreate(o2));
   EXPECT_TRUE(p1.get() != p2.get());
   TransposePlan::Options o3;
   o3.elem_size_in_bytes = 4;
   o3.dims = dims;
   o3.permutation = permutation_012;
-  TF_ASSERT_OK_AND_ASSIGN(auto p3, cache.GetOrCreate(o3));
+  ASSERT_OK_AND_ASSIGN(auto p3, cache.GetOrCreate(o3));
   EXPECT_TRUE(p3.get() != p1.get());
-  TF_ASSERT_OK_AND_ASSIGN(auto p1b, cache.GetOrCreate(o));
+  ASSERT_OK_AND_ASSIGN(auto p1b, cache.GetOrCreate(o));
   EXPECT_TRUE(p1.get() != p1b.get());
 }
 

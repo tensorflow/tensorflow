@@ -71,13 +71,13 @@ class MockArrayTest : public testing::Test {
   void SetUp() override {
     std::string address =
         absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
-    TF_ASSERT_OK_AND_ASSIGN(
-        server_, GrpcServer::CreateFromIfrtClientFactory(
-                     address, [this](AttributeMap initialization_data) {
-                       return CreateMockBackend();
-                     }));
-    TF_ASSERT_OK_AND_ASSIGN(client_,
-                            CreateClient(absl::StrCat("grpc://", address)));
+    ASSERT_OK_AND_ASSIGN(server_,
+                         GrpcServer::CreateFromIfrtClientFactory(
+                             address, [this](AttributeMap initialization_data) {
+                               return CreateMockBackend();
+                             }));
+    ASSERT_OK_AND_ASSIGN(client_,
+                         CreateClient(absl::StrCat("grpc://", address)));
   }
 
   absl::StatusOr<xla::ifrt::ArrayRef> NewArray() {
@@ -173,7 +173,7 @@ class MockArrayTest : public testing::Test {
 };
 
 TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+  ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
@@ -195,7 +195,7 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
 }
 
 TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+  ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
@@ -208,7 +208,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
 }
 
 TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+  ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 
@@ -232,7 +232,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
 }
 
 TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+  ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
 
   absl::Notification wait_ready;
 

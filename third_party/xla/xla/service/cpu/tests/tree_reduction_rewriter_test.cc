@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -34,8 +34,8 @@ namespace {
 class TreeReductionRewriterTest : public CpuCodegenTest {
  public:
   void MatchTreeReducedHlo(absl::string_view hlo, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            ParseAndReturnVerifiedModule(hlo));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                         ParseAndReturnVerifiedModule(hlo));
 
     TreeReductionRewriter tree_reduction_rewriter;
     TF_ASSERT_OK(tree_reduction_rewriter.Run(optimized_module.get()));

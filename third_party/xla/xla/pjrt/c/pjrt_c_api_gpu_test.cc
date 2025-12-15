@@ -68,8 +68,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 
 namespace pjrt {
@@ -128,8 +129,8 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   create_view_args.element_type =
       pjrt::ConvertToPjRtBufferType(shape.element_type());
   pjrt::BufferMemoryLayoutData c_layout_data;
-  TF_ASSERT_OK_AND_ASSIGN(
-      c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+  ASSERT_OK_AND_ASSIGN(c_layout_data,
+                       pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
   create_view_args.layout = &(c_layout_data.c_layout);
   create_view_args.device = device_args.device;
   create_view_args.memory = nullptr;
@@ -263,10 +264,10 @@ class PjrtCApiGpuExecutableTest : public PjrtCApiGpuTest {
 
 TEST_F(PjrtCApiGpuExecutableTest, GetCompiledMemoryStats) {
   auto executable = PjrtCApiTestBase::GetExecutable(executable_.get(), api_);
-  TF_ASSERT_OK_AND_ASSIGN(auto stats,
-                          pjrt::GetCompiledMemoryStats(api_, executable.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_stats,
-                          executable.get()->get()->GetCompiledMemoryStats());
+  ASSERT_OK_AND_ASSIGN(auto stats,
+                       pjrt::GetCompiledMemoryStats(api_, executable.get()));
+  ASSERT_OK_AND_ASSIGN(auto ref_stats,
+                       executable.get()->get()->GetCompiledMemoryStats());
   EXPECT_EQ(ref_stats.generated_code_size_in_bytes,
             stats.generated_code_size_in_bytes);
   EXPECT_EQ(ref_stats.argument_size_in_bytes, stats.argument_size_in_bytes);
@@ -292,8 +293,8 @@ TEST_F(PjrtCApiGpuExecutableTest, GetNumOutputs) {
   LogFatalIfPjrtError(api_->PJRT_Executable_NumOutputs(&num_outputs_args),
                       api_);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_output_shapes,
-                          executable.get()->get()->GetOutputShapes());
+  ASSERT_OK_AND_ASSIGN(auto ref_output_shapes,
+                       executable.get()->get()->GetOutputShapes());
   EXPECT_EQ(num_outputs_args.num_outputs, ref_output_shapes.size());
 }
 
@@ -316,8 +317,8 @@ TEST_F(PjrtCApiGpuExecutableTest, GetDeviceAssignment) {
   std::string serialized_proto(args.serialized_bytes,
                                args.serialized_bytes_size);
   ASSERT_TRUE(proto.ParseFromString(serialized_proto));
-  TF_ASSERT_OK_AND_ASSIGN(auto device_assignment,
-                          xla::DeviceAssignment::Deserialize(proto));
+  ASSERT_OK_AND_ASSIGN(auto device_assignment,
+                       xla::DeviceAssignment::Deserialize(proto));
 
   // Use the PJRT C++ API to create a reference device assignment.
   const xla::DeviceAssignment& ref_device_assignment =
@@ -359,7 +360,7 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
   add_args.context = create_arg.context;
   EXPECT_EQ(ffi_extension->user_data_add(&add_args), nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto lookup_user_data,
       create_arg.context->execute_context->ffi_context().Lookup(
           xla::ffi::TypeRegistry::TypeId(42)));
@@ -495,8 +496,8 @@ TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
   PJRT_Buffer* buffer_out = retrieve_args.buffer_out;
   EXPECT_FALSE(buffer_out->buffer->GetReadyFuture().IsReady());
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::Shape result_shape,
-                          buffer_out->buffer->HostShape());
+  ASSERT_OK_AND_ASSIGN(xla::Shape result_shape,
+                       buffer_out->buffer->HostShape());
   EXPECT_EQ(result_shape, host_shape);
 
   PJRT_AsyncHostToDeviceTransferManager_BufferSize_Args buffer_size_args;
@@ -537,8 +538,8 @@ TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
   std::unique_ptr<PJRT_Event, PJRT_EventDeleter> done_with_h2d_transfer_event(
       transfer_args.done_with_h2d_transfer, MakeEventDeleter(api_));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                          buffer_out->buffer->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
+                       buffer_out->buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), 8);
   EXPECT_THAT(literal->data<uint32_t>(), ElementsAreArray(data));
 
@@ -582,11 +583,10 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)},
           {"visible_devices", std::vector<int64_t>({0})}};
-      TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                              ::pjrt::ConvertToPjRtNamedValueList(options));
-      TF_ASSERT_OK_AND_ASSIGN(
-          PJRT_Client_Create_Args create_arg,
-          BuildCreateArg(kv_callback_data.get(), c_options));
+      ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                           ::pjrt::ConvertToPjRtNamedValueList(options));
+      ASSERT_OK_AND_ASSIGN(PJRT_Client_Create_Args create_arg,
+                           BuildCreateArg(kv_callback_data.get(), c_options));
       PJRT_Error* error = api->PJRT_Client_Create(&create_arg);
       EXPECT_EQ(error, nullptr) << error->status.message();
 
@@ -645,8 +645,8 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
     if (allocator_option == "cuda_async") {
       options["preallocate"] = true;
     }
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                            ::pjrt::ConvertToPjRtNamedValueList(options));
+    ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                         ::pjrt::ConvertToPjRtNamedValueList(options));
     PJRT_Client_Create_Args create_arg;
     create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
     create_arg.extension_start = nullptr;
@@ -685,8 +685,8 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
       {"memory_fraction", 0.5f},
       {"preallocate", true},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -725,8 +725,8 @@ TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
       {"allocator", static_cast<std::string>("default")},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -770,8 +770,8 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
       {"allocator", static_cast<std::string>("default")},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -809,8 +809,8 @@ TEST(PjrtCApiGpuExtensionTest,
       {"should_stage_host_to_device_transfers", true},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -847,8 +847,8 @@ TEST(PjrtCApiGpuExtensionTest,
       {"should_stage_host_to_device_transfers", false},
       {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0})},
   };
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
   PJRT_Client_Create_Args create_arg;
   create_arg.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
   create_arg.extension_start = nullptr;
@@ -945,8 +945,8 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
       {"topology", static_cast<std::string>("16 x 2 x 4")},
       {"target_config", static_cast<std::string>(kTargetConfigString)}};
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
 
   PJRT_TopologyDescription_Create_Args args;
   args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
@@ -990,8 +990,8 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopology) {
 
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
       {"topology", static_cast<std::string>("16 x 2 x 4")}};
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
-                          ::pjrt::ConvertToPjRtNamedValueList(options));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
+                       ::pjrt::ConvertToPjRtNamedValueList(options));
 
   PJRT_TopologyDescription_Create_Args args;
   args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;

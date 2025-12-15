@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -47,10 +47,10 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithSourceTargetPairs) {
     ROOT out = f32[] get-tuple-element(recv-done), index=0
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[], param2: token[]) ->
@@ -86,10 +86,10 @@ TEST_F(CollectiveSendRecvCombinerTest, TrivialNoTransform) {
     ROOT out = f32[] add(zero, five)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -127,10 +127,10 @@ TEST_F(CollectiveSendRecvCombinerTest, PartiallyPipelinedSendRecvNoTransform) {
       send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
       ROOT send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kModuleStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kModuleStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -147,10 +147,10 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
     ROOT out = f32[] get-tuple-element(recv-done), index=0
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[], param2: token[]) -> ((f32[], u32[], token[]), (f32[], u32[], token[])) {
@@ -199,10 +199,10 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
     ROOT out = (f32[], f32[]) tuple(data-out-1, data-out-2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule((kHloStr)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule((kHloStr)));
   CollectiveSendRecvCombiner combiner;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[],

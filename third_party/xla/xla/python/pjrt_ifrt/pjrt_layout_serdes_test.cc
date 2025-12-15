@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -45,12 +45,10 @@ TEST_P(PjRtLayoutSerDesTest, PjRtLayoutRoundTrip) {
       xla::LayoutUtil::MakeDescendingLayout(1)));
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*layout, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*layout, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized,
-      Deserialize<PjRtLayout>(serialized, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(auto deserialized, Deserialize<PjRtLayout>(
+                                              serialized, /*options=*/nullptr));
 
   const auto* out_layout = llvm::dyn_cast<PjRtLayout>(deserialized.get());
   ASSERT_NE(out_layout, nullptr);

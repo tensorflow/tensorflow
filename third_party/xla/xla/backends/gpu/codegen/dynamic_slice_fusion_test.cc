@@ -50,11 +50,11 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1050,8 +1050,8 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -1059,13 +1059,13 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
@@ -1197,8 +1197,8 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -1206,16 +1206,16 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
@@ -1250,8 +1250,8 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -1259,16 +1259,16 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
@@ -2571,8 +2571,8 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -2580,12 +2580,12 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
@@ -2640,8 +2640,8 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -2649,16 +2649,16 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
     // CHECK: %dynamic-slice-fusion{{.+}} {
@@ -2817,8 +2817,8 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  ASSERT_OK_AND_ASSIGN(
       auto program_shape,
       xla::ProgramShape::FromProto(computation.proto().host_program_shape()));
   xla::HloModuleConfig hlo_config(program_shape,
@@ -2826,16 +2826,16 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_ref, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   hlo_config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
-                                            computation.proto(), hlo_config));
+  ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
+                                         computation.proto(), hlo_config));
 
   DynamicSliceFusionRewriter pass(GetPlatformName());
-  TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
+  ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(hlo_ref), std::move(hlo_opt),
@@ -3000,17 +3000,17 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSLoopIterationOffset) {
   debugoptions.set_xla_gpu_enable_dynamic_slice_fusion(false);
   debugoptions.set_xla_gpu_enable_pipelined_reduce_scatter(false);
   ref_config.set_debug_options(debugoptions);
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
-                          ParseAndReturnVerifiedModule(hlo_ref, ref_config));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_module_opt,
-                          GetOptimizedModule(std::move(ref_module)));
+  ASSERT_OK_AND_ASSIGN(auto ref_module,
+                       ParseAndReturnVerifiedModule(hlo_ref, ref_config));
+  ASSERT_OK_AND_ASSIGN(auto ref_module_opt,
+                       GetOptimizedModule(std::move(ref_module)));
 
   HloModuleConfig opt_config;
   debugoptions.set_xla_gpu_enable_dynamic_slice_fusion(true);
   opt_config.set_debug_options(debugoptions);
-  TF_ASSERT_OK_AND_ASSIGN(auto module_with_adddress_computation_flag,
-                          ParseAndReturnVerifiedModule(hlo_ref, opt_config));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module_with_adddress_computation_flag,
+                       ParseAndReturnVerifiedModule(hlo_ref, opt_config));
+  ASSERT_OK_AND_ASSIGN(
       auto module_with_adddress_computation,
       GetOptimizedModule(std::move(module_with_adddress_computation_flag)));
 
@@ -3060,30 +3060,30 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module_ref,
-                          ParseAndReturnVerifiedModule(hlo_ref, config));
+  ASSERT_OK_AND_ASSIGN(auto module_ref,
+                       ParseAndReturnVerifiedModule(hlo_ref, config));
 
   options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module_new,
-                          ParseAndReturnVerifiedModule(hlo_ref, config));
+  ASSERT_OK_AND_ASSIGN(auto module_new,
+                       ParseAndReturnVerifiedModule(hlo_ref, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
-                          GetOptimizedModule(std::move(module_ref)));
-  TF_ASSERT_OK_AND_ASSIGN(auto module_new_opt,
-                          GetOptimizedModule(std::move(module_new)));
+  ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
+                       GetOptimizedModule(std::move(module_ref)));
+  ASSERT_OK_AND_ASSIGN(auto module_new_opt,
+                       GetOptimizedModule(std::move(module_new)));
 
   ASSERT_TRUE(GetDynamicSliceFusions(*module_ref_opt).empty());
   ASSERT_FALSE(GetDynamicSliceFusions(*module_new_opt).empty());
 
   auto module_new_opt_clone = module_new_opt->Clone();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<OpaqueExecutable> wrapped_executable,
       CreateExecutable(std::move(module_new_opt_clone), false));
-  TF_ASSERT_OK_AND_ASSIGN(Executable* const exec,
-                          test_runner_as_hlo_runner().ExecutableFromWrapped(
-                              wrapped_executable.get()));
+  ASSERT_OK_AND_ASSIGN(Executable* const exec,
+                       test_runner_as_hlo_runner().ExecutableFromWrapped(
+                           wrapped_executable.get()));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
 
   // The pattern we have here is a static slice along with reduce-scatter
@@ -3131,19 +3131,19 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module_ref,
-                          ParseAndReturnVerifiedModule(hlo_ref, config));
+  ASSERT_OK_AND_ASSIGN(auto module_ref,
+                       ParseAndReturnVerifiedModule(hlo_ref, config));
 
   options.set_xla_gpu_enable_dynamic_slice_fusion(true);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
-  TF_ASSERT_OK_AND_ASSIGN(auto module_new,
-                          ParseAndReturnVerifiedModule(hlo_ref, config));
+  ASSERT_OK_AND_ASSIGN(auto module_new,
+                       ParseAndReturnVerifiedModule(hlo_ref, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
-                          GetOptimizedModule(std::move(module_ref)));
-  TF_ASSERT_OK_AND_ASSIGN(auto module_new_opt,
-                          GetOptimizedModule(std::move(module_new)));
+  ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
+                       GetOptimizedModule(std::move(module_ref)));
+  ASSERT_OK_AND_ASSIGN(auto module_new_opt,
+                       GetOptimizedModule(std::move(module_new)));
 
   ASSERT_TRUE(GetDynamicSliceFusions(*module_ref_opt).empty());
   ASSERT_FALSE(GetDynamicSliceFusions(*module_new_opt).empty());
@@ -3201,19 +3201,19 @@ TEST_F(DynamicSliceFusionTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ref,
-                          ParseAndReturnVerifiedModule(hlo_ref));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_opt,
-                          ParseAndReturnVerifiedModule(hlo_opt));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ref,
+                       ParseAndReturnVerifiedModule(hlo_ref));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_opt,
+                       ParseAndReturnVerifiedModule(hlo_opt));
 
   // Check that the offset value in the thunk is an evaluated constant even if
   // no simplification passes are executed.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_executable,
-                          CreateExecutable(/*module=*/module_opt->Clone(),
-                                           /*run_hlo_passes=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(Executable* const exec,
-                          test_runner_as_hlo_runner().ExecutableFromWrapped(
-                              wrapped_executable.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_executable,
+                       CreateExecutable(/*module=*/module_opt->Clone(),
+                                        /*run_hlo_passes=*/false));
+  ASSERT_OK_AND_ASSIGN(Executable* const exec,
+                       test_runner_as_hlo_runner().ExecutableFromWrapped(
+                           wrapped_executable.get()));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
   ASSERT_NE(gpu_exec, nullptr);
   const SequentialThunk& thunk = gpu_exec->GetThunk();
@@ -3272,14 +3272,14 @@ TEST_F(DynamicSliceFusionTest,
       ROOT tuple = (s32[2,2,32]{2,1,0}, s32[1024,1024]{1,0}) tuple(fusion-done, dot)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<OpaqueExecutable> wrapped_exec,
       CreateExecutable(hlo_module->Clone(), /*run_hlo_passes=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
-                          test_runner_as_hlo_runner().ExecutableFromWrapped(
-                              std::move(wrapped_exec)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+                       test_runner_as_hlo_runner().ExecutableFromWrapped(
+                           std::move(wrapped_exec)));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
   const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
 
@@ -3413,13 +3413,13 @@ TEST_F(DynamicSliceFusionTest,
   )";
   HloModuleConfig config = GetModuleConfigWithoutCommandBuffer();
   config.mutable_debug_options().set_xla_gpu_enable_dynamic_slice_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> fused_module,
-                          ParseAndReturnVerifiedModule(hlo_fused, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
-                          CreateExecutable(fused_module->Clone(), false));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
-                          test_runner_as_hlo_runner().ExecutableFromWrapped(
-                              std::move(wrapped_exec)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> fused_module,
+                       ParseAndReturnVerifiedModule(hlo_fused, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
+                       CreateExecutable(fused_module->Clone(), false));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
+                       test_runner_as_hlo_runner().ExecutableFromWrapped(
+                           std::move(wrapped_exec)));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
@@ -3454,8 +3454,8 @@ TEST_F(DynamicSliceFusionTest,
 
   // The second offset must be a constant value
   ASSERT_EQ(output_offsets[1], DynamicSliceThunk::Offset(0l));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unfused_module,
-                          ParseAndReturnVerifiedModule(hlo_unfused));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> unfused_module,
+                       ParseAndReturnVerifiedModule(hlo_unfused));
 
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
       std::move(fused_module), std::move(unfused_module),
@@ -3505,11 +3505,11 @@ TEST_F(DynamicSliceFusionTest,
     ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
+                       ParseAndReturnVerifiedModule(hlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_cmd_buffer_module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_cmd_buffer_module,
+                       ParseAndReturnVerifiedModule(hlo));
 
   ErrorSpec error_spec(1e-5, 1e-5);
   EXPECT_TRUE(
@@ -3692,14 +3692,14 @@ TEST_F(DynamicSliceFusionTest,
       ROOT while = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) while(tuple), body=body, condition=condition
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   std::unique_ptr<HloModule> m_fused = m->Clone();
   m_fused->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(m_fused, GetOptimizedModule(std::move(m_fused)));
-  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+  ASSERT_OK_AND_ASSIGN(m_fused, GetOptimizedModule(std::move(m_fused)));
+  ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
 
   // Check that the fused module has a dynamic address computation.
   std::vector<HloComputation*> fused_dynamic_slice_fusions =
@@ -3758,17 +3758,17 @@ TEST_F(DynamicSliceFusionTest, WhileLoopSliceWithNoInductionVariable) {
     while = while(tuple), body=body, condition=condition
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   m->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(false);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_ref,
-                          GetOptimizedModule(m->Clone()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m_ref,
+                       GetOptimizedModule(m->Clone()));
   m->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_dynamic_slice_fusion(true);
-  TF_ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
+  ASSERT_OK_AND_ASSIGN(m, GetOptimizedModule(std::move(m)));
   ErrorSpec error_spec(1e-5, 1e-5);
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(m), std::move(m_ref),
                                                 /*run_hlo_passes=*/false,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_tree.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -83,9 +83,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(module_str));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDimensionAnalysis> hlo_dimension_analysis,
       HloDimensionAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "copy"));
@@ -241,10 +240,10 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
                                                 /*num_partitions=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDimensionAnalysis> hlo_dimension_analysis,
       HloDimensionAnalysis::Run(*module));
   EXPECT_TRUE(

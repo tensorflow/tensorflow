@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -118,8 +118,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
   const auto& dims =
       module->entry_computation()->root_instruction()->dot_dimension_numbers();
 
@@ -129,8 +129,7 @@ ENTRY e {
   EXPECT_EQ(dims.rhs_contracting_dimensions(0), 2);
   EXPECT_EQ(dims.rhs_contracting_dimensions(1), 1);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionSorter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionSorter().Run(module.get()));
   EXPECT_TRUE(modified);
   const auto& dims2 =
       module->entry_computation()->root_instruction()->dot_dimension_numbers();
@@ -154,11 +153,10 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionSorter().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionSorter().Run(module.get()));
   EXPECT_FALSE(modified);
 }
 

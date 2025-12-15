@@ -15,6 +15,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -45,7 +45,7 @@ class GpuSpmdE2ECompileTest : public GpuCodegenTest {
 
 TEST_F(GpuSpmdE2ECompileTest, SinglePartition) {
   // Module with "Sharding" custom call and use_spmd_partitioning enabled.
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule module
 
 ENTRY entry {
@@ -66,7 +66,7 @@ ENTRY entry {
 }
 
 TEST_F(GpuSpmdE2ECompileTest, DotSharding) {
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -85,14 +85,14 @@ ENTRY main {
   config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(hlo_module)));
 
   // Validate that no collective communication operations are generated in this
   // module.
   const bool has_collective_ops = absl::c_any_of(
       optimized_module->entry_computation()->instructions(),
-      [](const HloInstruction *inst) {
+      [](const HloInstruction* inst) {
         return hlo_query::IsCollectiveCommunicationOp(inst->opcode());
       });
   EXPECT_FALSE(has_collective_ops);
@@ -101,7 +101,7 @@ ENTRY main {
 TEST_F(GpuSpmdE2ECompileTest, CollectivesScheduleLinearizerNoDeps) {
   // Setup the module such that we will need to generate > 1 collective for
   // sharding
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -118,12 +118,12 @@ ENTRY main {
   config.set_debug_options(GetDebugOptionsForTest());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(hlo_module)));
   // Verify that none of the collective operations generated have control
   // dependencies.
-  const HloComputation *entry = optimized_module->entry_computation();
-  for (const HloInstruction *instr : entry->instructions()) {
+  const HloComputation* entry = optimized_module->entry_computation();
+  for (const HloInstruction* instr : entry->instructions()) {
     if (!hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
       continue;
     }
@@ -136,7 +136,7 @@ TEST_F(GpuSpmdE2ECompileTest, CollectivesScheduleLinearizerDepsWithConv) {
   // Setup the module such that we will need to generate > 1 collective for
   // sharding, and verify that linearizer inserts control deps as there are
   // convolutions that can be auto tuned.
-  const char *const hlo_string = R"(
+  const char* const hlo_string = R"(
 HloModule test
 
 ENTRY main {
@@ -156,12 +156,12 @@ ENTRY main {
   config.set_debug_options(GetDebugOptionsFromFlags());
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(std::move(hlo_module)));
   // Verify that control dependencies are inserted for collectives.
   bool has_control_deps = false;
-  const HloComputation *entry = optimized_module->entry_computation();
-  for (const HloInstruction *instr : entry->instructions()) {
+  const HloComputation* entry = optimized_module->entry_computation();
+  for (const HloInstruction* instr : entry->instructions()) {
     if (!hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
       continue;
     }

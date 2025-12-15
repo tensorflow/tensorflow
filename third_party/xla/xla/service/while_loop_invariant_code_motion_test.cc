@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -101,8 +101,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -160,8 +160,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -216,8 +216,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
@@ -255,8 +255,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
       init_value));
 
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(), Contains(op::Add()));
@@ -300,8 +300,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
       HloInstruction::CreateGetTupleElement(scalar_s32, while_inst, 0));
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   ASSERT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
@@ -354,8 +354,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
 
   m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 
   EXPECT_THAT(while_inst->while_body()->instructions(),
@@ -401,8 +401,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
 
   HloComputation* entry_computation = m->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
   HloInstruction* transformed_while;
@@ -448,8 +448,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -476,8 +476,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
       while_shape, MakeAlwaysTrueComputation(while_shape, m.get()), while_body,
       init_value));
   m->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -507,7 +507,7 @@ ENTRY entry {
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
   auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);
@@ -539,8 +539,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
   auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -570,11 +570,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
       while_init = (f32[2], f32[2], f32[2], s32[]) tuple(param.0, param.0, param.0, param.1)
       ROOT while = (f32[2], f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -611,7 +611,7 @@ ENTRY entry {
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
   auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion(/*hoist_constants=*/true).Run(m.get()));
   EXPECT_TRUE(simplified_loop);
@@ -624,7 +624,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
 TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
   auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion(/*hoist_constants=*/false,
                                    /*hoist_non_constants=*/true,
@@ -679,8 +679,8 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
       init_value));
   m->AddEntryComputation(builder.Build());
   LOG(INFO) << "my_test: " << m->ToString();
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -714,11 +714,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistShardingCustomCalls) {
       while_init = (f32[2], f32[2], s32[]) tuple(param.0, param.0, param.1)
       ROOT while = (f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -764,10 +764,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest, RespectFrontendAttrDisablingHoisting) {
     ROOT %tuple.39 = (f32[], f32[], f32[10,10]{1,0}) tuple(%get-tuple-element.36, %get-tuple-element.37, %Arg_2.3)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
-                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule));
+  ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                       WhileLoopInvariantCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -794,11 +794,11 @@ ENTRY entry {
   ROOT while0 = (s32[], s32[]) while(while_init), condition=cond, body=body, origin={({"while.5" {0}},{"while.5" {1}})}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* body = m->GetComputationWithName("body");
   HloInstruction* c = body->GetInstructionWithName("c");
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopInvariantCodeMotion{/*hoist_constants=*/true}.Run(m.get()));
   EXPECT_TRUE(simplified_loop);

@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -50,10 +51,8 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -375,8 +374,8 @@ TEST_P(ReduceWindowTest, R4UnitWindow) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({0, 3, 2, 1}));
   XlaOp input;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input_data, CreateParameterAndTransferLiteral(
+  ASSERT_OK_AND_ASSIGN(auto input_data,
+                       CreateParameterAndTransferLiteral(
                            0, input_literal, "parameter", &builder_, &input));
 
   Padding padding = Padding::kSame;
@@ -434,8 +433,8 @@ TEST_P(ReduceWindowTest, R4SecondMinorStride) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input_data, CreateParameterAndTransferLiteral(
+  ASSERT_OK_AND_ASSIGN(auto input_data,
+                       CreateParameterAndTransferLiteral(
                            0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 1;
@@ -456,8 +455,8 @@ TEST_P(ReduceWindowTest, R4SecondMinorUnitStride) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input_data, CreateParameterAndTransferLiteral(
+  ASSERT_OK_AND_ASSIGN(auto input_data,
+                       CreateParameterAndTransferLiteral(
                            0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 3;
@@ -478,8 +477,8 @@ TEST_P(ReduceWindowTest, R4SecondMinorWin) {
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       input_array, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp input;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input_data, CreateParameterAndTransferLiteral(
+  ASSERT_OK_AND_ASSIGN(auto input_data,
+                       CreateParameterAndTransferLiteral(
                            0, input_literal, "parameter", &builder_, &input));
 
   int win_len = 8;
@@ -646,9 +645,9 @@ class R4ReduceWindowTest
     Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         input, LayoutUtil::MakeLayout(param.layout));
     XlaOp parameter;
-    TF_ASSERT_OK_AND_ASSIGN(auto input_arg,
-                            CreateParameterAndTransferLiteral(
-                                0, input_literal, "p0", &b, &parameter));
+    ASSERT_OK_AND_ASSIGN(auto input_arg,
+                         CreateParameterAndTransferLiteral(
+                             0, input_literal, "p0", &b, &parameter));
 
     std::vector<std::pair<int64_t, int64_t>> padding(4);
     for (int i = 0; i < 4; ++i) {
@@ -1564,9 +1563,9 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   Literal input_literal =
       LiteralUtil::CreateR1(absl::Span<const float>(input_vector));
   XlaOp parameter;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto input_arg, CreateParameterAndTransferLiteral(0, input_literal, "p0",
-                                                        &b, &parameter));
+  ASSERT_OK_AND_ASSIGN(auto input_arg,
+                       CreateParameterAndTransferLiteral(0, input_literal, "p0",
+                                                         &b, &parameter));
 
   std::vector<std::pair<int64_t, int64_t>> padding(1);
   padding[0] = {param.pad_low[0], param.pad_high[0]};

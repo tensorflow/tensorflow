@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla.pb.h"
 
@@ -200,7 +199,7 @@ ENTRY main {
   ROOT fusion.0 = f32[] fusion(p0, p1), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
   auto instr = module->entry_computation()->root_instruction();
   Config config = CreateDummyCublasFissionConfig();
 
@@ -295,8 +294,8 @@ TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
   // Serialize instr_1 to a string.
   std::vector<const HloInstruction*> instructions_to_serialize = {
       instr_1.get()};
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_cache,
-                          cache.Serialize(instructions_to_serialize));
+  ASSERT_OK_AND_ASSIGN(std::string serialized_cache,
+                       cache.Serialize(instructions_to_serialize));
 
   // Overwrite config for both instructions.
   cache.ClearCache();

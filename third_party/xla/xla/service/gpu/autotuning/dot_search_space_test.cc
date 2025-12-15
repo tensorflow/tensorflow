@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -135,8 +134,8 @@ ENTRY e {
 };
 
 TEST_F(DefaultDeviceDotSearchSpaceTest, ReturnsValidConfigList) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(), Not(IsEmpty()));
@@ -171,8 +170,8 @@ TEST_F(DotSearchSpaceTest, ExhaustiveSearchSpaceIsLargerThanDefault) {
         lhs_contracting_dims={1},
         rhs_contracting_dims={1}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleText));
   auto default_search_space = MakeSearchSpace(module.get());
   std::vector<TritonGemmConfig> default_configs =
       default_search_space.GenerateConfigs();
@@ -188,7 +187,7 @@ TEST_F(DotSearchSpaceTest, ExhaustiveSearchSpaceIsLargerThanDefault) {
 }
 
 TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
                           /*contracting_dim=*/1024));
@@ -202,8 +201,8 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -211,8 +210,8 @@ TEST_F(DotSearchSpaceTest, ReturnsValidConfigList) {
 }
 
 TEST_F(DotSearchSpaceTest, HonorsForcedContractingSplit) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
@@ -221,20 +220,20 @@ TEST_F(DotSearchSpaceTest, HonorsForcedContractingSplit) {
 }
 
 TEST_F(DotSearchSpaceTest, ConsidersContractingSplitForSmallOutputSize) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/16,
-                                              /*rhs_parallel_dim=*/16,
-                                              /*contracting_dim=*/1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/16,
+                                           /*rhs_parallel_dim=*/16,
+                                           /*contracting_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(), Contains(SplitKIs(Ge(2))));
 }
 
 TEST_F(DotSearchSpaceTest, LimitsContractingSplitForSmallerContractingSize) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/16,
-                                              /*rhs_parallel_dim=*/16,
-                                              /*contracting_dim=*/32));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/16,
+                                           /*rhs_parallel_dim=*/16,
+                                           /*contracting_dim=*/32));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -242,9 +241,9 @@ TEST_F(DotSearchSpaceTest, LimitsContractingSplitForSmallerContractingSize) {
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
-                                              /*rhs_parallel_dim=*/1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                           /*rhs_parallel_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -252,9 +251,9 @@ TEST_F(DotSearchSpaceTest, FindsGoodDataReuseOutputTiles) {
 }
 
 TEST_F(DotSearchSpaceTest, RestrictsOutputToSquareishTiles) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
-                                              /*rhs_parallel_dim=*/1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                           /*rhs_parallel_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
@@ -271,8 +270,8 @@ ENTRY e {
   ROOT r = f16[4096,4096] dot(e0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleText));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -288,8 +287,8 @@ ENTRY e {
   ROOT r = f16[4096,4096] dot(p0, e1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleText));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -297,7 +296,7 @@ ENTRY e {
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
                           /*contracting_dim=*/4096));
@@ -308,7 +307,7 @@ TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForLowOccupancyProblem) {
 }
 
 TEST_F(DotSearchSpaceTest, FindsOccupancyMaximizingTilingForSmallProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/64, /*rhs_parallel_dim=*/64,
                           /*contracting_dim=*/64));
@@ -319,9 +318,9 @@ TEST_F(DotSearchSpaceTest, FindsOccupancyMaximizingTilingForSmallProblem) {
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
-                                              /*rhs_parallel_dim=*/1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                           /*rhs_parallel_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
@@ -330,20 +329,20 @@ TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {
 }
 
 TEST_F(DotSearchSpaceTest, PadsTilesForSmallParallelDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
-                                              /*rhs_parallel_dim=*/15,
-                                              /*contracting_dim=*/1024));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/1024,
+                                           /*rhs_parallel_dim=*/15,
+                                           /*contracting_dim=*/1024));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(), Contains(BlockNIs(Eq(16))));
 }
 
 TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/12,
-                                              /*rhs_parallel_dim=*/8,
-                                              /*contracting_dim=*/16));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/12,
+                                           /*rhs_parallel_dim=*/8,
+                                           /*contracting_dim=*/16));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
@@ -352,7 +351,7 @@ TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
 }
 
 TEST_F(DotSearchSpaceTest, AssignsEnoughWarpsPerScheduler) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/512,
                           /*contracting_dim=*/1024));
@@ -369,9 +368,9 @@ TEST_F(DotSearchSpaceTest, AssignsEnoughWarpsPerScheduler) {
 }
 
 TEST_F(DotSearchSpaceTest, DoesNotBreakCtaSizeLimits) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/1024 * 16,
-                                              /*rhs_parallel_dim=*/1024 * 16));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/1024 * 16,
+                                           /*rhs_parallel_dim=*/1024 * 16));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -379,9 +378,9 @@ TEST_F(DotSearchSpaceTest, DoesNotBreakCtaSizeLimits) {
 }
 
 TEST_F(DotSearchSpaceTest, ConsidersAppropriateCtaSizeForTileSize) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/4096,
-                                              /*rhs_parallel_dim=*/4096));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/4096,
+                                           /*rhs_parallel_dim=*/4096));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -393,7 +392,7 @@ TEST_F(DotSearchSpaceTest, ConsidersAppropriateCtaSizeForTileSize) {
 
 // TODO: b/422419331 - Remove this once Triton properly handles 32-bit dots.
 TEST_F(DotSearchSpaceTest, ConsidersSmallCtasFor32BitDot) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/8 * 1024,
                           /*rhs_parallel_dim=*/8 * 1024,
@@ -406,7 +405,7 @@ TEST_F(DotSearchSpaceTest, ConsidersSmallCtasFor32BitDot) {
 }
 
 TEST_F(DotSearchSpaceTest, FindsFullCacheLineContractingTileSize) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
                           /*contracting_dim=*/1024));
@@ -416,7 +415,7 @@ TEST_F(DotSearchSpaceTest, FindsFullCacheLineContractingTileSize) {
 }
 
 TEST_F(DotSearchSpaceTest, HonorsSharedMemoryLimit) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/4096,
                           /*contracting_dim=*/4096));
@@ -434,7 +433,7 @@ TEST_F(DotSearchSpaceTest, HonorsSharedMemoryLimit) {
 }
 
 TEST_F(DotSearchSpaceTest, HonorsContractingSizeLimit) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
                           /*contracting_dim=*/256));
@@ -445,7 +444,7 @@ TEST_F(DotSearchSpaceTest, HonorsContractingSizeLimit) {
 }
 
 TEST_F(DotSearchSpaceTest, EnsuresContractingTileSizeFitsInstructonShape) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
                           /*contracting_dim=*/4));
@@ -456,8 +455,8 @@ TEST_F(DotSearchSpaceTest, EnsuresContractingTileSizeFitsInstructonShape) {
 }
 
 TEST_F(DotSearchSpaceTest, FindReasonablePipeliningStageCount) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(search_space.GenerateConfigs(),
@@ -466,7 +465,7 @@ TEST_F(DotSearchSpaceTest, FindReasonablePipeliningStageCount) {
 }
 
 TEST_F(DotSearchSpaceTest, LimitsStagesToAvailableTileSize) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/1024, /*rhs_parallel_dim=*/1024,
                           /*contracting_dim=*/128));
@@ -483,7 +482,7 @@ TEST_F(DotSearchSpaceTest, LimitsStagesToAvailableTileSize) {
 }
 
 TEST_F(DotSearchSpaceTest, ConsidersFewWarpsPerCtaAndMmaForSmallProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/128, /*rhs_parallel_dim=*/128,
                           /*contracting_dim=*/128));
@@ -495,10 +494,10 @@ TEST_F(DotSearchSpaceTest, ConsidersFewWarpsPerCtaAndMmaForSmallProblem) {
 }
 
 TEST_F(DotSearchSpaceTest, EnsuresWgmmaShapeForLargeProblem) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/16 * 1024,
-                                              /*rhs_parallel_dim=*/16 * 1024,
-                                              /*contracting_dim=*/4096));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/16 * 1024,
+                                           /*rhs_parallel_dim=*/16 * 1024,
+                                           /*contracting_dim=*/4096));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   EXPECT_THAT(
@@ -508,8 +507,8 @@ TEST_F(DotSearchSpaceTest, EnsuresWgmmaShapeForLargeProblem) {
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsAllConfigsIfNoHints) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
 
@@ -518,8 +517,8 @@ TEST_F(DotSearchSpaceTest, ReturnsAllConfigsIfNoHints) {
 }
 
 TEST_F(DotSearchSpaceTest, OptimizesEmptyConfigSet) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   TritonGemmConfig hint = {/*block_m=*/32,   /*block_n=*/32,
                            /*block_k=*/32,   /*split_k=*/1,
@@ -530,8 +529,8 @@ TEST_F(DotSearchSpaceTest, OptimizesEmptyConfigSet) {
 }
 
 TEST_F(DotSearchSpaceTest, RestrictsConfigsToHints) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   TritonGemmConfig matching_hint = {
       /*block_m=*/32, /*block_n=*/32,   /*block_k=*/32,
@@ -553,7 +552,7 @@ TEST_F(DotSearchSpaceTest, RestrictsConfigsToHints) {
 }
 
 TEST_F(DotSearchSpaceTest, RestrictsConfigsWithPartialMatch) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
       GetDefaultDotModule(/*lhs_parallel_dim=*/4096, /*rhs_parallel_dim=*/16,
                           /*contracting_dim=*/1024));
@@ -574,9 +573,9 @@ TEST_F(DotSearchSpaceTest, RestrictsConfigsWithPartialMatch) {
 }
 
 TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule(/*lhs_parallel_dim=*/4096,
-                                              /*rhs_parallel_dim=*/4096));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule(/*lhs_parallel_dim=*/4096,
+                                           /*rhs_parallel_dim=*/4096));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   TritonGemmConfig hint = {/*block_m=*/1024, /*block_n=*/1024,
@@ -590,8 +589,8 @@ TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
 }
 
 TEST_F(DotSearchSpaceTest, RestrictsSplitKPerNMTile) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          GetDefaultDotModule());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       GetDefaultDotModule());
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
 
   auto make_config = [](int block_m, int block_n, int block_k, int split_k) {

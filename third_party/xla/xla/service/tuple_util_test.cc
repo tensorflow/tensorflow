@@ -18,15 +18,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -44,8 +42,8 @@ ENTRY entry {
   ROOT p1 = f32[32,32]{1,0} parameter(1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* param0 =
       module->entry_computation()->parameter_instruction(0);
@@ -64,8 +62,8 @@ ENTRY entry {
   ROOT p1 = f32[32,32]{1,0} parameter(1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* param0 =
       module->entry_computation()->parameter_instruction(0);
@@ -91,14 +89,14 @@ ENTRY entry {
   ROOT tuple = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
 
-  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
-                          TupleUtil::ReplaceTupleWith(p0, tuple, {1}));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
+                       TupleUtil::ReplaceTupleWith(p0, tuple, {1}));
 
   EXPECT_THAT(new_tuple, op::Tuple(op::Parameter(0), op::Parameter(0)));
 }
@@ -112,14 +110,14 @@ ENTRY entry {
   p1 = f32[32,32]{1,0} parameter(1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
 
-  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
-                          TupleUtil::ReplaceTupleWith(p1, p0, {0}));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
+                       TupleUtil::ReplaceTupleWith(p1, p0, {0}));
 
   EXPECT_THAT(new_tuple, op::Tuple(op::Parameter(1),
                                    op::GetTupleElement(op::Parameter(0), 1)));
@@ -134,14 +132,14 @@ ENTRY entry {
   p1 = f32[32,32]{1,0} parameter(1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
 
-  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
-                          TupleUtil::ReplaceTupleWith(p1, p0, {1, 0}));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * new_tuple,
+                       TupleUtil::ReplaceTupleWith(p1, p0, {1, 0}));
 
   EXPECT_THAT(
       new_tuple,
@@ -161,8 +159,8 @@ ENTRY entry {
   ROOT root = f32[32,32]{1,0} get-tuple-element(gte), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* existing_gte = FindInstruction(module.get(), "gte");
@@ -185,8 +183,8 @@ ENTRY entry {
   ROOT root = f32[32,32]{1,0} get-tuple-element(gte), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   ASSERT_NE(p0, nullptr);

@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -142,17 +142,17 @@ ENTRY AddDotsFunc {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -170,17 +170,17 @@ ENTRY AddDotsFunc {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -196,17 +196,17 @@ ENTRY %LHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   // Use GemmRewriter to generate cublasGemm call.
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -222,16 +222,16 @@ ENTRY %RHSBatchDimNonZero (Arg_1: f32[4,3], Arg_2: f32[4,7,3]) -> f32[4,7,7] {
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   GemmRewriter gemm_rewriter(
       GpuComputeComp(),
       /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          this->RunHloPass(&gemm_rewriter, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       this->RunHloPass(&gemm_rewriter, module.get()));
   EXPECT_TRUE(changed);
   GemmBroadcastFoldingRewriter pass;
-  TF_ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 }
 

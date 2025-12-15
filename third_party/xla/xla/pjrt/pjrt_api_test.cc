@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 namespace {
 
@@ -35,11 +34,10 @@ TEST(PjRtApiTest, SetAndGetGlobalPjRtApi) {
   api.pjrt_api_version.minor_version = PJRT_API_MINOR;
 
   TF_ASSERT_OK(pjrt::SetPjrtApi("CPU", &api));
-  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output, pjrt::PjrtApi("CPU"));
-  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* output_lowercase,
-                          pjrt::PjrtApi("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(bool is_initialized,
-                          pjrt::IsPjrtPluginInitialized("CPU"));
+  ASSERT_OK_AND_ASSIGN(const PJRT_Api* output, pjrt::PjrtApi("CPU"));
+  ASSERT_OK_AND_ASSIGN(const PJRT_Api* output_lowercase, pjrt::PjrtApi("cpu"));
+  ASSERT_OK_AND_ASSIGN(bool is_initialized,
+                       pjrt::IsPjrtPluginInitialized("CPU"));
 
   EXPECT_FALSE(is_initialized);
   EXPECT_EQ(output, &api);
@@ -62,14 +60,14 @@ TEST(PjRtApiTest, InitPjRtPlugin) {
   api.PJRT_Plugin_Initialize = pjrt::PJRT_Plugin_Initialize_NoOp;
   std::string plugin_name = "plugin";
   TF_ASSERT_OK(pjrt::SetPjrtApi(plugin_name, &api));
-  TF_ASSERT_OK_AND_ASSIGN(bool is_initialized,
-                          pjrt::IsPjrtPluginInitialized(plugin_name));
+  ASSERT_OK_AND_ASSIGN(bool is_initialized,
+                       pjrt::IsPjrtPluginInitialized(plugin_name));
   EXPECT_FALSE(is_initialized);
 
   TF_ASSERT_OK(pjrt::InitializePjrtPlugin(plugin_name));
 
-  TF_ASSERT_OK_AND_ASSIGN(is_initialized,
-                          pjrt::IsPjrtPluginInitialized(plugin_name));
+  ASSERT_OK_AND_ASSIGN(is_initialized,
+                       pjrt::IsPjrtPluginInitialized(plugin_name));
   EXPECT_TRUE(is_initialized);
 }
 

@@ -111,6 +111,7 @@ onednn_graph_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -157,6 +158,7 @@ onednn_cc_test(
     deps = [
         ":onednn_op_thunk",
         "//xla:array2d",
+        "//xla:array4d",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",

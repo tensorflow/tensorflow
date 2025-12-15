@@ -54,7 +54,7 @@ TEST(ExecutionStateTest, SetAndGetForInternalType) {
   TF_ASSERT_OK(state.Set(std::make_unique<int32_t>(42)));
   EXPECT_TRUE(state.IsSet());
 
-  TF_ASSERT_OK_AND_ASSIGN(int32_t* data, state.Get<int32_t>());
+  ASSERT_OK_AND_ASSIGN(int32_t* data, state.Get<int32_t>());
   EXPECT_EQ(*data, 42);
 }
 
@@ -74,7 +74,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
 
   TypeRegistry::TypeInfo type_info = {
       [](void* ptr) { delete static_cast<int32_t*>(ptr); }};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TypeRegistry::TypeId type_id,
       TypeRegistry::AssignExternalTypeId("int32_t", type_info));
 
@@ -84,7 +84,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
   TF_ASSERT_OK(state.Set(type_id, value));
   EXPECT_TRUE(state.IsSet());
 
-  TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
+  ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
   EXPECT_EQ(data, value);
 }
 
@@ -108,18 +108,18 @@ struct TypeRegistry::SerDes<MyState> : public std::true_type {
 TEST(ExecutionStateTest, Serialization) {
   TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<MyState>();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       TypeRegistry::TypeId type_id,
       TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
 
   ExecutionState state;
   TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
+  ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionState round_trip,
-                          ExecutionState::FromProto(proto))
-  TF_ASSERT_OK_AND_ASSIGN(void* round_trip_data, round_trip.Get(type_id));
+  ASSERT_OK_AND_ASSIGN(ExecutionState round_trip,
+                       ExecutionState::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(void* round_trip_data, round_trip.Get(type_id));
   EXPECT_EQ(static_cast<MyState*>(round_trip_data)->value, "some_state_data");
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/types/span.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -85,9 +85,9 @@ TEST_P(ArraySpecTest, ToFromProto) {
                                               /*shape=*/shape,
                                               /*shard_shape=*/shard_shape)};
 
-  TF_ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto(version()));
-  TF_ASSERT_OK_AND_ASSIGN(const ArraySpec array_spec_copy,
-                          ArraySpec::FromProto(client(), proto));
+  ASSERT_OK_AND_ASSIGN(const ArraySpecProto proto, spec.ToProto(version()));
+  ASSERT_OK_AND_ASSIGN(const ArraySpec array_spec_copy,
+                       ArraySpec::FromProto(client(), proto));
 
   EXPECT_EQ(array_spec_copy.dtype, dtype);
   EXPECT_EQ(array_spec_copy.shape, shape);

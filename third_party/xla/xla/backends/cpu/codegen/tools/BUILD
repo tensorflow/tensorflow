@@ -61,7 +61,6 @@ xla_cc_binary(
         "//xla/codegen/tools:test_lib",
         "//xla/service:cpu_plugin",
         "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

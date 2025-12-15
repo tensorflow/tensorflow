@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/xla_data.pb.h"
 
@@ -210,8 +209,7 @@ ENTRY main {
   ROOT tuple = (f32[], f32[]) tuple(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
   HloInstruction* tuple = module->entry_computation()->root_instruction();
@@ -237,8 +235,7 @@ ENTRY main {
   ROOT gte = f32[] get-tuple-element(tuple), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
@@ -263,8 +260,7 @@ ENTRY main {
   ROOT gte = f32[] get-tuple-element(tuple), index=1
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   HloInstruction* gte = module->entry_computation()->root_instruction();
 
@@ -283,8 +279,7 @@ ENTRY main {
  ROOT p0 = (f32[], f32[]) parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
 
@@ -301,8 +296,7 @@ ENTRY main {
   ROOT tuple = (f32[], f32[]) tuple(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
   HloInstruction* tuple = module->entry_computation()->root_instruction();
@@ -324,8 +318,7 @@ ENTRY main {
   ROOT p0 = f32[] parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(OriginalValue::CreateFromInstruction(p0));
 
@@ -347,8 +340,7 @@ ENTRY main {
   ROOT p0 = f32[] parameter(0)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
   p0->set_original_value(
       std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
@@ -374,8 +366,7 @@ ENTRY main {
   ROOT add = f32[] add(n0, n1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
   HloInstruction* n0 = FindInstruction(module.get(), "n0");
@@ -416,8 +407,7 @@ ENTRY main {
   ROOT add = f32[] add(p0, p1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
 
@@ -446,8 +436,7 @@ ENTRY main {
   ROOT gte = f32[] get-tuple-element(tuple), index=0
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloInstruction* gte = module->entry_computation()->root_instruction();
 
   EXPECT_NE(gte->original_value(), nullptr);

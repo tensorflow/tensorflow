@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -50,15 +50,15 @@ TEST_F(TripCountAnnotatorTest, KnownSmallTripCount) {
       ROOT while = (s32[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   ASSERT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_TRUE(config.has_known_induction_variable());
   EXPECT_TRUE(config.has_known_init_step());
   EXPECT_EQ(config.known_trip_count().n(), 10);
@@ -91,15 +91,15 @@ TEST_F(TripCountAnnotatorTest, KnownLargeTripCount) {
       ROOT while = (s32[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   ASSERT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 1000000);
 }
 
@@ -127,15 +127,15 @@ TEST_F(TripCountAnnotatorTest, NonzeroStartStep) {
       ROOT while = (s32[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   ASSERT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 499995);
   EXPECT_TRUE(config.has_known_init_step());
   EXPECT_EQ(config.known_init_step().init(), 10);
@@ -166,15 +166,15 @@ TEST_F(TripCountAnnotatorTest, LessThanOrEqualTo) {
       ROOT while = (s32[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   ASSERT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_trip_count().n(), 999991);
 }
 
@@ -205,15 +205,15 @@ TEST_F(TripCountAnnotatorTest, Int64Overflow) {
       ROOT while = (s64[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   EXPECT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_FALSE(config.has_known_trip_count());
   EXPECT_FALSE(config.has_known_init_step());
   EXPECT_TRUE(config.has_known_induction_variable());
@@ -244,15 +244,15 @@ TEST_F(TripCountAnnotatorTest, NonZeroTupleIndex) {
       ROOT while = (s32[], s32[]) while(initial_tuple), condition=Cond, body=Body
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   WhileLoopTripCountAnnotator pass;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, m.get()));
   ASSERT_TRUE(changed);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          m->entry_computation()
-                              ->root_instruction()
-                              ->backend_config<WhileLoopBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(auto config,
+                       m->entry_computation()
+                           ->root_instruction()
+                           ->backend_config<WhileLoopBackendConfig>());
   EXPECT_EQ(config.known_induction_variable().tuple_index(), 1);
 }
 

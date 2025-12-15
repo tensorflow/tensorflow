@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -137,8 +137,8 @@ TEST_F(GemvRewriterTest, DoNotRewriteDotsWithNonNormalizedLayout) {
       lhs_contracting_dims={2}, rhs_contracting_dims={1}
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   GemvRewriter rewriter;
   absl::StatusOr<bool> result = this->RunHloPass(&rewriter, module.get());
   EXPECT_FALSE(result.ok());

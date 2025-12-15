@@ -15,28 +15,28 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/tsl/platform/statusor.h"
 
 namespace {
 
 TEST(SymbolNameUtilTest, NoChange) {
-  TF_ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo"));
+  ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo"));
   EXPECT_EQ(result, "foo");
 }
 
 TEST(SymbolNameUtilTest, Dot) {
-  TF_ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo.bar"));
+  ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo.bar"));
   EXPECT_EQ(result, "foo_bar");
 }
 
 TEST(SymbolNameUtilTest, Dash) {
-  TF_ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo-bar"));
+  ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo-bar"));
   EXPECT_EQ(result, "foo_bar");
 }
 
 TEST(SymbolNameUtilTest, Colon) {
-  TF_ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo:bar"));
+  ASSERT_OK_AND_ASSIGN(auto result, xla::cpu::ConvertToCName("foo:bar"));
   EXPECT_EQ(result, "foo_bar");
 }
 

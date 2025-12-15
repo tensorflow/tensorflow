@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -37,7 +36,7 @@ using ::testing::ElementsAre;
 using SymbolicTiledHloInstructionTest = HloHardwareIndependentTestBase;
 
 TEST_F(SymbolicTiledHloInstructionTest, TransposeTileSizesAreSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 fused_computation {
   p0 = f32[16,32] parameter(0)
   p1 = f32[32,16] parameter(1)

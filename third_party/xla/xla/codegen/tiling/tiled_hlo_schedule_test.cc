@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -72,7 +71,7 @@ TEST_F(MajorToMinorTiledHloScheduleTest,
   };
 
   MajorToMinorTiledHloSchedule scheduler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       IndexingMap scheduled_indexing,
       scheduler.Schedule(offsets_indexing, iteration_space, &mlir_context_));
 
@@ -176,11 +175,11 @@ ENTRY main {
   p1 = bf16[2,3,256,512] parameter(1)
   ROOT fusion = bf16[2,3,8192,512] fusion(p0, p1), kind=kCustom, calls=dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kSupportedFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSupportedFusionHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
-                          TilingSpecificationForModule(module.get()));
+  ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
+                       TilingSpecificationForModule(module.get()));
 
   TF_EXPECT_OK(TransposedDotTiledHloSchedule::Create(tiling_specification));
 }
@@ -196,11 +195,11 @@ ENTRY main {
   p0 = bf16[128] parameter(0)
   ROOT fusion = bf16[128] fusion(p0), kind=kCustom, calls=dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kUnsupportedNonDotHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kUnsupportedNonDotHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
-                          TilingSpecificationForModule(module.get()));
+  ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
+                       TilingSpecificationForModule(module.get()));
   EXPECT_THAT(TransposedDotTiledHloSchedule::Create(tiling_specification),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("expects its root to be a dot")));
@@ -246,12 +245,11 @@ ENTRY main {
   ROOT fusion = bf16[64,64] fusion(p0, p1), kind=kCustom, calls=dot
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      ParseAndReturnVerifiedModule(kUnsupportedMultiDotHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kUnsupportedMultiDotHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
-                          TilingSpecificationForModule(module.get()));
+  ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
+                       TilingSpecificationForModule(module.get()));
 
   EXPECT_THAT(
       TransposedDotTiledHloSchedule::Create(tiling_specification),
@@ -288,11 +286,11 @@ ENTRY main {
   p1 = bf16[256,512] parameter(1)
   ROOT fusion = bf16[2,8192,512] fusion(p0, p1), kind=kCustom, calls=dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kSupportedFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSupportedFusionHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
-                          TilingSpecificationForModule(module.get()));
+  ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
+                       TilingSpecificationForModule(module.get()));
 
   EXPECT_THAT(TransposedDotTiledHloSchedule::Create(tiling_specification),
               StatusIs(absl::StatusCode::kInvalidArgument,
@@ -329,14 +327,14 @@ ENTRY main {
   p1 = bf16[1,3,256,512] parameter(1)
   ROOT fusion = bf16[1,3,1024,512] fusion(p0, p1), kind=kCustom, calls=dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kSupportedFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kSupportedFusionHlo));
 
-  TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
-                          TilingSpecificationForModule(module.get()));
+  ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
+                       TilingSpecificationForModule(module.get()));
 
   MajorToMinorTiledHloSchedule major_to_minor_scheduler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<TransposedDotTiledHloSchedule> transposed_scheduler,
       TransposedDotTiledHloSchedule::Create(tiling_specification));
 
@@ -357,14 +355,12 @@ ENTRY main {
     linear_iteration_space_size *= bound;
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      IndexingMap major_to_minor_scheduled_indexing,
-      major_to_minor_scheduler.Schedule(offsets_indexing, iteration_space,
-                                        &mlir_context_));
-  TF_ASSERT_OK_AND_ASSIGN(
-      IndexingMap transposed_scheduled_indexing,
-      transposed_scheduler->Schedule(offsets_indexing, iteration_space,
-                                     &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(IndexingMap major_to_minor_scheduled_indexing,
+                       major_to_minor_scheduler.Schedule(
+                           offsets_indexing, iteration_space, &mlir_context_));
+  ASSERT_OK_AND_ASSIGN(IndexingMap transposed_scheduled_indexing,
+                       transposed_scheduler->Schedule(
+                           offsets_indexing, iteration_space, &mlir_context_));
 
   int64_t m_bound = iteration_space[3].dimension_size;
   int64_t n_bound = iteration_space[4].dimension_size;

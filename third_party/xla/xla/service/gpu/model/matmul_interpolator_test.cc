@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -212,8 +213,8 @@ class MatmulInterpolatorParamTest : public TestWithParam<ParametrizedTestCase> {
 TEST_P(MatmulInterpolatorParamTest,
        MatmulInteprolatorNextNeighbourInterpolation) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context, Dot(spec.b, spec.m, spec.n,
-                                                  spec.k, "f32", "f32", "f32"));
+  ASSERT_OK_AND_ASSIGN(DotContext context, Dot(spec.b, spec.m, spec.n, spec.k,
+                                               "f32", "f32", "f32"));
   EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
                         absl::Milliseconds(1)),
             expected_duration);
@@ -338,8 +339,8 @@ using H100BF16Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100BF16Test, EstimatesRuntimeForBF16) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotBF16(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotBF16(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -424,8 +425,8 @@ using B200BF16Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200BF16Test, EstimatesRuntimeForBF16) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotBF16(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotBF16(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -464,8 +465,8 @@ using H100S8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100S8Test, EstimatesRuntimeForS8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotS8(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotS8(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -520,8 +521,8 @@ using B200S8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200S8Test, EstimatesRuntimeForS8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          DotS8(spec.b, spec.m, spec.n, spec.k));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       DotS8(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -560,9 +561,9 @@ using H100F8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(H100F8Test, EstimatesRuntimeForF8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
@@ -605,9 +606,9 @@ using B200F8Test = MatmulInterpolatorDefaultTableTest;
 
 TEST_P(B200F8Test, EstimatesRuntimeForF8) {
   const auto& [_, spec, expected_duration] = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
-                          Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
-                              spec.rhs_type, spec.result_type));
+  ASSERT_OK_AND_ASSIGN(DotContext context,
+                       Dot(spec.b, spec.m, spec.n, spec.k, spec.lhs_type,
+                           spec.rhs_type, spec.result_type));
   // Compare with nanosecond precision.
   EXPECT_EQ(
       absl::Trunc(*GetMatmulInterpolatorB200()->EstimatedRuntime(*context.dot),
@@ -726,7 +727,7 @@ TEST_F(MatmulInterpolatorTest, SupportsCublasCustomCalls) {
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   const HloInstruction& custom_call =
       *module->entry_computation()->root_instruction();
   EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));
@@ -764,7 +765,7 @@ TEST_F(MatmulInterpolatorTest, SupportsDotTritonFusion) {
         }
     }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   const HloInstruction& custom_call =
       *module->entry_computation()->root_instruction();
   EXPECT_EQ(*interpolator().EstimatedRuntime(custom_call), absl::Seconds(1));

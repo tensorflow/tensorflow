@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_runner.h"
@@ -274,8 +274,8 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
   const Literal expected_output_literal =
       LiteralUtil::CreateFromArray<float>(expected_output);
@@ -315,7 +315,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto results, RunKernel<bfloat16>(executors, inputs, ReductionKind::SUM));
 
   for (int i = 0; i < kNumRanks; ++i) {
@@ -352,8 +352,8 @@ TEST_P(AllReduceKernelTest, KernelTestOrPred) {
 
   // There are no logical operations in all-reduce reduction kind, so OR is
   // simulated with MAX on uint8.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, RunKernel<bool>(executors, inputs, ReductionKind::MAX));
+  ASSERT_OK_AND_ASSIGN(auto results,
+                       RunKernel<bool>(executors, inputs, ReductionKind::MAX));
 
   for (int i = 0; i < kNumRanks; ++i) {
     EXPECT_EQ(results[i], expected_output);
@@ -417,8 +417,8 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloRunner runner(PlatformUtil::GetDefaultPlatform().value());
   Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
 

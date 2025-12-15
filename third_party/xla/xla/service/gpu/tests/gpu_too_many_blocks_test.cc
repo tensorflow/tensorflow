@@ -23,8 +23,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -49,8 +47,8 @@ ENTRY primitive_computation_mul.8 {
   ROOT multiply.5 = s8[65536,65536,65536,128,4] multiply(broadcast.3, broadcast.4)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                       GetOptimizedModule(hlo_text));
 
   se::StreamExecutorMemoryAllocator allocator(
       backend().default_stream_executor());

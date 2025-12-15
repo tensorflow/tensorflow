@@ -20,21 +20,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
-#include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -104,14 +102,14 @@ static constexpr absl::string_view kAddScatterHlo = R"(
 )";
 
 TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kAddScatterHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
   debug_options.set_xla_cpu_use_fusion_emitters(false);
 
   CpuCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
       compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
                             /*options=*/{}));
@@ -135,15 +133,15 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
 }
 
 TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kAddScatterHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
   debug_options.set_xla_cpu_use_fusion_emitters(false);
   debug_options.set_xla_cpu_parallel_codegen_split_count(1);
 
   CpuCompiler compiler;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
       compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
                             /*options=*/{}));

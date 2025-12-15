@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -42,16 +42,16 @@ namespace {
 class StablehloUtilsTest : public HloHardwareIndependentTestBase {
  protected:
   void MatchHloModule(HloModule& module, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                            RunFileCheck(module.ToString(), pattern));
+    ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                         RunFileCheck(module.ToString(), pattern));
     EXPECT_TRUE(filecheck_result);
   }
   void MatchMlirModule(mlir::ModuleOp module, absl::string_view pattern) {
     std::string module_string;
     llvm::raw_string_ostream os(module_string);
     module.print(os);
-    TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
-                            RunFileCheck(module_string, pattern));
+    ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                         RunFileCheck(module_string, pattern));
     EXPECT_TRUE(filecheck_result);
   }
   void ConvertShardyAndCompare(const std::string& shardy_mlir_string,
@@ -65,8 +65,8 @@ class StablehloUtilsTest : public HloHardwareIndependentTestBase {
         mlir::parseSourceString<mlir::ModuleOp>(shardy_mlir_string, &context);
     ASSERT_NE(shardy_module.get(), nullptr);
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> converted_hlo_module,
-                            ConvertShardyToHlo(shardy_module.get()));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> converted_hlo_module,
+                         ConvertShardyToHlo(shardy_module.get()));
     MatchHloModule(*converted_hlo_module, expected_hlo_pattern);
   }
   void ConvertHloAndCompare(const std::string& hlo_string,
@@ -76,10 +76,10 @@ class StablehloUtilsTest : public HloHardwareIndependentTestBase {
                         mlir::func::FuncDialect,
                         mlir::stablehlo::StablehloDialect>();
 
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                            ParseAndReturnUnverifiedModule(hlo_string));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                         ParseAndReturnUnverifiedModule(hlo_string));
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         mlir::OwningOpRef<mlir::ModuleOp> converted_shardy_module,
         ConvertHloToShardyStablehlo(*hlo_module, &context));
 

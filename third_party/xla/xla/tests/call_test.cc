@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -114,7 +114,7 @@ TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
     auto x = Parameter(&builder, 0, r0f32_, "x");
     Add(x, ConstantR0<float>(&builder, 1.0));
   }
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation inner, builder.Build());
+  ASSERT_OK_AND_ASSIGN(XlaComputation inner, builder.Build());
 
   XlaBuilder builder2("outer");
   {
@@ -123,7 +123,7 @@ TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
     x = Call(&builder2, inner, {x});
     x = Call(&builder2, inner, {x});
   }
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation outer, builder2.Build());
+  ASSERT_OK_AND_ASSIGN(XlaComputation outer, builder2.Build());
 
   XlaBuilder builder3("outermost");
   {

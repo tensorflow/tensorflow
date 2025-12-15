@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -168,7 +167,7 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdAddressableDevicesSuccess) {
       /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdAddressableDevices());
+  ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdAddressableDevices());
   EXPECT_THAT(result,
               UnorderedElementsAre(Pair("mesh0", ElementsAre(&device0_)),
                                    Pair("mesh1", ElementsAre(&device1_))));
@@ -235,7 +234,7 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCompiledMemoryStatsSuccess) {
       /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto stats, executable.GetMpmdCompiledMemoryStats());
+  ASSERT_OK_AND_ASSIGN(auto stats, executable.GetMpmdCompiledMemoryStats());
   EXPECT_THAT(stats, UnorderedElementsAre(Pair("mesh0", _)));
   EXPECT_EQ(stats["mesh0"].generated_code_size_in_bytes, 1024);
 }
@@ -342,12 +341,12 @@ TEST_F(MpmdLoadedExecutableTest, GetMpmdCostAnalysisSuccess) {
       /*ready_future=*/tsl::Future<>(absl::OkStatus()),
       /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdCostAnalysis());
+  ASSERT_OK_AND_ASSIGN(auto result, executable.GetMpmdCostAnalysis());
   EXPECT_THAT(result, UnorderedElementsAre(Pair("mesh0", _)));
   EXPECT_THAT(result.at("mesh0").Get<float>("cost"),
               absl_testing::IsOkAndHolds(Eq(1.0f)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result2, executable.GetMpmdCostAnalysis());
+  ASSERT_OK_AND_ASSIGN(auto result2, executable.GetMpmdCostAnalysis());
   EXPECT_THAT(result2, UnorderedElementsAre(Pair("mesh0", _)));
 }
 

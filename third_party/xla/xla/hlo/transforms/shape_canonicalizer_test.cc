@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/shape_canonicalizer.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -22,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_pool.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -38,10 +38,8 @@ TEST_F(ShapeCanonicalizerTest, Canonicalize) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module0,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(auto module1,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module0, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module1, ParseAndReturnVerifiedModule(hlo_string));
 
   ShapePool shape_pool;
   ShapeCanonicalizer shape_canonicalizer(&shape_pool);

@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -146,8 +145,8 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
 
   EXPECT_EQ(modules.size(), 2);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
-                          ir_compiler->build_target_machine());
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
 
   for (auto& llvm_module : modules) {
     llvm_module->setDataLayout(target_machine->createDataLayout());
@@ -214,8 +213,8 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
 
   {
     has_avx512 = true;
-    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
-                            ir_compiler.build_target_machine());
+    ASSERT_OK_AND_ASSIGN(auto target_machine,
+                         ir_compiler.build_target_machine());
 
     absl::string_view features = target_machine->getTargetFeatureString();
     EXPECT_THAT(features, HasSubstr("+prefer-no-scatter"));
@@ -224,8 +223,8 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
 
   {
     has_avx512 = false;
-    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
-                            ir_compiler.build_target_machine());
+    ASSERT_OK_AND_ASSIGN(auto target_machine,
+                         ir_compiler.build_target_machine());
 
     absl::string_view features = target_machine->getTargetFeatureString();
     EXPECT_THAT(features, Not(HasSubstr("+prefer-no-scatter")));
@@ -246,8 +245,8 @@ TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
                           /*optimize_for_size=*/false, target_machine_options},
       compilation_hooks);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
-                          ir_compiler->build_target_machine());
+  ASSERT_OK_AND_ASSIGN(auto target_machine,
+                       ir_compiler->build_target_machine());
 
   EXPECT_EQ(target_machine->getTargetCPU(), kTargetCpuForHost);
   EXPECT_EQ(target_machine->getTargetTriple().getTriple(),

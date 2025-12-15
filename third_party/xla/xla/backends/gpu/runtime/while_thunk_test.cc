@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -173,8 +174,8 @@ class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
 };
 
 TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationKnownTripCountTest) {
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* loop,
-                          CreateFakeWhileInstruction());
+  ASSERT_OK_AND_ASSIGN(const HloInstruction* loop,
+                       CreateFakeWhileInstruction());
 
   auto [body_thunk, logger] = CreateLoggingSequentialThunk(loop);
   auto condition_thunk =
@@ -193,10 +194,10 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationKnownTripCountTest) {
 }
 
 TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* outer_loop,
-                          CreateFakeWhileInstruction());
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* inner_loop,
-                          CreateFakeWhileInstruction());
+  ASSERT_OK_AND_ASSIGN(const HloInstruction* outer_loop,
+                       CreateFakeWhileInstruction());
+  ASSERT_OK_AND_ASSIGN(const HloInstruction* inner_loop,
+                       CreateFakeWhileInstruction());
 
   auto [body_thunk, logger] = CreateLoggingSequentialThunk(outer_loop);
   auto inner_condition_thunk =
@@ -229,10 +230,10 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
 }
 
 TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationUnknownLoopTest) {
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* loop,
-                          CreateFakeWhileInstruction());
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* not_running_loop,
-                          CreateFakeWhileInstruction());
+  ASSERT_OK_AND_ASSIGN(const HloInstruction* loop,
+                       CreateFakeWhileInstruction());
+  ASSERT_OK_AND_ASSIGN(const HloInstruction* not_running_loop,
+                       CreateFakeWhileInstruction());
 
   auto [body_thunk, logger] = CreateLoggingSequentialThunk(not_running_loop);
   auto condition_thunk =
@@ -273,7 +274,7 @@ TEST(WhileThunkTest, ToProto) {
   WhileThunk thunk =
       CreateWhileThunk(thunk_info, slice, std::move(condition_thunks),
                        std::move(body_thunks), /*trip_count=*/10);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
 
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
@@ -367,7 +368,7 @@ TEST(WhileThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<WhileThunk> thunk,
       WhileThunk::FromProto(thunk_info, proto.while_thunk(), buffer_allocations,
                             [](const ThunkProto& proto)
@@ -376,7 +377,7 @@ TEST(WhileThunkTest, FromProto) {
                                                            Kind::kCustomCall);
                             }));
   ASSERT_NE(thunk, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

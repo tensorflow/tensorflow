@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -70,8 +69,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 
@@ -109,8 +108,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 
@@ -152,8 +151,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 
@@ -196,8 +195,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 
@@ -236,8 +235,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 
@@ -290,8 +289,8 @@ ENTRY entry {
 
 )hlo";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
   CallParameterCleanup cleanup;
   EXPECT_TRUE(cleanup.Run(module.get()).value());
 

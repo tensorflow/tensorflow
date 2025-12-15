@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -79,7 +78,7 @@ static constexpr auto serialize =
 
 TEST(CommandBufferThunkTest, CuDnnCmd) {
   se::StreamExecutor* stream_executor = GpuExecutor();
-  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+  ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   se::dnn::DnnSupport& dnn_support = *stream_executor->AsDnn();
 
   if (dnn_support.GetVersion().value_or(se::dnn::VersionInfo{0, 0, 0}) <
@@ -149,7 +148,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   CommandBufferCmdSequence commands;
   commands.Emplace<CuDnnCmd>(
       args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 

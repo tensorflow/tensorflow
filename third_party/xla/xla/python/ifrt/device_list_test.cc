@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -173,8 +172,8 @@ class DeviceListSerDesTest
 TEST_P(DeviceListSerDesTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
   DeviceListProto proto = device_list->ToProto(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
-                          DeviceList::FromProto(client(), proto));
+  ASSERT_OK_AND_ASSIGN(auto device_list_copy,
+                       DeviceList::FromProto(client(), proto));
   EXPECT_EQ(*device_list_copy, *device_list);
 }
 

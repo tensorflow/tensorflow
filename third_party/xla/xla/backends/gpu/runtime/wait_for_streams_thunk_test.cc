@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -32,12 +32,11 @@ TEST(WaitForStreamsThunkTest, RoundTrip) {
 
   WaitForStreamsThunk original_thunk(thunk_info, stream_id, wait_for_stream_id);
 
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, original_thunk.ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto thunk_proto, original_thunk.ToProto());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<WaitForStreamsThunk> deserialized_thunk,
-      WaitForStreamsThunk::FromProto(thunk_info,
-                                     thunk_proto.wait_for_streams_thunk()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<WaitForStreamsThunk> deserialized_thunk,
+                       WaitForStreamsThunk::FromProto(
+                           thunk_info, thunk_proto.wait_for_streams_thunk()));
 
   EXPECT_EQ(deserialized_thunk->stream_id(), stream_id);
   EXPECT_EQ(deserialized_thunk->wait_for_stream_id(), wait_for_stream_id);

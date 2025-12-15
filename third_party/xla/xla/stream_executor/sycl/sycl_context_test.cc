@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/stream_executor/sycl/sycl_context.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -25,26 +26,26 @@ namespace {
 class SyclContextTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                            platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                         platform->ExecutorForDevice(kDefaultDeviceOrdinal));
   }
 };
 
 TEST_F(SyclContextTest, GetDeviceTotalMemory) {
-  TF_ASSERT_OK_AND_ASSIGN(::sycl::device device,
-                          SyclDevicePool::GetDevice(kDefaultDeviceOrdinal));
-  TF_ASSERT_OK_AND_ASSIGN(uint64_t total_memory,
-                          SyclContext::GetDeviceTotalMemory(device));
+  ASSERT_OK_AND_ASSIGN(::sycl::device device,
+                       SyclDevicePool::GetDevice(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(uint64_t total_memory,
+                       SyclContext::GetDeviceTotalMemory(device));
   EXPECT_GT(total_memory, 0)
       << "Total memory should be greater than 0, got " << total_memory;
 }
 
 TEST_F(SyclContextTest, CreateAndSynchronizeContext) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclContext> sycl_context_ptr,
-                          SyclContext::Create(kDefaultDeviceOrdinal));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclContext> sycl_context_ptr,
+                       SyclContext::Create(kDefaultDeviceOrdinal));
   EXPECT_NE(sycl_context_ptr, nullptr);
   EXPECT_EQ(sycl_context_ptr->device_ordinal(), kDefaultDeviceOrdinal);
   EXPECT_TRUE(sycl_context_ptr->Synchronize().ok());

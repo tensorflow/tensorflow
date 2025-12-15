@@ -16,11 +16,11 @@ limitations under the License.
 #include <utility>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -41,8 +41,7 @@ const char* const kModuleStr = R"(
 class BatchNormGradTest : public HloPjRtTestBase {};
 
 TEST_F(BatchNormGradTest, CorrectComputation) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Define input parameters
   auto input = LiteralUtil::CreateR2<float>({{1.2, 2.1}, {1.3, 2.4}});
@@ -51,7 +50,7 @@ TEST_F(BatchNormGradTest, CorrectComputation) {
   auto variance = LiteralUtil::CreateR1<float>({1.0, 1.0});
   auto grad_output = LiteralUtil::CreateR2<float>({{1.0, 1.0}, {1.0, 1.0}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto result, Execute(std::move(module),
                            {&input, &scale, &mean, &variance, &grad_output}));
 
@@ -69,8 +68,7 @@ TEST_F(BatchNormGradTest, ReturnsErrorWhenHloPassesDisabled) {
   if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status_or_result =
       Execute(std::move(module), {}, /*run_hlo_passes=*/false);

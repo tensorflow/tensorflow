@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -80,7 +80,7 @@ TEST_P(DotThunkLayoutTest, SimpleDot) {
     dot_dimensions.add_rhs_contracting_dimensions(1);
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       DotThunk::Create({"dot"}, dot_dimensions, lhs_slice, lhs.shape(),
                        rhs_slice, rhs.shape(), out_slice, out.shape()));
@@ -136,7 +136,7 @@ TEST(DotThunkTest, ThreadedDot) {
   dot_dimensions.add_lhs_contracting_dimensions(1);
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, DotThunk::Create({"dot"}, dot_dimensions, lhs_slice, shape,
                                    rhs_slice, shape, out_slice, shape));
 
@@ -179,7 +179,7 @@ TEST(DotThunkTest, DotS8S8S32) {
   dot_dimensions.add_lhs_contracting_dimensions(1);
   dot_dimensions.add_rhs_contracting_dimensions(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, DotThunk::Create({"dot"}, dot_dimensions, lhs_slice, in_shape,
                                    rhs_slice, in_shape, out_slice, out_shape));
 

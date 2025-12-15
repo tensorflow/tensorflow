@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -55,8 +54,8 @@ TEST_F(HloSlicerTest, SingleComputationForwardSlice) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto p2 = FindInstruction(hlo_module.get(), "p.2");
   EXPECT_THAT(p2, op::Parameter());
@@ -152,8 +151,8 @@ TEST_F(HloSlicerTest, MultipleComputationForwardSlice) {
   }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto add1 = FindInstruction(hlo_module.get(), "add.1");
   EXPECT_THAT(add1, op::Add());
@@ -257,8 +256,8 @@ TEST_F(HloSlicerTest, SingleComputationForwardFrontier) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto broadcast = FindInstruction(hlo_module.get(), "broadcast");
   EXPECT_THAT(broadcast, op::Broadcast());
@@ -341,8 +340,8 @@ TEST_F(HloSlicerTest, MultipleComputationForwardFrontier) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto entry_comp = FindComputation(hlo_module.get(), "axpy_computation");
   EXPECT_NE(entry_comp, nullptr);
@@ -427,8 +426,8 @@ TEST_F(HloSlicerTest, SingleComputationBackwardSliceAndFrontier) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto alpha = FindInstruction(hlo_module.get(), "alpha");
   EXPECT_THAT(alpha, op::Constant());
@@ -539,8 +538,8 @@ TEST_F(HloSlicerTest, MultipleComputationBackwardSliceAndFrontier) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto entry_comp = FindComputation(hlo_module.get(), "axpy_computation");
   EXPECT_NE(entry_comp, nullptr);
@@ -680,8 +679,8 @@ TEST_F(HloSlicerTest, ForwardSlicingNearestCommonAncestor) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   auto p0 = FindInstruction(hlo_module.get(), "p.0");
   auto p2 = FindInstruction(hlo_module.get(), "p.2");
   auto mul0 = FindInstruction(hlo_module.get(), "mul.0");
@@ -766,8 +765,8 @@ TEST_F(HloSlicerTest, MultipleComputationForwardSlicingNearestCommonAncestor) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto c0 = FindInstruction(hlo_module.get(), "c.0");
   auto ret0 = FindInstruction(hlo_module.get(), "ret.0");
@@ -836,8 +835,8 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtract) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto alpha = FindInstruction(hlo_module.get(), "alpha");
   auto y = FindInstruction(hlo_module.get(), "y");
@@ -994,8 +993,8 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractRemoveSharding) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* multiply_39766 =
       FindInstruction(hlo_module.get(), "multiply.39766");
@@ -1043,8 +1042,8 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractReduceTupleParameter) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* add_0 = FindInstruction(hlo_module.get(), "add.0");
   CHECK_NE(add_0, nullptr);
@@ -1093,8 +1092,8 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractSlicingGroup) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* gte_0 = FindInstruction(hlo_module.get(), "gte.0");
   CHECK_NE(gte_0, nullptr);

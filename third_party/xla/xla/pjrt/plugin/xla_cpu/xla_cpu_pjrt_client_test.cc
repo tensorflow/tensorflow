@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 
-#include "xla/pjrt/cpu/cpu_client.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/pjrt/pjrt_client.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 
 namespace xla {
 
 TEST(XlaCpuPjrtClientTest, GetXlaPjrtCpuClient) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtCpuClient(CpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client, GetXlaPjrtCpuClient(CpuClientOptions()));
   EXPECT_EQ(client->platform_name(), "cpu");
 }
 

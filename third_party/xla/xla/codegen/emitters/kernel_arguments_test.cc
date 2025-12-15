@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::emitters {
@@ -65,12 +64,12 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -80,7 +79,7 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
   // Three allocations: one for each parameter, plus one for the output.
   EXPECT_THAT(assignment->Allocations(), SizeIs(3));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto kernel_arguments,
       KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
                               module->entry_computation()->root_instruction()));
@@ -118,14 +117,14 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -141,7 +140,7 @@ ENTRY main {
   buffer_alignment.xla_allocated_buffer_align_bytes = 1;
 
   // Test 1: Create regular (non-interleaved) arguments for baseline
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArguments regular_args,
       KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
                               absl::Span<const int32_t>{}));
@@ -149,7 +148,7 @@ ENTRY main {
   // Test 2: Create interleaved arguments
   // Expected order: input0, output0, input1, output1
   std::vector<int32_t> interleaved_indices = {1, 3};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArguments interleaved_args,
       KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
                               interleaved_indices));
@@ -186,14 +185,14 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -206,7 +205,7 @@ ENTRY main {
   buffer_alignment.xla_allocated_buffer_align_bytes = 1;
 
   // Test 1: Create regular (non-interleaved) arguments for baseline
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArguments regular_args,
       KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
                               absl::Span<const int32_t>{}));
@@ -214,7 +213,7 @@ ENTRY main {
   // Test 2: Create interleaved arguments - output at beginning (position 0)
   // Expected order: output0, input0 (instead of input0, output0)
   std::vector<int32_t> interleaved_indices = {0};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArguments interleaved_args,
       KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
                               interleaved_indices));
@@ -256,14 +255,14 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -296,14 +295,14 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -318,7 +317,7 @@ ENTRY main {
   // Test case: Empty interleaved indices should fall back to regular Create
   std::vector<int32_t> empty_indices = {};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       KernelArguments kernel_args,
       KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
                               empty_indices));
@@ -339,12 +338,12 @@ TEST_F(KernelArgumentsTest, UnmanagedArguments) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloString));
   AliasInfo alias_info;
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
@@ -356,7 +355,7 @@ TEST_F(KernelArgumentsTest, UnmanagedArguments) {
       ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(U32, {}),
       ShapeUtil::MakeShape(F32, {24}), ShapeUtil::MakeShape(F32, {65536})};
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto kernel_arguments,
       KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
                               module->entry_computation()->root_instruction(),

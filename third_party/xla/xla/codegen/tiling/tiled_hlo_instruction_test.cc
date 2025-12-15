@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -108,17 +107,16 @@ TEST_F(TiledHloInstructionTest,
       /*parameter_number=*/0, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),
       "p0");
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<TiledHloInstruction> rt0,
-      TiledHloInstruction::Create(
-          p0.get(), /*operands=*/{},
-          /*runtime_variables=*/{},
-          /*tile_sizes=*/{16},
-          /*tile_strides=*/{1},
-          IndexingMap::FromTensorSizes(
-              ParseAffineMap("(d0) -> (d0)", &mlir_context_),
-              /*dim_upper_bounds=*/{4},
-              /*symbol_upper_bounds=*/{})));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<TiledHloInstruction> rt0,
+                       TiledHloInstruction::Create(
+                           p0.get(), /*operands=*/{},
+                           /*runtime_variables=*/{},
+                           /*tile_sizes=*/{16},
+                           /*tile_strides=*/{1},
+                           IndexingMap::FromTensorSizes(
+                               ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+                               /*dim_upper_bounds=*/{4},
+                               /*symbol_upper_bounds=*/{})));
 
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[rt0] -> (d0 + rt0)", &mlir_context_),

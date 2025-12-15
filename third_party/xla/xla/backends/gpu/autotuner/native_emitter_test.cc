@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -107,24 +106,24 @@ class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(NativeEmitterBackendTest, GetDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*(fusion)));
   // Verify the returned config is a native emitter config.
   NativeEmitterBackendConfig native_emitter_config;
   ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
 }
 
 TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                          backend_.GetSupportedConfigs(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*(fusion)));
   // There should only be a single config for the native emitter backend.
   ASSERT_EQ(configs.size(), 1);
   // Verify the returned config is a native emitter config.
@@ -134,20 +133,20 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
 
 TEST_F(NativeEmitterBackendTest,
        GetSupportedConfigsDoesNotSupportKCustomFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kCustomFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kCustomFusionHlo));
   auto fusion_instruction = module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                          backend_.GetSupportedConfigs(*(fusion_instruction)));
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                       backend_.GetSupportedConfigs(*(fusion_instruction)));
   // GetSupportedConfigs should return an empty vector as it doesn't support the
   // fusion.
   ASSERT_TRUE(configs.empty());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call ApplyConfig on the fusion instruction.
   NativeEmitterBackendConfig native_emitter_config;
@@ -158,14 +157,14 @@ TEST_F(NativeEmitterBackendTest, ApplyConfig) {
   ASSERT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
   // Verify the fusion instruction has a native emitter backend config.
   ASSERT_TRUE(fusion->has_backend_config());
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
-                          fusion->backend_config<GpuBackendConfig>());
+  ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
+                       fusion->backend_config<GpuBackendConfig>());
   ASSERT_TRUE(gpu_backend_config.has_native_emitter_backend_config());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   BlockLevelFusionConfig block_level_fusion_config;
   BackendConfig config;
@@ -175,12 +174,12 @@ TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {
 }
 
 TEST_F(NativeEmitterBackendTest, CompileForDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend_.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend_.GetDefaultConfig(*(fusion)));
   // Attempt to compile the fusion using the retrieved backend config.
   auto maybe_executable = backend_.Compile(*fusion, *config);
   // Verify that compilation succeeded and returned a valid executable.
@@ -214,15 +213,15 @@ class MockCompiler : public Compiler {
 };
 
 TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
-  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
-                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                       ParseAndReturnVerifiedModule(kReductionFusionHlo));
   auto fusion = reduction_module->entry_computation()->root_instruction();
   MockCompiler mock_compiler;
   NativeEmitterBackend backend(&debug_options_, &mock_compiler,
                                &target_config_);
   // Call GetDefaultConfig on the fusion instruction.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          backend.GetDefaultConfig(*(fusion)));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       backend.GetDefaultConfig(*(fusion)));
   EXPECT_CALL(
       mock_compiler,
       RunBackend(

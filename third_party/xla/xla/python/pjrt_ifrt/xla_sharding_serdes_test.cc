@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,10 +65,10 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
                                       /*xla_hlo_sharding=*/xla_hlo_sharding);
 
   auto options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(auto serialized,
+                       Serialize(*sharding, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<HloSharding>(
           serialized, std::make_unique<DeserializeShardingOptions>(client())));

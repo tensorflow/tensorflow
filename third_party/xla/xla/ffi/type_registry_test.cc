@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
@@ -57,8 +56,8 @@ using ::testing::HasSubstr;
 TEST(TypeRegistryTest, RegisterExternalTypeId) {
   TypeRegistry::TypeInfo type_info = {+[](void* state) {}};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto foo_id,
-                          TypeRegistry::AssignExternalTypeId("foo", type_info));
+  ASSERT_OK_AND_ASSIGN(auto foo_id,
+                       TypeRegistry::AssignExternalTypeId("foo", type_info));
   EXPECT_GE(foo_id.value(), 0);
 
   auto duplicate_foo_id = TypeRegistry::AssignExternalTypeId("foo", type_info);
@@ -76,8 +75,8 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
               HasSubstr("Type name foo already registered with type id"));
 
   // Registered type has a correct type info.
-  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo foo_info,
-                          TypeRegistry::GetTypeInfo(foo_id));
+  ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo foo_info,
+                       TypeRegistry::GetTypeInfo(foo_id));
   EXPECT_EQ(foo_info.deleter, type_info.deleter);
 
   // It's ok to register a new type with a user-provided type id.
@@ -87,8 +86,8 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
       type_info));
 
   // And a new type has a correct type info.
-  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo bar_info,
-                          TypeRegistry::GetTypeInfo(bar_id));
+  ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo bar_info,
+                       TypeRegistry::GetTypeInfo(bar_id));
   EXPECT_EQ(bar_info.deleter, type_info.deleter);
 }
 
@@ -117,9 +116,9 @@ TEST(TypeRegistryTest, SerializableType) {
   ASSERT_NE(type_info.serializer, nullptr);
   ASSERT_NE(type_info.deserializer, nullptr);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, TypeRegistry::Serialize(str));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MyString> deserialized,
-                          TypeRegistry::Deserialize<MyString>(serialized));
+  ASSERT_OK_AND_ASSIGN(std::string serialized, TypeRegistry::Serialize(str));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<MyString> deserialized,
+                       TypeRegistry::Deserialize<MyString>(serialized));
   EXPECT_EQ(deserialized->data, "foo");
 }
 

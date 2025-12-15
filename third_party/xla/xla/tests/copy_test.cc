@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/array3d.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -59,7 +59,7 @@ class CopyOpTest : public HloPjRtTestBase {
     auto module = CreateNewVerifiedModule();
     module->AddEntryComputation(std::move(computation));
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+    ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
     EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
   }
 
@@ -77,7 +77,7 @@ class CopyOpTest : public HloPjRtTestBase {
     module->AddEntryComputation(std::move(computation));
 
     std::vector<Literal*> args = {&dynamic_literal};
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), args));
+    ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), args));
     Literal dynamic_result = result.ToBoundedDynamic(bounded_shape);
     EXPECT_TRUE(LiteralTestUtil::Equal(dynamic_literal, dynamic_result));
   }
@@ -200,8 +200,7 @@ TEST_F(CopyOpTest, CopyParameterScalar) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal result,
-                          Execute(std::move(module), {&literal}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&literal}));
   LiteralTestUtil::ExpectR0Near<float>(42.0f, result, ErrorSpec{0.0001});
 }
 
@@ -221,7 +220,7 @@ TEST_F(CopyOpTest, CopyConstantR2Twice) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
   LiteralTestUtil::ExpectR2Near<float>({{1.0, 2.0}, {3.0, 4.0}}, result,
                                        ErrorSpec{0.0001});
 }
@@ -247,7 +246,7 @@ TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   // The result of the computation has the default layout, which is the inverse
   // of the layout of the source literal.
@@ -280,7 +279,7 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   LiteralTestUtil::ExpectR3EqualArray3D(a, result);
 }
@@ -314,7 +313,7 @@ void CopyOpTest::TestCopyConstantLayoutR4(
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(std::move(computation));
   ForceResultLayout(module.get(), LayoutUtil::MakeLayout(permutation));
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
 
   LiteralTestUtil::ExpectR4EqualArray4D(a, result);
 }
@@ -350,8 +349,8 @@ TEST_F(CopyOpClientTest, Copy0x0) {
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, in_shape, "input");
 
-  TF_ASSERT_OK_AND_ASSIGN(Literal actual,
-                          ExecuteAndTransfer(&builder, {&empty}, &out_shape));
+  ASSERT_OK_AND_ASSIGN(Literal actual,
+                       ExecuteAndTransfer(&builder, {&empty}, &out_shape));
   EXPECT_TRUE(LiteralTestUtil::Equal(empty, actual));
 }
 

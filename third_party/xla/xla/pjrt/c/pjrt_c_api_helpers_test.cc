@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
@@ -50,8 +49,8 @@ TEST(PjRtCApiHelperTest, ConvertValidPjRtValueType) {
       {"int64_list", int64_list},
       {"float", static_cast<float>(1.0)}};
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_map,
-                          ConvertToPjRtNamedValueList(original_cpp_map));
+  ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_map,
+                       ConvertToPjRtNamedValueList(original_cpp_map));
   auto converted_back_cpp_map =
       ConvertFromPjRtNamedValueList(c_map.data(), c_map.size());
 
@@ -144,8 +143,8 @@ TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutNoTiles) {
   std::vector<int64_t> minor_to_major = {1, 0};
   xla::Layout layout(minor_to_major);
 
-  TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
-                          ConvertToBufferMemoryLayoutData(layout));
+  ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
+                       ConvertToBufferMemoryLayoutData(layout));
 
   EXPECT_EQ(layout_data.c_layout.type,
             PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);
@@ -164,8 +163,8 @@ TEST(PjRtCApiHelperTest, ConvertToCLayoutFromLayoutWithTiles) {
   layout.mutable_tiles()->push_back(xla::Tile(tile_dims_1));
   layout.mutable_tiles()->push_back(xla::Tile(tile_dims_2));
 
-  TF_ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
-                          ConvertToBufferMemoryLayoutData(layout));
+  ASSERT_OK_AND_ASSIGN(BufferMemoryLayoutData layout_data,
+                       ConvertToBufferMemoryLayoutData(layout));
 
   EXPECT_EQ(layout_data.c_layout.type,
             PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled);
@@ -194,7 +193,7 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayout) {
   std::vector<int64_t> tile_dims = {2, 4, 1};
   c_layout.tiled.tile_dims = tile_dims.data();
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
+  ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
 
   EXPECT_EQ(layout.ToString(), "{1,0:T(2,4)(1)}");
 }
@@ -208,26 +207,26 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
   c_layout.tiled.minor_to_major_size = 2;
   c_layout.tiled.minor_to_major = minor_to_major.data();
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
+  ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
 
   EXPECT_EQ(layout.ToString(), "{1,0}");
 }
 
 TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
   auto result = GetXlaPluginCAttributes();
-  std::unordered_map<std::string, PJRT_NamedValue *> map;
-  for (PJRT_NamedValue &nv : result) {
+  std::unordered_map<std::string, PJRT_NamedValue*> map;
+  for (PJRT_NamedValue& nv : result) {
     auto [_, did_not_exist_yet] = map.insert({nv.name, &nv});
     EXPECT_TRUE(did_not_exist_yet);
   }
   EXPECT_TRUE(map.find("xla_version") != map.end());
-  PJRT_NamedValue *current = map["stablehlo_current_version"];
+  PJRT_NamedValue* current = map["stablehlo_current_version"];
   mlir::vhlo::Version current_version =
       mlir::vhlo::Version::getCurrentVersion();
   EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
   EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
   EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());
-  PJRT_NamedValue *minimum = map["stablehlo_minimum_version"];
+  PJRT_NamedValue* minimum = map["stablehlo_minimum_version"];
   mlir::vhlo::Version minimum_version =
       mlir::vhlo::Version::getMinimumVersion();
   EXPECT_TRUE(minimum->int64_array_value[0] == minimum_version.getMajor());

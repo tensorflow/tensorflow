@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/service/computation_placer.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -43,19 +43,19 @@ TEST(IfrtIRCompileOptionsTest, ToFromProto) {
     xla::ExecutableBuildOptions build_option;
     build_option.set_device_assignment(xla::DeviceAssignment(2, 4));
     src.executable_build_options = build_option;
-    TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto compile_options_proto,
-                            src.ToProto());
+    ASSERT_OK_AND_ASSIGN(CompileOptionsProto compile_options_proto,
+                         src.ToProto());
     proto.mutable_compile_option_overrides()->insert(
         {absl::StrCat("key", i), compile_options_proto});
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtIRCompileOptions> options,
-                          IfrtIRCompileOptions::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<IfrtIRCompileOptions> options,
+                       IfrtIRCompileOptions::FromProto(proto));
 
   EXPECT_EQ(options->compile_options_overrides->size(), 4);
   EXPECT_EQ(options->device_assignments.size(), num_devices);
-  TF_ASSERT_OK_AND_ASSIGN(IfrtIrCompileOptionsProto from_to_proto,
-                          options->ToProto());
+  ASSERT_OK_AND_ASSIGN(IfrtIrCompileOptionsProto from_to_proto,
+                       options->ToProto());
 
   for (int i = 0; i < 4; ++i) {
     std::string key = absl::StrCat("key", i);

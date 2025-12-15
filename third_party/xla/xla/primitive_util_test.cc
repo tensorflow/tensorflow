@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -29,8 +29,8 @@ namespace {
 TEST(PrimitiveUtilTest, StringToPrimitiveType) {
   auto expect_ok_and_equal = [](const std::string& str,
                                 PrimitiveType expected) {
-    TF_ASSERT_OK_AND_ASSIGN(PrimitiveType actual,
-                            primitive_util::StringToPrimitiveType(str));
+    ASSERT_OK_AND_ASSIGN(PrimitiveType actual,
+                         primitive_util::StringToPrimitiveType(str));
     EXPECT_EQ(expected, actual);
   };
   expect_ok_and_equal("f32", F32);

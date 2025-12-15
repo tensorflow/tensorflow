@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -597,10 +597,10 @@ TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
       {222, 333, 444, 555, 666, 777, 888, 999},
   });
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
+  ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
   const Shape shape_with_output_layout =
       ShapeUtil::MakeShapeWithDenseLayout(FloatType(), {2, 8}, {1, 0});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const Literal actual,
       ExecuteAndTransfer(computation, {&input}, &shape_with_output_layout));
   Literal expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
@@ -746,9 +746,9 @@ TEST_P(ReshapeTest, NoopReshape) {
 
   const Shape shape_with_output_layout = ShapeUtil::MakeShapeWithDenseLayout(
       FloatType(), {7, 2, 3, 5}, {2, 3, 0, 1});
-  TF_ASSERT_OK_AND_ASSIGN(const Literal output_literal,
-                          ExecuteAndTransfer(computation, {&input_data},
-                                             &shape_with_output_layout));
+  ASSERT_OK_AND_ASSIGN(const Literal output_literal,
+                       ExecuteAndTransfer(computation, {&input_data},
+                                          &shape_with_output_layout));
 
   // Since the reshape is a no-op, verify that it does not change the underlying
   // data.

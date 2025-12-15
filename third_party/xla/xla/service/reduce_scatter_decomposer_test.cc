@@ -15,17 +15,23 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_decomposer.h"
 
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/collective_ops_utils.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace {
@@ -50,10 +56,10 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
       std::optional<std::pair<std::string, std::string>> attribute =
           std::nullopt) {
     const int64_t partition_count = 2;
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto module, ParseAndReturnVerifiedModule(hlo_module, replica_count,
-                                                  partition_count));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(hlo_module, replica_count,
+                                                      partition_count));
+    ASSERT_OK_AND_ASSIGN(
         bool changed,
         ReduceScatterDecomposer(/*update_layout=*/nullptr,
                                 /*should_decompose=*/should_decompose)
@@ -65,7 +71,7 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     ASSERT_TRUE(changed);
 
     Literal multiplier = LiteralUtil::CreateR0<uint32_t>(shard_size);
-    ::testing::Matcher<const ::xla::HloInstruction *> id_matcher = [&]() {
+    ::testing::Matcher<const ::xla::HloInstruction*> id_matcher = [&]() {
       switch (mode) {
         case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
           return op::PartitionId();
@@ -86,9 +92,9 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
       }
     }();
     auto root = module->entry_computation()->root_instruction();
-    const Shape &shape = root->shape();
+    const Shape& shape = root->shape();
 
-    ::testing::Matcher<const ::xla::HloInstruction *> slice_index = id_matcher;
+    ::testing::Matcher<const ::xla::HloInstruction*> slice_index = id_matcher;
     if (action == PassAction::kTableLookup) {
       slice_index = op::Reshape(op::DynamicSlice(op::Constant(), id_matcher));
     }
@@ -102,7 +108,7 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
     }
     auto zero_matcher = op::Constant(LiteralUtil::Zero(U32));
 
-    std::vector<::testing::Matcher<const ::xla::HloInstruction *>> ds_operands(
+    std::vector<::testing::Matcher<const ::xla::HloInstruction*>> ds_operands(
         shape.dimensions().size() + 1, zero_matcher);
     if (attribute.has_value()) {
       ds_operands[0] =

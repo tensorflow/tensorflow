@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -55,9 +55,9 @@ absl::StatusOr<ArrayRef> MakeArray(Client* client) {
 }
 
 TEST(TupleImplTest, NullaryTuple) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto t, client->MakeTuple({}));
+  ASSERT_OK_AND_ASSIGN(auto t, client->MakeTuple({}));
 
   EXPECT_EQ(t->Arity(), 0);
   std::vector<ValueRef> elements;
@@ -74,13 +74,12 @@ TEST(TupleImplTest, NullaryTuple) {
 }
 
 TEST(TupleImplTest, TupleOfArrays) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
   std::vector<ValueRef> elements_in{a1, a2, a3};
-  TF_ASSERT_OK_AND_ASSIGN(auto t,
-                          client->MakeTuple(absl::MakeSpan(elements_in)));
+  ASSERT_OK_AND_ASSIGN(auto t, client->MakeTuple(absl::MakeSpan(elements_in)));
   EXPECT_EQ(t->Arity(), 3);
   std::vector<ValueRef> elements(3);
   TF_EXPECT_OK(t->Unpack(absl::MakeSpan(elements)));
@@ -97,13 +96,12 @@ TEST(TupleImplTest, TupleOfArrays) {
 }
 
 TEST(TupleImplTest, DeleteOfElementDeletesTuple) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
   std::vector<ValueRef> elements_in{a1, a2, a3};
-  TF_ASSERT_OK_AND_ASSIGN(auto t,
-                          client->MakeTuple(absl::MakeSpan(elements_in)));
+  ASSERT_OK_AND_ASSIGN(auto t, client->MakeTuple(absl::MakeSpan(elements_in)));
 
   TF_EXPECT_OK(a1->Delete().Await());
   EXPECT_TRUE(t->IsDeleted());
@@ -112,19 +110,19 @@ TEST(TupleImplTest, DeleteOfElementDeletesTuple) {
 }
 
 TEST(TupleImplTest, NestedTuples) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto a1, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a2, MakeArray(client.get()));
+  ASSERT_OK_AND_ASSIGN(auto a3, MakeArray(client.get()));
   std::vector<ValueRef> e1{a1, a2};
-  TF_ASSERT_OK_AND_ASSIGN(auto t1, client->MakeTuple(absl::MakeSpan(e1)));
+  ASSERT_OK_AND_ASSIGN(auto t1, client->MakeTuple(absl::MakeSpan(e1)));
   EXPECT_EQ(t1->Arity(), 2);
   std::vector<ValueRef> e2{};
-  TF_ASSERT_OK_AND_ASSIGN(auto t2, client->MakeTuple(absl::MakeSpan(e2)));
+  ASSERT_OK_AND_ASSIGN(auto t2, client->MakeTuple(absl::MakeSpan(e2)));
   EXPECT_EQ(t2->Arity(), 0);
 
   std::vector<ValueRef> e3{t1, t2, a3};
-  TF_ASSERT_OK_AND_ASSIGN(auto t3, client->MakeTuple(absl::MakeSpan(e3)));
+  ASSERT_OK_AND_ASSIGN(auto t3, client->MakeTuple(absl::MakeSpan(e3)));
   EXPECT_EQ(t3->Arity(), 3);
 
   std::vector<ValueRef> elements(3);

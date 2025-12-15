@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -93,10 +93,9 @@ ENTRY e {
   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionMerger().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionMerger().Run(module.get()));
   EXPECT_FALSE(modified);
 }
 
@@ -112,10 +111,9 @@ ENTRY e {
   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionMerger().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionMerger().Run(module.get()));
   EXPECT_FALSE(modified);
 }
 
@@ -131,10 +129,9 @@ ENTRY e {
   rhs_batch_dims={0,1}, rhs_contracting_dims={2}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool modified,
-                          DotDimensionMerger().Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool modified, DotDimensionMerger().Run(module.get()));
   EXPECT_FALSE(modified);
 }
 

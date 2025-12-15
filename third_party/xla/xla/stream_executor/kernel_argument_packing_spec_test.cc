@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -65,7 +64,7 @@ TEST(SingleArgumentPackingSpecTest, WriteArgumentAddress) {
       first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0)}),
       StatusIs(absl::StatusCode::kInvalidArgument));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<char> first_arg_storage,
       first_arg.BuildArgument({MakeDevicePointer(0), MakeDevicePointer(0),
                                MakeDevicePointer(0xff42)}));
@@ -78,7 +77,7 @@ TEST(SingleArgumentPackingSpecTest, WriteMultipleArgumentAddresses) {
   first_arg.WriteArgumentAddress(/*argument_index=*/0);
   first_arg.WriteArgumentAddress(/*argument_index=*/1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<char> first_arg_storage,
       first_arg.BuildArgument(
           {MakeDevicePointer(0xff42), MakeDevicePointer(0xaabbccdd)}));
@@ -92,8 +91,8 @@ TEST(SingleArgumentPackingSpecTest, WriteConstant) {
   first_arg.WriteConstant(static_cast<uint32_t>(0x1348));
   first_arg.WriteConstant(static_cast<uint64_t>(0x2389));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
-                          first_arg.BuildArgument(/*args=*/{}));
+  ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
+                       first_arg.BuildArgument(/*args=*/{}));
 
   // SingleArgumentPackingSpec::WriteConstant doesn't take endianness into
   // account, so this assertion will fail for big endian architectures - which
@@ -108,8 +107,8 @@ TEST(SingleArgumentPackingSpecTest, WriteConstantAndAddress) {
   first_arg.WriteArgumentAddress(/*argument_index=*/0);
   first_arg.WriteConstant(static_cast<uint32_t>(0x1234));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
-                          first_arg.BuildArgument({MakeDevicePointer(0xff42)}));
+  ASSERT_OK_AND_ASSIGN(std::vector<char> first_arg_storage,
+                       first_arg.BuildArgument({MakeDevicePointer(0xff42)}));
 
   EXPECT_THAT(first_arg_storage,
               ElementsAre(0x42, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34,
@@ -135,8 +134,8 @@ TEST(SingleArgumentPackingSpecTest, FromProto) {
         data: "\x34\x12\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
       )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(SingleArgumentPackingSpec spec,
-                          SingleArgumentPackingSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(SingleArgumentPackingSpec spec,
+                       SingleArgumentPackingSpec::FromProto(proto));
   EXPECT_THAT(spec.BuildArgument({MakeDevicePointer(0xff42)}),
               IsOkAndHolds(ElementsAre(0x34, 0x12, 0x00, 0x00, 0x42, 0xff, 0x00,
                                        0x00, 0x00, 0x00, 0x00, 0x00)));
@@ -147,9 +146,9 @@ TEST(KernelArgumentsPackingSpecTest, BuildArguments) {
   spec.AddAddressArgument(/*argument_index=*/0);
   spec.AddConstantArgument(0x1234);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> packed_args,
-                          spec.BuildArguments({MakeDevicePointer(0xff42)},
-                                              /*shared_memory_bytes=*/8989));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> packed_args,
+                       spec.BuildArguments({MakeDevicePointer(0xff42)},
+                                           /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(packed_args->number_of_arguments(), 3);
@@ -195,11 +194,11 @@ TEST(KernelArgumentsPackingSpecTest, FromProto) {
         kernel_arguments { data: "\x34\x12\x00\x00" }
       )pb");
 
-  TF_ASSERT_OK_AND_ASSIGN(KernelArgumentsPackingSpec spec,
-                          KernelArgumentsPackingSpec::FromProto(proto));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> arguments,
-                          spec.BuildArguments({MakeDevicePointer(0xff42)},
-                                              /*shared_memory_bytes=*/8989));
+  ASSERT_OK_AND_ASSIGN(KernelArgumentsPackingSpec spec,
+                       KernelArgumentsPackingSpec::FromProto(proto));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<KernelArgsPackedVector> arguments,
+                       spec.BuildArguments({MakeDevicePointer(0xff42)},
+                                           /*shared_memory_bytes=*/8989));
   // We expect 3 arguments: 2 parameters and the shared memory which counts as
   // an argument.
   EXPECT_EQ(arguments->number_of_arguments(), 3);

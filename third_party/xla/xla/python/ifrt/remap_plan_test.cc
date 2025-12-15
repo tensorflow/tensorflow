@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -705,9 +704,9 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
   plan.input_devices_for_output_map.insert({0, {{1, devices}}});
   plan.input_devices_for_output_map.insert({1, {{2, devices}, {3, devices_2}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto(version()));
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
-                          RemapPlan::FromProto(client(), plan_proto));
+  ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto(version()));
+  ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
+                       RemapPlan::FromProto(client(), plan_proto));
 
   EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
   ASSERT_EQ(plan.input_devices_for_output_map.size(),

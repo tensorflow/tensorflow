@@ -22,6 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -46,7 +47,7 @@ class TritonFusionTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(TritonFusionTest,
        TritonFusionWithBlockLevelFusionConfig_LaunchConfigIsCorrect) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 triton_computation {
   param_0 = f32[125,127] parameter(0)
   ROOT abs = f32[125,127] abs(param_0)
@@ -87,7 +88,7 @@ ENTRY entry_computation {
 
 TEST_F(TritonFusionTest,
        TritonFusionWithoutBlockLevelFusionConfig_LaunchConfigIsNullopt) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 triton_computation {
   param_0 = f32[125,127] parameter(0)
   ROOT abs = f32[125,127] abs(param_0)
@@ -126,7 +127,7 @@ ENTRY entry_computation {
 TEST_F(
     TritonFusionTest,
     TritonFusionWithBlockLevelFusionConfig_LaunchConfigOverrideWorksCorrectly) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 triton_computation {
   param_0 = f32[125,127] parameter(0)
   ROOT abs = f32[125,127] abs(param_0)

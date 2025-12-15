@@ -10,15 +10,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
 
@@ -110,9 +110,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, SolvesOptimally) {
   const iopddl::Problem problem = DefaultProblem();
   const AutoShardingSolverParams params = DefaultParams();
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(
-                              problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;
@@ -126,8 +125,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, SolvesOverbudget) {
   problem.usage_limit = 100000;
   params.overbudget_coeff = 10.0;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 9007650.0;
@@ -140,8 +139,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, SolvesMaxDepartures) {
   AutoShardingSolverParams params = DefaultParams();
   params.max_departures = 3.0;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 7872.0;
@@ -152,10 +151,10 @@ TEST(FormulateAndSolveMIPFromProblemTest, SolvesMaxDepartures) {
 TEST(FormulateAndSolveMIPFromProblemTest, MinimizesDepartures) {
   const iopddl::Problem problem = DefaultProblem();
   AutoShardingSolverParams params = DefaultParams();
-  params.minimize_departures =  true;
+  params.minimize_departures = true;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {1, 1, 1, 1, 1};
   const double objective_value = 0.0;
@@ -170,8 +169,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, AvoidsInfiniteNodeCosts) {
   problem.nodes[0].strategies[1].cost = kInfinityInt;
   problem.nodes[0].strategies[2].cost = kInfinityInt;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {3, 0, 0, 0, 0};
   const double objective_value = 10683.0;
@@ -184,8 +183,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, AvoidsInfiniteEdgeCosts) {
   const AutoShardingSolverParams params = DefaultParams();
   problem.edges[0].strategies[0].cost = kInfinityInt;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 7872.0;
@@ -200,17 +199,16 @@ TEST(FormulateAndSolveMIPFromProblemTest, HandlesFollowedEdges) {
   edge.nodes = {1, 3};
   // Reduces to {1, 2} since node 3 follows node 2
   problem.edges.push_back(edge);
-  const CostMatrix r = {{5000, 5100, 5200, 5300,
-                         6000, 6100, 6200, 6300,
-                         7000, 7100, 7200, 7300}};
+  const CostMatrix r = {
+      {5000, 5100, 5200, 5300, 6000, 6100, 6200, 6300, 7000, 7100, 7200, 7300}};
   for (auto edge_cost : *r.begin()) {
     iopddl::Strategy strategy;
     strategy.cost = static_cast<iopddl::Cost>(edge_cost);
     problem.edges.back().strategies.push_back(strategy);
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 12650.0;
@@ -225,18 +223,16 @@ TEST(FormulateAndSolveMIPFromProblemTest, HandlesCollapsedEdge) {
   edge.nodes = {2, 3};
   // Both members of this edge will be collapsed into a single node.
   problem.edges.push_back(edge);
-  const CostMatrix r = {{9000, 5100, 5200, 5300,
-                         6000, 6100, 6200, 6300,
-                         7000, 7100, 7200, 7300,
-                         8000, 8100, 8200, 8300}};
+  const CostMatrix r = {{9000, 5100, 5200, 5300, 6000, 6100, 6200, 6300, 7000,
+                         7100, 7200, 7300, 8000, 8100, 8200, 8300}};
   for (auto edge_cost : *r.begin()) {
     iopddl::Strategy strategy;
     strategy.cost = static_cast<iopddl::Cost>(edge_cost);
     problem.edges.back().strategies.push_back(strategy);
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                        FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 13972.0;
@@ -250,8 +246,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, UsesHint) {
   const std::vector<NodeStrategyIdx> s_hint = {1, 0, 0, 0, 0};
   params.s_hint = s_hint;  // Not optimal, but close.
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                        FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;
@@ -265,8 +261,7 @@ TEST(DISABLED_FormulateAndSolveMIPFromProblemTest, HonorsMaxCost) {
   params.max_cost = 7600.0;  // Best possible is 7650
 
   const absl::StatusOr<AutoShardingSolverOutput> result =
-      FormulateAndSolveMIPFromProblem(problem,
-                                            params);
+      FormulateAndSolveMIPFromProblem(problem, params);
 
   EXPECT_TRUE(absl::IsInternal(result.status()));
 }
@@ -276,8 +271,8 @@ TEST(FormulateAndSolveMIPFromProblemTest, HandlesExtremelyHighMaxCost) {
   AutoShardingSolverParams params = DefaultParams();
   params.max_cost = 1e19;
 
-  TF_ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
-                          FormulateAndSolveMIPFromProblem(problem, params));
+  ASSERT_OK_AND_ASSIGN(const AutoShardingSolverOutput result,
+                       FormulateAndSolveMIPFromProblem(problem, params));
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const double objective_value = 7650.0;

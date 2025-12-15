@@ -24,7 +24,6 @@
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
 #include "xla/service/call_graph.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::hlo_diff {
 namespace {
@@ -35,8 +34,8 @@ using ::testing::UnorderedElementsAre;
 class HloComputationGraphMatcherTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloComputationGraphMatcherTest, MatchSingleParameterOrConstant) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -46,8 +45,8 @@ ENTRY entry {
   ROOT add1 = bf16[2]{0} add(p1, c1)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -57,10 +56,10 @@ ENTRY entry {
   ROOT add2 = bf16[3]{0} add(p2, c2)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   const CallGraphNode& left_entry_computation =
       left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
@@ -81,8 +80,8 @@ ENTRY entry {
 }
 
 TEST_F(HloComputationGraphMatcherTest, MatchComputationParams) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -96,8 +95,8 @@ ENTRY entry {
   add21 = f32[10]{0} add(p21, p22)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 ENTRY entry {
@@ -113,10 +112,10 @@ ENTRY entry {
   ROOT add22 = f32[10]{0} add(p11, p18)
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   const CallGraphNode& left_entry_computation =
       left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
@@ -158,14 +157,14 @@ ENTRY entry {
   add23 = bf16[2]{0} add(add21, add22)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   const CallGraphNode& left_entry_computation =
       left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());
@@ -188,8 +187,8 @@ ENTRY entry {
 
 TEST_F(HloComputationGraphMatcherTest,
        ExactMatchComputationsInstructionsExactlyMatched) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.1 {
@@ -205,8 +204,8 @@ ENTRY entry {
 }
 )"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule module, is_scheduled=true
 
 fused_computation.11 {
@@ -221,10 +220,10 @@ ENTRY entry {
   ROOT fusion.11 = s32[32,16]{0,1:T(1,128)} fusion(p01,p11), kind=kLoop, calls=fused_computation.11
 }
 )"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   const CallGraphNode& left_fused_computation =
       left_gumgraph->GetCallGraph().GetNode(
@@ -257,14 +256,14 @@ ENTRY entry {
   ROOT tuple = (s32[1,1,1,4,3,5]{5,4,3,2,1,0}) tuple(bitcast.1)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
-                          HloGumgraph::Create(left_module.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
-                          HloGumgraph::Create(right_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> left_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> right_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> left_gumgraph,
+                       HloGumgraph::Create(left_module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> right_gumgraph,
+                       HloGumgraph::Create(right_module.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   const CallGraphNode& left_entry_computation =
       left_gumgraph->GetCallGraph().GetNode(left_module->entry_computation());

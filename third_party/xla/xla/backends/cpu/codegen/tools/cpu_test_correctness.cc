@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 
 struct Flags {
@@ -43,7 +43,7 @@ namespace {
 using CpuCorrectnessTest = HloTestBase;
 
 TEST_F(CpuCorrectnessTest, RunAndCompare) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
+  ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module),
       ErrorSpec{flags.abs_error_bound, flags.rel_error_bound}));

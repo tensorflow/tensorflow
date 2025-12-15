@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -150,8 +150,8 @@ TEST_F(ComputeGpuDeviceStatsTest, ProcessLineEventsTest) {
   AddEventToLine(&line, 2000, kOtherDetailsMetadataId);
   AddEventToLine(&line, 3000, kMemcpyDetailsMetadataId);
 
-  TF_ASSERT_OK_AND_ASSIGN(LineStats stats,
-                          ProcessLineEvents(line, kMemcpyDetailsMetadataId));
+  ASSERT_OK_AND_ASSIGN(LineStats stats,
+                       ProcessLineEvents(line, kMemcpyDetailsMetadataId));
   EXPECT_EQ(stats.total_time_ps, 6000);
   EXPECT_EQ(stats.memcpy_time_ps, 4000);
 }
@@ -182,8 +182,7 @@ TEST_F(ComputeGpuDeviceStatsTest, CalculateDeviceTimeAndMemcpyTest) {
   AddDeviceStat("compute_cap_minor", kComputeCapMinor);
 
   tsl::profiler::GroupTfEvents(&xspace_);
-  TF_ASSERT_OK_AND_ASSIGN(GpuDeviceStats stats,
-                          CalculateGpuDeviceStats(xspace_));
+  ASSERT_OK_AND_ASSIGN(GpuDeviceStats stats, CalculateGpuDeviceStats(xspace_));
   EXPECT_EQ(stats.device_time_us, 0.006);
   EXPECT_EQ(stats.device_memcpy_time_us, 0.004);
   EXPECT_TRUE(IsMemcpy(*event, kMemcpyDetailsMetadataId));
@@ -217,7 +216,7 @@ TEST(ComputeXSpaceStatsTest, CalculateCpuTimeTest) {
   stat->set_metadata_id(2);
   stat->set_uint64_value(5000);
 
-  TF_ASSERT_OK_AND_ASSIGN(CpuStats stats, xla::gpu::CalculateCpuStats(xspace));
+  ASSERT_OK_AND_ASSIGN(CpuStats stats, xla::gpu::CalculateCpuStats(xspace));
   EXPECT_EQ(stats.cpu_time_us, 0.003);
   EXPECT_EQ(stats.wall_time_us, 4);
 }

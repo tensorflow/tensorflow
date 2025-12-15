@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -104,16 +103,16 @@ TEST(GemmThunkTest, ProtoRoundTrip) {
   const GemmThunkProto& original_gemm_thunk_proto =
       original_thunk_proto.gemm_thunk();
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Thunk::ThunkInfo thunk_info_from_proto,
       Thunk::ThunkInfo::FromProto(original_thunk_proto.thunk_info()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GemmThunk> gemm_thunk,
       GemmThunk::FromProto(thunk_info_from_proto, original_gemm_thunk_proto,
                            buffer_allocations));
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_tripped_thunk_proto,
-                          gemm_thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_tripped_thunk_proto,
+                       gemm_thunk->ToProto());
   EXPECT_THAT(round_tripped_thunk_proto, EqualsProto(original_thunk_proto));
 }
 }  // namespace

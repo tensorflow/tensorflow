@@ -87,7 +87,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                /*client=*/nullptr),
               absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
@@ -98,9 +98,9 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                client.get()),
               absl_testing::StatusIs(absl::StatusCode::kOk));
@@ -109,22 +109,22 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
 TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   StreamExecutorGpuCompiler compiler;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
       client->CompileAndLoad(computation, xla::CompileOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          loaded_executable->Execute(
-                              /*argument_handles=*/{{}}, /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       loaded_executable->Execute(
+                           /*argument_handles=*/{{}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result_buffers[0]->ToLiteralSync());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
@@ -159,8 +159,8 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
                                topology, client.get()),
               absl_testing::StatusIs(absl::StatusCode::kOk));
@@ -175,21 +175,21 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
       client->CompileAndLoad(mlir_module.get(), xla::CompileOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          loaded_executable->Execute(
-                              /*argument_handles=*/{{}}, /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       loaded_executable->Execute(
+                           /*argument_handles=*/{{}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result_buffers[0]->ToLiteralSync());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
@@ -203,34 +203,34 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
 
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtExecutable> executable,
       compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
                        client.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(std::string serialized,
+                       executable->SerializeExecutable());
   ASSERT_FALSE(serialized.empty());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable_from_serialized,
-                          client->LoadSerializedExecutable(
-                              serialized, std::nullopt, xla::LoadOptions()));
+  ASSERT_OK_AND_ASSIGN(auto loaded_executable_from_serialized,
+                       client->LoadSerializedExecutable(
+                           serialized, std::nullopt, xla::LoadOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          loaded_executable_from_serialized->Execute(
-                              /*argument_handles=*/{{}}, /*options=*/{}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       loaded_executable_from_serialized->Execute(
+                           /*argument_handles=*/{{}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result_buffers[0]->ToLiteralSync());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }

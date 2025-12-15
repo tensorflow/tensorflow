@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -56,7 +55,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -79,7 +78,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -102,7 +101,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -125,7 +124,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelAllDevices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -151,7 +150,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelHalfMesh) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -174,7 +173,7 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevel) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -195,7 +194,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -216,7 +215,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevel8DevicesForEmptyReplicaGroups) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -237,7 +236,7 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevel16Devices) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -257,7 +256,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
@@ -277,7 +276,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
@@ -298,7 +297,7 @@ TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
@@ -318,7 +317,7 @@ TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
@@ -346,7 +345,7 @@ TEST_F(CommunicationTypeTest, DetectsCrossHostCollectivePermuteMixed) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
@@ -371,7 +370,7 @@ TEST_F(CommunicationTypeTest, DetectsSinglePartitionMultiHost) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -395,7 +394,7 @@ TEST_F(CommunicationTypeTest, DetectsMultiPartitionWith8DevicePartitions) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -420,7 +419,7 @@ TEST_F(CommunicationTypeTest, DetectsMultiPartitionNonRailAligned) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -446,7 +445,7 @@ TEST_F(CommunicationTypeTest, DetectsSinglePartitionSubset) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -471,7 +470,7 @@ TEST_F(CommunicationTypeTest, DetectsRailAlignedMultiPartition) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
@@ -493,7 +492,7 @@ TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionOneWay) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -514,7 +513,7 @@ TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionTwoWayMutual) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -535,7 +534,7 @@ TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionTwoWayMutual) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -556,7 +555,7 @@ TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionOneWay) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -578,7 +577,7 @@ TEST_F(CommunicationTypeTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -599,7 +598,7 @@ TEST_F(CommunicationTypeTest,
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(
@@ -622,7 +621,7 @@ TEST_F(CommunicationTypeTest, CollectivePermuteEmptyPairs) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
 
   HloCollectivePermuteInstruction* instr =
       Cast<HloCollectivePermuteInstruction>(

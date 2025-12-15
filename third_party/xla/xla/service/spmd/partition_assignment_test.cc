@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -35,8 +35,7 @@ ENTRY %elementwise {
   %param0 = f32[16,16]{1,0} parameter(0)
   ROOT %copy = f32[16,16]{1,0} copy(%param0)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // The following redundantly sets the flag to the default value. We keep it
   // for the future tests to have the same style.
   DebugOptions debug_options = GetDebugOptionsForTest();
@@ -44,7 +43,7 @@ ENTRY %elementwise {
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
   PartitionAssignment partition_assignment(/*num_partitions=*/16);
   EXPECT_EQ(partition_assignment.algorithm(), nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, partition_assignment.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, partition_assignment.Run(module.get()));
   EXPECT_FALSE(changed);
   EXPECT_NE(partition_assignment.algorithm(), nullptr);
   EXPECT_EQ(partition_assignment.algorithm()->kind(),

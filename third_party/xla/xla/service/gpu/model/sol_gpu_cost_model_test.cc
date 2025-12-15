@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -110,8 +110,8 @@ TEST(SolGPUCostModelGetConfigTest, ConfigForHopper) {
       ROOT constant = f32[] constant(0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kDummyModule));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kDummyModule));
 
   se::DeviceDescription device_info;
   device_info.set_name("NVIDIA H100 80GB HBM3");
@@ -128,8 +128,8 @@ TEST(SolGPUCostModelGetConfigTest, ConfigForBlackwell) {
       ROOT constant = f32[] constant(0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kDummyModule));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kDummyModule));
 
   se::DeviceDescription device_info;
   device_info.set_name("NVIDIA B200");
@@ -149,8 +149,8 @@ TEST(SolGPUCostModelGetConfigTest, ConfigForDefaultGPU) {
       ROOT constant = f32[] constant(0)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kDummyModule));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnUnverifiedModule(kDummyModule));
 
   se::DeviceDescription device_info;
   device_info.set_name("NVIDIA H200");

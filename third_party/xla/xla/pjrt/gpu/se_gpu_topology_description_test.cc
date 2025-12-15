@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -111,7 +110,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoords) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(1)));
@@ -128,7 +127,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsSingleHostScopedPartition) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core1,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(1)));
@@ -136,7 +135,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsSingleHostScopedPartition) {
   ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id1, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core2,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(6)));
@@ -144,7 +143,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsSingleHostScopedPartition) {
   ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{1, 0, 2}));
   ASSERT_EQ(core_id2, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core3,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(10)));
@@ -161,7 +160,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core1,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(1)));
@@ -169,7 +168,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id1, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core2,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(6)));
@@ -177,7 +176,7 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{0, 1, 2}));
   ASSERT_EQ(core_id2, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_core3,
       topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
           xla::PjRtGlobalDeviceId(10)));

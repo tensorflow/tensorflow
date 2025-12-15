@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -58,8 +57,7 @@ TEST_F(PermutationSortExpanderTest, ReplacePermutationSortWithScatter) {
       ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={1}, to_apply=lt_s32
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(true));
   auto root = module->entry_computation()->root_instruction();
@@ -101,8 +99,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfWrongComparisonDirection) {
       ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={1}, to_apply=lt_s32
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(false));
 }
@@ -135,8 +132,7 @@ TEST_F(PermutationSortExpanderTest, DontReplaceIfComparingWrongParameters) {
       ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={1}, to_apply=lt_s32
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(false));
 }
@@ -163,8 +159,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortIfNonIntegral) {
       ROOT sort2 = (f32[64,8732]{1,0}, f32[64,8732]{1,0}) sort(gte, values), dimensions={1}, to_apply=lt_f32
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(false));
 }
@@ -199,8 +194,7 @@ TEST_F(PermutationSortExpanderTest, DontReplacePermutationSortWrongDimensions) {
       ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={0}, to_apply=lt_s32
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   EXPECT_THAT(PermutationSortExpander().Run(module.get()), IsOkAndHolds(false));
 }

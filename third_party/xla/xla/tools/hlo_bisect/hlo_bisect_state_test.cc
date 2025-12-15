@@ -20,14 +20,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace bisect {
@@ -77,11 +83,10 @@ TEST_F(HloBisectStateTest, TrimByOutputs) {
       ROOT sum = tuple(a, b, c)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   TestBugSearch bug_checker({HloOpcode::kMultiply});
   HloBisectState bisect(std::move(module), &bug_checker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
+  ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
   EXPECT_TRUE(changed);
   auto reduced_module = std::move(bisect).GetResult();
   EXPECT_THAT(reduced_module->entry_computation()->root_instruction(),
@@ -100,11 +105,10 @@ TEST_F(HloBisectStateTest, TrimByInstructions) {
       ROOT add = f32[10] add(ax, y)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   TestBugSearch bug_checker({HloOpcode::kMultiply, HloOpcode::kBroadcast});
   HloBisectState bisect(std::move(module), &bug_checker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
+  ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
   EXPECT_TRUE(changed);
   auto reduced_module = std::move(bisect).GetResult();
   EXPECT_THAT(
@@ -123,11 +127,10 @@ TEST_F(HloBisectStateTest, TrimByUsingRandomConstants) {
       ROOT result = f32[4] power(a, b)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   TestBugSearch bug_checker({HloOpcode::kPower});
   HloBisectState bisect(std::move(module), &bug_checker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
+  ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
   EXPECT_TRUE(changed);
   auto reduced_module = std::move(bisect).GetResult();
   EXPECT_THAT(reduced_module->entry_computation()->root_instruction(),
@@ -158,11 +161,10 @@ TEST_F(HloBisectStateTest, TrimByUsingReferenceConstants) {
       ROOT result = f32[] power(a, b)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   TestBugSearchWithReferenceConstants bug_checker;
   HloBisectState bisect(std::move(module), &bug_checker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
+  ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
   EXPECT_TRUE(changed);
   auto reduced_module = std::move(bisect).GetResult();
   EXPECT_THAT(reduced_module->entry_computation()->root_instruction(),
@@ -189,11 +191,10 @@ TEST_F(HloBisectStateTest, TrimByOutputsLostBug) {
       ROOT sum = tuple(a, b)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
   CustomBugSearch bug_checker;
   HloBisectState bisect(std::move(module), &bug_checker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
+  ASSERT_OK_AND_ASSIGN(bool changed, bisect.TrimEntryComputation());
   EXPECT_FALSE(changed);
 }
 

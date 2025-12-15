@@ -19,11 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -66,12 +66,12 @@ TEST(AutotuneResultWrapperTest, FullRoundTrip) {
 
   std::vector<AutotuneResultWrapper> new_wrappers;
   for (const auto& [key, value] : key_value_pairs) {
-    TF_ASSERT_OK_AND_ASSIGN(AutotuneResultWrapper wrapper,
-                            AutotuneResultWrapper::FromKeyAndValue(key, value));
+    ASSERT_OK_AND_ASSIGN(AutotuneResultWrapper wrapper,
+                         AutotuneResultWrapper::FromKeyAndValue(key, value));
     new_wrappers.push_back(std::move(wrapper));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       AutotuneResults round_tripped,
       AutotuneResultWrapper::AutotuneResultsFromWrappers(new_wrappers));
   EXPECT_EQ(round_tripped.results_size(), 3);
@@ -108,8 +108,8 @@ TEST(AutotuneResultWrapperTest, InconsistentVersions) {
 
   std::vector<AutotuneResultWrapper> decoded_wrappers;
   for (const auto& [key, value] : key_value_pairs) {
-    TF_ASSERT_OK_AND_ASSIGN(AutotuneResultWrapper wrapper,
-                            AutotuneResultWrapper::FromKeyAndValue(key, value));
+    ASSERT_OK_AND_ASSIGN(AutotuneResultWrapper wrapper,
+                         AutotuneResultWrapper::FromKeyAndValue(key, value));
     decoded_wrappers.push_back(std::move(wrapper));
   }
 

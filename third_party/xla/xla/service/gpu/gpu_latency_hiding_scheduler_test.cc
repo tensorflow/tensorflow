@@ -127,8 +127,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -165,8 +165,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -204,8 +204,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -252,8 +252,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
@@ -304,8 +304,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -325,8 +325,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -346,8 +346,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
     }
   )";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get()));
 }
@@ -384,8 +384,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
@@ -435,8 +435,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
   debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   auto scheduled = ScheduleModule(module.get(), /*num_parallel_resources=*/1);
   TF_ASSERT_OK(scheduled.status());
 
@@ -489,8 +489,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   )";
 
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
@@ -583,8 +583,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
   auto config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(
       ScheduleModule(module.get(), /*num_parallel_resources=*/2,
@@ -664,8 +664,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   auto config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
                               DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
@@ -758,8 +758,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleP2PWithMultipliers) {
   auto config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
                               DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
@@ -849,8 +849,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   auto config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
                               DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
@@ -938,8 +938,8 @@ ENTRY main {
   auto config = GetModuleConfig(
       kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
           PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
                               DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
@@ -998,8 +998,8 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
@@ -1044,8 +1044,8 @@ ENTRY main {
 
   absl::string_view kFdoProfile = "";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
   HloComputation* comp = module->entry_computation();
   SchedulerConfig sched_config;
   GpuAsyncTracker async_tracker(sched_config);
@@ -1079,8 +1079,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
 
   absl::string_view kFdoProfile = "";
   auto config = GetModuleConfig(kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloModule, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kHloModule, config));
 
   // It should compile without any issues.
   TF_EXPECT_OK(ScheduleModule(module.get()));

@@ -17,19 +17,18 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace {
@@ -46,11 +45,10 @@ TEST_F(RealImagExpanderTest, RealWithNonComplexInput) {
       ROOT real = real(input)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RealImagExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
   EXPECT_TRUE(result);
 
   auto root = module->entry_computation()->root_instruction();
@@ -65,11 +63,10 @@ TEST_F(RealImagExpanderTest, ImagWithNonComplexInput) {
       ROOT imag = imag(input)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RealImagExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
   EXPECT_TRUE(result);
 
   auto root = module->entry_computation()->root_instruction();
@@ -88,11 +85,10 @@ TEST_F(RealImagExpanderTest, RealImagWithComplexInput) {
       ROOT t = tuple(real, imag)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   RealImagExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
 
   // If inputs are complex, the pass should not change anything.
   EXPECT_FALSE(result);
@@ -107,8 +103,7 @@ TEST_F(RealImagExpanderTest, MultipleImagWithNonComplexInput) {
       ROOT imag2 = imag(imag1)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   // Replace imag1 with an identical instruction, changing the iteration order
   // of computation->instructions(). Previously OpExpanderPass could crash if
@@ -117,13 +112,13 @@ TEST_F(RealImagExpanderTest, MultipleImagWithNonComplexInput) {
   auto param = module->entry_computation()->parameter_instruction(0);
   HloInstruction* imag1 =
       module->entry_computation()->root_instruction()->mutable_operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(HloInstruction * new_imag,
-                          MakeUnaryHlo(HloOpcode::kImag, param));
+  ASSERT_OK_AND_ASSIGN(HloInstruction * new_imag,
+                       MakeUnaryHlo(HloOpcode::kImag, param));
   TF_ASSERT_OK(
       module->entry_computation()->ReplaceInstruction(imag1, new_imag));
 
   RealImagExpander expander;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&expander, module.get()));
   EXPECT_TRUE(result);
 
   auto root = module->entry_computation()->root_instruction();

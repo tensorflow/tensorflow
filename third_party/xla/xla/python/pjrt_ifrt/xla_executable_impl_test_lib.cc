@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -31,6 +32,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/util/delimited_message_util.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -196,12 +198,12 @@ module @add_sub attributes {
     return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   absl::Span<Device* const> devices =
       client->addressable_devices().subspan(0, 2);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       CompileOnDevices(client.get(), compiler, kModule, devices,
                        /*replicated=*/false, serialize));
@@ -255,12 +257,12 @@ module @add attributes {
 }
 
 TEST_P(LoadedExecutableImplTest, GetHloModules) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
       executable->GetHloModules());
   ASSERT_EQ(hlo_modules.size(), 1);
@@ -268,13 +270,13 @@ TEST_P(LoadedExecutableImplTest, GetHloModules) {
 }
 
 TEST_P(LoadedExecutableImplTest, ProgramText) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto program_text,
-                          executable->GetHumanReadableProgramText());
+  ASSERT_OK_AND_ASSIGN(const auto program_text,
+                       executable->GetHumanReadableProgramText());
   EXPECT_THAT(program_text, HasSubstr("add."));
 }
 
@@ -283,17 +285,15 @@ TEST_P(LoadedExecutableImplTest, Analysis) {
     GTEST_SKIP() << "Analysis is not supported for serialized executables.";
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  TF_ASSERT_OK_AND_ASSIGN(
-      const LoadedExecutableRef executable,
-      SimpleAddExecutable(client.get(), /*serialize=*/false));
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(const LoadedExecutableRef executable,
+                       SimpleAddExecutable(client.get(), /*serialize=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
-                          executable->GetCompiledMemoryStats());
+  ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
+                       executable->GetCompiledMemoryStats());
   EXPECT_GT(compiled_memory_stats.argument_size_in_bytes, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
-                          executable->GetCostAnalysis());
+  ASSERT_OK_AND_ASSIGN(const auto cost_analysis, executable->GetCostAnalysis());
   EXPECT_FALSE(cost_analysis.IsEmpty());
 }
 
@@ -313,11 +313,11 @@ TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
       return %6 : tensor<2x3xf32>
     }})";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       CompileOnDevices(client.get(), compiler, multi_arg_add_all, devices,
                        /*replicated=*/false, serialize));
@@ -337,14 +337,14 @@ TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
 TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   bool serialize = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   std::vector<Device*> devices = {client->addressable_devices().at(0)};
   LoadedExecutableRef loaded_executable;
   {
     UserContextScope user_context_scope(test_util::MakeUserContext(20));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
                          /*replicated=*/false, serialize));
@@ -358,7 +358,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
@@ -370,10 +370,9 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   LoadedExecutable::ExecuteResult result;
   {
     UserContextScope user_context_scope(test_util::MakeUserContext(100));
-    TF_ASSERT_OK_AND_ASSIGN(
-        result,
-        loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
-                                   /*devices=*/std::nullopt));
+    ASSERT_OK_AND_ASSIGN(result, loaded_executable->Execute(
+                                     absl::MakeSpan(&array, 1), execute_options,
+                                     /*devices=*/std::nullopt));
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
@@ -393,14 +392,14 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
 TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   bool serialize = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   std::vector<Device*> devices = {};
   LoadedExecutableRef loaded_executable;
   {
     UserContextScope user_context_scope(test_util::MakeUserContext(20));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
                          /*replicated=*/false, serialize));
@@ -415,24 +414,23 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, std::move(shape),
                       /*byte_strides=*/std::nullopt, std::move(sharding),
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
-  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
-                          client->MakeDeviceList({device}));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                       client->MakeDeviceList({device}));
   ExecuteOptions execute_options;
   execute_options.fill_status = true;
   LoadedExecutable::ExecuteResult result;
   {
     UserContextScope user_context_scope(test_util::MakeUserContext(100));
-    TF_ASSERT_OK_AND_ASSIGN(
-        result,
-        loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
-                                   /*devices=*/std::move(device_list)));
+    ASSERT_OK_AND_ASSIGN(result, loaded_executable->Execute(
+                                     absl::MakeSpan(&array, 1), execute_options,
+                                     /*devices=*/std::move(device_list)));
   }
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
@@ -452,11 +450,11 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
 TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   bool serialize = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   std::vector<Device*> devices = {client->addressable_devices().at(0)};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       CompileOnDevices(client.get(), compiler, module_add_one, devices,
                        /*replicated=*/false, serialize));
@@ -468,7 +466,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
@@ -478,7 +476,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   ExecuteOptions execute_options;
   execute_options.fill_status = false;
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
                                  /*devices=*/std::nullopt));
@@ -509,18 +507,18 @@ module @nop attributes {
     return
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   Device* const device = client->addressable_devices().front();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       CompileOnDevices(client.get(), compiler, kModule, {device},
                        /*replicated=*/false, serialize));
 
   ExecuteOptions options;
   options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       executable->Execute({}, options, /*devices=*/std::nullopt));
 
@@ -541,11 +539,11 @@ module @add_sub {
     return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
   Device* const device = client->addressable_devices().front();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       CompileOnDevices(client.get(), compiler, kModule, {device},
                        /*replicated=*/false, serialize));
@@ -557,7 +555,7 @@ module @add_sub {
     for (int i = 0; i < 2; ++i) {
       std::vector<int32_t> data(6);
       absl::c_iota(data, 0);
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           arrays.emplace_back(),
           client->MakeArrayFromHostBuffer(
               data.data(), DType(DType::kS32), Shape({2, 3}),
@@ -577,7 +575,7 @@ module @add_sub {
   LoadedExecutable::ExecuteOptions execute_options;
   execute_options.non_donatable_input_indices.insert(1);
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       executable->Execute(absl::MakeSpan(arrays), execute_options,
                           /*devices=*/std::nullopt));
@@ -628,12 +626,12 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST(ExecutableTest, ExecutableSerialization) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
   xla::ifrt::Compiler* compiler = client->GetDefaultCompiler();
 
   std::vector<xla::ifrt::Device*> devices = {
       client->addressable_devices().at(0), client->addressable_devices().at(1)};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       CompileOnDevices(client.get(), compiler, module_add_sub, devices,
                        /*replicated=*/false, /*serialize=*/false));
@@ -650,21 +648,21 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable_version,
-                          loaded_executable->executable_version());
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto executable_version,
+                       loaded_executable->executable_version());
+  ASSERT_OK_AND_ASSIGN(
       auto xla_executable_version,
       xla::ifrt::ToXlaExecutableVersion(std::move(executable_version)));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
-                          xla_executable_version->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
+                       xla_executable_version->ToProto());
   EXPECT_THAT(metadata.executable_version(),
               EqualsProto(serialized_xla_executable_version));
 
   EXPECT_EQ(metadata.computation_name(), "add_sub");
 
   int kNumOutputs = 2;
-  TF_ASSERT_OK_AND_ASSIGN(auto output_memory_kinds,
-                          loaded_executable->GetOutputMemoryKinds());
+  ASSERT_OK_AND_ASSIGN(auto output_memory_kinds,
+                       loaded_executable->GetOutputMemoryKinds());
   ASSERT_EQ(output_memory_kinds.size(), 1);
   ASSERT_EQ(output_memory_kinds.at(0).size(), kNumOutputs);
   ASSERT_EQ(metadata.output_specs_size(), kNumOutputs);
@@ -673,8 +671,8 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(output_shardings.has_value());
   ASSERT_EQ(output_shardings->size(), kNumOutputs);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto output_layouts,
-                          loaded_executable->GetOutputLayouts());
+  ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                       loaded_executable->GetOutputLayouts());
   ASSERT_EQ(output_layouts.size(), kNumOutputs);
 
   for (int i = 0; i < kNumOutputs; ++i) {
@@ -689,16 +687,16 @@ TEST(ExecutableTest, ExecutableSerialization) {
     // it should match the expected layout. Otherwise it represents a default
     // layout.
     if (metadata.output_specs(i).has_layout()) {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           xla::ifrt::CustomLayoutRef output_layout,
           xla::ifrt::PjRtLayout::FromProto(metadata.output_specs(i).layout()));
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           xla::ifrt::DType dtype,
           xla::ifrt::DType::FromProto(metadata.output_specs(i).dtype()));
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           xla::ifrt::Shape ifrt_shard_shape,
           xla::ifrt::Shape::FromProto(metadata.output_specs(i).shard_shape()));
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           auto pjrt_layout,
           xla::ifrt::ToPjRtLayout(dtype, ifrt_shard_shape, output_layout));
       EXPECT_EQ(pjrt_layout->ToString(), output_layouts[i]->ToString());
@@ -711,13 +709,13 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_EQ(parameter_shardings->size(), kNumParameters);
   ASSERT_EQ(metadata.parameter_specs_size(), kNumParameters);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
-                          loaded_executable->GetParameterLayouts());
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       loaded_executable->GetParameterLayouts());
   ASSERT_EQ(parameter_layouts.size(), kNumParameters);
   ASSERT_EQ(metadata.parameter_specs_size(), kNumParameters);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto donated_input_indices,
-                          loaded_executable->GetDonatableInputIndices());
+  ASSERT_OK_AND_ASSIGN(auto donated_input_indices,
+                       loaded_executable->GetDonatableInputIndices());
   absl::flat_hash_set<int> donated_input_indices_set(
       donated_input_indices.begin(), donated_input_indices.end());
 
@@ -731,10 +729,10 @@ TEST(ExecutableTest, ExecutableSerialization) {
     // it should match the expected layout. Otherwise it represents a default
     // layout.
     if (metadata.parameter_specs(i).has_layout()) {
-      TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::CustomLayoutRef parameter_layout,
-                              xla::ifrt::PjRtLayout::FromProto(
-                                  metadata.parameter_specs(i).layout()));
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(xla::ifrt::CustomLayoutRef parameter_layout,
+                           xla::ifrt::PjRtLayout::FromProto(
+                               metadata.parameter_specs(i).layout()));
+      ASSERT_OK_AND_ASSIGN(
           auto pjrt_layout,
           xla::ifrt::ToPjRtLayout(dummy_dtype, dummy_shape, parameter_layout));
       EXPECT_EQ(pjrt_layout->ToString(), parameter_layouts[i]->ToString());
@@ -750,19 +748,19 @@ TEST(ExecutableTest, ExecutableSerialization) {
 
   ASSERT_FALSE(serialized_pjrt_executable.empty());
 
-  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef device_list,
-                          client->MakeDeviceList(devices));
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef device_list,
+                       client->MakeDeviceList(devices));
   auto options = std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
   options->devices = device_list;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
       client->GetDefaultCompiler()->DeserializeLoadedExecutable(
           *serialized_executable, std::move(options)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
-                          loaded_executable->GetOutputLayouts());
-  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_output_layouts,
-                          deserialized_executable->GetOutputLayouts());
+  ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
+                       loaded_executable->GetOutputLayouts());
+  ASSERT_OK_AND_ASSIGN(auto deserialized_output_layouts,
+                       deserialized_executable->GetOutputLayouts());
   ASSERT_EQ(loaded_output_layouts.size(), deserialized_output_layouts.size());
   for (int i = 0; i < loaded_output_layouts.size(); ++i) {
     EXPECT_EQ(loaded_output_layouts[i]->ToString(),
@@ -816,14 +814,14 @@ TEST(ExecutableTest, ExecutableSerialization) {
           device_list, xla::ifrt::MemoryKind(), shape, shard_shape,
           /*is_fully_replicated=*/false);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto array_shard0,
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding0,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto array_shard1,
       client->MakeArrayFromHostBuffer(
           data.data() + 3, dtype, shard_shape,
@@ -831,17 +829,17 @@ TEST(ExecutableTest, ExecutableSerialization) {
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
-  TF_ASSERT_OK_AND_ASSIGN(input_arrays.emplace_back(),
-                          client->AssembleArrayFromSingleDeviceArrays(
-                              shape, input1_sharding, absl::MakeSpan(shards),
-                              xla::ifrt::ArrayCopySemantics::kDonateInput));
+  ASSERT_OK_AND_ASSIGN(input_arrays.emplace_back(),
+                       client->AssembleArrayFromSingleDeviceArrays(
+                           shape, input1_sharding, absl::MakeSpan(shards),
+                           xla::ifrt::ArrayCopySemantics::kDonateInput));
 
   // Input 2 : [0, 1, 2, 3, 4, 5] replicated on device 0 and 1.
   xla::ifrt::ShardingRef input2_sharding =
       xla::ifrt::ConcreteEvenSharding::Create(
           std::move(device_list), xla::ifrt::MemoryKind(), shape, shape,
           /*is_fully_replicated=*/true);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       input_arrays.emplace_back(),
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shape,
@@ -851,10 +849,10 @@ TEST(ExecutableTest, ExecutableSerialization) {
 
   xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
   execute_options.fill_status = true;
-  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::LoadedExecutable::ExecuteResult result,
-                          deserialized_executable->Execute(
-                              absl::MakeSpan(input_arrays), execute_options,
-                              /*devices=*/std::nullopt));
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::LoadedExecutable::ExecuteResult result,
+                       deserialized_executable->Execute(
+                           absl::MakeSpan(input_arrays), execute_options,
+                           /*devices=*/std::nullopt));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(2));
 
@@ -868,7 +866,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto output_shards,
         result.outputs[1]->DisassembleIntoSingleDeviceArrays(
             xla::ifrt::ArrayCopySemantics::kDonateInput,

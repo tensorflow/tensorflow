@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/platform_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -37,8 +36,8 @@ using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(CubSortThunkTest, ProtoRoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::string_view name,
-                          PlatformUtil::CanonicalPlatformName("gpu"));
+  ASSERT_OK_AND_ASSIGN(absl::string_view name,
+                       PlatformUtil::CanonicalPlatformName("gpu"));
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
     thunk_info {
       profile_annotation: "cub_sort_thunk_profile"
@@ -60,13 +59,13 @@ TEST(CubSortThunkTest, ProtoRoundTrip) {
   buffer_allocations.emplace_back(/*index=*/1, /*size=*/4, /*color=*/0);
   buffer_allocations.emplace_back(/*index=*/2, /*size=*/1024, /*color=*/0);
 
-  TF_ASSERT_OK_AND_ASSIGN(Thunk::ThunkInfo thunk_info,
-                          Thunk::ThunkInfo::FromProto(proto.thunk_info()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Thunk::ThunkInfo thunk_info,
+                       Thunk::ThunkInfo::FromProto(proto.thunk_info()));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CubSortThunk> thunk,
       CubSortThunk::FromProto(thunk_info, proto.cub_sort_thunk(),
                               buffer_allocations, name));
-  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

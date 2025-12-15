@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -72,14 +71,14 @@ class WhileLoopUnrollerTest : public HloTestBase {
   void UnrollAndCompare(std::unique_ptr<HloModule> module,
                         absl::Span<Literal* const> arguments,
                         int64_t unroll_factor = -1, bool wrap_in_loop = false) {
-    TF_ASSERT_OK_AND_ASSIGN(Literal before_unroll,
-                            Execute(module->Clone(), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal before_unroll,
+                         Execute(module->Clone(), arguments));
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
     EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
                     .Run(module.get())
                     .value());
-    TF_ASSERT_OK_AND_ASSIGN(Literal after_unroll,
-                            Execute(std::move(module), arguments));
+    ASSERT_OK_AND_ASSIGN(Literal after_unroll,
+                         Execute(std::move(module), arguments));
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
 
     ASSERT_TRUE(LiteralTestUtil::NearOrEqual(/*expected=*/before_unroll,
@@ -582,8 +581,8 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
     ROOT result = (s32[3]{0}, s32[3]{0}) tuple(o1,o2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   auto unrollable_loops = WhileLoopUnroller::GetUnrollableLoops(
       module.get(), {}, /*unroll_config=*/std::nullopt);
@@ -641,11 +640,11 @@ TEST_F(WhileLoopUnrollerTest, UnrollMultipleLoops) {
     ROOT result = (s32[3]{0}, s32[3]{0}) tuple(o1,o2)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Unroll the first loop
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       UnrollResult unrolled_result,
       WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while1")));
@@ -662,7 +661,7 @@ TEST_F(WhileLoopUnrollerTest, UnrollMultipleLoops) {
   EXPECT_EQ(call_instrs_1.size(), 0);
 
   // Unroll the second loop
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       UnrollResult unrolled_result2,
       WhileLoopUnroller::UnrollAndReturnReplacement(
           module->entry_computation()->GetInstructionWithName("while2")));
@@ -864,8 +863,8 @@ TEST_F(WhileLoopUnrollerTest, NoUnrelatedInlining) {
     ROOT call = call(while), to_apply=NopComputation
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_TRUE(
       WhileLoopUnroller(/*unroll_factor=*/-1).Run(hlo_module.get()).value());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), op::Call());
@@ -1100,8 +1099,8 @@ TEST_F(WhileLoopUnrollerTest, LoopWithCollective2) {
   absl::flat_hash_map<int64_t, int64_t> num_instrs_per_group;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
-    TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
-                            GetSchedulingAnnotationGroupId(instr));
+    ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                         GetSchedulingAnnotationGroupId(instr));
     if (id) {
       num_instrs_per_group[*id]++;
     }
@@ -1398,9 +1397,9 @@ TEST_F(WhileLoopUnrollerTest, UnrollLoopWithDynamicGte) {
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   HloInstruction* loop =
       module->entry_computation()->root_instruction()->mutable_operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(UnrollResult unrolled_result,
-                          WhileLoopUnroller::UnrollAndReturnReplacement(
-                              loop, -1, false, true, true));
+  ASSERT_OK_AND_ASSIGN(UnrollResult unrolled_result,
+                       WhileLoopUnroller::UnrollAndReturnReplacement(
+                           loop, -1, false, true, true));
   bool unrolled = unrolled_result.unrolled;
   EXPECT_TRUE(unrolled);
   // Below method is successful only if all the DynamicGte and DynamicTuple
@@ -1682,8 +1681,8 @@ TEST_F(WhileLoopUnrollerTest, SymmetricMatMul) {
       ROOT get-tuple-element.320 = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(outer.while), index=1
     }
     )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(kModule));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(kModule));
   HloInstruction* while_op = FindInstruction(m.get(), "outer.while");
   ASSERT_NE(while_op, nullptr);
 

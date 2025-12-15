@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 
@@ -282,8 +282,8 @@ TEST_F(ShapeTest, ProgramShapeToFromProto) {
   *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {7});
 
   // Create a copy of the program shape by round-tripping through a proto.
-  TF_ASSERT_OK_AND_ASSIGN(auto program_shape_copy,
-                          ProgramShape::FromProto(program_shape.ToProto()));
+  ASSERT_OK_AND_ASSIGN(auto program_shape_copy,
+                       ProgramShape::FromProto(program_shape.ToProto()));
   ASSERT_EQ(program_shape.parameters_size(),
             program_shape_copy.parameters_size());
   for (int i = 0; i < program_shape.parameters_size(); ++i) {

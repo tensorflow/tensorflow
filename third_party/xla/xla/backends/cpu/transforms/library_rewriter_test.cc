@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -82,8 +82,8 @@ class CpuLibraryTest : public TargetMachineTestBase {
     std::string hlo_text = absl::StrReplaceAll(
         hlo_template,
         {{"$in_dtype", spec.in_dtype}, {"$out_dtype", spec.out_dtype}});
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text));
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                         ParseAndReturnVerifiedModule(hlo_text));
 
     // Run the pass.
     tsl::protobuf::RepeatedField<int> fusion_types;

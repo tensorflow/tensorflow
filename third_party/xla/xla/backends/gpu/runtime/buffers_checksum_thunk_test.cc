@@ -91,10 +91,10 @@ class FakeThunk : public Thunk {
 class BuffersDebugChecksumThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("CUDA"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
 
@@ -138,9 +138,9 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   se::DeviceAddressBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
   se::DeviceAddressBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
-  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
-                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
-                              *stream_, se::DeviceAddress<uint8_t>(log_mem)));
+  ASSERT_OK_AND_ASSIGN(auto device_log,
+                       BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                           *stream_, se::DeviceAddress<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
   zeros[123] = 12341234;  // expected checksum for inputs_mem[0]
@@ -165,8 +165,8 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
-                          device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
+                       device_log.ReadFromDevice(*stream_));
 
   // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
   // complete in any order.
@@ -227,8 +227,8 @@ TEST_F(BuffersDebugChecksumThunkTest,
     return TestDevice{std::move(executor), std::move(stream),
                       std::move(allocator), std::move(allocations)};
   };
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
+  ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
+  ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
   BufferAllocation allocation(0, kLogSizeBytes + kInputSizeBytes, 0);
   BufferAllocation::Slice log_slice(&allocation, 0, kLogSizeBytes);
   BufferAllocation::Slice input_slice(&allocation, kLogSizeBytes,

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla::separate_compilation {
 namespace {
@@ -85,9 +84,8 @@ ENTRY %main() -> f32[] {
   ROOT %result = f32[] add(f32[] %res.01, f32[] %res.23)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto splits, GroupComputationsForSplitting(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto splits, GroupComputationsForSplitting(*module));
 
   absl::flat_hash_set<const HloComputation*> all_computations_in_splits;
   for (const auto& bucket : splits) {
@@ -146,12 +144,11 @@ ENTRY %main() -> f32[] {
   ROOT %result = f32[] add(f32[] %res.01, f32[] %res.23)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
   auto* main = FindComputation(module.get(), "main");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split,
-                          CreateHloModuleSplit(*module, {main}));
+  ASSERT_OK_AND_ASSIGN(auto module_split,
+                       CreateHloModuleSplit(*module, {main}));
 
   const int kMainModuleComputationCount = 5;  // the main + 4 stubs
   // const int kMainModuleClonedComputations = 1;
@@ -217,15 +214,14 @@ ENTRY %main() -> f32[] {
   ROOT %result = f32[] add(f32[] %res.01, f32[] %res.fu23)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*module));
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
@@ -272,10 +268,9 @@ TEST_F(SplittingTest, SplitDiamondGraphModule) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*module));
 
   // Expect all computations to be assigned somewhere.
   for (auto original_comp : module->computations()) {
@@ -285,10 +280,10 @@ TEST_F(SplittingTest, SplitDiamondGraphModule) {
   EXPECT_EQ(module_split_group->module_splits.size(),
             module->computation_count());
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
@@ -354,15 +349,14 @@ ENTRY %main() -> f32[] {
   ROOT %result = f32[] add(f32[] %res.01, f32[] %res.f)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto module_split_group,
-                          CreateHloModuleSplitGroup(*module));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(module_text));
+  ASSERT_OK_AND_ASSIGN(auto module_split_group,
+                       CreateHloModuleSplitGroup(*module));
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
-                          PlatformUtil::GetPlatform("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+  ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
+                       PlatformUtil::GetPlatform("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
+                       Compiler::GetForPlatform(platform));
   TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {

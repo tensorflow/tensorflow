@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace cpu {
@@ -54,14 +54,14 @@ TEST_F(FusionWrapperTest, Scatter) {
         to_apply=add
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_string));
   FusionWrapper wrapper(false, false);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
   EXPECT_TRUE(changed);
 
   // A subsequent run should be a no-op -- the scatter is already fused.
-  TF_ASSERT_OK_AND_ASSIGN(changed, wrapper.Run(m.get()));
+  ASSERT_OK_AND_ASSIGN(changed, wrapper.Run(m.get()));
   EXPECT_FALSE(changed);
 }
 

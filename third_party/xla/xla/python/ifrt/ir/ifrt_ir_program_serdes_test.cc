@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/support/module_parsing.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -83,7 +82,7 @@ module {
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       support::ParseMlirModuleString(kMlirModuleStr, *context));
   auto initial_program =
@@ -91,10 +90,10 @@ module {
 
   // TODO(hyeontaek): Use `version()` to fill in
   // `SerializeIfrtIRProgramOptions::ifrt_version`.
-  TF_ASSERT_OK_AND_ASSIGN(serialized,
-                          Serialize(*initial_program, /*options=*/nullptr));
+  ASSERT_OK_AND_ASSIGN(serialized,
+                       Serialize(*initial_program, /*options=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<IfrtIRProgram> deserialized_program,
       Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
 
@@ -129,7 +128,7 @@ module @multiple_calls_of_same_module {
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       support::ParseMlirModuleString(kMlirModuleStr, *context));
   auto initial_program =
@@ -141,9 +140,9 @@ module @multiple_calls_of_same_module {
       Version::getCurrentVersion().toString(),
       ::mlir::vhlo::Version::getCurrentVersion().toString(),
       /*version_in_place=*/false);
-  TF_ASSERT_OK_AND_ASSIGN(serialized,
-                          Serialize(*initial_program, std::move(options)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(serialized,
+                       Serialize(*initial_program, std::move(options)));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<IfrtIRProgram> deserialized_program,
       Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
 
@@ -173,7 +172,7 @@ module {
 
   Serialized serialized;
   auto context = std::make_unique<mlir::MLIRContext>();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
       support::ParseMlirModuleString(kMlirModuleStr, *context));
   auto initial_program =
@@ -212,15 +211,14 @@ module {
   Serialized serialized;
   {
     auto context = std::make_unique<mlir::MLIRContext>();
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         mlir::OwningOpRef<mlir::ModuleOp> module,
         support::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
     // TODO(hyeontaek): Use `version()` to fill in
     // `SerializeIfrtIRProgramOptions::ifrt_version`.
-    TF_ASSERT_OK_AND_ASSIGN(serialized,
-                            Serialize(*program, /*options=*/nullptr));
+    ASSERT_OK_AND_ASSIGN(serialized, Serialize(*program, /*options=*/nullptr));
   }
 
   serialized.set_data("invalid data");

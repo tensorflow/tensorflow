@@ -24,12 +24,11 @@ xla_cc_test(
     name = "xla_cpu_pjrt_client_test",
     srcs = ["xla_cpu_pjrt_client_test.cc"],
     deps = [
+        ":cpu_client_options",
         ":xla_cpu_pjrt_client",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/cpu:cpu_client",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -121,7 +120,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_dimensions",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

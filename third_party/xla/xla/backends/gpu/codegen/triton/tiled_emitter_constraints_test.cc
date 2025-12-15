@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -68,8 +67,8 @@ class TiledEmitterConstraintsTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(TiledEmitterConstraintsTest, CustomReshapeConstraintsAreEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 triton_computation {
   p = s8[36] parameter(0)
   ROOT bitcast = s8[6,6] bitcast(p)
@@ -116,8 +115,8 @@ ENTRY entry_computation {
 
 TEST_F(TiledEmitterConstraintsTest,
        CustomConcatenateSizeConstraintsAreEnforced) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[8] parameter(0)
   p1 = bf16[8] parameter(1)
@@ -171,8 +170,8 @@ ENTRY main {
 
 TEST_F(TiledEmitterConstraintsTest,
        ConcatenateConstrainsOffsetToBeZeroAlongConcatenationDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[16] parameter(0)
   p1 = bf16[16] parameter(1)
@@ -227,8 +226,8 @@ ENTRY main {
 
 TEST_F(TiledEmitterConstraintsTest,
        ConcatenateConstrainsStrideToBeOneAlongConcatenationDimension) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 concatenate {
   p0 = bf16[16] parameter(0)
   p1 = bf16[16] parameter(1)

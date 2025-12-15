@@ -16,11 +16,11 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -40,8 +40,7 @@ TEST_F(DynamicReshapeTest, SingleDynamicDimension) {
       ROOT reshaped = s32[<=18] dynamic-reshape(param_padded, nine)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR3<int32_t>(
       {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}},
@@ -49,8 +48,8 @@ TEST_F(DynamicReshapeTest, SingleDynamicDimension) {
   Literal arg1 = LiteralUtil::CreateR0<int32_t>(2);
   Literal arg2 = LiteralUtil::CreateR0<int32_t>(9);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1, &arg2}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       Execute(std::move(module), {&arg0, &arg1, &arg2}));
 
   Literal expected =
       LiteralUtil::CreateR1<int32_t>({0, 1, 2, 3, 4, 5, 9, 10, 11});
@@ -72,8 +71,7 @@ TEST_F(DynamicReshapeTest, DoubleDynamicDimensions) {
       ROOT reshaped = s32[<=18] dynamic-reshape(param_padded, eight)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR3<int32_t>(
       {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}},
@@ -81,8 +79,8 @@ TEST_F(DynamicReshapeTest, DoubleDynamicDimensions) {
   Literal arg1 = LiteralUtil::CreateR0<int32_t>(2);
   Literal arg2 = LiteralUtil::CreateR0<int32_t>(8);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1, &arg2}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       Execute(std::move(module), {&arg0, &arg1, &arg2}));
 
   Literal expected =
       LiteralUtil::CreateR1<int32_t>({0, 1, 3, 4, 9, 10, 12, 13});
@@ -102,16 +100,15 @@ TEST_F(DynamicReshapeTest, OutputDoubleDynamicDimensions) {
         two)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR1<int32_t>(
       {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17});
   Literal arg1 = LiteralUtil::CreateR0<int32_t>(8);
   Literal arg2 = LiteralUtil::CreateR0<int32_t>(2);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {&arg0, &arg1, &arg2}));
+  ASSERT_OK_AND_ASSIGN(auto result,
+                       Execute(std::move(module), {&arg0, &arg1, &arg2}));
 
   Literal expected =
       LiteralUtil::CreateR3<int32_t>({{{0, 1}, {2, 3}}, {{4, 5}, {6, 7}}});
@@ -139,8 +136,7 @@ TEST_F(DynamicReshapeTest, Complicated) {
       ROOT reshaped = s32[<=6, <=8] dynamic-reshape(param_dynamic2, three, six)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
 
   Literal arg0 = LiteralUtil::CreateR3<int32_t>(
       {{{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}, {12, 13, 14, 15}},
@@ -153,7 +149,7 @@ TEST_F(DynamicReshapeTest, Complicated) {
   Literal arg2 = LiteralUtil::CreateR0<int32_t>(3);
   Literal arg3 = LiteralUtil::CreateR0<int32_t>(6);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto result, Execute(std::move(module), {&arg0, &arg1, &arg2, &arg3}));
 
   Literal expected = LiteralUtil::CreateR2<int32_t>(

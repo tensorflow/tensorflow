@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -58,18 +58,18 @@ TEST(LogicalIdThunkTest, GetReplicaId) {
   BufferAllocation::Slice id_slice = CreateBufferAllocationSlice(alloc);
 
   std::string name(Thunk::KindToString(Thunk::Kind::kReplicaId));
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk, ReplicaIdThunk::Create({name}, id_slice));
+  ASSERT_OK_AND_ASSIGN(auto thunk, ReplicaIdThunk::Create({name}, id_slice));
 
   BufferAllocations allocations = CreateBufferAllocations(dst);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assn,
-                          CreateDeviceAssignment({{0, 1}}));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assn,
+                       CreateDeviceAssignment({{0, 1}}));
 
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(0);
   run_options.set_device_assignment(&device_assn);
 
-  TF_ASSERT_OK_AND_ASSIGN(Thunk::CollectiveExecuteParams collective_params,
-                          Thunk::CollectiveExecuteParams::Create(&run_options));
+  ASSERT_OK_AND_ASSIGN(Thunk::CollectiveExecuteParams collective_params,
+                       Thunk::CollectiveExecuteParams::Create(&run_options));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -89,19 +89,18 @@ TEST(LogicalIdThunkTest, GetPartitionId) {
   BufferAllocation::Slice id_slice = CreateBufferAllocationSlice(alloc);
 
   std::string name(Thunk::KindToString(Thunk::Kind::kPartitionId));
-  TF_ASSERT_OK_AND_ASSIGN(auto thunk,
-                          PartitionIdThunk::Create({name}, id_slice));
+  ASSERT_OK_AND_ASSIGN(auto thunk, PartitionIdThunk::Create({name}, id_slice));
 
   BufferAllocations allocations = CreateBufferAllocations(dst);
-  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assn,
-                          CreateDeviceAssignment({{0}, {1}}));
+  ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assn,
+                       CreateDeviceAssignment({{0}, {1}}));
 
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(0);
   run_options.set_device_assignment(&device_assn);
 
-  TF_ASSERT_OK_AND_ASSIGN(Thunk::CollectiveExecuteParams collective_params,
-                          Thunk::CollectiveExecuteParams::Create(&run_options));
+  ASSERT_OK_AND_ASSIGN(Thunk::CollectiveExecuteParams collective_params,
+                       Thunk::CollectiveExecuteParams::Create(&run_options));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;

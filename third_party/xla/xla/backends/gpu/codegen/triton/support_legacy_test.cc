@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
@@ -43,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -116,7 +114,7 @@ ENTRY e {
 })";
     const std::string hlo_test = absl::Substitute(
         kHloTestTemplate, lhs, rhs, output, HloOpcodeString(opcode));
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         TestedInstruction ti,
         ParseTemplateAndGetInstruction(hlo_test, /*data_type=*/{}, opcode));
     if (legacy_triton::IsTritonSupportedInstruction(ti.Instruction(),
@@ -265,9 +263,9 @@ ENTRY e {
       param.is_the_majormost_dim_being_sliced ? 1 : 0,  // start_index0
       param.is_the_majormost_dim_being_sliced ? 0 : 1   // start_index1
   );
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction dot,
-                          ParseTemplateAndGetInstruction(
-                              hlo_test, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction dot,
+                       ParseTemplateAndGetInstruction(
+                           hlo_test, /*data_type=*/{}, HloOpcode::kDot));
   HloInstruction* dynamic_slice =
       FindInstruction(dot.Module().get(), HloOpcode::kDynamicSlice);
   ASSERT_NE(dynamic_slice, nullptr);
@@ -331,9 +329,9 @@ ENTRY e {
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   EXPECT_THAT(
       legacy_triton::CanTritonHandleGEMM(
           *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
@@ -370,9 +368,9 @@ ENTRY e {
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   EXPECT_THAT(
       legacy_triton::CanTritonHandleGEMM(
           *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
@@ -411,9 +409,9 @@ ENTRY e {
       "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   EXPECT_THAT(
       legacy_triton::CanTritonHandleGEMM(
           *Cast<HloDotInstruction>(&ti.Instruction()), GetComputeCapability())
@@ -453,9 +451,9 @@ ENTRY e {
       "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}],
        "num_stages":4,"num_warps":8,"num_ctas":1}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
   EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
@@ -504,9 +502,9 @@ ENTRY e {
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
     "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
-                          ParseTemplateAndGetInstruction(
-                              kHloTest, /*data_type=*/{}, HloOpcode::kDot));
+  ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                       ParseTemplateAndGetInstruction(
+                           kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
                   ti.Instruction(), GetComputeCapability())
                   .Explain(),

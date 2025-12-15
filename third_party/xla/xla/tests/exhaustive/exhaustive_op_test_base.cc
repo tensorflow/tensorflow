@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/meta/type_traits.h"
@@ -465,9 +466,9 @@ void ExhaustiveOpTestBase<T, N>::Run(EnqueueOp enqueue_op,
   }
   CallEnqueueOperation<Traits>(enqueue_op, xla_inputs);
 
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          RunComputationHelper(comp, input_literals));
+  ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
+  ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                       RunComputationHelper(comp, input_literals));
 
   ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen,
              check_valid_range);

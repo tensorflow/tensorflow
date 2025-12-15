@@ -15,13 +15,13 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -79,8 +79,8 @@ ENTRY testcase {
   // unrolling.
   HloModuleConfig config;
   config.set_debug_options(DefaultDebugOptionsIgnoringFlags());
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kModuleStr, config));
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01, 0.01}));
 }
 

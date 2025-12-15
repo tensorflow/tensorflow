@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -42,8 +41,8 @@ TEST(CudnnApiWrappersTest, GetCudnnProperty) {
 TEST(CudnnApiWrappersTest, GetLoadedCudnnVersion) {
   // This test makes sure we can determine the version of cuDNN without an
   // accelerator present and without initializing cuDNN.
-  TF_ASSERT_OK_AND_ASSIGN(SemanticVersion version,
-                          stream_executor::cuda::GetLoadedCudnnVersion());
+  ASSERT_OK_AND_ASSIGN(SemanticVersion version,
+                       stream_executor::cuda::GetLoadedCudnnVersion());
 
   // As the time of writing this test, the oldest supported version of cuDNN
   // is 8.9.4. So we expect the version to be at least this.

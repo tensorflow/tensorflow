@@ -494,7 +494,6 @@ xla_cc_test(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -527,7 +526,6 @@ xla_cc_test(
     deps = [
         ":aot_compiled_function_library",
         "//xla/backends/cpu/runtime:function_library",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
@@ -740,7 +738,6 @@ xla_cc_test(
     srcs = ["symbol_name_util_test.cc"],
     deps = [
         ":symbol_name_util",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

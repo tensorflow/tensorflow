@@ -51,7 +51,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":grpc_server",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -279,7 +278,6 @@ ifrt_proxy_cc_test(
         ":ifrt_backend_user_context",
         "//xla/python/ifrt:user_context",
         "//xla/tsl/concurrency:future",
-        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

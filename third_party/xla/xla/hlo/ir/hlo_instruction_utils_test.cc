@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -44,8 +45,8 @@ TEST_F(HloInstructionUtilsTest, TestIsUnstridedSlice) {
       ROOT tuple = (f32[2,2], f32[2,4]) tuple(strided_slice, unstrided_slice)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* unstrided_slice =
       hlo_query::FindInstruction(m->entry_computation(), "unstrided_slice");
   HloInstruction* strided_slice =
@@ -57,8 +58,8 @@ TEST_F(HloInstructionUtilsTest, TestIsUnstridedSlice) {
 }
 
 TEST_F(HloInstructionUtilsTest, KeepsBitwidth) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(R"(
 e {
   a = s8[2] parameter(0)
   b = s16[] bitcast(a)
@@ -76,8 +77,8 @@ TEST_F(HloInstructionUtilsTest, TestAddOrUpdateVectorOfPairsAsAttribute) {
     ENTRY main {
       ROOT param = s32[] parameter(0), frontend_attributes={foo="bar", baz="qux"}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* param = m->entry_computation()->root_instruction();
   EXPECT_EQ(param->frontend_attributes().map().size(), 2);
   EXPECT_EQ(param->frontend_attributes().map().at("foo"), "bar");

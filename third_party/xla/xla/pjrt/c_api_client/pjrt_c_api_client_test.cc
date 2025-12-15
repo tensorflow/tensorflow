@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
@@ -80,17 +80,17 @@ static void SetUpCpuPjRtApi() {
 
 TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
   std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto alias_buffer,
       client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
 
   // Create a buffer from host data.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto param,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
@@ -106,12 +106,11 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   auto computation = builder.Build(add).value();
 
   // Compile and load the executable.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtLoadedExecutable> executable,
-      client->CompileAndLoad(computation, CompileOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, CompileOptions()));
 
   // Execute the kernel.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
       executable->Execute({{param.get()}}, ExecuteOptions()));
   ASSERT_EQ(results.size(), 1);
@@ -124,8 +123,7 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   // Fulfill the alias buffer with the result of the add one kernel.
   ASSERT_NE(alias_buffer.second, nullptr);
   TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
-                          alias_buffer.first->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto alias_literal, alias_buffer.first->ToLiteralSync());
 
   // Expected result: data + 1
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -134,13 +132,13 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
 
 TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
   absl::Status error = absl::InternalError("Test Error");
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto error_buffer,
       client->CreateErrorBuffer(error, shape, client->memory_spaces()[0]));
 
@@ -151,8 +149,8 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
   const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
 
   constexpr int kNumThreads = 4;
   tsl::thread::ThreadPool thread_pool(
@@ -162,7 +160,7 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   // Create a buffer from host data.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto param,
       client->BufferFromHostBuffer(
           data.data(), shape.element_type(), shape.dimensions(),
@@ -178,11 +176,10 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
   auto computation = builder.Build(add).value();
 
   // Compile and load the executable.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtLoadedExecutable> executable,
-      client->CompileAndLoad(computation, CompileOptions()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, CompileOptions()));
   for (size_t i = 0; i < 100; ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
         executable->Execute({{param.get()}}, ExecuteOptions()));
     auto buffer = std::move(results[0][0]);
@@ -200,12 +197,12 @@ TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
 
 TEST(PjRtCApiClientTest, IsDynamicDimension) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   // Prepare input buffer and executable.
   std::vector<int32_t> data0{1, 2, 3, 4, 5, 6};
   Shape shape0 = ShapeUtil::MakeShape(S32, {2, 3});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto param0,
       client->BufferFromHostBuffer(
           data0.data(), shape0.element_type(), shape0.dimensions(),
@@ -214,7 +211,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
           client->memory_spaces()[0], /*device_layout=*/nullptr));
   std::vector<int32_t> data1{2};
   Shape shape1 = ShapeUtil::MakeShape(S32, {});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto param1,
       client->BufferFromHostBuffer(
           data1.data(), shape1.element_type(), shape1.dimensions(),
@@ -250,12 +247,12 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
 
 TEST(PjRtCApiClientTest, OnDeviceShape) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
   for (PrimitiveType t : {F32, F16, S8, BF16}) {
     Shape shape = ShapeUtil::MakeShape(t, {3, 2});
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto buffer,
         client->BufferFromHostBuffer(
             data.data(), shape.element_type(), shape.dimensions(),
@@ -269,8 +266,8 @@ TEST(PjRtCApiClientTest, OnDeviceShape) {
 
 TEST(PjRtCApiClientTest, ClientPlatformIdAndName) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
   EXPECT_EQ(client->platform_name(), xla::CpuName());
   EXPECT_EQ(client->platform_id(), xla::CpuId());
@@ -278,11 +275,11 @@ TEST(PjRtCApiClientTest, ClientPlatformIdAndName) {
 
 TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          client->GetTopologyDescription());
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
 
   ASSERT_NE(topology, nullptr);
   EXPECT_EQ(topology->platform_name(), xla::CpuName());
@@ -291,16 +288,16 @@ TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
 
 TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          client->GetTopologyDescription());
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
   ASSERT_NE(topology, nullptr);
 
   std::vector<int64_t> dims = {2, 3, 4};
-  TF_ASSERT_OK_AND_ASSIGN(Layout layout,
-                          topology->GetDefaultLayout(PrimitiveType::F32, dims));
+  ASSERT_OK_AND_ASSIGN(Layout layout,
+                       topology->GetDefaultLayout(PrimitiveType::F32, dims));
 
   Layout expected_layout = LayoutUtil::MakeDescendingLayout(dims.size());
   EXPECT_EQ(layout, expected_layout);
@@ -308,8 +305,8 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
   XlaBuilder builder("sum");
   auto inp_0 = Parameter(&builder, 0, shape, "input0");
@@ -335,8 +332,8 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
 
 TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   xla::Shape host_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
       xla::PrimitiveType::F32, /*dimensions=*/{2, 2, 2},
       /*minor_to_major=*/{1, 0, 2});
@@ -349,15 +346,15 @@ TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
 
 TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
   alignas(cpu::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
           data_ptr, shape, client->memory_spaces()[0],
@@ -365,12 +362,11 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
             (void)data;
           }));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PjRtBuffer> result,
-      buffer->CopyToMemorySpace(client->memory_spaces()[1]));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtBuffer> result,
+                       buffer->CopyToMemorySpace(client->memory_spaces()[1]));
   buffer.reset();
   ASSERT_TRUE(result);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
 
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -379,14 +375,14 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
 
 TEST(PjRtClientTest, CompileUsesStableHloVersion) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(const PJRT_Api* c_api, pjrt::PjrtApi("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   static auto PJRT_Client_Compile_Orig = c_api->PJRT_Client_Compile;
   constexpr char kProgram[] = "func.func @main() {return}";
   mlir::MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModuleString(kProgram, context));
   const_cast<PJRT_Api*>(c_api)->PJRT_Client_Compile =
       [](PJRT_Client_Compile_Args* args) -> PJRT_Error* {
     mlir::vhlo::Version version = mlir::vhlo::Version::getCurrentVersion();
@@ -405,12 +401,12 @@ TEST(PjRtClientTest, CompileUsesStableHloVersion) {
 
 TEST(PjRtClientTest, CompileWorksInplace) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   constexpr char kProgram[] = "func.func @main() {return}";
   mlir::MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                       ParseMlirModuleString(kProgram, context));
   CompileOptions options;
   options.allow_in_place_mlir_modification = true;
   std::unique_ptr<PjRtLoadedExecutable> executable =
@@ -420,10 +416,10 @@ TEST(PjRtClientTest, CompileWorksInplace) {
 
 TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
-  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
-                          client->GetTopologyDescription());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                       client->GetTopologyDescription());
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices =
       topology->DeviceDescriptions();
   for (std::unique_ptr<const PjRtDeviceDescription>& device : devices) {
@@ -439,8 +435,8 @@ TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
 
 TEST(PjRtCApiClientTest, GetDeviceAssignment) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
 
   XlaBuilder builder("Identity");
@@ -455,8 +451,8 @@ TEST(PjRtCApiClientTest, GetDeviceAssignment) {
   CompileOptions options;
   options.executable_build_options.set_device_assignment(device_assignment);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(computation, options));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, options));
 
   const DeviceAssignment& retrieved_assignment =
       executable->device_assignment();
@@ -468,8 +464,8 @@ TEST(PjRtCApiClientTest, GetDeviceAssignment) {
 
 TEST(PjRtCApiClientTest, WrapClientAroundCApi) {
   const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
   EXPECT_EQ(client->platform_name(), xla::CpuName());
   EXPECT_EQ(client->platform_id(), xla::CpuId());
 }
@@ -508,12 +504,12 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
     })";
 
   const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       client->CompileAndLoad(XlaComputation(hlo_module->ToProto()), {}));
 
@@ -525,8 +521,8 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
 
   auto result = executable->Execute(/*argument_handles=*/{{}}, options);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       result->at(0).at(0)->ToLiteralSync());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));
@@ -534,8 +530,8 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
 
 TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
 
   XlaBuilder builder("Identity");
@@ -555,11 +551,11 @@ TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
   std::unique_ptr<PjRtLoadedExecutable> executable =
       client->CompileAndLoad(computation, compile_options_for_device(0))
           .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
-                          executable->SerializeExecutable());
+  ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                       executable->SerializeExecutable());
 
   // Deserialize the executable for device 1.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto deserialized_executable,
       client->LoadSerializedExecutable(
           serialized_executable, compile_options_for_device(1), LoadOptions{}));
@@ -580,17 +576,17 @@ TEST(PjRtCApiClientTest, GetOutputShapes) {
     })";
 
   const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          WrapClientAroundCApi(c_api));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       WrapClientAroundCApi(c_api));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
-                          ParseAndReturnUnverifiedModule(kProgram, {}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                       ParseAndReturnUnverifiedModule(kProgram, {}));
+  ASSERT_OK_AND_ASSIGN(
       auto executable,
       client->CompileAndLoad(XlaComputation(hlo_module->ToProto()), {}));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Shape> output_shapes,
-                          executable->GetOutputShapes());
+  ASSERT_OK_AND_ASSIGN(std::vector<Shape> output_shapes,
+                       executable->GetOutputShapes());
   EXPECT_EQ(output_shapes.size(), 1);
   Shape expected_shape = ShapeUtil::MakeShape(F32, {4});
   EXPECT_EQ(output_shapes[0], expected_shape);
@@ -598,29 +594,28 @@ TEST(PjRtCApiClientTest, GetOutputShapes) {
 
 TEST(PjRtClientTest, BufferFromLiteralInt4) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
-      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
+  ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+  ASSERT_OK_AND_ASSIGN(auto buffer, client->BufferFromHostLiteral(
+                                        literal, client->memory_spaces()[0]));
+  ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
 }
 
 TEST(PjRtCApiClientTest, AsyncHostToDeviceTransferManagerTransferLiteral) {
   SetUpCpuPjRtApi();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient("cpu"));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
 
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<int32_t>({4});
   std::vector<int32_t> data = {1, 2, 3, 4};
   xla::Literal literal = xla::LiteralUtil::CreateR1<int32_t>(data);
 
   std::vector<xla::Shape> host_shapes = {shape};
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
           transfer_manager,
       client->CreateBuffersForAsyncHostToDevice(absl::MakeSpan(host_shapes),
@@ -633,8 +628,8 @@ TEST(PjRtCApiClientTest, AsyncHostToDeviceTransferManagerTransferLiteral) {
   std::unique_ptr<PjRtBuffer> buffer =
       transfer_manager->RetrieveBuffer(/*buffer_index=*/0);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          buffer->ToLiteral().Await());
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                       buffer->ToLiteral().Await());
 
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
 }

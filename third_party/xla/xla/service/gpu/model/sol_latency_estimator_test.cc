@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -132,16 +133,15 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
 
 TEST_P(SolLatencyEstimatorTest, TestLatencyEstimation) {
   EstimatorTestCase test_case = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(test_case.module_string));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(test_case.module_string));
 
   HloInstruction* instr = hlo_query::FindInstruction(
       module->entry_computation(), test_case.opcode_to_find);
   ASSERT_NE(instr, nullptr);
   absl::Duration actual_time_us;
   if (test_case.cost_type == CostType::kCollectiveTime) {
-    TF_ASSERT_OK_AND_ASSIGN(absl::Duration time_us,
-                            ComputeCollectiveTime(*instr));
+    ASSERT_OK_AND_ASSIGN(absl::Duration time_us, ComputeCollectiveTime(*instr));
     actual_time_us = absl::Trunc(time_us, absl::Microseconds(1));
   } else if (test_case.cost_type == CostType::kNodeCost) {
     actual_time_us = ComputeNodeCost(*instr, module->entry_computation());
@@ -563,7 +563,7 @@ TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
                                       /*analysis=*/nullptr);
 
   // NVLink domain collective should use CollectiveInterpolator.
-  TF_ASSERT_OK_AND_ASSIGN(auto nvl_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto nvl_module, ParseAndReturnVerifiedModule(R"(
 HloModule m, num_partitions=16
 ENTRY main {
   p = bf16[8,16000,1000] parameter(0)
@@ -584,7 +584,7 @@ ENTRY main {
 
   // Cross-partition collective should use S-curve model (world-level across 2
   // hosts).
-  TF_ASSERT_OK_AND_ASSIGN(auto ib_module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto ib_module, ParseAndReturnVerifiedModule(R"(
 HloModule m, num_partitions=16
 ENTRY main {
   p = bf16[16,16000,1000] parameter(0)

@@ -30,24 +30,26 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_test_utils.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
+#include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -134,14 +136,14 @@ ENTRY %main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* call_start = FindInstruction(module.get(), "call-start");
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
   // Asynchronous computation will run on 16 devices and we do not rematerialize
   // it, so it will reserve 16 * 16Kb from the memory limit.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloRematerialization(
           /*memory_limit_bytes=*/kNumParallelThreads * 16 * 1024 + 14 * 1024,
@@ -244,9 +246,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, SingleComputation) {
 
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/14 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -284,10 +286,10 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   ASSERT_THAT(slice, op::Slice(op::Concatenate(op::Broadcast(_), _)));
 
   // Set the minimum remat size to 14KiB, meaning no nodes should be remat.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get(),
-                              /*min_remat_size=*/14 * 1024));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/14 * 1024, module.get(),
+                           /*min_remat_size=*/14 * 1024));
   EXPECT_FALSE(changed);
 }
 
@@ -302,9 +304,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
 
   EXPECT_EQ(computation->instruction_count(), 8);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/20 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/20 * 1024, module.get()));
 
   // No instructions should have been materialized.
   EXPECT_FALSE(changed);
@@ -340,9 +342,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, RematerializeAroundWhile) {
   // The body computation uses 16KB and the entry computation uses 2KB at the
   // while so the peak memory use of the module is 18KB. Set the memory limit a
   // bit lower (17KB) to force rematerialization of the entry computation.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/17 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/17 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Only the entry computation should have a rematerialized instruction added.
@@ -376,9 +378,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   EXPECT_EQ(entry_computation->instruction_count(), 7);
   EXPECT_EQ(body_computation->instruction_count(), 8);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/15 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/15 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Both computations should have rematerialized instructions added.
@@ -420,9 +422,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
 
   // If all computations are maximally rematerialized then peak memory usage is
   // ~12K so pick something slightly larger.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/13 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/13 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // All computations should have rematerialized instructions added.
@@ -490,7 +492,7 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, RngNotRematerialized) {
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
   // rematerialization).
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloRematerialization(
           /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_), module.get()));
@@ -531,9 +533,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
   // rematerialization).
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/22 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -580,9 +582,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, CopyNotRematerialized) {
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/1 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/1 * 1024, module.get()));
 
   auto count_copies = [](const HloComputation* computation) {
     int64_t copy_count = 0;
@@ -620,8 +622,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto* computation = module->entry_computation();
   // Find and save the original broadcast instruction which should be
@@ -634,9 +635,9 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/14 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -685,8 +686,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto* computation = module->entry_computation();
   // Find and save the original broadcasts instruction which should be
@@ -694,9 +694,9 @@ ENTRY %mycomp (param: f32[1]) -> f32[1024] {
   const HloInstruction* add = computation->root_instruction();
   // Run with a low rematerialization limit that cannot be satisfied to make
   // sure that we don't get stuck in a loop trying to lower it.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/1024, module.get()));
   ASSERT_THAT(add, op::Add(op::Bitcast(op::Broadcast(_)),
                            op::Bitcast(op::Broadcast(_))));
   EXPECT_TRUE(changed);
@@ -732,15 +732,14 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloComputation* computation = module->entry_computation();
   const HloInstruction* add = computation->root_instruction();
   ASSERT_THAT(add, op::Add(op::Multiply(), op::GetTupleElement(op::Fusion())));
   const HloInstruction* fusion = add->operand(0)->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(
       add, op::Add(op::Multiply(), AllOf(op::Fusion(), ::testing::Ne(fusion))));
@@ -778,17 +777,16 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloComputation* computation = module->entry_computation();
   const HloInstruction* add = computation->root_instruction();
   ASSERT_THAT(add, op::Multiply(op::Add(op::Multiply(),
                                         op::GetTupleElement(op::Fusion())),
                                 op::GetTupleElement(op::Fusion())));
   const HloInstruction* fusion = add->operand(0)->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(
       add,
@@ -835,16 +833,15 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloComputation* computation = module->entry_computation();
   const HloInstruction* add = computation->root_instruction();
   ASSERT_THAT(add, op::Add(op::Bitcast(op::Multiply()),
                            op::Bitcast(op::GetTupleElement(op::Fusion()))));
   const HloInstruction* fusion = add->operand(0)->operand(0)->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(add,
               op::Add(op::Bitcast(op::Multiply()),
@@ -884,8 +881,7 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const HloComputation* computation = module->entry_computation();
   const HloInstruction* add = computation->root_instruction();
@@ -894,9 +890,9 @@ ENTRY %entry {
                            op::Add()));
   const HloInstruction* tuple = add->operand(0)->operand(0);
   const HloInstruction* fusion = tuple->operand(0)->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(add, op::Add(AllOf(op::Fusion(), ::testing::Ne(tuple),
                                  ::testing::Ne(fusion)),
@@ -929,8 +925,7 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   auto* computation = module->entry_computation();
   // Find and save the original broadcast instruction which should be
@@ -941,9 +936,9 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
 
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/14 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -1006,17 +1001,16 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   const HloComputation* computation = module->entry_computation();
   const HloInstruction* root = computation->root_instruction();
   ASSERT_THAT(root, op::Tuple(op::Reduce(), op::Fusion(op::Fusion())));
   const HloInstruction* fusion1 = root->operand(1);
   const HloInstruction* fusion0 = fusion1->operand(0);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   ASSERT_THAT(
       root, op::Tuple(op::Reduce(),
@@ -1062,12 +1056,11 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   const HloComputation* computation = module->entry_computation();
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/11 * 1024, module.get()));
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
   const HloInstruction* add = computation->root_instruction();
@@ -1191,14 +1184,13 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   // Only rematerialize buffers which have shaep f32[64, 2]. Buffers with shape
   // f32[10, 2] are ignored.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
-                                            /*memory_limit_bytes=*/30 * 1024,
-                                            module.get(), 10 * 1024));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
+                                         /*memory_limit_bytes=*/30 * 1024,
+                                         module.get(), 10 * 1024));
   EXPECT_TRUE(changed);
   HloInstruction* broadcast =
       module->entry_computation()->GetInstructionWithName("broadcast.0");
@@ -1235,12 +1227,11 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/30 * 1024, module.get()));
   EXPECT_TRUE(changed);
   HloInstruction* broadcast =
       module->entry_computation()->GetInstructionWithName("broadcast.0");
@@ -1274,12 +1265,11 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/16 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/16 * 1024, module.get()));
   EXPECT_FALSE(changed);
   HloInstruction* broadcast =
       module->entry_computation()->GetInstructionWithName("broadcast.0");
@@ -1313,12 +1303,11 @@ ENTRY %entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/30 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/30 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   HloInstruction* broadcast =
@@ -1409,8 +1398,7 @@ ENTRY MyModule {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   // Set some "hardware" constants so that we can test that instructions are
   // placed in the places we expect.
@@ -1419,9 +1407,9 @@ ENTRY MyModule {
   SetFlopsPerSecond(2 * 1024);
   SetTranscendentalsPerSecond(2 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
 
   // The module should still have a schedule.
@@ -1471,8 +1459,7 @@ ENTRY MyModule {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   // Set some "hardware" constants so that we can test that instructions are
   // placed in the places we expect.
@@ -1481,9 +1468,9 @@ ENTRY MyModule {
   SetFlopsPerSecond(2 * 1024);
   SetTranscendentalsPerSecond(2 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
 
   // The module should still have a schedule.
@@ -1583,9 +1570,9 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
   // Pick a memory limit some where between 24KB (initial peak memory
   // including parameter and output) and 20KB (peak memory possible with
   // rematerialization).
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/22 * 1024, module.get()));
   // Rematerialization should only occur if the rematerializable instruction
   // has no indirect uses.
   if (indirectly_used) {
@@ -1605,7 +1592,7 @@ INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
 using RematerializationDCETest = HloHardwareIndependentTestBase;
 
 TEST_F(RematerializationDCETest, DCEHasToRunTillFixedPoint) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m, is_scheduled=true
 
 f1 {
@@ -1688,11 +1675,11 @@ ENTRY MyModule {
   ROOT res = f32[1024]{0} add(res_2, constant_x_and_res_param_add)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Rematerialize with a low memory limit.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed, RunHloRematerialization(
                         /*memory_limit_bytes=*/100 * 1024, module.get(),
                         /*min_remat_size=*/0,
@@ -1775,11 +1762,11 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   // Rematerialize with a low memory limit and min_remat_size.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed, RunHloRematerialization(
                         /*memory_limit_bytes=*/0, module.get(),
                         /*min_remat_size=*/0,
@@ -1838,8 +1825,8 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
   int64_t remat_group_id = 0;
   absl::flat_hash_map<std::string, int64_t> remat_group_id_map;
@@ -1855,7 +1842,7 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
     remat_group_id_map[remat->name()] = current_group_id;
     return absl::OkStatus();
   };
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloRematerialization(
           /*memory_limit_bytes=*/14 * 1024, module.get(),
@@ -1910,8 +1897,8 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
        PeakFirstRematerializesAtSamePeak) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(R"(
 HloModule fusion, is_scheduled=true
 
 %call_convoluted (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {

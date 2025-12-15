@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,19 +30,19 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -111,9 +112,9 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
   Shape b_shape = ShapeUtil::MakeShape(S8, {77});
   Shape c_shape = ShapeUtil::MakeShape(S64, {});
-  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer, MakeArray(a_shape, client));
-  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client));
-  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client));
+  ASSERT_OK_AND_ASSIGN(auto a_buffer, MakeArray(a_shape, client));
+  ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client));
+  ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client));
 
   std::vector<se::DeviceAddressBase> expected_buffer_sequence = {
       a_buffer->mem(), b_buffer->mem(), c_buffer->mem()};

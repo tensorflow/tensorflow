@@ -68,7 +68,7 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
       ROOT add = add(reshape0, reshape1)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -82,7 +82,7 @@ TEST_F(ReshapeMoverTest, OneConstantAndOneReshapesOnRngNotMoved) {
       ROOT add = add(f32[8,7] reshape(rng), f32[8,7] constant({...}))
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -96,7 +96,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(m::Add(m::Parameter(0), m::Parameter(1)))));
@@ -113,7 +113,7 @@ TEST_F(ReshapeMoverTest, SinkReshapeBelowSelect) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -132,7 +132,7 @@ TEST_F(ReshapeMoverTest, SinkReshapeBelowSelectWithConstant) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -148,7 +148,7 @@ TEST_F(ReshapeMoverTest, OneParameterAndOneReshapeNotMoved) {
       ROOT add = add(reshape0, f32[8,7] parameter(1))
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -162,7 +162,7 @@ TEST_F(ReshapeMoverTest, DontSinkReshapesOfConstants) {
         f32[3,2] reshape(f32[2,3] constant({...})))
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -176,7 +176,7 @@ TEST_F(ReshapeMoverTest, OneNontrivialReshapeMoved) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -197,7 +197,7 @@ TEST_F(ReshapeMoverTest, MultipleReshapes) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -218,7 +218,7 @@ TEST_F(ReshapeMoverTest, SinkTransposeAcrossBroadcastScalar) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
                        /*options=*/ReshapeMoverOptions{},
                        /*run_algsimp=*/true));
@@ -252,7 +252,7 @@ TEST_F(ReshapeMoverTest, ReshapeWithUsersOutsideCandidatesNotSink) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -276,7 +276,7 @@ TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink1) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
                        /*options=*/ReshapeMoverOptions{},
                        /*run_algsimp=*/true));
@@ -299,7 +299,7 @@ TEST_F(ReshapeMoverTest, ReshapeNoUsersOutsideCandidatesSink2) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -316,7 +316,7 @@ TEST_F(ReshapeMoverTest, ReshapeOfRank1BroadcastIsNotTrivial) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -330,7 +330,7 @@ TEST_F(ReshapeMoverTest, ReshapeOfRank1BroadcastIsTrivial) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
 
   ReshapeMoverOptions options;
   options.reshape_of_1d_broadcast_is_cheap = true;
@@ -353,7 +353,7 @@ TEST_F(ReshapeMoverTest, ReshapeOfRank2BroadcastIsAllowed) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   ReshapeMoverOptions options;
   options.reshape_of_1d_broadcast_is_cheap = true;
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
@@ -375,7 +375,7 @@ TEST_F(ReshapeMoverTest, SinkDisallowedIfReshapeChangesBroadcastDims) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -390,7 +390,7 @@ TEST_F(ReshapeMoverTest, TransposeOfBroadcastIsAllowed) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true,
                        /*options=*/ReshapeMoverOptions{},
                        /*run_algsimp=*/true));
@@ -411,7 +411,7 @@ TEST_F(ReshapeMoverTest, TransposeReordersBroadcastDims) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/false));
 }
 
@@ -431,7 +431,7 @@ TEST_F(ReshapeMoverTest, ShardingConsistencyPreservation) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
   auto elementwise_op = FindInstruction(m.get(), HloOpcode::kMultiply);
   EXPECT_FALSE(elementwise_op->has_sharding());

@@ -20,11 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -49,8 +50,8 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
   ROOT %add = f32[] add(%x, %y)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(text));
   HloModuleGroup group(std::move(module));
 
   EXPECT_EQ(group.modules().size(), 1);
@@ -58,9 +59,9 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
       group.module(0).entry_computation()->instructions(),
       ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Add()));
 
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleGroup group_copy,
-                          HloModuleGroup::CreateFromProto(
-                              group.ToProto(), {group.module(0).config()}));
+  ASSERT_OK_AND_ASSIGN(HloModuleGroup group_copy,
+                       HloModuleGroup::CreateFromProto(
+                           group.ToProto(), {group.module(0).config()}));
   EXPECT_EQ(group_copy.modules().size(), 1);
   EXPECT_THAT(
       group_copy.module(0).entry_computation()->instructions(),

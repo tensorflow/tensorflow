@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -78,7 +78,7 @@ ENTRY main {
   ROOT while.0 = (s32[], s32[], s32[], s32[]) while(while_tuple.0), body=body, condition=condition
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
   AliasInfo alias_info;
@@ -147,7 +147,7 @@ ENTRY main {
   ROOT root.0 = get-tuple-element(while.0), index=0
 }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
   AliasInfo alias_info;

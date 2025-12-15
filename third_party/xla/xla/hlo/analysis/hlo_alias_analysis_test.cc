@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -39,9 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -885,8 +883,6 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
   EXPECT_TRUE(AnyValuesInSameBufferInterfere());
 }
 
-
-
 TEST_F(HloAliasAnalysisTest, Bitcast) {
   // Bitcasting a value should not produce a new buffer.
   auto builder = HloComputation::Builder(TestName());
@@ -956,7 +952,7 @@ ENTRY main {
   ROOT fusion = (f32[1280,1,128], f32[1280,1,128], f32[1280,1,128]) fusion(negate0, negate1, negate2), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
   SCOPED_TRACE(module_->ToString());
 
@@ -1003,7 +999,7 @@ ENTRY main {
   ROOT fusion = f32[1280,1,128] fusion(negate0), kind=kLoop, calls=fused_computation
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
   SCOPED_TRACE(module_->ToString());
 

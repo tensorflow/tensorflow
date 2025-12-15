@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -83,8 +82,7 @@ const char kTestModule[] = R"(
     })";
 
 TEST_F(HloTraversalTest, AdaptorOperands) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
 
   auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
       module->entry_computation()->GetInstructionWithName("fusion2"),
@@ -98,7 +96,7 @@ TEST_F(HloTraversalTest, AdaptorOperands) {
 }
 
 TEST_F(HloTraversalTest, AdaptorUsers) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     computation1 {
       p0.1 = f32[] parameter(0)
       neg.1 = f32[] negate(p0.1)
@@ -147,8 +145,7 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   std::vector<std::string> visited_nodes;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
@@ -163,8 +160,7 @@ TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
 
 TEST_F(HloTraversalTest,
        TraverseFusionConsumerFirstFromFusionRootAndInnerNode) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   std::vector<std::string> visited_nodes;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
@@ -179,8 +175,7 @@ TEST_F(HloTraversalTest,
 }
 
 TEST_F(HloTraversalTest, TraverseFusionProducerFirst) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   std::vector<std::string> visited_nodes;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
@@ -195,8 +190,7 @@ TEST_F(HloTraversalTest, TraverseFusionProducerFirst) {
 }
 
 TEST_F(HloTraversalTest, AbortTraversal) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   std::vector<std::string> visited_nodes;
@@ -212,8 +206,7 @@ TEST_F(HloTraversalTest, AbortTraversal) {
 }
 
 TEST_F(HloTraversalTest, FindArguments) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   std::vector<std::string> producers;
@@ -227,8 +220,7 @@ TEST_F(HloTraversalTest, FindArguments) {
 
 TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
   // Verifies that we correctly find the arguments after fusing the negation.
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForProducerConsumer(
       module->entry_computation()->GetInstructionWithName("negate"),
       module->entry_computation()->GetInstructionWithName("fusion1"));
@@ -241,8 +233,7 @@ TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
 }
 
 TEST_F(HloTraversalTest, HloBfsFindIf_Found) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
@@ -254,8 +245,7 @@ TEST_F(HloTraversalTest, HloBfsFindIf_Found) {
 }
 
 TEST_F(HloTraversalTest, HloBfsFindIf_NotFound) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
@@ -264,8 +254,7 @@ TEST_F(HloTraversalTest, HloBfsFindIf_NotFound) {
 }
 
 TEST_F(HloTraversalTest, HloAnyOf_Found) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   EXPECT_TRUE(HloAnyOf(*fusion, [&](HloInstructionAdaptor node) {
@@ -274,8 +263,7 @@ TEST_F(HloTraversalTest, HloAnyOf_Found) {
 }
 
 TEST_F(HloTraversalTest, HloAnyOf_NotFound) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
   EXPECT_FALSE(
@@ -293,7 +281,7 @@ TEST_F(HloTraversalTest, FindAllMultiple) {
       ROOT diff = f16[128] subtract(p0.f16, p1.f16)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kConverts));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kConverts));
   auto root = module->entry_computation()->GetInstructionWithName("diff");
   std::vector<const HloInstruction*> converts =
       HloBfsFindAll({root}, [&](const HloInstruction* node) {
@@ -316,7 +304,7 @@ TEST_F(HloTraversalTest, FindAllNotFound) {
       p0f16 = f16[128] convert(p0)
       ROOT diff = f16[128] subtract(p0f16, p1)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kConverts));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kConverts));
   auto root = module->entry_computation()->GetInstructionWithName("diff");
   std::vector<const HloInstruction*> converts =
       HloBfsFindAll({root}, [&](const HloInstruction* node) {
@@ -356,8 +344,7 @@ const char kTwoFusions[] = R"(
     })";
 
 TEST_F(HloTraversalTest, FuseFusionConsumer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
 
   auto producer = module->entry_computation()->GetInstructionWithName("negate");
   auto consumer =
@@ -381,8 +368,7 @@ TEST_F(HloTraversalTest, FuseFusionConsumer) {
 }
 
 TEST_F(HloTraversalTest, FuseFusionProducer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
 
   auto producer =
       module->entry_computation()->GetInstructionWithName("fusion2");
@@ -409,8 +395,7 @@ TEST_F(HloTraversalTest, FuseFusionProducer) {
 }
 
 TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
   auto producer =
       module->entry_computation()->GetInstructionWithName("fusion1");
   auto consumer =
@@ -433,8 +418,7 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
 }
 
 TEST_F(HloTraversalTest, FuseNonFusionConsumerAndProducer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTestModule));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTestModule));
 
   auto producer = module->entry_computation()->GetInstructionWithName("log");
   auto consumer = module->entry_computation()->GetInstructionWithName("negate");
@@ -451,8 +435,7 @@ TEST_F(HloTraversalTest, FuseNonFusionConsumerAndProducer) {
 }
 
 TEST_F(HloTraversalTest, SingleInstructionFusionOfFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion1"));
 
@@ -467,8 +450,7 @@ TEST_F(HloTraversalTest, SingleInstructionFusionOfFusion) {
 }
 
 TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("negate"));
 
@@ -483,7 +465,7 @@ TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
 }
 
 TEST_F(HloTraversalTest, MultiOutputFusionDuplicateRoot) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     computation {
       p0.1 = f32[128] parameter(0)
       p1.1 = f32[128] parameter(1)
@@ -503,8 +485,7 @@ TEST_F(HloTraversalTest, MultiOutputFusionDuplicateRoot) {
 }
 
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("negate"));
 
@@ -513,8 +494,7 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
 }
 
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoFusions));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kTwoFusions));
   auto fusion = HloFusionAdaptor::ForProducerConsumer(
       module->entry_computation()->GetInstructionWithName("fusion1"),
       module->entry_computation()->GetInstructionWithName("fusion2"));
@@ -526,7 +506,7 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoFusions) {
 }
 
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     accumulate {
       p0.0 = f32[] parameter(0)
       p1.0 = f32[] parameter(1)
@@ -575,7 +555,7 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
 }
 
 TEST_F(HloTraversalTest, GetRootsForProducerConsumerFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
       computation1 {
         p0.1 = f32[10]{0} parameter(0)
         ROOT neg = f32[10]{0} negate(p0.1)
@@ -650,8 +630,8 @@ const char kTwoMultiOutputFusions[] = R"(
     })";
 
 TEST_F(HloTraversalTest, GetParametersMultiOutputFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoMultiOutputFusions));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kTwoMultiOutputFusions));
   auto producer =
       module->entry_computation()->GetInstructionWithName("fusion1");
   auto consumer =
@@ -668,8 +648,8 @@ TEST_F(HloTraversalTest, GetParametersMultiOutputFusion) {
 }
 
 TEST_F(HloTraversalTest, GetRootsMultiOutputFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kTwoMultiOutputFusions));
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(kTwoMultiOutputFusions));
   auto consumer_fusion_instr =
       module->entry_computation()->GetInstructionWithName("fusion2");
   auto producer_fusion_instr =
@@ -709,7 +689,7 @@ TEST_F(HloTraversalTest, GetRootsMultiOutputFusion) {
 }
 
 TEST_F(HloTraversalTest, HloFindUseChain) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     computation {
       p0.1 = f32[] parameter(0)
       p1.1 = f32[] parameter(1)
@@ -751,7 +731,7 @@ TEST_F(HloTraversalTest, HloFindUseChain) {
 }
 
 TEST_F(HloTraversalTest, DoNotResolveIntoNestedFusions) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     computation1 {
       p0.1 = f32[] parameter(0)
       ROOT mul = f32[] multiply(p0.1, p0.1)

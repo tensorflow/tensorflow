@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -87,8 +87,8 @@ ENTRY e {
   ROOT fusion = f32[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
@@ -118,8 +118,8 @@ ENTRY e {
   ROOT r = f32[31,16]{1,0} fusion(p0),
     kind=kCustom, calls=t, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 2, 1, 2);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -141,8 +141,8 @@ ENTRY e {
   ROOT r = f16[32,768] fusion(p0, p1),
     kind=kCustom, calls=t, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 2, 1, 2);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
@@ -173,8 +173,8 @@ p1 = bf16[16,128]{1,0} parameter(1)
 ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
 kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
 
   TF_EXPECT_OK(MakeDotSplitKBatch(
@@ -207,8 +207,8 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot.24,
     backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(32, 64, 64, 8, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -237,8 +237,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -262,8 +262,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -287,8 +287,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   constexpr TritonGemmConfig kConfig(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
@@ -319,8 +319,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -345,8 +345,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -371,8 +371,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -397,8 +397,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -425,8 +425,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 128, 4, 1, 4);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
@@ -454,8 +454,8 @@ ENTRY e {
   ROOT fusion = f16[7,5] fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   TritonGemmConfig config(32, 32, 16, 1, 1, 4);
   // 5 divides the contracting dimension, but not its major subdimensions.
@@ -477,7 +477,7 @@ ENTRY e {
       << module->ToString();
   const HloComputation* dot_computation = dot_fusion->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       const auto analysis,
       TritonFusionAnalysis::Execute(*dot_computation, config.split_k));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
@@ -508,8 +508,8 @@ ENTRY e {
   ROOT fusion = f32[77,25] fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   // Because HasDivisibleSuffixAllowingSplit({128, 3}, 4) == false.
@@ -537,8 +537,8 @@ ENTRY e {
     fusion(parameter_0.91, parameter_1.86), kind=kCustom,
     calls=triton_gemm_dot.4842_computation
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 2, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -549,8 +549,8 @@ ENTRY e {
       << module->ToString();
   const HloComputation* dot_computation =
       dot_fusion->fused_instructions_computation();
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
+  ASSERT_OK_AND_ASSIGN(const auto analysis,
+                       TritonFusionAnalysis::Execute(*dot_computation));
 }
 
 TEST_F(SplitKTest, MakeSplitK) {
@@ -575,8 +575,8 @@ ENTRY e {
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
     metadata={op_name="foo"}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
@@ -610,8 +610,8 @@ ENTRY e {
   ROOT fusion = s32[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
@@ -647,8 +647,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
@@ -682,8 +682,8 @@ ENTRY e {
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -724,8 +724,8 @@ ENTRY e {
     metadata={op_name="foo"}
   ROOT tuple = (bf16[480,16]{1,0}, bf16[16,128]{1,0}) tuple(fusion, p1)
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction()->mutable_operand(0),
@@ -754,8 +754,8 @@ ENTRY e {
   ROOT fusion = f16[288,8,32]{2,1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 128, 32, 8, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -784,8 +784,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[1,2048]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 128, 64, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -810,8 +810,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs), kind=kCustom,
     calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
@@ -839,8 +839,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -876,8 +876,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -914,8 +914,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -951,8 +951,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
@@ -988,8 +988,8 @@ ENTRY %entry_computation {
   ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
       kind=kCustom, calls=triton_gemm_dot
 })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),
@@ -1016,8 +1016,8 @@ TEST_F(SplitKTest, ScaledDot_SmallDimension) {
       ROOT fusion = f32[16,32] fusion(lhs, rhs, lhs_scale, rhs_scale),
           kind=kCustom, calls=triton_gemm_dot
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/4, 1, 1);
   EXPECT_THAT(MakeDotSplitKBatch(
                   module->entry_computation()->root_instruction(), config),

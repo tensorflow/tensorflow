@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
@@ -562,7 +562,7 @@ TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
 }
 
 TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal a,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   a.Set<float>({0, 0}, 1.0);
@@ -570,7 +570,7 @@ TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
   a.Set<float>({1, 0}, 0.0);
   a.Set<float>({1, 1}, 4.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal b,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   b.Set<float>({0, 0}, 1.0);
@@ -589,7 +589,7 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   // using the slow path because their layouts are different. This test ensures
   // that comparisons using the fast and slow path are equivalent.
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal a,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})));
   a.Set<float>({0, 0}, 1.0);
@@ -597,7 +597,7 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   a.Set<float>({1, 0}, 0.0);
   a.Set<float>({1, 1}, 4.0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal b,
       Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
   b.Set<float>({0, 0}, 1.0);
@@ -1733,7 +1733,7 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.Convert(U32));
+  ASSERT_OK_AND_ASSIGN(Literal converted, original.Convert(U32));
 
   EXPECT_EQ(expected, converted);
 }
@@ -1984,9 +1984,9 @@ TEST_F(LiteralUtilTest, BitcastConvert) {
        absl::bit_cast<uint32_t>(100.f), 0xbeef});
   Literal expected = LiteralUtil::CreateR1<float>(
       {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
-  TF_ASSERT_OK_AND_ASSIGN(Literal converted,
-                          original.BitcastConvert(ShapeUtil::ChangeElementType(
-                              original.shape(), F32)));
+  ASSERT_OK_AND_ASSIGN(Literal converted,
+                       original.BitcastConvert(ShapeUtil::ChangeElementType(
+                           original.shape(), F32)));
 }
 
 TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
@@ -2023,7 +2023,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
       p.add_preds((i % 2) == (len % 2));
     }
 
-    TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+    ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
     ASSERT_EQ(len, literal.data<bool>().size());
     int i = 0;
     for (bool value : literal.data<bool>()) {
@@ -2043,7 +2043,7 @@ TEST_F(LiteralUtilTest, ToProto_f16) {
   EXPECT_EQ(4, m.data<half>().size());
 
   LiteralProto p = m.ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(p.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(p.shape()));
   EXPECT_EQ(4, ShapeUtil::ElementsIn(shape));
   EXPECT_EQ(8, p.f16s().size());
   const char* d = p.f16s().data();
@@ -2070,7 +2070,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
   auto r = literal.data<half>();
   ASSERT_EQ(4, r.size());
   EXPECT_EQ(h1, r[0]);
@@ -2092,7 +2092,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_u16) {
   SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_u16s();
   p.set_u16s(uint16_vals, 8);
-  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
   auto r = literal.data<uint16_t>();
   ASSERT_EQ(4, r.size());
   EXPECT_EQ(u1, r[0]);
@@ -2585,7 +2585,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
           {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
   *element0->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 0).ToProto();
   element0->add_preds(false);
@@ -2604,13 +2604,13 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
           {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
           .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto.shape()));
   *element0->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 0).ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
   LiteralProto* element1 = proto.add_tuple_literals();
-  TF_ASSERT_OK_AND_ASSIGN(shape, Shape::FromProto(proto.shape()));
+  ASSERT_OK_AND_ASSIGN(shape, Shape::FromProto(proto.shape()));
   *element1->mutable_shape() =
       ShapeUtil::GetTupleElementShape(shape, 1).ToProto();
   element1->add_f32s(42.0);
@@ -2625,7 +2625,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{0}));
@@ -2635,7 +2635,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix0) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
@@ -2645,7 +2645,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrix1) {
 
 TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
   Literal literal = LiteralUtil::CreateR1<int32_t>({1, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 0}),
                         /*dimensions=*/{0}));
@@ -2653,7 +2653,7 @@ TEST_F(LiteralUtilTest, BroadcastVectorToMatrixWithZeroDim) {
 
 TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
   Literal literal = LiteralUtil::CreateR0<int32_t>(9);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S32, {2, 2}),
                         /*dimensions=*/{}));
@@ -2664,7 +2664,7 @@ TEST_F(LiteralUtilTest, BroadcastScalarToMatrix) {
 TEST_F(LiteralUtilTest, DynamicBroadcast) {
   Literal literal = LiteralUtil::CreateR1<int64_t>({1, 2});
   literal.SetDynamicSize(0, 1);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal broadcasted_literal,
       literal.Broadcast(/*result_shape=*/ShapeUtil::MakeShape(S64, {2, 2}),
                         /*dimensions=*/{1}));
@@ -3183,9 +3183,9 @@ TEST_P(LiteralSerializationTest, Test) {
             },
             subshape.element_type());
       }));
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, literal.SerializeAsString());
-  TF_ASSERT_OK_AND_ASSIGN(Literal deserialized,
-                          Literal::DeserializeFromString(serialized));
+  ASSERT_OK_AND_ASSIGN(std::string serialized, literal.SerializeAsString());
+  ASSERT_OK_AND_ASSIGN(Literal deserialized,
+                       Literal::DeserializeFromString(serialized));
   EXPECT_EQ(literal, deserialized);
 }
 

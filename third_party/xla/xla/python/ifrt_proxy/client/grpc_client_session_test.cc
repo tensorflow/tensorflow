@@ -51,10 +51,8 @@
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -257,7 +255,7 @@ class ClientAndServer {
 TEST(GrpcClientSessionTest, HappyCaseOneRequestWithServerTermination) {
   ClientAndServer cs;
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q, cs.SendSimpleRequest());
 
   EXPECT_THAT(response_q->Pop(), absl_testing::IsOk());
 
@@ -270,8 +268,8 @@ TEST(GrpcClientSessionTest, HappyCaseOneRequestWithServerTermination) {
 TEST(GrpcClientSessionTest, HappyCaseTwoRequestsWithClientFinish) {
   ClientAndServer cs;
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_2, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_2, cs.SendSimpleRequest());
 
   EXPECT_THAT(response_q_1->Pop(), absl_testing::IsOk());
   EXPECT_THAT(response_q_2->Pop(), absl_testing::IsOk());
@@ -286,7 +284,7 @@ TEST(GrpcClientSessionTest, ServerFinishesDuringFirstRead) {
   ClientAndServer cs(
       /*on_req_received=*/[](auto, auto) { return kStopSession; });
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
   EXPECT_THAT(response_q_1->Pop(), Not(absl_testing::IsOk()));
 
   absl::StatusOr<Queue*> response_q_2 = cs.SendSimpleRequest();
@@ -320,7 +318,7 @@ TEST(GrpcClientSessionTest, ClientFinishesAfterServerConsumesFirstRequest) {
       });
   session_ptr.store(cs.client_session());
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
   EXPECT_THAT(response_q_1->Pop(), Not(absl_testing::IsOk()));
 
   absl::StatusOr<Queue*> response_q_2 = cs.SendSimpleRequest();
@@ -343,7 +341,7 @@ TEST(GrpcClientSessionTest, ClientFinishesAfterServerWritesFirstResponse) {
       });
   session_ptr.store(cs.client_session());
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
   absl::StatusOr<Queue*> response_q_2 = cs.SendSimpleRequest();
 
   // The client may or may not terminate before the first response arrives.
@@ -390,7 +388,7 @@ TEST(GrpcClientSessionTest, ClientFinishesDuringServerConstruction) {
 TEST(GrpcClientSessionTest, MethodsAfterFinishReturnError) {
   ClientAndServer cs;
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q_1, cs.SendSimpleRequest());
   cs.client_session()->Finish(TestError());
 
   EXPECT_THAT(cs.SendSimpleRequest(), Not(absl_testing::IsOk()));
@@ -410,7 +408,7 @@ TEST(GrpcClientSessionTest, ReceivingBadIfrtResponseDoesNotCrash) {
         return kContinueSession;
       });
 
-  TF_ASSERT_OK_AND_ASSIGN(Queue * response_q, cs.SendSimpleRequest());
+  ASSERT_OK_AND_ASSIGN(Queue * response_q, cs.SendSimpleRequest());
 
   EXPECT_THAT(response_q->Pop(), absl_testing::IsOk());
 }

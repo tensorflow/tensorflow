@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -232,8 +232,8 @@ TEST_P(RandomCholeskyTest, Real) {
                                      std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
   Shape shape = ShapeUtil::MakeShape(F32, dimensions);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto literal, LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
+  ASSERT_OK_AND_ASSIGN(auto literal,
+                       LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
 
   auto input = Parameter(&builder, 0, shape, "input");
   // Form a random positive definite matrix.
@@ -267,12 +267,10 @@ TEST_P(RandomCholeskyTest, Complex) {
                                      std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
   Shape shape = ShapeUtil::MakeShape(F32, dimensions);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto literal_real,
-      LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto literal_imag,
-      LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
+  ASSERT_OK_AND_ASSIGN(auto literal_real,
+                       LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
+  ASSERT_OK_AND_ASSIGN(auto literal_imag,
+                       LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
 
   auto input_real = Parameter(&builder, 0, shape, "input_real");
   auto input_imag = Parameter(&builder, 1, shape, "input_imag");

@@ -55,7 +55,6 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
@@ -172,14 +171,14 @@ TEST_F(LoadedExecutableTest, Metadata) {
     ASSERT_EQ(output_shardings.size(), 1);
     EXPECT_EQ(output_shardings[0].type(), OpSharding::REPLICATED);
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
-                          executable.GetParameterLayouts());
+  ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                       executable.GetParameterLayouts());
   ASSERT_EQ(parameter_layouts.size(), 2);
   EXPECT_EQ(parameter_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/1));
   EXPECT_EQ(parameter_layouts[1]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
-  TF_ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
+  ASSERT_OK_AND_ASSIGN(auto output_layouts, executable.GetOutputLayouts());
   ASSERT_EQ(output_layouts.size(), 1);
   EXPECT_EQ(output_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2));
@@ -299,9 +298,8 @@ TEST_F(LoadedExecutableTest, Execute) {
         /*layout=*/nullptr));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      executable.Execute(absl::MakeSpan(args), exec_options, devices));
+  ASSERT_OK_AND_ASSIGN(auto result, executable.Execute(absl::MakeSpan(args),
+                                                       exec_options, devices));
 
   EXPECT_THAT(
       result.status.Await(),
@@ -343,7 +341,7 @@ TEST_F(LoadedExecutableTest, Execute) {
       .WillOnce(MockClientCaptureAndReturn(&requests_queue,
                                            fetch_execute_result_response));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       result, executable.Execute(absl::MakeSpan(args), exec_options, devices));
 
   auto execute_req = requests_queue.Pop().loaded_executable_execute_request();

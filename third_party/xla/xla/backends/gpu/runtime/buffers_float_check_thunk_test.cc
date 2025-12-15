@@ -75,10 +75,10 @@ MATCHER_P2(IsEntryWithMetadata, store, metadata, "") {
 class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            se::PlatformManager::PlatformWithName("CUDA"));
-    TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
+    ASSERT_OK_AND_ASSIGN(platform_,
+                         se::PlatformManager::PlatformWithName("CUDA"));
+    ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
+    ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
 
@@ -132,7 +132,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   se::DeviceAddressBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
   se::DeviceAddressBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto device_log,
       BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, se::DeviceAddress<uint8_t>(log_mem)));
@@ -168,8 +168,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
-                          device_log.ReadFromDevice(*stream_));
+  ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
+                       device_log.ReadFromDevice(*stream_));
 
   // BuffersDebugFloatCheckThunk launches a kernel for each input buffer, they
   // may complete in any order.
@@ -233,8 +233,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
     return TestDevice{std::move(executor), std::move(stream),
                       std::move(allocator), std::move(allocations)};
   };
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
-  TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
+  ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
+  ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
   BufferAllocation allocation(/*index=*/0, kTotalDeviceMemory, /*color=*/0);
   BufferAllocation::Slice log_slice(&allocation, kLogOffset, kLogSizeBytes);
   BufferAllocation::Slice tmp_slice(&allocation, kTmpOffset, kTmpSizeBytes);

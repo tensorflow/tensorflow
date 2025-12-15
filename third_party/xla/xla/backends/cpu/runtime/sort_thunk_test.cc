@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
@@ -72,9 +72,9 @@ class LessThanComparator : public FunctionLibrary {
 TEST_P(SortThunkTest, DescendingSortPlainArray) {
   bool is_stable = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto data,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
+  ASSERT_OK_AND_ASSIGN(auto data,
+                       LiteralUtil::CreateRandomLiteral<F32>(
+                           ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
 
   BufferAllocations allocations = CreateBufferAllocations(data);
   BufferAllocation alloc = CreateBufferAllocation(0, data);
@@ -85,7 +85,7 @@ TEST_P(SortThunkTest, DescendingSortPlainArray) {
   auto fake_less_than = [](const void** data) { return false; };
 
   // Use sort direction to activate the most efficient sorting function.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk, SortThunk::Create({"sort"}, {{slice, data.shape()}},
                                     /*dimension=*/0, is_stable, fake_less_than,
                                     SortThunk::SortDirection::kDescending));
@@ -112,7 +112,7 @@ TEST_P(SortThunkTest, Sort1D) {
   auto [alloc0, alloc1] = CreateBufferAllocation(data, indices);
   auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto thunk,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -145,7 +145,7 @@ TEST_P(SortThunkTest, Sort1DDynamicNumInputs) {
 
   // We use dummy data to create large number of input to trigger the dynamic
   // sort implementation, but we don't use it for sorting.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       Literal dummy_data,
       LiteralUtil::CreateRandomLiteral<F32>(data.shape(), 1.0f, 0.1f));
 
@@ -163,10 +163,10 @@ TEST_P(SortThunkTest, Sort1DDynamicNumInputs) {
                                           {indices_slice, indices.shape()}};
   inputs.resize(40, {dummy_slice, dummy_data.shape()});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, SortThunk::Create({"sort"}, inputs,
-                                    /*dimension=*/0, is_stable, LessThan,
-                                    SortThunk::SortDirection::kAscending));
+  ASSERT_OK_AND_ASSIGN(auto thunk,
+                       SortThunk::Create({"sort"}, inputs,
+                                         /*dimension=*/0, is_stable, LessThan,
+                                         SortThunk::SortDirection::kAscending));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -201,7 +201,7 @@ TEST_P(SortThunkTest, Sort2D) {
   auto [slice0, slice1] = CreateBufferAllocationSlice(alloc0, alloc1);
 
   // Sort along the dimension `0`.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -225,7 +225,7 @@ TEST_P(SortThunkTest, Sort2D) {
   data = LiteralUtil::CreateR2<float>({{4.0, 3.0}, {2.0, 1.0}});
   indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
       SortThunk::Create({"sort"},
                         {{slice0, data.shape()}, {slice1, indices.shape()}},
@@ -259,7 +259,7 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   *indices_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
   // Sort along the dimension `0`.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim0,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},
@@ -283,7 +283,7 @@ TEST_P(SortThunkTest, Sort2DWithLayout) {
   data = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {1.0, 3.0}});
   indices = LiteralUtil::CreateR2<int32_t>({{0, 1}, {2, 3}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto sort_dim1,
       SortThunk::Create({"sort"},
                         {{slice0, data_shape}, {slice1, indices_shape}},

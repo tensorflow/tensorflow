@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -47,7 +47,7 @@ TEST(IfrtBackendUserContextTest, DestroyUserContext) {
         UserContextId(100), [promise = std::move(promise)](
                                 UserContextId id) mutable { promise.Set(id); });
   }
-  TF_ASSERT_OK_AND_ASSIGN(UserContextId id, future.Await());
+  ASSERT_OK_AND_ASSIGN(UserContextId id, future.Await());
   EXPECT_EQ(id, UserContextId(100));
 }
 

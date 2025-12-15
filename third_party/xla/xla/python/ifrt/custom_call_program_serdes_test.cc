@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -102,9 +101,9 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
       });
 
   auto serialize_options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(serialize_options)));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(orig, std::move(serialize_options)));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallProgram> deserialized_program,
       Deserialize<CustomCallProgram>(
           serialized, std::make_unique<DeserializeProgramOptions>(client())));
@@ -160,8 +159,8 @@ class CustomCallCompileOptionsSerDesTest
 TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
   auto serialize_options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(serialize_options)));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(orig, std::move(serialize_options)));
   TF_EXPECT_OK(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr)
           .status());
@@ -170,8 +169,8 @@ TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
 TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   CustomCallCompileOptions orig;
   auto serialize_options = std::make_unique<SerializeOptions>(version());
-  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, std::move(serialize_options)));
+  ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                       Serialize(orig, std::move(serialize_options)));
   serialized.set_data("abc");
   EXPECT_THAT(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),

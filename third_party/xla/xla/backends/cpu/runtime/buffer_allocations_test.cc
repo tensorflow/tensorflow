@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 
+#include <gmock/gmock.h>
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
@@ -34,12 +34,12 @@ TEST(BufferAllocationsTest, GetDeviceAddress) {
 
   BufferAllocations allocations = CreateBufferAllocations(data);
 
-  TF_ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase alloc_mem,
-                          allocations.GetDeviceAddress(0));
+  ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase alloc_mem,
+                       allocations.GetDeviceAddress(0));
   EXPECT_EQ(alloc_mem.opaque(), &data.data<float>()[0]);
 
-  TF_ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase slice_mem,
-                          allocations.GetDeviceAddress(slice));
+  ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase slice_mem,
+                       allocations.GetDeviceAddress(slice));
   EXPECT_EQ(slice_mem.opaque(), &data.data<float>()[2]);
 }
 

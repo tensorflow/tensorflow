@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
@@ -88,10 +87,10 @@ TEST(HloModuleTest, AbslHashValue) {
           b = f32[] parameter(1)
         ROOT res = f32[] multiply(a, b)
       })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module3,
-                          ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module3,
+                       ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_EQ(absl::HashOf(*module3), absl::HashOf(*module4));
   EXPECT_NE(absl::HashOf(module1), absl::HashOf(*module4));
 }
@@ -116,10 +115,10 @@ TEST(HloModuleTest, ToFingerprint) {
           b = f32[] parameter(1)
         ROOT res = f32[] multiply(a, b)
       })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module3,
-                          ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module3,
+                       ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_EQ(fp(*module3, std::nullopt), fp(*module4, std::nullopt));
   EXPECT_NE(fp(module1, std::nullopt), fp(*module4, std::nullopt));
 
@@ -359,8 +358,8 @@ TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
 }
 
 TEST(HloModuleTest, ClonePreservesUniqueId) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule m
 
     add {
@@ -404,8 +403,8 @@ TEST(HloModuleTest, ClonePreservesUniqueId) {
 }
 
 TEST(HloModuleTest, AbslHashInstructionOrdering) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -419,8 +418,8 @@ TEST(HloModuleTest, AbslHashInstructionOrdering) {
       )"));
 
   // Add.0 and add.1 are swapped.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule HashTest
       ENTRY main {
         a = f32[32,32] parameter(0)
@@ -436,8 +435,8 @@ TEST(HloModuleTest, AbslHashInstructionOrdering) {
 }
 
 TEST(HloModuleTest, AbslHashInstructionOpcodes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -451,8 +450,8 @@ TEST(HloModuleTest, AbslHashInstructionOpcodes) {
       )"));
 
   // Second add changed to sub
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule HashTest
       ENTRY main {
         a = f32[32,32] parameter(0)
@@ -468,8 +467,8 @@ TEST(HloModuleTest, AbslHashInstructionOpcodes) {
 }
 
 TEST(HloModuleTest, AbslHashInstructionShapes) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -483,8 +482,8 @@ TEST(HloModuleTest, AbslHashInstructionShapes) {
       )"));
 
   // Second add has different shape.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule HashTest
       ENTRY main {
         // Shapes changed from [32,32] to [16,16]
@@ -501,8 +500,8 @@ TEST(HloModuleTest, AbslHashInstructionShapes) {
 }
 
 TEST(HloModuleTest, AbslHashInstructionNaming) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -516,8 +515,8 @@ TEST(HloModuleTest, AbslHashInstructionNaming) {
       )"));
 
   // Add x to all names
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -535,8 +534,8 @@ TEST(HloModuleTest, AbslHashInstructionNaming) {
 }
 
 TEST(HloModuleTest, AbslHashGraphChanges) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -550,8 +549,8 @@ TEST(HloModuleTest, AbslHashGraphChanges) {
       )"));
 
   // Changed from (a+b)+(b+c) to ((a+b)+c)+a
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -568,8 +567,8 @@ TEST(HloModuleTest, AbslHashGraphChanges) {
 }
 
 TEST(HloModuleTest, AbslHashParameterChanges) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -583,8 +582,8 @@ TEST(HloModuleTest, AbslHashParameterChanges) {
       )"));
 
   // Change parameter numbers
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
       HloModule HashTest
 
       ENTRY main {
@@ -601,8 +600,8 @@ TEST(HloModuleTest, AbslHashParameterChanges) {
 }
 
 TEST(HloModuleTest, AbslHashConstantValues) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule HashTest
 
     ENTRY main {
@@ -614,8 +613,8 @@ TEST(HloModuleTest, AbslHashConstantValues) {
       )"));
 
   // Changed from 42 to 43
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                       ParseAndReturnUnverifiedModule(R"(
     HloModule HashTest
 
     ENTRY main {
@@ -652,15 +651,15 @@ TEST(HloModuleTest, CheckToStringHonorsDebugOptions) {
     ROOT result = tuple(async_done, large_constant)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   DebugOptions& db_options = module->mutable_config().mutable_debug_options();
   // Setting non-default values for these w.r.t the PrintOptions class.
   db_options.set_xla_dump_large_constants(true);
   db_options.set_xla_dump_disable_metadata(true);
   db_options.set_xla_syntax_sugar_async_ops(false);
-  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
-                          RunFileCheck(module->ToString(), R"(
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(), R"(
     // CHECK:     {{.+}} = f32[32,32]{1,0} add({{.+}}){{$}}
     // CHECK-NOT: subtract-start
     // CHECK-DAG: {{.+}} = f32[16]{0} constant({42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42})
@@ -700,8 +699,8 @@ TEST(HloModuleTest, TestCallersAndCallees) {
       call.g.0 = f32[] call(call.f.2), to_apply=g
       ROOT call.g.1 = f32[] call(call.g.0), to_apply=g
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_EQ(module->computation_count(), 5);
   HloComputation* main = module->GetComputationWithName("main");
   HloComputation* f = module->GetComputationWithName("f");
@@ -749,8 +748,8 @@ TEST(HloModuleTest, MultipleCallsFromOneInstruction) {
       ROOT conditional = (f32[4]) conditional(b0, p0, p0, p0),
         branch_computations={f, f, g}
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   EXPECT_EQ(module->computation_count(), 3);
   HloComputation* main = module->GetComputationWithName("main");
   HloComputation* f = module->GetComputationWithName("f");
@@ -779,8 +778,8 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
       call.g.0 = f32[4] call(b0), to_apply=g
       ROOT sum = f32[4] add(call.f.0, call.g.0)
     })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(hlo));
   HloComputation* f = module->GetComputationWithName("f");
   HloInstruction* tparam = f->GetInstructionWithName("tparam");
   HloComputation* g = module->GetComputationWithName("g");
@@ -884,8 +883,8 @@ computations {
 )",
                                                          &hlo_module_proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleProto remapped_hlo_module_proto,
-                          HloModule::RemapInstructionIds(hlo_module_proto));
+  ASSERT_OK_AND_ASSIGN(HloModuleProto remapped_hlo_module_proto,
+                       HloModule::RemapInstructionIds(hlo_module_proto));
 
   HloInstructionProto squeeze_3_instr =
       remapped_hlo_module_proto.computations(1).instructions(6);
@@ -1038,10 +1037,10 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
       )pb",
       &hlo_module_proto));
 
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
-                          xla::HloModule::CreateModuleConfigFromProto(
-                              hlo_module_proto, xla::DebugOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                       xla::HloModule::CreateModuleConfigFromProto(
+                           hlo_module_proto, xla::DebugOptions()));
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       xla::HloModule::CreateFromProto(hlo_module_proto, config,
                                       /* prohibit_empty_literal= */ true,
@@ -1093,8 +1092,8 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
 }
 
 TEST(HloModuleTest, TestHloModuleToFromProtoInvarianceInComputation) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
   HloModule test_module, is_scheduled=true, entry_computation_layout={(f32[]{:T(256)}, f32[100]{0:T(256)}, f32[100]{0:T(256)})->f32[100]{0:T(256)}}
 
   %fused_computation (param_0.1: f32[100], param_1.3: f32[100], param_2.1: f32[]) -> f32[100] {
@@ -1115,7 +1114,7 @@ TEST(HloModuleTest, TestHloModuleToFromProtoInvarianceInComputation) {
     ROOT %add_subtract_fusion = f32[100]{0:T(256)} fusion(%p2, %p1, %copy), kind=kLoop, calls=%fused_computation
                             })"));
   HloModuleProto module_proto = module->ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module_from_proto,
       HloModule::CreateFromProto(module_proto, module->config(),
                                  /*buffer_assignment_proto=*/nullptr,
@@ -1127,8 +1126,8 @@ TEST(HloModuleTest, TestHloModuleToFromProtoInvarianceInComputation) {
 }
 
 TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(R"(
   HloModule test_module, is_scheduled=true, entry_computation_layout={(f32[]{:T(256)}, f32[100]{0:T(256)}, f32[100]{0:T(256)})->f32[100]{0:T(256)}}
 
   %fused_computation (param_0.1: f32[100], param_1.3: f32[100], param_2.1: f32[]) -> f32[100] {
@@ -1149,7 +1148,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
     ROOT %add_subtract_fusion = f32[100]{0:T(256)} fusion(%p2, %p1, %copy), kind=kLoop, calls=%fused_computation
                             })"));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromShape(
           module->entry_computation()->ComputeProgramShape(), DebugOptions()));
@@ -1168,7 +1167,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
 
   BufferAssigner::Options opts;
   opts.allocate_buffers_for_constants = true;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
           /*module=*/module.get(),
@@ -1205,12 +1204,12 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
       opt_hlo_module_proto_str, &opt_hlo_module_proto_modified));
 
   // Recreate the hlo module from the altered protos.
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       HloModuleConfig module_config_recreated,
       HloModule::CreateModuleConfigFromProto(
           opt_hlo_module_proto_modified.hlo_module(), DebugOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> hlo_module_recreated,
       HloModule::CreateFromProto(
           opt_hlo_module_proto_modified.hlo_module(), module_config_recreated,

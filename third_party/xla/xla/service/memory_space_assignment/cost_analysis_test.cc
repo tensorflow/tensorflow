@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -27,11 +28,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -90,8 +88,7 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, NoPipelineOverhead) {
     ROOT add = f32[2,4] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(Initialize(module.get()));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
@@ -159,8 +156,7 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, PipelineOverhead) {
     ROOT add = f32[2,4] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   // Set the window size 64B.
   TF_ASSERT_OK(
       Initialize(module.get(),
@@ -247,8 +243,7 @@ TEST_F(MemorySpaceAssignmentCostAnalysisTest, LatencyBoundCompute) {
     ROOT add = f32[2,2] add(param0, param1)
   }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK(Initialize(module.get()));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();

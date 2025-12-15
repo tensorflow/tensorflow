@@ -13,35 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "benchmark/benchmark.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/sharding_builder.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -656,7 +666,7 @@ TEST_F(LocalClientExecuteTest, RunOnStream) {
     }
     se::StreamExecutor* executor =
         local_client_->platform()->ExecutorForDevice(d).value();
-    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+    ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
     auto result = ExecuteLocallyOrDie(
         computation, {}, DefaultExecutableBuildOptions(),
@@ -678,7 +688,7 @@ TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
       se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto wrong_stream,
       wrong_platform->ExecutorForDevice(0).value()->CreateStream());
 
@@ -720,7 +730,7 @@ TEST_F(LocalClientExecuteTest, CompileExecutable) {
   Shape argument_layout =
       local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
           ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              ExecutableBuildOptions()));
@@ -760,7 +770,7 @@ TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0});
   ExecutableBuildOptions build_options;
   build_options.set_num_partitions(2);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -774,15 +784,15 @@ TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
-  TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, {size}), 0.0, 1.0));
+  ASSERT_OK_AND_ASSIGN(auto literal,
+                       LiteralUtil::CreateRandomLiteral<F32>(
+                           ShapeUtil::MakeShape(F32, {size}), 0.0, 1.0));
   auto y = ConstantLiteral(&builder, literal);
   Add(x, y);
 
   Shape argument_layout =
       ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{}, {});
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              ExecutableBuildOptions()));
@@ -796,13 +806,12 @@ TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   // Test copying Literals to the device as ShapedBuffers, then copying them
   // back again to Literals.
   auto test_to_device_and_back = [this](const Literal& literal) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto shaped_buffer,
         local_client_->LiteralToShapedBuffer(
             literal, local_client_->default_device_ordinal(), allocator_));
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto transferred_literal,
-        local_client_->ShapedBufferToLiteral(shaped_buffer));
+    ASSERT_OK_AND_ASSIGN(auto transferred_literal,
+                         local_client_->ShapedBufferToLiteral(shaped_buffer));
     EXPECT_EQ(literal, transferred_literal);
   };
 
@@ -836,13 +845,12 @@ TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
   // Test copying Literals to the device as ShapedBuffers, then copying them
   // back again to Literals for 64-bit values.
   auto test_to_device_and_back = [this](const Literal& literal) {
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         auto shaped_buffer,
         local_client_->LiteralToShapedBuffer(
             literal, local_client_->default_device_ordinal(), allocator_));
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto transferred_literal,
-        local_client_->ShapedBufferToLiteral(shaped_buffer));
+    ASSERT_OK_AND_ASSIGN(auto transferred_literal,
+                         local_client_->ShapedBufferToLiteral(shaped_buffer));
     EXPECT_EQ(literal, transferred_literal);
   };
 
@@ -943,9 +951,9 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
 
   const int kWarmups = 2;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables, client->Compile(computation, {&buffer.on_host_shape()},
-                                        ExecutableBuildOptions()));
+  ASSERT_OK_AND_ASSIGN(auto executables,
+                       client->Compile(computation, {&buffer.on_host_shape()},
+                                       ExecutableBuildOptions()));
   std::unique_ptr<LocalExecutable> executable = std::move(executables[0]);
 
   ExecutableRunOptions run_options;
@@ -974,7 +982,7 @@ TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   ExecutableBuildOptions build_options;
   const char kFdoProfile[] = "Testing";
   *build_options.mutable_fdo_profile() = kFdoProfile;
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -998,7 +1006,7 @@ TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   ExecutableBuildOptions build_options;
   constexpr int64_t kDeviceMemorySize = 1024 * 1024 * 1024;
   build_options.set_device_memory_size(kDeviceMemorySize);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -1021,7 +1029,7 @@ TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
 
   ExecutableBuildOptions build_options;
   build_options.set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -1044,7 +1052,7 @@ TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
 
   ExecutableBuildOptions build_options;
   build_options.set_exec_time_optimization_effort(-1.5f);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -1068,7 +1076,7 @@ TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
 
   ExecutableBuildOptions build_options;
   build_options.set_optimization_level(ExecutionOptions::EFFORT_O1);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));
@@ -1092,7 +1100,7 @@ TEST_F(LocalClientExecuteTest, ValidateMemoryFittingLevel) {
 
   ExecutableBuildOptions build_options;
   build_options.set_memory_fitting_level(ExecutionOptions::EFFORT_O3);
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(), {&argument_layout},
                              build_options));

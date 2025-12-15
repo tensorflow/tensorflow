@@ -17,25 +17,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/shape_inference.h"
-#include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
-#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -56,7 +45,7 @@ TEST_F(DynamicDimensionSimplifierTest, ForwardConcat) {
       ROOT concat2 = s32[3] concatenate(concat1, p2), dimensions={0}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -75,7 +64,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatMultipleDims) {
       ROOT concat2 = s32[2, 2] concatenate(concat1, p2), dimensions={1}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
@@ -91,7 +80,7 @@ TEST_F(DynamicDimensionSimplifierTest, ForwardConcatSlice) {
       ROOT slice = s32[1] slice(concat), slice={[1:2]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -109,7 +98,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceSizeMismatch) {
       ROOT slice = s32[2] slice(concat), slice={[1:3]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
@@ -125,7 +114,7 @@ TEST_F(DynamicDimensionSimplifierTest, DoNotForwardConcatSliceStrided) {
       ROOT slice = s32[1] slice(concat), slice={[1:2:2]}
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
@@ -139,7 +128,7 @@ TEST_F(DynamicDimensionSimplifierTest, BroadcastReshapeForwarding) {
       ROOT reshape = s32[] reshape(broadcast)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -155,7 +144,7 @@ TEST_F(DynamicDimensionSimplifierTest, ReshapeReshapeForwarding) {
       ROOT reshape2 = s32[] reshape(reshape)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -172,7 +161,7 @@ TEST_F(DynamicDimensionSimplifierTest,
       ROOT reshape2 = s32[] reshape(reshape)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
@@ -185,7 +174,7 @@ TEST_F(DynamicDimensionSimplifierTest, IdConvertRemoving) {
       ROOT reshape2 = s32[1] convert(p0)
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   DynamicDimensionSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),

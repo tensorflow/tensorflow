@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -49,10 +48,10 @@ TEST_F(AllGatherCSETest, ReplacesRedundantAllGather) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_TRUE(changed);
   HloDCE dce;
   TF_ASSERT_OK(dce.Run(module.get()));
@@ -76,10 +75,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterGetTupleElement) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -99,10 +98,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterTuple) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -120,10 +119,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterOptimizationBarrierCSE) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
   TF_ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -147,10 +146,10 @@ TEST_F(AllGatherCSETest, HandlesRawParameterConvert) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
   TF_ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
@@ -170,10 +169,10 @@ TEST_F(AllGatherCSETest, HandlesNoAllGather) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -189,10 +188,10 @@ TEST_F(AllGatherCSETest, HandlesNonParameterOperand) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -208,10 +207,10 @@ TEST_F(AllGatherCSETest, RunsHloDCEAfterChanges) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed, pass_.Run(module.get()));
   HloDCE dce;
   TF_ASSERT_OK(dce.Run(module.get()));
   EXPECT_TRUE(changed);
