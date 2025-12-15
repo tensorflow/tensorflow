@@ -1,0 +1,63 @@
+From 7b564bd90c3961f8427c2c9268b6c7baf4ac2c26 Mon Sep 17 00:00:00 2001
+From: Marcin Radomski <dextero@google.com>
+Date: Mon, 15 Dec 2025 14:20:42 +0000
+Subject: [PATCH] Make src/google/protobuf/util:differencer public
+
+The one in internal BUILD files is already public, so this seems like an
+omission.
+---
+ src/google/protobuf/util/BUILD.bazel | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/google/protobuf/util/BUILD.bazel b/src/google/protobuf/util/BUILD.bazel
+index 22902a289..3f74e01e3 100644
+--- a/src/google/protobuf/util/BUILD.bazel
++++ b/src/google/protobuf/util/BUILD.bazel
+@@ -14,7 +14,7 @@ cc_library(
+     hdrs = ["delimited_message_util.h"],
+     copts = COPTS,
+     strip_include_prefix = "/src",
+-    visibility = ["//:__subpackages__"],
++    visibility = ["//visibility:public"],
+     deps = [
+         "//:protobuf_lite",
+         "//src/google/protobuf:port",
+@@ -48,7 +48,7 @@ cc_library(
+         "message_differencer.h",
+     ],
+     strip_include_prefix = "/src",
+-    visibility = ["//:__subpackages__"],
++    visibility = ["//visibility:public"],
+     deps = [
+         "//src/google/protobuf",
+         "//src/google/protobuf:port",
+@@ -117,7 +117,7 @@ cc_library(
+     hdrs = ["field_mask_util.h"],
+     copts = COPTS,
+     strip_include_prefix = "/src",
+-    visibility = ["//:__subpackages__"],
++    visibility = ["//visibility:public"],
+     deps = [
+         "//src/google/protobuf",
+         "//src/google/protobuf:field_mask_cc_proto",
+@@ -155,7 +155,7 @@ cc_library(
+     hdrs = ["json_util.h"],
+     copts = COPTS,
+     strip_include_prefix = "/src",
+-    visibility = ["//:__subpackages__"],
++    visibility = ["//visibility:public"],
+     deps = ["//src/google/protobuf/json"],
+ )
+ 
+@@ -206,7 +206,7 @@ cc_library(
+     ],
+     copts = COPTS,
+     strip_include_prefix = "/src",
+-    visibility = ["//:__subpackages__"],
++    visibility = ["//visibility:public"],
+     deps = [
+         "//src/google/protobuf",
+         "//src/google/protobuf:any_cc_proto",
+-- 
+2.52.0.239.gd5f0c6e74e-goog
+
