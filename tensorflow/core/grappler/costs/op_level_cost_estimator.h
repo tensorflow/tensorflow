@@ -312,7 +312,7 @@ class OpLevelCostEstimator {
   // Helper to construct child operation contexts for the component operations
   // of fused ops.
   static OpContext FusedChildContext(
-      const OpContext& parent, const string& op_name,
+      const OpContext& parent, const std::string& op_name,
       const OpInfo::TensorProperties& output,
       const std::vector<OpInfo::TensorProperties>& inputs);
 
@@ -327,14 +327,14 @@ class OpLevelCostEstimator {
                                               NodeCosts* node_costs);
 
  protected:
-  std::map<string, int> elementwise_ops_;
+  std::map<std::string, int> elementwise_ops_;
   typedef std::function<absl::Status(const OpContext& op_context, NodeCosts*)>
       CostImpl;
-  std::map<string, CostImpl> device_cost_impl_;
+  std::map<std::string, CostImpl> device_cost_impl_;
   // If true, assume compute and memory overlap; hence, the op cost is max of
   // compute_time and memory_time, instead of sum of those two.
   bool compute_memory_overlap_;
-  std::set<string> persistent_ops_;
+  std::set<std::string> persistent_ops_;
 
  private:
   friend class OpLevelCostEstimatorTest;

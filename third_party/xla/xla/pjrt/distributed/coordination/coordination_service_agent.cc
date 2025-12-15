@@ -362,29 +362,6 @@ absl::StatusOr<CoordinatedTask> CoordinationServiceAgent::GetOwnTask() {
   return task_;
 }
 
-absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>
-CoordinationServiceAgent::GetTaskState(
-    const std::vector<CoordinatedTask>& tasks) {
-  GetTaskStateRequest request;
-  *request.mutable_source_task() = {tasks.begin(), tasks.end()};
-  GetTaskStateResponse response;
-  absl::Notification n;
-  absl::StatusOr<std::vector<CoordinatedTaskStateInfo>> result;
-  leader_client_->GetTaskStateAsync(
-      &request, &response, [&](const absl::Status& s) {
-        if (s.ok()) {
-          result = std::vector<CoordinatedTaskStateInfo>(
-              std::make_move_iterator(response.task_state().begin()),
-              std::make_move_iterator(response.task_state().end()));
-        } else {
-          result = s;
-        }
-        n.Notify();
-      });
-  n.WaitForNotification();
-  return result;
-}
-
 std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
     absl::string_view job_name, std::optional<int64_t> version_number,
     std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>

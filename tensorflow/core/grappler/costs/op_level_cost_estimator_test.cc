@@ -139,7 +139,7 @@ OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
 // Returns an OpInfo for an XlaEinsum
 OpContext DescribeXlaEinsum(const std::vector<int>& dims_a,
                             const std::vector<int>& dims_b,
-                            const string& equation) {
+                            const std::string& equation) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op("XlaEinsum");
@@ -156,7 +156,7 @@ OpContext DescribeXlaEinsum(const std::vector<int>& dims_a,
 // Returns an OpInfo for an Einsum
 OpContext DescribeEinsum(const std::vector<int>& dims_a,
                          const std::vector<int>& dims_b,
-                         const string& equation) {
+                         const std::string& equation) {
   OpContext op_context = DescribeXlaEinsum(dims_a, dims_b, equation);
   op_context.op_info.set_op("Einsum");
   return op_context;
@@ -245,8 +245,8 @@ OpContext DescribeDepthwiseConv2dNative(int batch, int ix, int iy, int iz1,
 OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
                                             int iz2, int kx, int ky, int ox,
                                             int oy, int oz, bool has_side_input,
-                                            const string& data_format,
-                                            const string& filter_format) {
+                                            const std::string& data_format,
+                                            const std::string& filter_format) {
   const int kVecWidth = 4;
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
@@ -303,7 +303,7 @@ OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
 
 // DescribeUnaryOp constructs an OpContext for the given operation applied to
 // a 4-tensor with shape (size1, 1, 1, 1).
-OpContext DescribeUnaryOp(const string& op, int size1) {
+OpContext DescribeUnaryOp(const std::string& op, int size1) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op(op);
@@ -321,7 +321,7 @@ OpContext DescribeUnaryOp(const string& op, int size1) {
 // The choice of dimension here is arbitrary, and is used strictly to test the
 // cost model for applying elementwise operations to tensors with unequal
 // dimension values.
-OpContext DescribeBinaryOp(const string& op, int size1, int size2) {
+OpContext DescribeBinaryOp(const std::string& op, int size1, int size2) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op(op);
@@ -350,7 +350,7 @@ OpContext DescribeBiasAdd(int size1, int size2) {
 }
 
 int GetOutputSize(const int x, const int k, const int s,
-                  const string& padding) {
+                  const std::string& padding) {
   if (padding == "SAME") {
     return (x + s - 1) / s;
   } else {
@@ -361,8 +361,8 @@ int GetOutputSize(const int x, const int k, const int s,
 std::vector<int> GetPoolingOutputSize(const std::vector<int>& input,
                                       const std::vector<int>& ksize,
                                       const std::vector<int>& strides,
-                                      const string& data_format,
-                                      const string& padding) {
+                                      const std::string& data_format,
+                                      const std::string& padding) {
   // h, w, and c indices: default with NHWC.
   int h_index = 1;
   int w_index = 2;
@@ -428,10 +428,12 @@ void GetTensorProto(const DataType dtype, const std::vector<int64_t>& shape,
   }
 }
 
-OpContext DescribePoolingOp(const string& op_name, const std::vector<int>& x,
+OpContext DescribePoolingOp(const std::string& op_name,
+                            const std::vector<int>& x,
                             const std::vector<int>& ksize,
                             const std::vector<int>& strides,
-                            const string& data_format, const string& padding) {
+                            const std::string& data_format,
+                            const std::string& padding) {
   OpContext op_context;
   auto& op_info = op_context.op_info;
   SetCpuDevice(&op_info);
@@ -468,7 +470,7 @@ OpContext DescribePoolingOp(const string& op_name, const std::vector<int>& x,
 
 OpContext DescribeFusedBatchNorm(const bool is_training, const bool is_grad,
                                  const std::vector<int>& x,
-                                 const string& data_format) {
+                                 const std::string& data_format) {
   // First, get MaxPool op info with unit stride and unit window.
   OpContext op_context = DescribePoolingOp("MaxPool", x, {1, 1, 1, 1},
                                            {1, 1, 1, 1}, data_format, "SAME");
@@ -543,8 +545,8 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   void ValidateOpDimensionsFromInputs(const int n, const int h, const int w,
                                       const int c, const int kx, const int ky,
                                       const int sx, const int sy,
-                                      const string& data_format,
-                                      const string& padding) {
+                                      const std::string& data_format,
+                                      const std::string& padding) {
     OpContext op_context;
     int ho;
     int wo;
@@ -588,8 +590,8 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   absl::StatusOr<OpLevelCostEstimator::ConvolutionDimensions>
   CallOpDimensionsFromInputs(const int n, const int h, const int w, const int c,
                              const int kx, const int ky, const int sx,
-                             const int sy, const string& data_format,
-                             const string& padding) {
+                             const int sy, const std::string& data_format,
+                             const std::string& padding) {
     OpContext op_context;
 
     const std::vector<int> x = {n, h, w, c};
@@ -666,7 +668,7 @@ class OpLevelBatchMatMulCostEstimatorTest
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
-  std::unordered_set<string> persistent_ops = {
+  std::unordered_set<std::string> persistent_ops = {
       "Const",       "Variable",       "VariableV2", "AutoReloadVariable",
       "VarHandleOp", "ReadVariableOp",
   };
@@ -776,9 +778,9 @@ TEST_F(OpLevelCostEstimatorTest, TestStridedSliceCosts) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestScatterOps) {
-  std::vector<string> scatter_ops = {"ScatterAdd",   "ScatterDiv", "ScatterMax",
-                                     "ScatterMin",   "ScatterMul", "ScatterSub",
-                                     "ScatterUpdate"};
+  std::vector<std::string> scatter_ops = {
+      "ScatterAdd", "ScatterDiv", "ScatterMax",   "ScatterMin",
+      "ScatterMul", "ScatterSub", "ScatterUpdate"};
   for (const auto& op : scatter_ops) {
     // Test updates.shape = indices.shape + ref.shape[1:]
     {
@@ -1406,8 +1408,8 @@ TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
-  std::vector<string> paddings = {"VALID", "SAME"};
-  std::vector<string> formats = {"NHWC", "NCHW"};
+  std::vector<std::string> paddings = {"VALID", "SAME"};
+  std::vector<std::string> formats = {"NHWC", "NCHW"};
   for (const auto& p : paddings) {
     for (const auto& f : formats) {
       // n, h, w, c, kx, ky, sx, sy, data_format, padding.
@@ -1420,8 +1422,8 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputsError) {
-  std::vector<string> paddings = {"VALID", "SAME"};
-  std::vector<string> formats = {"NHWC", "NCHW"};
+  std::vector<std::string> paddings = {"VALID", "SAME"};
+  std::vector<std::string> formats = {"NHWC", "NCHW"};
   for (const auto& p : paddings) {
     for (const auto& f : formats) {
       // n, h, w, c, kx, ky, sx, sy, data_format, padding.
@@ -1442,7 +1444,7 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputsError) {
 TEST_F(OpLevelCostEstimatorTest, PredictMaxPool) {
   auto predict_max_pool = [this](const int n, const int in, const int c,
                                  const int k, const int s,
-                                 const string& padding) -> Costs {
+                                 const std::string& padding) -> Costs {
     OpContext op_context = DescribePoolingOp(
         "MaxPool", {n, in, in, c}, {1, k, k, 1}, {1, s, s, 1}, "NHWC", padding);
     return estimator_.PredictCosts(op_context);
@@ -1485,7 +1487,7 @@ TEST_F(OpLevelCostEstimatorTest, PredictMaxPool) {
 TEST_F(OpLevelCostEstimatorTest, PredictMaxPoolGrad) {
   auto predict_max_pool_grad = [this](const int n, const int in, const int c,
                                       const int k, const int s,
-                                      const string& padding) -> Costs {
+                                      const std::string& padding) -> Costs {
     OpContext op_context =
         DescribePoolingOp("MaxPoolGrad", {n, in, in, c}, {1, k, k, 1},
                           {1, s, s, 1}, "NHWC", padding);
@@ -1529,7 +1531,7 @@ TEST_F(OpLevelCostEstimatorTest, PredictMaxPoolGrad) {
 TEST_F(OpLevelCostEstimatorTest, PredictAvgPool) {
   auto predict_avg_pool = [this](const int n, const int in, const int c,
                                  const int k, const int s,
-                                 const string& padding) -> Costs {
+                                 const std::string& padding) -> Costs {
     OpContext op_context = DescribePoolingOp(
         "AvgPool", {n, in, in, c}, {1, k, k, 1}, {1, s, s, 1}, "NHWC", padding);
     return estimator_.PredictCosts(op_context);
@@ -1572,7 +1574,7 @@ TEST_F(OpLevelCostEstimatorTest, PredictAvgPool) {
 TEST_F(OpLevelCostEstimatorTest, PredictAvgPoolGrad) {
   auto predict_avg_pool_grad = [this](const int n, const int in, const int c,
                                       const int k, const int s,
-                                      const string& padding) -> Costs {
+                                      const std::string& padding) -> Costs {
     OpContext op_context =
         DescribePoolingOp("AvgPoolGrad", {n, in, in, c}, {1, k, k, 1},
                           {1, s, s, 1}, "NHWC", padding);

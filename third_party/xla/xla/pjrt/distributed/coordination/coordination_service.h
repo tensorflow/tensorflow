@@ -173,10 +173,6 @@ class CoordinationService {
   absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
                                const absl::Status& error);
 
-  // Get the state and the error status of the tasks.
-  std::vector<tensorflow::CoordinatedTaskStateInfo> GetTaskState(
-      const std::vector<tensorflow::CoordinatedTask>& task);
-
   // Watches the state and the error status of the job.
   using WatchJobStateCallback = absl::AnyInvocable<void(
       std::vector<tensorflow::CoordinatedTaskStateInfo>, int64_t)>;
