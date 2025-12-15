@@ -687,7 +687,8 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   int64_t bytes_transferred =
       GetBytesTransferred(instr, device_info_, analysis_);
 
-  if (instr.opcode() == HloOpcode::kCollectivePermute) {
+  if (instr.opcode() == HloOpcode::kCollectivePermute ||
+      instr.opcode() == HloOpcode::kCollectivePermuteStart) {
     auto* cp = Cast<HloCollectivePermuteInstruction>(&instr);
     const CollectivePermuteCostModelType& permute_type =
         GetCollectivePermuteCostModelType(
@@ -700,7 +701,7 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
              << " for instr: " << instr.ToString() << " num_partitions:"
              << cp->GetModule()->config().num_partitions();
     ExactInterpolatorKey exact_key{
-        /*opcode=*/instr.opcode(),
+        /*opcode=*/HloOpcode::kCollectivePermute,
         /*collective_params=*/permute_type,
         /*data_type=*/std::nullopt,
     };

@@ -63,7 +63,7 @@ PyObject* GetPyTrampoline() {
 struct PyCall {
   // Passed to python runtime to call the python function registered
   // with this "token".
-  string token;
+  std::string token;
 
   // The device on which Tensors are stored; only used for EagerPyFunc.
   Device* device = nullptr;
@@ -164,7 +164,8 @@ absl::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
   if (expected_device == actual_device) return absl::OkStatus();
-  const string& expected_device_name = expected_device->attributes().name();
+  const std::string& expected_device_name =
+      expected_device->attributes().name();
   if (actual_device == nullptr) {
     if (!IsCPUDevice(expected_device)) {
       return errors::Internal(
@@ -380,7 +381,8 @@ class PyFuncOp : public OpKernel {
       return;
     }
 
-    OP_REQUIRES(ctx, static_cast<int32>(call.out.size()) == ctx->num_outputs(),
+    OP_REQUIRES(ctx,
+                static_cast<int32_t>(call.out.size()) == ctx->num_outputs(),
                 errors::InvalidArgument(token_, " returns ", call.out.size(),
                                         " values, but expects to see ",
                                         ctx->num_outputs(), " values."));
@@ -396,7 +398,7 @@ class PyFuncOp : public OpKernel {
   }
 
  private:
-  string token_;
+  std::string token_;
 
   // True if and only if this op should execute the python function eagerly,
   // i.e., if and only if the eager attribute is set.

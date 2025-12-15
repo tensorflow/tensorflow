@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
@@ -349,7 +350,7 @@ HloModule m
 ENTRY e {
   p0 = bf16[1024,1024] parameter(0)
   p1 = bf16[1024,1024] parameter(1)
-  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+  ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
     custom_call_target="__cublas$gemm",
     backend_config={
       "gemm_backend_config":{
@@ -377,7 +378,7 @@ HloModule m
 ENTRY e {
   p0 = f8e5m2[1024,1024] parameter(0)
   p1 = f8e4m3fn[1024,1024] parameter(1)
-  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+  ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
       "gemm_backend_config":{
@@ -405,7 +406,7 @@ HloModule m
 ENTRY e {
   p0 = f8e5m2[1024,1024] parameter(0)
   p1 = f8e4m3fn[1024,1024] parameter(1)
-  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+  ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
       "gemm_backend_config":{
@@ -433,7 +434,7 @@ HloModule m
 ENTRY e {
   p0 = f8e4m3fn[1024,1024] parameter(0)
   p1 = f8e5m2[1024,1024] parameter(1)
-  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+  ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
       "gemm_backend_config":{
@@ -461,7 +462,7 @@ HloModule m
 ENTRY e {
   p0 = f8e4m3fn[1024,1024] parameter(0)
   p1 = f8e4m3fn[1024,1024] parameter(1)
-  ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
+  ROOT _ =  (bf16[1024,1024], s8[2097152]) custom-call(p0,p1),
     custom_call_target="__cublas$lt$matmul$f8",
     backend_config={
       "gemm_backend_config":{
@@ -530,8 +531,109 @@ ENTRY e {
       /*cost_type=*/CostType::kNodeCost,
       /*expected_latency=*/absl::ZeroDuration(),
   };
+  // Test for CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual
+  EstimatorTestCase collective_permute_intra_host_ring_shift = {
+      /*test_name=*/"collective_permute_intra_host_ring_shift",
+      /*module_string=*/R"(
+HloModule m, num_partitions=4
 
-  return {all_gather_intra_host,
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0), sharding={devices=[4,1]<=[4]}
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(3706),
+  };
+
+  // Test for CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual
+  EstimatorTestCase collective_permute_intra_host_bidirectional = {
+      /*test_name=*/"collective_permute_intra_host_bidirectional",
+      /*module_string=*/R"(
+HloModule m, num_partitions=4
+
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0), sharding={devices=[4,1]<=[4]}
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1, source_target_pairs={{0,1},{1,0},{2,3},{3,2}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(3696),
+  };
+
+  // Test for CollectivePermuteCostModelType::kIntraPartitionOneWay
+  EstimatorTestCase collective_permute_intra_host_one_way = {
+      /*test_name=*/"collective_permute_intra_host_one_way",
+      /*module_string=*/R"(
+HloModule m, num_partitions=4
+
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0), sharding={devices=[4,1]<=[4]}
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1, source_target_pairs={{0,1},{2,3}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(3961),
+  };
+
+  EstimatorTestCase collective_permute_inter_host_global = {
+      /*test_name=*/"collective_permute_inter_host_global",
+      /*module_string=*/R"(
+HloModule m, num_partitions=16
+
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0)
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1,
+      source_target_pairs={{0,15},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6},{8,7},{9,8},{10,9},{11,10},{12,11},{13,12},{14,13},{15,14}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(27816),
+  };
+
+  EstimatorTestCase collective_permute_inter_host_rail_aligned_bidirection = {
+      /*test_name=*/"collective_permute_inter_host_rail_aligned_bidirection",
+      /*module_string=*/R"(
+HloModule m, num_partitions=16
+
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0)
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1,
+      source_target_pairs={{0,8},{8,0},{1,9},{9,1},{2,10},{10,2},{3,11},{11,3},{4,12},{12,4},{5,13},{13,5},{6,14},{14,6},{7,15},{15,7}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(27816),
+  };
+
+  EstimatorTestCase collective_permute_inter_host_rail_aligned_unidirection = {
+      /*test_name=*/"collective_permute_inter_host_rail_aligned_unidirection",
+      /*module_string=*/R"(
+HloModule m, num_partitions=16
+
+ENTRY main {
+  %param.2 = f32[262144,1024] parameter(0)
+  %collective-permute-start = (f32[262144,1024], f32[262144,1024]) collective-permute-start(%param.2), channel_id=1,
+      source_target_pairs={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+  ROOT %collective-permute-done = f32[262144,1024] collective-permute-done(%collective-permute-start)
+})",
+      /*opcode_to_find=*/HloOpcode::kCollectivePermuteStart,
+      /*cost_type=*/CostType::kEdgeCost,
+      /*expected_latency=*/absl::Microseconds(27816),
+  };
+
+  return {collective_permute_intra_host_ring_shift,
+          collective_permute_intra_host_bidirectional,
+          collective_permute_intra_host_one_way,
+          collective_permute_inter_host_global,
+          collective_permute_inter_host_rail_aligned_bidirection,
+          collective_permute_inter_host_rail_aligned_unidirection,
+          all_gather_intra_host,
           all_gather_inter_host_pairwise,
           all_gather_all_ranks,
           reduce_scatter_all_ranks,
@@ -639,6 +741,30 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   }
 
+  // Helper to add a AllToAll instruction.
+  void AddAlltoAll(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+    auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
+    entry->AddInstruction(HloInstruction::CreateAllToAll(
+        shape, {dummy_operand},
+        /*device_list=*/CollectiveDeviceList(),
+        /*constrain_layout=*/false, /*channel_id=*/false,
+        /*split_dimension=*/std::nullopt));
+  }
+
+  void AddCollectiveBcast(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+    auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
+    entry->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
+        shape, {dummy_operand},
+        /*device_list=*/CollectiveDeviceList(),
+        /*constrain_layout=*/false, /*channel_id=*/std::nullopt));
+  }
+
   // Helper to add a CollectivePermute instruction.
   void AddCollectivePermute(HloModule* module) {
     HloComputation* entry = module->entry_computation();
@@ -702,7 +828,7 @@ TEST_F(IsSolLatencyEstimatorEnabledTest,
       stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
-  AddCollectivePermute(module.get());  // Unsupported collective
+  AddCollectiveBcast(module.get());  // Unsupported collective
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
@@ -718,8 +844,10 @@ TEST_F(IsSolLatencyEstimatorEnabledTest,
       stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
-  AddAllReduce(module.get());          // Supported
-  AddCollectivePermute(module.get());  // Unsupported
+  AddAllReduce(module.get());          // Supported collective
+  AddCollectivePermute(module.get());  // Supported collective
+  AddAlltoAll(module.get());           // Supported collective
+  AddCollectiveBcast(module.get());    // Unsupported collective
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
