@@ -57,7 +57,7 @@ FileDescriptor FileDescriptor::Duplicate() const {
   if (!IsValid()) {
     return FileDescriptor(-1);
   }
-  return FileDescriptor(dup(fd_));
+  return FileDescriptor::Duplicate(fd_);
 }
 
 void FileDescriptor::Reset(int new_fd) {
