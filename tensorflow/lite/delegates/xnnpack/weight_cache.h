@@ -63,7 +63,18 @@ struct XNNPackCacheHeader {
   uint64_t buffer_list_size;
 };
 
+// Checks if the file at the given path is compatible with the current XNNPack
+// weight cache.
 bool IsCompatibleCacheFile(const char* path);
+
+// Checks if the opened file is compatible with the current XNNPack weight
+// cache.
+//
+// Position in the file may be changed during the function execution but is
+// restored upon exiting.
+//
+// Note: the file descriptor must be open and valid.
+bool IsCompatibleCacheFile(const FileDescriptor& fd);
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
