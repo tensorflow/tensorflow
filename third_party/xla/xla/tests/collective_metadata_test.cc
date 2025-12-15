@@ -107,6 +107,47 @@ TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadata) {
   }
 }
 
+TEST_F(CollectiveMetadataTest, ConstructCollectiveMetadataForPartitions) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=2
+
+  ENTRY test_computation {
+    param_0 = f32[4] parameter(0)
+    param_1 = f32[4] parameter(1)
+
+    const_0 = f32[1] constant({10})
+
+    result_tuple = (f32[4], f32[4]{0}, f32[1], u64[9]) custom-call(param_0, param_1, const_0), custom_call_target="CollectiveMetadata", output_to_operand_aliasing={{0}: (0, {}), {1}: (1, {})}
+    ROOT get_tuple_element = u64[9] get-tuple-element(result_tuple), index=3
+  })";
+
+  constexpr int kNumPartitions = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumPartitions)
+      << "Test requires at least " << kNumPartitions << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto unoptimized_module,
+      ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
+                                   /*num_partitions=*/kNumPartitions));
+
+  Literal input_0 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  Literal input_1 = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(unoptimized_module),
+                        /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
+                        /*run_hlo_passes=*/false));
+  const std::vector<Literal>& result = execution_result.results;
+  ASSERT_EQ(result.size(), kNumPartitions);
+
+  absl::Span<const uint64_t> first_result_data = result[0].data<uint64_t>();
+  absl::Span<const uint64_t> second_result_data = result[1].data<uint64_t>();
+  constexpr int kNumElements = 9;
+  ASSERT_EQ(first_result_data.size(), kNumElements);
+  ASSERT_EQ(second_result_data.size(), kNumElements);
+}
+
 TEST_F(CollectiveMetadataTest, BuildMultimemOnlyOncePerModuleExecution) {
   const absl::string_view kModuleStr = R"(
   HloModule test, replica_count=2
