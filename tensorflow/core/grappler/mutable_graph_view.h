@@ -80,9 +80,10 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // existing attributes. If it is not possible to update the node or if the
   // node does not exist, an error will be returned and nothing will be modified
   // in the graph.
-  absl::Status UpdateNode(absl::string_view node_name, absl::string_view op,
-                          absl::string_view device,
-                          absl::Span<const std::pair<string, AttrValue>> attrs);
+  absl::Status UpdateNode(
+      absl::string_view node_name, absl::string_view op,
+      absl::string_view device,
+      absl::Span<const std::pair<std::string, AttrValue>> attrs);
 
   // Updates node `from_node_name` name to `to_node_name`. If `to_node_name` is
   // in use, node `from_node_name` does not exist, or node `from_node_name` has
@@ -251,7 +252,8 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // Deletes nodes from the graph. If a node can't be safely removed,
   // specifically if a node still has fanouts, an error will be returned. Nodes
   // that can't be found are ignored.
-  absl::Status DeleteNodes(const absl::flat_hash_set<string>& nodes_to_delete);
+  absl::Status DeleteNodes(
+      const absl::flat_hash_set<std::string>& nodes_to_delete);
 
  private:
   // Adds fanouts for fanins of node to graph, while deduping control
@@ -301,7 +303,8 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // GetOrCreateIdentityConsumingSwitch should be called to generate the new
   // Identity node.
   NodeDef* GetControllingFaninToAdd(absl::string_view node_name,
-                                    const OutputPort& fanin, string* error_msg);
+                                    const OutputPort& fanin,
+                                    std::string* error_msg);
 
   // Finds a generated Identity node consuming Switch node `fanin.node` at port
   // `fanin.port_id`. If such a node does not exist, a new Identity node will be
@@ -319,7 +322,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   // remain in the graph. If node is removed in either case, the graph will
   // enter an invalid state.
   absl::Status CheckNodesCanBeDeleted(
-      const absl::flat_hash_set<string>& nodes_to_delete);
+      const absl::flat_hash_set<std::string>& nodes_to_delete);
 
   // Removes fanins of the deleted node from internal state. Control
   // dependencies are retained iff keep_controlling_fanins is true.
