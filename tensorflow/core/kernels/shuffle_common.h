@@ -75,7 +75,7 @@ absl::Status RandomShuffle(
     const int64_t samples = size - 1;
     auto rng = get_rng(samples);
     random::SingleSampleAdapter<random::PhiloxRandom> single(&rng);
-    const auto uniform = [&single](uint32 n) { return single() % n; };
+    const auto uniform = [&single](uint32_t n) { return single() % n; };
 
     if (input.dims() == 1) {
       // For 1D data, copy and then shuffle in place
@@ -90,7 +90,7 @@ absl::Status RandomShuffle(
       const auto input_mat = input.flat_outer_dims<T>();
       auto output_mat = output->flat_outer_dims<T>();
       if (size < std::numeric_limits<int32_t>::max()) {
-        IndexedShuffle<int32>(size, input_mat, output_mat, uniform);
+        IndexedShuffle<int32_t>(size, input_mat, output_mat, uniform);
       } else {
         IndexedShuffle<int64_t>(size, input_mat, output_mat, uniform);
       }

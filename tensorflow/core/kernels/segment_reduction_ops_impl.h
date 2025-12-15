@@ -504,7 +504,7 @@ class UnsortedSegmentReductionOp : public OpKernel {
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
     const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
-        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
+        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32_t>()()
                                          : num_segments.scalar<int64_t>()()));
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("Input num_segments == ", output_rows,
@@ -565,7 +565,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       const Tensor& num_segments = context->input(3);
       // Note that there is a Tnumsegments parameter on the op, but it is not
       // plumbed through to here and so always takes its default value of int32.
-      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
+      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32_t>()());
     }
     const int64_t num_indices = indices.NumElements();
 
@@ -1315,7 +1315,8 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES(context, N == segment_ids.NumElements(),
                 errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
-    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
+    const SegmentId M =
+        internal::SubtleMustCopy(output_dim0.scalar<int32_t>()());
 
     auto input_flat = input.flat_outer_dims<T>();
     const auto indices_vec = indices.vec<Index>();
