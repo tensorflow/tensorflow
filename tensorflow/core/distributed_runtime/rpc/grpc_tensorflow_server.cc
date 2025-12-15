@@ -38,8 +38,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-absl::Status FillServerDef(const string& cluster_spec, const string& job_name,
-                           int task_index, ServerDef* options) {
+absl::Status FillServerDef(const std::string& cluster_spec,
+                           const std::string& job_name, int task_index,
+                           ServerDef* options) {
   options->set_protocol("grpc");
   options->set_job_name(job_name);
   options->set_task_index(task_index);
@@ -48,17 +49,17 @@ absl::Status FillServerDef(const string& cluster_spec, const string& job_name,
 
   ClusterDef* const cluster = options->mutable_cluster();
 
-  for (const string& job_str : str_util::Split(cluster_spec, ',')) {
+  for (const std::string& job_str : str_util::Split(cluster_spec, ',')) {
     JobDef* const job_def = cluster->add_job();
     // Split each entry in the flag into 2 pieces, separated by "|".
-    const std::vector<string> job_pieces = str_util::Split(job_str, '|');
+    const std::vector<std::string> job_pieces = str_util::Split(job_str, '|');
     CHECK_EQ(2, job_pieces.size()) << job_str;
-    const string& job_name = job_pieces[0];
+    const std::string& job_name = job_pieces[0];
     job_def->set_name(job_name);
     // Does a bit more validation of the tasks_per_replica.
     const absl::string_view spec = job_pieces[1];
     // job_str is of form <job_name>|<host_ports>.
-    const std::vector<string> host_ports = str_util::Split(spec, ';');
+    const std::vector<std::string> host_ports = str_util::Split(spec, ';');
     for (size_t i = 0; i < host_ports.size(); ++i) {
       (*job_def->mutable_tasks())[i] = host_ports[i];
     }
@@ -96,15 +97,15 @@ void Usage(char* const argv_0) {
 }
 
 int main(int argc, char* argv[]) {
-  tensorflow::string cluster_spec;
-  tensorflow::string job_name;
+  std::string cluster_spec;
+  std::string job_name;
   int task_index = 0;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("cluster_spec", &cluster_spec, "cluster spec"),
       tensorflow::Flag("job_name", &job_name, "job name"),
       tensorflow::Flag("task_id", &task_index, "task id"),
   };
-  tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(argv[0], &argc, &argv);
   if (!parse_result || argc != 1) {
