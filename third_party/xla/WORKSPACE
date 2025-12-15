@@ -1,19 +1,19 @@
 # buildifier: disable=load-on-top
 workspace(name = "xla")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Initialize toolchains for ML projects.
 #
 # A hermetic build system is designed to produce completely reproducible builds for C++.
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
-http_archive(
+tf_http_archive(
     name = "rules_ml_toolchain",
     sha256 = "7f00b3e94bbca1a4737ded6b9ed5358f6d1c86430c2ec97c90081343c0482f18",
     strip_prefix = "rules_ml_toolchain-29d54c875da37e74b8548924ed30e78cb28126b9",
-    urls = [
+    urls = tf_mirror_urls(
         "https://github.com/google-ml-infra/rules_ml_toolchain/archive/29d54c875da37e74b8548924ed30e78cb28126b9.tar.gz",
-    ],
+    ),
 )
 
 load(

@@ -680,6 +680,11 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
         EstimateRunTimeForTiledHloComputation(
             fusion_adaptor, tiled_hlo_computation, launch_dimensions));
 
+    // Skip tilings with infinite runtime (e.g., due to register spilling).
+    if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
+      continue;
+    }
+
     if (!best_tiled_run_time_data.has_value() ||
         estimate_run_time_data.exec_time <
             best_tiled_run_time_data->runtime_data.exec_time) {

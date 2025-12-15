@@ -25,11 +25,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout_util.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -110,18 +111,27 @@ StreamExecutorGpuCompiler::StreamExecutorGpuCompiler(
     stream_executor::Platform::Id platform_id)
     : requested_platform_id_(platform_id) {}
 
+absl::StatusOr<Compiler*> StreamExecutorGpuCompiler::GetOrCreateCompiler() {
+  absl::MutexLock lock(compiler_mutex_);
+  if (compiler_ == nullptr) {
+    // We get the compiler here because doing so in the constructor might fail
+    // due to static initialization order shenanigans (An instance of this class
+    // is initialized statically and this might happen before the compiler is
+    // registered with Compiler::RegisterCompilerFactory). For the same reason,
+    // we can't fail construction of this class, therefore we have this
+    // GetOrCreate function and we can return on error when calling Compile.
+    TF_ASSIGN_OR_RETURN(compiler_,
+                        GetCompilerForPlatform(requested_platform_id_));
+  }
+  return compiler_.get();
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    const XlaComputation& computation,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
-  // We get the compiler here because doing so in the constructor might fail due
-  // to static initialization order shenanigans. Also we can't fail construction
-  // of this class because it's also statically constructed.
-  // TODO(b/382417973): Use factories instead of static initialization of
-  // singletons.
-  TF_ASSIGN_OR_RETURN(auto gpu_compiler,
-                      GetCompilerForPlatform(requested_platform_id_));
+  TF_ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
 
   CompileOptions input_options = options;
   if (!options.gpu_target_config) {
@@ -165,10 +175,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
   UpdateEntryComputationLayout(
       hlo_module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
-                                  gpu_compiler.get(), std::placeholders::_1));
+                                  gpu_compiler, std::placeholders::_1));
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
-  Compiler::CompileOptions opts;
-  opts.gpu_target_config = options.gpu_target_config;
 
   AotCompilationOptions aot_options(gpu_compiler->PlatformId());
   aot_options.set_gpu_target_config(*options.gpu_target_config);
@@ -202,14 +210,13 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
     return executable;
   }
 
-  CompileOptions input_options = options;
   XlaComputation xla_computation;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,
-      /*exec_build_options=*/&input_options.executable_build_options,
+      /*exec_build_options=*/&options.executable_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
-  return Compile(std::move(input_options), xla_computation, topology, client);
+  return Compile(std::move(options), xla_computation, topology, client);
 }
 }  // namespace xla

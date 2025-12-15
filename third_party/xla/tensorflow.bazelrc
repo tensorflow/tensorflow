@@ -274,8 +274,6 @@ common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
-common:rocm_base --define=xnn_enable_avxvnniint8=false
-common:rocm_base --define=xnn_enable_avx512fp16=false
 common:rocm_base --repo_env TF_NEED_ROCM=1
 
 common:rocm_clang_official --config=rocm_base
@@ -531,12 +529,6 @@ common:rbe_linux_cpu_clang_local --crosstool_top="@local_config_cuda//crosstool:
 common:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
 common:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
 common:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
-
-# Download CUDA/CUDNN redistributions to preserve the repositories cache between
-# CPU and GPU builds.
-# TODO(ybaturina): Uncomment when RBE is ready to support this.
-# common:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
-# common:rbe_linux_cpu --config=cuda_version
 
 common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu

@@ -781,8 +781,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
 
 class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
  public:
-  MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
-                          BufferAllocation::Slice src, int64_t num_bytes);
+  MemcpyDeviceToDeviceCmd(ShapedSlice dst, ShapedSlice src, int64_t num_bytes);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -792,9 +791,9 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   BufferUseVector buffers() const override;
 
  private:
-  BufferAllocation::Slice dst_;
-  BufferAllocation::Slice src_;
-  int64_t num_bytes_;
+  ShapedSlice dst_;
+  ShapedSlice src_;
+  uint64_t num_bytes_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -870,8 +869,7 @@ class ChildCmd : public CommandBufferCmd {
 
 class CaseCmd : public CommandBufferCmd {
  public:
-  CaseCmd(BufferAllocation::Slice index, bool index_is_bool,
-          std::vector<CommandBufferCmdExecutor> branches);
+  CaseCmd(ShapedSlice index, std::vector<CommandBufferCmdExecutor> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -890,7 +888,7 @@ class CaseCmd : public CommandBufferCmd {
   BufferUseVector buffers() const override;
 
  private:
-  BufferAllocation::Slice index_;
+  ShapedSlice index_;
   bool index_is_bool_;
   std::vector<CommandBufferCmdExecutor> branches_;
 };

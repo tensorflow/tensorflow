@@ -160,7 +160,6 @@ static absl::StatusOr<Command> Convert(
     }
   }
   return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
-                                   thunk.branch_index_is_bool(),
                                    std::move(branch_cmds));
 }
 

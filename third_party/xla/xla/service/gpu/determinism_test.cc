@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -134,6 +133,12 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_CALL(executor, SynchronizeAllActivity).WillRepeatedly([&]() -> bool {
       return true;
     });
+    EXPECT_CALL(executor, CreateStream).WillRepeatedly([&] {
+      return backend().default_stream_executor()->CreateStream();
+    });
+    EXPECT_CALL(executor, AsBlas).WillRepeatedly([&] {
+      return backend().default_stream_executor()->AsBlas();
+    });
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_string));
@@ -181,12 +186,6 @@ ENTRY e {
   }
 
   MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
-                    TimerCreation::kForbidden);
-  AssertDeterminism(kHloText);
-
-  debug_options_.set_xla_gpu_enable_cublaslt(true);
-  MatchOptimizedHlo(kHloText,
-                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
 }

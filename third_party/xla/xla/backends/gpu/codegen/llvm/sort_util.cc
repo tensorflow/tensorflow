@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
@@ -469,7 +470,19 @@ absl::Status EmitSortInPlace(
         IrArray::Index keys_index(keys_multi_index,
                                   values_arrays[operand].GetShape(),
                                   tiles_index.GetType());
-        return values_arrays[operand].EmitArrayElementAddress(keys_index, b);
+        PrimitiveType element_type =
+            values_arrays[operand].GetShape().element_type();
+        if (!primitive_util::IsSubByteNonPredType(element_type)) {
+          return values_arrays[operand].EmitArrayElementAddress(keys_index, b);
+        }
+        auto element =
+            values_arrays[operand].EmitReadArrayElement(keys_index, b);
+        auto llvm_element_type =
+            llvm_ir::PrimitiveTypeToIrType(element_type, b->getContext());
+        llvm::Value* element_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+            llvm_element_type, "element_buffer", b);
+        b->CreateStore(element, element_buffer);
+        return element_buffer;
       };
       auto element_address_pointee_type = [&](int64_t operand, llvm::Value*) {
         return values_arrays[operand].GetElementLlvmType();

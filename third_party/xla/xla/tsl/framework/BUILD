@@ -120,6 +120,7 @@ cc_library(
             ":allocator_registry_impl",
             "@com_google_absl//absl/synchronization",
             "//xla/tsl/lib/gtl:inlined_vector",
+            "@local_tsl//tsl/platform:numbers",
             "@local_tsl//tsl/platform:strcat",
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:env_impl",
@@ -132,6 +133,7 @@ cc_library(
         otherwise = [
             "//xla/tsl/lib/gtl:inlined_vector",
             "//xla/tsl/platform:logging",
+            "@local_tsl//tsl/platform:numbers",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:strcat",
             "//xla/tsl/platform:env",

@@ -163,6 +163,11 @@ int GetCustomCallForceDelayPriority(const HloInstruction* instr) {
   return 0;
 }
 
+bool HasForceDelayAsyncAttribute(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_hint");
+  return attr.has_value() && attr.value() == "force_delay_async";
+}
+
 absl::flat_hash_map<int64_t, int64_t>
 GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
     const DefaultSchedulerCore::SchedulingState& sched_state,
@@ -2622,6 +2627,9 @@ HloScheduleGraph::HloScheduleGraph(
       n->SetForceDelay(true);
       n->SetForceDelayPriority(GetCustomCallForceDelayPriority(instr));
     }
+    if (n->IsSupportedAsyncStart() && HasForceDelayAsyncAttribute(instr)) {
+      n->SetForceDelay(true);
+    }
   }
 
   // num_predecessors[i]: number of predecessors for instruction number "i"
@@ -3001,6 +3009,8 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
               continue;
             }
             if (count > it->second) {
+              VLOG(5) << "Cross overlap limit for resource: " << resource
+                      << " count: " << count << " limit: " << it->second;
               return true;
             }
           }

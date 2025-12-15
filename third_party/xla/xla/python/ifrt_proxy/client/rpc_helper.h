@@ -152,6 +152,9 @@ class RpcHelper {
       std::unique_ptr<LoadedExecutableHumanReadableProgramTextRequest> req);
   ResponseFuture<LoadedExecutableExecuteResponse> LoadedExecutableExecute(
       std::unique_ptr<LoadedExecutableExecuteRequest> req);
+  ResponseFuture<LoadedExecutableFetchExecuteResultResponse>
+  LoadedExecutableFetchExecuteResult(
+      std::unique_ptr<LoadedExecutableFetchExecuteResultRequest> req);
   ResponseFuture<LoadedExecutableDeleteResponse> LoadedExecutableDelete(
       std::unique_ptr<LoadedExecutableDeleteRequest> req);
   ResponseFuture<LoadedExecutableIsDeletedResponse> LoadedExecutableIsDeleted(

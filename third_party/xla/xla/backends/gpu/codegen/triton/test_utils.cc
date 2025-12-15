@@ -300,6 +300,10 @@ std::string TritonSupportTestDeviceToString(
 
 namespace {
 
+bool IsCollectiveFusion(const HloFusionInstruction& fusion) {
+  return fusion.fused_expression_root()->opcode() == HloOpcode::kAllReduceDone;
+}
+
 // This function does nothing if the input module already has an entry
 // computation whose root is a fusion. Otherwise, creates a new entry
 // computation whose root is a fusion instruction that calls the original entry
@@ -327,7 +331,9 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
   gpu::GpuBackendConfig gpu_config;
   gpu_config.mutable_fusion_backend_config()->set_kind(
-      kTritonNestedGemmFusionKind);
+      IsCollectiveFusion(*xla::Cast<HloFusionInstruction>(fusion))
+          ? kTritonCollectiveFusionKind
+          : kTritonNestedGemmFusionKind);
   TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
 
   auto new_entry =

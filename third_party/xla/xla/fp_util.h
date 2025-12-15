@@ -279,8 +279,10 @@ constexpr T GoldbergUlp(T x) {
     return GoldbergUlp(std::numeric_limits<T>::min());
   }
   std::optional<int> maybe_exponent = LogBase(x);
-  if (maybe_exponent.has_value(); const int exponent = *maybe_exponent) {
-    return ScaleBase(std::numeric_limits<T>::epsilon(), exponent);
+  if (maybe_exponent.has_value()) {
+    if (const int exponent = *maybe_exponent) {
+      return ScaleBase(std::numeric_limits<T>::epsilon(), exponent);
+    }
   }
   if constexpr (std::numeric_limits<T>::has_quiet_NaN) {
     return std::numeric_limits<T>::quiet_NaN();

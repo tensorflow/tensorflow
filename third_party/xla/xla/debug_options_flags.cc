@@ -243,6 +243,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
@@ -443,7 +444,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
-  opts.set_xla_gpu_enable_scatter_determinism_expander(true);
+  opts.set_xla_gpu_enable_scatter_determinism_expander(false);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
@@ -457,10 +458,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_disable_automatic_host_compute_offload(false);
+  opts.set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(
+      false);
   opts.set_xla_enable_scoped_logging_timers(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
-  opts.set_xla_gpu_experimental_enable_triton_tma(true);
   opts.set_xla_gpu_experimental_enable_triton_warp_specialization(false);
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_detect_unstable_reductions_post_optimizations(
@@ -2604,6 +2606,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Return an error if HostOffloader would have automatically offloaded some"
       " compute to the host."));
   flag_list->push_back(tsl::Flag(
+      "xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled),  // NOLINT
+      debug_options
+          ->xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(),
+      "Allow host-to-host copy when automatic host compute offload is "
+      "disabled, i.e. when xla_disable_automatic_host_compute_offload is "
+      "set."));
+  flag_list->push_back(tsl::Flag(
       "xla_enable_scoped_logging_timers",
       bool_setter_for(&DebugOptions::set_xla_enable_scoped_logging_timers),
       debug_options->xla_enable_scoped_logging_timers(),
@@ -2623,12 +2635,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_split_k_rewrite(),
       "Enable the pass that splits GEMMs that underutilize the GPU load by "
       "splitting the K dimension using a heuristic."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_triton_tma",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_enable_triton_tma),
-      debug_options->xla_gpu_experimental_enable_triton_tma(),
-      "Enable Triton's TMA loads/stores for arguments where applicable."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_triton_warp_specialization",
       bool_setter_for(

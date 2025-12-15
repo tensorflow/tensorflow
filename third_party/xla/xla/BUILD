@@ -217,6 +217,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
+        "@ml_dtypes_py//ml_dtypes:intn",
     ],
 )
 

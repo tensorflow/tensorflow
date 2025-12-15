@@ -67,7 +67,7 @@ class CpuAotCompilationTest : public HloTestBase {
     // Load Executable from AOT compilation result.
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        std::move(*loaded_aot_result).LoadExecutable(compiler, stream_exec));
+        std::move(*loaded_aot_result).LoadExecutable(stream_exec));
   }
 };
 

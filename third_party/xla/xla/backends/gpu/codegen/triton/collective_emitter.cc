@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -190,8 +191,11 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     const BlockLevelParameters& block_level_parameters,
     mlir::FunctionOpInterface fn, mlir::Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
-  const int64_t num_elements =
-      ShapeUtil::ElementsIn(computation->root_instruction()->shape());
+  const HloInstruction* root_instruction = computation->root_instruction();
+  if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
+    root_instruction = root_instruction->operand(0);
+  }
+  const int64_t num_elements = ShapeUtil::ElementsIn(root_instruction->shape());
   const TiledHloInstruction* tiled_input_hlo = tiled_hlo_reduce.operand(0);
   TensorValue input_tile = values[tiled_input_hlo];
 
@@ -279,6 +283,10 @@ absl::StatusOr<TensorValue> EmitAllReduce(
   }
 
   // 2. Synchronization phase: Wait for all ranks to complete the scatter.
+  if (all_reduce.device_list().replica_groups().empty()) {
+    return Internal(
+        "Triton emitting AllReduce without replica groups is not supported.");
+  }
   int64_t world_size = all_reduce.device_list().num_devices_per_group();
   mtx::BlockBarrierOp::create(b, signal_buffers, device_rank, signal_value,
                               b.getI32IntegerAttr(world_size));
@@ -451,6 +459,9 @@ absl::StatusOr<TensorValue> EmitCollective(
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* root = computation->root_instruction();
+  if (root->opcode() == HloOpcode::kAllReduceDone) {
+    root = root->operand(0);
+  }
   switch (root->opcode()) {
     case HloOpcode::kAllReduceStart:
       return EmitAllReduce(

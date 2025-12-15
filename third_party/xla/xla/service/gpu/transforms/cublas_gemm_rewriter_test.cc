@@ -583,7 +583,7 @@ ENTRY test {
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
-                                  m::Negate(m::Parameter(2))),
+                                  m::Fusion(m::Parameter(2))),
                     0)));
   }
 }
@@ -625,7 +625,7 @@ ENTRY test {
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
-                                  m::Negate(m::Parameter(2))),
+                                  m::Fusion(m::Parameter(2))),
                     0)));
   }
 }
@@ -932,7 +932,7 @@ ENTRY AddDotsFunc {
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
 ; CHECK-NEXT:  [[GEMM:%[^ ]+]] = f32[1024,1024]{1,0} get-tuple-element([[GEMM_TUPLE]]), index=0
-; CHECK-NEXT:  ROOT [[OUT:%[^ ]+]] = f32[1024,1024]{1,0} add([[GEMM]], [[BIAS]])
+; CHECK:  ROOT [[OUT:%[^ ]+]] = f32[1024,1024]{1,0} fusion([[GEMM]], [[BIAS]]), kind=kLoop
 )");
 }
 
@@ -1399,7 +1399,7 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"BIAS"
 ; CHECK:           }
 ; CHECK-NEXT:    [[GETTUPLE:%[^ ]+]] = f32[4,4]{1,0} get-tuple-element([[MATMUL]]), index=0
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} slice([[GETTUPLE]]), slice={[0:2], [0:3]}
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} fusion([[GETTUPLE]]), kind=kLoop
       )");
 }
 
@@ -1775,7 +1775,7 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
 ; CHECK:         [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[MATMUL_TUPLE]]), index=0
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} slice([[MATMUL]]), slice={[0:2], [0:2]}
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} fusion([[MATMUL]]), kind=kLoop
       )");
 }
 
@@ -3335,7 +3335,7 @@ ENTRY test {
     EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
                 GmockMatch(m::GetTupleElement(
                     m::CustomCall(m::Parameter(0), m::Parameter(1),
-                                  m::Negate(m::Parameter(2))),
+                                  m::Fusion(m::Parameter(2))),
                     0)));
   }
 }

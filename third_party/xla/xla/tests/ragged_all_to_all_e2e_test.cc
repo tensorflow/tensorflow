@@ -931,6 +931,59 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
   }
 }
 
+TEST_P(RaggedAllToAllMultiHostDecomposerTest,
+       RaggedAllToAll_8GPUs_SliceSize4_ShuffledReplicaGroups) {
+  auto [num_input_rows, num_output_rows] = GetParam();
+
+  std::string kModuleReplicatedStr =
+      absl::Substitute(R"(
+  HloModule module
+
+  ENTRY entry {
+    input = f32[$0,5,32] parameter(0)
+    output = f32[$1,5,32] parameter(1)
+    input_offsets = s32[32] parameter(2)
+    send_sizes = s32[32] parameter(3)
+    output_offsets = s32[32] parameter(4)
+    recv_sizes = s32[32] parameter(5)
+    ROOT ra2a = f32[$1,5,32] ragged-all-to-all(input, output,
+      input_offsets, send_sizes, output_offsets, recv_sizes),
+      replica_groups={{0,2,4,6,1,3,5,7}}
+  })",
+                       num_input_rows, num_output_rows);
+
+  const int64_t kNumReplicas = 8;
+  const int64_t kNumUpdatesPerReplica = 4;
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleReplicatedStr, kNumReplicas));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_override_fast_interconnect_slice_size(4);
+
+  Array<int64_t> input_sizes(
+      {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
+  input_sizes.FillRandomUniform(0, 10);
+
+  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
+  }
+}
+
 TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
   auto [num_input_rows, num_output_rows] = GetParam();
 

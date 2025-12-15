@@ -2562,16 +2562,13 @@ absl::StatusOr<bool> ShouldSkipDeadlockCheck(const T* instruction) {
   if (instruction->is_host_transfer()) {
     return true;
   }
-  // TODO: b/441038687 - Remove kSendRecvValidationAttr
   // TODO: b/441088186 - update static analyzer logic to also handle
   // instructions annotated with _xla_send_recv_pipeline
   // For now we will skip checks for instructions annotated with
-  // _xla_send_recv_pipeline and _xla_send_recv_validation, since they introduce
-  // extra constraints that have not been modeled by this function.
+  // _xla_send_recv_pipeline, since they introduce extra constraints that have
+  // not been modeled by this function.
   if (instruction->frontend_attributes().map().contains(
-          kSendRecvPipelineAttr) ||
-      instruction->frontend_attributes().map().contains(
-          kSendRecvValidationAttr)) {
+          kSendRecvPipelineAttr)) {
     return true;
   }
   // Check that the instruction itself does not have conflicting

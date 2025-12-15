@@ -89,15 +89,8 @@ class CoordinationService {
       absl::flat_hash_set<tensorflow::CoordinatedTask, CoordinatedTaskHash,
                           CoordinatedTaskEqual>;
 
-  static std::unique_ptr<CoordinationService> Create(
-      tsl::Env* env, const tensorflow::CoordinationServiceConfig& config,
-      std::unique_ptr<CoordinationClientCache> cache) {
-    return std::make_unique<CoordinationService>(env, config, std::move(cache));
-  }
-
   CoordinationService(tsl::Env* env,
-                      const tensorflow::CoordinationServiceConfig& config,
-                      std::unique_ptr<CoordinationClientCache> client_cache);
+                      const tensorflow::CoordinationServiceConfig& config);
 
   ~CoordinationService() {
     absl::MutexLock lock(state_mu_);
@@ -280,9 +273,7 @@ class CoordinationService {
                           GetAliveTasksCallback done);
 
   // Gets error from the coordination service. Block until the service
-  // returns an error or the task/service is shutdown. This should never be used
-  // when there is service to client connection (i.e. `CoordinationClientCache`
-  // is passed in during construction).
+  // returns an error or the task/service is shutdown.
   //
   // The first call to this function will trigger the error polling mode in the
   // coordination service, so once an error occurs after the first call, the
@@ -619,7 +610,6 @@ class CoordinationService {
   // such that NotifyWatchJobStateCallbacks should be called.
   void ClusterStateUpdated() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  std::unique_ptr<CoordinationClientCache> client_cache_;
   tsl::Env& env_;
   const IncarnationId service_incarnation_{tsl::random::New64()};
   const uint64_t heartbeat_timeout_ms_;

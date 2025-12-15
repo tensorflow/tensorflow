@@ -24,10 +24,11 @@ namespace xla {
 namespace gpu {
 
 enum class TritonConfigsPlatform {
+  kAmpere,
   kBlackwell,
   kDefaultCuda,
   kDefaultRocm,
-  kHopperAmpere,
+  kHopper,
 };
 
 const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(

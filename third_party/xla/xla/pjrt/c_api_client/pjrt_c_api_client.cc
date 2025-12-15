@@ -1013,7 +1013,7 @@ absl::Status PjRtCApiClient::DmaUnmap(void* data) {
 // Helper struct and method used to serialize shapes past the C API boundary.
 struct ShapesInfo {
   std::vector<size_t> shape_num_dims;
-  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  std::vector<std::optional<pjrt::BufferMemoryLayoutData>> layout_list;
   std::vector<const int64_t*> num_dims;
   std::vector<PJRT_Buffer_Type> element_type_list;
 };
@@ -1021,7 +1021,7 @@ struct ShapesInfo {
 ShapesInfo MakeShapesInfo(absl::Span<const Shape> shapes) {
   std::vector<size_t> shape_num_dims;
   shape_num_dims.reserve(shapes.size());
-  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  std::vector<std::optional<pjrt::BufferMemoryLayoutData>> layout_list;
   layout_list.reserve(shapes.size());
   std::vector<const int64_t*> num_dims;
   num_dims.reserve(shapes.size());
@@ -1034,15 +1034,20 @@ ShapesInfo MakeShapesInfo(absl::Span<const Shape> shapes) {
     num_dims.push_back(shapes[i].dimensions().data());
     element_type_list.push_back(
         pjrt::ConvertToPjRtBufferType(shapes[i].element_type()));
-    // TODO(b/434246423): Enable this once ASAN failure is fixed.
-    // if (shapes[i].has_layout()) {
-    //   // this is messed up
-    //   auto& layout = shapes[i].layout();
-    //   TF_ASSIGN_OR_RETURN(
-    //       pjrt::BufferMemoryLayoutData c_layout_data,
-    //       pjrt::ConvertToBufferMemoryLayoutData(layout));
-    //   layout_list.push_back(&(c_layout_data.c_layout));
-    layout_list.push_back(nullptr);
+
+    if (shapes[i].has_layout()) {
+      auto& layout = shapes[i].layout();
+      absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data =
+          pjrt::ConvertToBufferMemoryLayoutData(layout);
+      if (c_layout_data.ok()) {
+        layout_list.push_back(std::optional<pjrt::BufferMemoryLayoutData>(
+            std::move(*c_layout_data)));
+      } else {
+        layout_list.push_back({});
+      }
+    } else {
+      layout_list.push_back({});
+    }
   }
 
   return ShapesInfo{
@@ -1088,7 +1093,16 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
   args.shape_num_dims = shapes_info.shape_num_dims.data();
   args.num_dims = shapes_info.num_dims.data();
   args.element_types = shapes_info.element_type_list.data();
-  args.layouts = shapes_info.layout_list.data();
+
+  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  for (int i = 0; i < shapes_info.layout_list.size(); i++) {
+    if (shapes_info.layout_list[i].has_value()) {
+      layout_list.push_back(&shapes_info.layout_list[i]->c_layout);
+    } else {
+      layout_list.push_back(nullptr);
+    }
+  }
+  args.layouts = layout_list.data();
 
   args.notifier = pjrt::CppCrossHostRecvNotifierToC(c_api, std::move(notifier));
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
@@ -1179,7 +1193,16 @@ PjRtCApiClient::CrossHostReceiveBuffers(
   args.shape_num_dims = shapes_info.shape_num_dims.data();
   args.num_dims = shapes_info.num_dims.data();
   args.element_types = shapes_info.element_type_list.data();
-  args.layouts = shapes_info.layout_list.data();
+
+  std::vector<PJRT_Buffer_MemoryLayout*> layout_list;
+  for (int i = 0; i < shapes_info.layout_list.size(); i++) {
+    if (shapes_info.layout_list[i].has_value()) {
+      layout_list.push_back(&shapes_info.layout_list[i]->c_layout);
+    } else {
+      layout_list.push_back(nullptr);
+    }
+  }
+  args.layouts = layout_list.data();
 
   args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
   args.src_global_device_ids = src_global_device_ids.data();

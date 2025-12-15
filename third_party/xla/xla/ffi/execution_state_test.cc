@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -120,6 +121,25 @@ TEST(ExecutionStateTest, Serialization) {
                           ExecutionState::FromProto(proto))
   TF_ASSERT_OK_AND_ASSIGN(void* round_trip_data, round_trip.Get(type_id));
   EXPECT_EQ(static_cast<MyState*>(round_trip_data)->value, "some_state_data");
+}
+
+TEST(ExecutionStateTest, IsSerializable) {
+  ExecutionState state;
+  // Empty state is serializable (as empty proto).
+  EXPECT_TRUE(state.IsSerializable());
+
+  // State without serializer.
+  struct NoSerializer {
+    int x;
+  };
+  TF_ASSERT_OK(state.Set(std::make_unique<NoSerializer>(NoSerializer{42})));
+  EXPECT_FALSE(state.IsSerializable());
+
+  // State with serializer.
+  ExecutionState serializable_state;
+  TF_ASSERT_OK(
+      serializable_state.Set(std::make_unique<MyState>(MyState{"foo"})));
+  EXPECT_TRUE(serializable_state.IsSerializable());
 }
 
 }  // namespace xla::ffi

@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/codegen/target_machine_test_base.h"
-#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -64,7 +63,7 @@ class CpuLibraryTest : public TargetMachineTestBase {
 
   static const DotRewriteTestSpec& GetDefaultTestSpec() {
     static const absl::NoDestructor<DotRewriteTestSpec> kDefaultTestSpec(
-        {"xnn", "f32", "f32", "znver3", "+avx,+avx2", "dot"});
+        {"ynn", "f32", "f32", "znver3", "+avx,+avx2", "dot"});
     return *kDefaultTestSpec;
   }
 
@@ -78,9 +77,6 @@ class CpuLibraryTest : public TargetMachineTestBase {
         CreateTargetMachineFeatures(
             /*triple_string=*/"x86_64-unknown-linux-gnu", spec.cpu_name,
             spec.features);
-
-    // Override XnnGemmConfig.
-    GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return true; });
 
     // Create an HLO module with the specified input and output data types.
     std::string hlo_text = absl::StrReplaceAll(
@@ -100,15 +96,12 @@ class CpuLibraryTest : public TargetMachineTestBase {
     }
     tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
-    bool use_xnnpack = spec.lib == "xnn";
     bool use_ynnpack = spec.lib == "ynn";
     LibraryRewriterOptions options = {
         use_onednn,
-        use_xnnpack,
         use_ynnpack,
         /*onednn_fusion_types=*/
         use_onednn ? &fusion_types : &empty_fusion_types,
-        /*xnn_fusion_types=*/use_xnnpack ? &fusion_types : &empty_fusion_types,
         /*ynn_fusion_types=*/use_ynnpack ? &fusion_types : &empty_fusion_types,
     };
     LibraryRewriter rewriter(features.get(), options);
@@ -158,15 +151,22 @@ class CpuLibraryFullParamTest
     RunTestInternal(GetParam(), hlo_template, expected);
   }
 
+  // Manually update expected dtype support for each library.
   bool IsDotEnabledOnCPU() {
     DotRewriteTestSpec spec = GetParam();
-    bool bf16_dot_supported = absl::StrContains(spec.features, "+avx512bf16");
-    bool fp16_dot_supported = absl::StrContains(spec.features, "+avx512fp16");
+    EXPECT_TRUE(spec.lib == "onednn" || spec.lib == "ynn");
+
+    if (spec.lib == "ynn") {
+      return (spec.in_dtype == "f32" || spec.in_dtype == "bf16");
+    }
+
     if (spec.in_dtype == "bf16") {
-      return bf16_dot_supported;
+      return absl::StrContains(spec.features, "+avx512bf16") ||
+             absl::StrContains(spec.features, "+amx_bf16");
     }
     if (spec.in_dtype == "f16") {
-      return fp16_dot_supported;
+      return absl::StrContains(spec.features, "+avx512fp16") ||
+             absl::StrContains(spec.features, "+amx_fp16");
     }
     return true;
   }
@@ -259,7 +259,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulDimSizeUnqual) {
 
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
-  if (spec.lib == "xnn" && IsDotEnabledOnCPU()) {
+  if (spec.lib == "ynn" && IsDotEnabledOnCPU()) {
     expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
   }
   RunTest(hlo_template, expected);
@@ -307,8 +307,8 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulSameInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for XNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "xnn"
+    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
+    expected = spec.lib == "ynn"
                    ? FusionProperties{HloOpcode::kMultiply, 3, 7, true}
                    : FusionProperties{HloOpcode::kAdd, 3, 5, true};
   } else if (spec.fusion_mode == "greedy") {
@@ -338,8 +338,8 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulDifferentInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for XNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "xnn"
+    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
+    expected = spec.lib == "ynn"
                    ? FusionProperties{HloOpcode::kMultiply, 5, 9, true}
                    : FusionProperties{HloOpcode::kAdd, 3, 5, true};
   } else if (spec.fusion_mode == "greedy") {
@@ -373,12 +373,12 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddMinExpSort) {
                      dimensions={0}, to_apply=compare
     })";
 
-  // Sort is not supported by xnn_emitter and should not be in the fusion.
+  // Sort is not supported by ynn_emitter and should not be in the fusion.
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kExp, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Min, Exp} for XNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "xnn"
+    // {Dot, Add, Min, Exp} for YNN, {Dot, Add} for oneDNN.
+    expected = spec.lib == "ynn"
                    ? FusionProperties{HloOpcode::kExp, 4, 8, true}
                    : FusionProperties{HloOpcode::kAdd, 3, 5, true};
   } else if (spec.fusion_mode == "greedy") {
@@ -430,23 +430,21 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   absl::flat_hash_map<std::string, std::string> cpu_to_features = {
       {"znver3", "+avx,+avx2"},
       {"sapphirerapids",
-       "+avx512vnni,+avx512bf16,+amx-bf16,+avx512fp16,+amx-int8,+amx-tile,+amx-"
-       "transpose"},
+       "+avx512vnni,+avx512bf16,+amx-bf16,+avx512fp16,+amx-int8,+amx-tile"},
   };
 
   // Input and output data types to test per each library + CPU combination.
   using StrPair = std::pair<std::string, std::string>;
   absl::flat_hash_map<StrPair, std::vector<StrPair>> dtype_map = {
-      {{"xnn", "znver3"}, {{"f32", "f32"}, {"bf16", "f32"}}},
-      {{"xnn", "sapphirerapids"},
-       {{"f32", "f32"}, {"bf16", "f32"}, {"bf16", "bf16"}}},
+      {{"ynn", "znver3"}, {{"f32", "f32"}, {"bf16", "f32"}}},
+      {{"ynn", "sapphirerapids"}, {{"f32", "f32"}, {"bf16", "f32"}}},
   };
 
   // Fusion modes to test for each library.
-  // We temporarily use XNN_GRAPH_FUSION_MODE_DISABLED to denote the dot fusion
-  // mode (starting fusion nodes with dots).
-  absl::flat_hash_map<std::string, std::vector<std::string>> fusion_modes = {
-      {"xnn", {"dot", "greedy"}}};
+  absl::flat_hash_map<std::string, std::vector<std::string>> fusion_modes;
+
+  // Don't test YNNPACK if we don't build with it.
+  fusion_modes["ynn"] = {"dot", "greedy"};
 
 #if XLA_ONEDNN_USE_GRAPH_API
   // Don't test oneDNN if we don't build with it.
@@ -595,7 +593,8 @@ TEST_P(CpuLibraryFusionTypeTest, JoiningFusions) {
   }
 }
 
-TEST_P(CpuLibraryFusionTypeTest, Reduce) {
+// TODO(penporn): Re-enable this test when YNNPACK supports reduce.
+TEST_P(CpuLibraryFusionTypeTest, DISABLED_Reduce) {
   const absl::string_view hlo_template = R"(
     HloModule reduce
 

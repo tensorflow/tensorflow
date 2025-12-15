@@ -145,6 +145,10 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Allow host-to-host copy even when automatic host compute offload is
+  // disabled, i.e. when xla_disable_automatic_host_compute_offload is set.
+  optional bool
+      xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled = 439;
   // Return an error if HostOffloader would have automatically offloaded some
   // compute to the host.
   optional bool xla_disable_automatic_host_compute_offload = 408;
@@ -176,6 +180,7 @@ message DebugOptions {
     LIBRARY_FUSION_TYPE_ELTWISE = 2;
     LIBRARY_FUSION_TYPE_REDUCE = 3;
     LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT = 4;
+    LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION = 5;
   }
 
   enum XnnGraphFusionMode {
@@ -696,9 +701,6 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   optional bool xla_gpu_experimental_enable_triton_heroless_priority_fusion =
       340;
-
-  // When possible, XLA will use Triton's TMA loads/stores.
-  optional bool xla_gpu_experimental_enable_triton_tma = 355;
 
   // When possible, XLA will use Triton's auto warp specialization feature.
   optional bool xla_gpu_experimental_enable_triton_warp_specialization = 421;
@@ -1326,7 +1328,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 439
+  // Next id: 440
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1426,14 +1428,15 @@ message DebugOptions {
   reserved "xla_use_shardy";
   reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
   reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
+  reserved "xla_gpu_experimental_enable_triton_tma";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 158,
       160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180, 183,
       184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204, 206,
       207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249, 263,
       264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302, 303,
-      309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 358, 361, 367, 369, 371,
-      385, 394, 398, 402, 423;
+      309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 355, 358, 361, 367, 369,
+      371, 385, 394, 398, 402, 423;
 }
 
 // Contains flags which affects the GPU compilation result.

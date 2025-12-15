@@ -682,6 +682,16 @@ bool IsCompatibleCacheFile(const char* path) {
   FileDescriptor fd = FileDescriptor::Open(path, O_RDONLY);
   XNNPACK_RETURN_CHECK(fd.IsValid(), "Could not open file: %s: %s.", path,
                        strerror(errno));
+  return IsCompatibleCacheFile(std::move(fd));
+}
+
+bool IsCompatibleCacheFile(const FileDescriptor& fd) {
+  XNNPACK_RETURN_CHECK(fd.IsValid(), "Invalid file descriptor: %d.",
+                       fd.Value());
+  const size_t current_pos = fd.GetPos();
+  ScopeGuard reset_pos_on_return(
+      [current_pos, &fd] { fd.SetPos(current_pos); });
+
   XNNPackCacheHeader header;
   XNNPACK_RETURN_CHECK(fd.Read(&header, sizeof(header)),
                        "Couldn't read file header.");

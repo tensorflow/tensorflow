@@ -28,7 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -85,8 +85,14 @@ class AotCompilationResult {
   }
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) && {
+      const se::StreamExecutor* executor) && {
     return Unimplemented("LoadExecutable unimplemented.");
+  }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler*, const se::StreamExecutor* executor) && {
+    return std::move(*this).LoadExecutable(executor);
   }
 
   virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
@@ -97,7 +103,7 @@ class AotCompilationResult {
   // Returns the optimized HLO module if one was computed and the implementation
   // supports it.
   virtual const HloModule* optimized_module() const = 0;
-  virtual std::unique_ptr<HloModule> consume_optimized_module() = 0;
+  virtual std::shared_ptr<HloModule> shared_optimized_module() = 0;
 
  protected:
   AotCompilationResult() = default;
@@ -199,6 +205,9 @@ class Compiler {
 
     // Embed HLO module in the executable. Only used on GPU at the moment.
     bool embed_hlo_module = true;
+
+    // If true, the compiler will exit after the layout assignment pass.
+    bool early_exit_with_layouts = false;
   };
 
   virtual ~Compiler() = default;
@@ -356,7 +365,7 @@ class Compiler {
 
   // Returns an AotCompilationResult of the executable for serialization.
   virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const {
+      Executable* executable) {
     return Unimplemented("Export unimplemented");
   }
 
@@ -500,6 +509,18 @@ class AotCompilationOptions {
     gpu_target_config_ = gpu_target_config;
   }
 
+  // Provides a way to end compilation early and get partial outputs.
+  enum class EarlyExitPoint {
+    kNone,
+    kAfterLayoutAssignment,
+    kAfterBufferAssignment,
+  };
+
+  EarlyExitPoint early_exit_point() const { return early_exit_point_; }
+  void set_early_exit_point(EarlyExitPoint early_exit_point) {
+    early_exit_point_ = early_exit_point;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -519,6 +540,7 @@ class AotCompilationOptions {
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.
   std::optional<Compiler::GpuTargetConfig> gpu_target_config_;
+  EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
 };
 
 }  // namespace xla

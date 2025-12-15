@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -552,6 +550,55 @@ INSTANTIATE_TEST_SUITE_P(SolLatencyEstimatorTests, SolLatencyEstimatorTest,
                          [](const TestParamInfo<EstimatorTestCase>& info) {
                            return info.param.test_name;
                          });
+
+TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
+  const auto shape_size_fn = HloCostAnalysis::DefaultShapeSize;
+  const auto gpu_info = TestGpuDeviceInfo::RTXH100SXMDeviceInfo();
+  const SolGPUCostModel::Config sol_flags = {
+      absl::Microseconds(100), 100, absl::Microseconds(100),
+      absl::Microseconds(100), 8,   4 * 1024 * 1024};
+  mlir::MLIRContext mlir_ctx;
+  auto interpolator =
+      *CollectiveInterpolator::Create(sol_flags.gpus_per_node, gpu_info,
+                                      /*analysis=*/nullptr);
+
+  // NVLink domain collective should use CollectiveInterpolator.
+  TF_ASSERT_OK_AND_ASSIGN(auto nvl_module, ParseAndReturnVerifiedModule(R"(
+HloModule m, num_partitions=16
+ENTRY main {
+  p = bf16[8,16000,1000] parameter(0)
+  ROOT a2a = bf16[8,16000,1000] all-to-all(p),
+    replica_groups={{0,1,2,3,4,5,6,7},{8,9,10,11,12,13,14,15}},
+    channel_id=1, dimensions={0}
+})"));
+  HloInstruction* nvl_instr = hlo_query::FindInstruction(
+      nvl_module->entry_computation(), HloOpcode::kAllToAll);
+  EXPECT_FALSE(SolLatencyEstimator::ComputeCollectiveTime(
+                   *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                   /*collective_interpolator=*/nullptr)
+                   .ok());
+  EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
+                  *nvl_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                  interpolator.get())
+                  .ok());
+
+  // Cross-partition collective should use S-curve model (world-level across 2
+  // hosts).
+  TF_ASSERT_OK_AND_ASSIGN(auto ib_module, ParseAndReturnVerifiedModule(R"(
+HloModule m, num_partitions=16
+ENTRY main {
+  p = bf16[16,16000,1000] parameter(0)
+  ROOT a2a = bf16[16,16000,1000] all-to-all(p),
+    replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}},
+    channel_id=1, dimensions={0}
+})"));
+  HloInstruction* ib_instr = hlo_query::FindInstruction(
+      ib_module->entry_computation(), HloOpcode::kAllToAll);
+  EXPECT_TRUE(SolLatencyEstimator::ComputeCollectiveTime(
+                  *ib_instr, gpu_info, shape_size_fn, sol_flags, &mlir_ctx,
+                  /*collective_interpolator=*/nullptr)
+                  .ok());
+}
 
 class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
  protected:

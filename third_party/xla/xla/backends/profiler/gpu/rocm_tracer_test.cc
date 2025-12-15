@@ -185,7 +185,7 @@ TEST(RocmTracerTest, CapturesHipEvents) {
   HIP_ASSERT_OK(hipDeviceSynchronize());
 
   tracer.Disable();
-  hipFree(device_data);
+  HIP_ASSERT_OK(hipFree(device_data));
 
 #undef HIP_ASSERT_OK
 

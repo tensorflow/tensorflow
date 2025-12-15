@@ -50,23 +50,25 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
   FromModule(const HloModule* hlo_module,
              const BufferAssignment* buffer_assignment,
              absl::string_view asm_text, absl::Span<const uint8_t> binary,
-             const BinaryMap& dnn_compiled_graphs, int pointer_size);
+             const BinaryMap& dnn_compiled_graphs, int pointer_size,
+             Compiler* compiler);
 
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
-  FromString(const std::string& serialized, int pointer_size);
+  FromString(const std::string& serialized, int pointer_size,
+             Compiler* compiler);
 
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
-  FromProto(const GpuExecutableProto& proto, int pointer_size);
+  FromProto(const GpuExecutableProto& proto, int pointer_size,
+            Compiler* compiler);
 
   absl::StatusOr<std::string> SerializeAsString() const override;
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
-      override;
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
-  std::unique_ptr<HloModule> consume_optimized_module() override {
-    return std::move(module_);
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
   }
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
@@ -76,14 +78,39 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
 
  private:
   LegacyGpuAotCompilationResult(std::unique_ptr<HloModule> module,
-                                GpuExecutableProto proto, int pointer_size)
+                                GpuExecutableProto proto, int pointer_size,
+                                Compiler* compiler)
       : module_(std::move(module)),
         proto_(std::move(proto)),
-        pointer_size_(pointer_size) {}
+        pointer_size_(pointer_size),
+        compiler_(compiler) {}
 
-  std::unique_ptr<HloModule> module_;
+  std::shared_ptr<HloModule> module_;
   GpuExecutableProto proto_;
   int pointer_size_;
+  Compiler* compiler_;
+};
+
+class EarlyExitCompilationResult : public AotCompilationResult {
+ public:
+  explicit EarlyExitCompilationResult(std::unique_ptr<HloModule> module)
+      : module_(std::move(module)) {}
+
+  absl::StatusOr<std::string> SerializeAsString() const override;
+
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
+
+  const HloModule* optimized_module() const override { return module_.get(); }
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
+  }
+
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
+      const override;
+
+ private:
+  std::shared_ptr<HloModule> module_;
 };
 
 }  // namespace gpu

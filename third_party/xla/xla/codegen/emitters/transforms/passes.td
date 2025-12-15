@@ -129,29 +129,6 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let constructor = "CreateLowerTensorsPass()";
 }
 
-def LowerToLLVMPass :
-   Pass<"xla-lower-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers to LLVM.";
-
-  let description = [{
-    Lowers the rest to LLVM
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-  ];
-
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto.">,
-    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
-           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
-  ];
-  let constructor = "CreateLowerToLLVMPass()";
-}
-
 def LowerXlaToScfPass :
    Pass<"xla-lower-xla-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lowers xla to SCF.";

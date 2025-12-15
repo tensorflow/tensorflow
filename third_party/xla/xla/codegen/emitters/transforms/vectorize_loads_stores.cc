@@ -42,12 +42,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace emitters {
@@ -61,6 +61,7 @@ using mlir::Value;
 namespace arith = ::mlir::arith;
 namespace ml = ::mlir::LLVM;
 namespace scf = mlir::scf;
+namespace se = stream_executor;
 
 // Tries to find the stride of a symbol or dimension in an affine expression.
 // Returns std::nullopt if the stride could not be determined.
@@ -506,7 +507,7 @@ struct FoldVectorInsertExtractPairs
     auto bbarg = mlir::cast<mlir::BlockArgument>(insert.getDest());
     int64_t result_index = bbarg.getArgNumber() - 1;
     if (auto transfer_read =
-            extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
+            extract.getSource().getDefiningOp<mlir::vector::TransferReadOp>()) {
       if (transfer_read.getBase().getType().getNumElements() ==
           vector_type.getNumElements()) {
         return rewriter.notifyMatchFailure(
@@ -538,7 +539,7 @@ struct FoldVectorInsertExtractPairs
       yield_op->setOperand(result_index, insert.getDest());
     });
     rewriter.replaceAllUsesWith(loop->getResult(result_index),
-                                extract.getVector());
+                                extract.getSource());
     return mlir::success();
   }
 };

@@ -292,6 +292,31 @@ CodegenDecision CanTritonHandleReduce(
       "Reduction is not a row-reduction of a single operand.");
 }
 
+CodegenDecision IsTritonSupportedAllReduce(
+    const HloAllReduceInstruction& all_reduce,
+    const se::GpuComputeCapability& gpu_version) {
+  if (all_reduce.replica_groups().empty()) {
+    return CodegenDecision::Forbid("All-reduce does not have replica groups.");
+  }
+  if (all_reduce.shape().element_type() == PrimitiveType::F8E4M3FN ||
+      all_reduce.shape().element_type() == PrimitiveType::F8E5M2 ||
+      all_reduce.shape().element_type() == PrimitiveType::S4) {
+    return CodegenDecision::Forbid(
+        "S4, F8E4M3FN and F8E5M2 are not supported for all-reduces.");
+  }
+
+  bool is_triton_supported_all_reduce_computation = absl::c_all_of(
+      all_reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+      });
+  if (!is_triton_supported_all_reduce_computation) {
+    return CodegenDecision::Forbid(
+        "Unsupported all-reduce computation by Triton.");
+  }
+
+  return CodegenDecision::Allow();
+}
+
 bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
   if (!hlo.parent()->IsFusionComputation()) {
     return false;
@@ -682,6 +707,12 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kFusion:
       return IsTritonSupportedFusion(*Cast<HloFusionInstruction>(&instr),
                                      gpu_version);
+    case HloOpcode::kAllReduceStart:
+      return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
+                                        gpu_version);
+    case HloOpcode::kAllReduceDone:
+      return IsTritonSupportedAllReduce(
+          *Cast<HloAllReduceInstruction>(instr.operand(0)), gpu_version);
     default:
       // Not all instructions have a special handling.
       break;

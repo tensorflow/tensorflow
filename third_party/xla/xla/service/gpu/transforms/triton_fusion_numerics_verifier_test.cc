@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
@@ -517,7 +516,7 @@ ENTRY main {
       "kind":"__triton",
       "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1","1","1","16384"]}],
-        "num_warps":"32",
+        "num_warps":"16",
         "num_ctas":"1",
         "num_stages":"1"}}}
 }

@@ -1191,6 +1191,10 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
                           values);
   }
 
+  if (hlo->opcode() == HloOpcode::kAllReduceDone) {
+    return values[tiled_hlo.operand(0)];
+  }
+
   if (hlo->IsElementwise()) {
     std::vector<Value> operands;
     operands.reserve(hlo->operands().size());

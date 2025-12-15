@@ -161,7 +161,7 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   // TODO(b/441865120): Use designated initializers this once XLA moves to
   // C++20.
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_devices;
+  options.num_devices = num_devices;
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
 

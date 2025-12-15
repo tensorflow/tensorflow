@@ -668,7 +668,7 @@ class TFLiteConverterBase:
     # When the value is true, the MLIR quantantizer triggers dynamic range
     # quantization in MLIR instead of the old quantizer. Used only if
     # experimental_new_quantizer is on.
-    self.experimental_new_dynamic_range_quantizer = False
+    self.experimental_new_dynamic_range_quantizer = True
     # Experimental flag to enable low-bit QAT in 8 bit.
     self._experimental_low_bit_qat = False
     # Experimental flag to add all TF ops (including custom TF ops) to the
@@ -773,9 +773,7 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=(
-              self._experimental_disable_per_channel_quantization_for_dense_layers
-          ),
+          disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
@@ -787,9 +785,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=(
-              self._experimental_disable_per_channel_quantization_for_dense_layers
-          ),
+          disable_per_channel_quantization_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -1122,8 +1118,7 @@ class TFLiteConverterBase:
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metadata_fb.ModelOptimizationMode
-          .QUANTIZATION_AWARE_TRAINING
+          conversion_metadata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):

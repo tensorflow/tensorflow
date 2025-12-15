@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"

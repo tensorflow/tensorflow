@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
@@ -112,7 +113,7 @@ class MockStreamExecutor : public StreamExecutor {
               CreateEventBasedTimer, (Stream * stream, bool use_delay_kernel),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<MemoryAllocator>>,
-              CreateMemoryAllocator, (MemoryType type), (override));
+              CreateMemoryAllocator, (MemorySpace memory_space), (override));
 };
 
 }  // namespace stream_executor

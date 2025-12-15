@@ -202,6 +202,8 @@ class AxisRef {
   int64_t mesh_axis_index() const { return mesh_axis_index_; }
   std::optional<SubAxis> sub_axis_info() const { return sub_axis_info_; }
 
+  int64_t size(const Mesh& mesh) const;
+
  private:
   absl::Status ValidateAxisRef();
 };

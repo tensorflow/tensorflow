@@ -410,6 +410,22 @@ std::optional<AsyncEventsUniqueId> CollectiveThunk::GetAsyncEventsUniqueId()
   return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
+absl::StatusOr<CollectiveThunkProto> CollectiveThunk::ToCollectiveThunkProto()
+    const {
+  CollectiveThunkProto proto;
+
+  proto.set_async_stream_kind(stream_kind_);
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (!async_events_id.has_value()) {
+    return absl::FailedPreconditionError("AsyncEvents is not set.");
+  }
+  proto.set_async_events_unique_id(async_events_id->value());
+  proto.set_thunk_kind(Thunk::KindToProto(kind()));
+
+  return proto;
+}
+
 CollectiveDoneThunk::CollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
@@ -446,4 +462,39 @@ std::optional<AsyncEventsUniqueId> CollectiveDoneThunk::GetAsyncEventsUniqueId()
   // We rely on the fact that the pointer to async_events_ is unique.
   return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
+
+absl::StatusOr<ThunkProto> CollectiveDoneThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  CollectiveDoneThunkProto* thunk_proto = proto.mutable_collective_done_thunk();
+  thunk_proto->set_async_stream_kind(stream_kind_);
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (!async_events_id.has_value()) {
+    return absl::FailedPreconditionError("AsyncEvents is not set.");
+  }
+  thunk_proto->set_async_events_unique_id(async_events_id->value());
+  thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<CollectiveDoneThunk>>
+CollectiveDoneThunk::FromProto(
+    ThunkInfo thunk_info, const CollectiveDoneThunkProto& thunk_proto,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::shared_ptr<CollectiveThunk::AsyncEvents>& async_events =
+      async_events_map[AsyncEventsUniqueId{
+          thunk_proto.async_events_unique_id()}];
+  if (!async_events) {
+    async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
+  }
+
+  TF_ASSIGN_OR_RETURN(Thunk::Kind kind,
+                      Thunk::KindFromProto(thunk_proto.thunk_kind()));
+  return std::make_unique<CollectiveDoneThunk>(kind, std::move(thunk_info),
+                                               async_events,
+                                               thunk_proto.async_stream_kind());
+}
+
 }  // namespace xla::gpu

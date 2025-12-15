@@ -309,6 +309,14 @@ bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
   return max_pre_size % min_next_pre_size == 0;
 }
 
+int64_t AxisRef::size(const Mesh& mesh) const {
+  if (sub_axis_info_.has_value()) {
+    return sub_axis_info_->size;
+  }
+
+  return mesh.axis_size(mesh_axis_index_);
+}
+
 bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {
   for (int64_t i = 0; i < axes.size() - 1; ++i) {
     for (int64_t j = i + 1; j < axes.size(); ++j) {

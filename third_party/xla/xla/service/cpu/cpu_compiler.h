@@ -82,7 +82,7 @@ class CpuCompiler : public LLVMCompiler {
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
   absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const override;
+      Executable* executable) override;
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.

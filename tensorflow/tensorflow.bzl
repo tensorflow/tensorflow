@@ -89,7 +89,6 @@ load(
     "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
-    _stripped_cc_info = "stripped_cc_info",
 )
 
 # Do not sort: copybara rule changes this
@@ -3340,8 +3339,6 @@ def pybind_extension(
             name = name,
             **kwargs
         )
-
-stripped_cc_info = _stripped_cc_info
 
 # Note: we cannot add //third_party/tf_runtime:__subpackages__ here,
 # because that builds all of tf_runtime's packages, and some of them

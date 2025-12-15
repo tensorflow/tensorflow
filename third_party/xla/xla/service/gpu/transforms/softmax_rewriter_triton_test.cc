@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -1066,8 +1065,7 @@ ENTRY main {
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
-TEST_F(SoftmaxRewriterTritonTest,
-       DoNotFuseNormalizationWithVeryLongRowsIfProfitabilityCheckIsEnabled) {
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseNormalizationWithVeryLongRows) {
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
@@ -1084,19 +1082,16 @@ ENTRY main {
 })";
 
   {
-    // Verify that SoftmaxRewriterTriton without Cost Model will fuse the
-    // normalization diamond.
+    // Verify that SoftmaxRewriterTriton without Cost Model will not fuse the
+    // normalization diamond, because the row size is too large to fit in
+    // registers.
     SoftmaxRewriterTriton fusion_rewriter_without_cost_model{
         device_info_, HloCostAnalysis::DefaultShapeSize, &alias_info_,
         &mlir_context_,
         /*only_fuse_if_profitable=*/false};
 
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-    EXPECT_TRUE(fusion_rewriter_without_cost_model.Run(module.get()).value());
-    EXPECT_TRUE(verifier().Run(module.get()).status().ok());
-    EXPECT_THAT(module->entry_computation()->root_instruction(),
-                GmockMatch(m::Fusion(m::Parameter())
-                               .WithPredicate(HasBlockLevelFusionConfig)));
+    EXPECT_FALSE(fusion_rewriter_without_cost_model.Run(module.get()).value());
   }
 
   {

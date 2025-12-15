@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
@@ -134,8 +136,10 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
 std::unique_ptr<DeviceToDeviceCopyThunk> CreateCopyThunk(
     const BufferAllocation& alloc0) {
   BufferAllocation::Slice slice0(&alloc0, 0, 1024);
-  return std::make_unique<DeviceToDeviceCopyThunk>(Thunk::ThunkInfo(), slice0,
-                                                   slice0, 1024);
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  return std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{slice0, shape},
+      ShapedSlice{slice0, shape}, 1024);
 }
 
 std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
@@ -179,6 +183,7 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
     std::vector<std::vector<std::unique_ptr<Thunk>>> branch_thunks) {
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice slice(&alloc, 0, 1024);
+  Shape shape = ShapeUtil::MakeShape(S32, {});
 
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunk_sequences;
   for (auto& thunks : branch_thunks) {
@@ -186,9 +191,9 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
         Thunk::ThunkInfo(), std::move(thunks)));
   }
 
-  return std::make_unique<ConditionalThunk>(Thunk::ThunkInfo(), slice,
-                                            std::move(branch_thunk_sequences),
-                                            /*branch_index_is_bool=*/false);
+  return std::make_unique<ConditionalThunk>(Thunk::ThunkInfo(),
+                                            ShapedSlice{slice, shape},
+                                            std::move(branch_thunk_sequences));
 }
 
 std::unique_ptr<CustomCallThunk> CreateCustomCallThunk(

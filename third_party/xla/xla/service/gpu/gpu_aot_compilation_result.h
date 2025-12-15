@@ -62,9 +62,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
     return serialized;
   }
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* stream_exec) &&
-      final {
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && final {
     stream_executor::Platform::Id platform_id =
         stream_exec->GetPlatform()->id();
     const auto symbol_resolver = [&](absl::string_view symbol_name) {
@@ -79,8 +78,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); };
 
-  std::unique_ptr<HloModule> consume_optimized_module() final {
-    return std::move(hlo_module_);
+  std::shared_ptr<HloModule> shared_optimized_module() final {
+    return hlo_module_;
   };
 
  private:
@@ -90,7 +89,7 @@ class GpuAotCompilationResult : public AotCompilationResult {
         hlo_module_(std::move(hlo_module)) {}
 
   GpuExecutableProto executable_;
-  std::unique_ptr<HloModule> hlo_module_;
+  std::shared_ptr<HloModule> hlo_module_;
 };
 
 }  // namespace xla::gpu

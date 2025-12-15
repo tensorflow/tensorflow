@@ -23,7 +23,7 @@ namespace xla {
 // The payload attached to the absl::Status returned by the compilation
 // service when the compilation fails due to compilation errors.
 inline constexpr absl::string_view kCompilationErrorPayload =
-    "compilation_error";
+    "type.googleapis.com/xla.CompilationError";
 
 bool HasCompilationErrorPayload(const absl::Status& status) {
   return status.GetPayload(kCompilationErrorPayload).has_value();

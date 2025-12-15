@@ -103,12 +103,6 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
-  // Find if the thunk sequence contains any XNN fusion thunks. If we do have
-  // any, we will prepare the XNNPACK thread pool for them at run time.
-  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
-    executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
-  });
-
   // Find if the thunk sequence contains any YNN fusion thunks. If we do have
   // any, we will prepare the YNNPACK thread pool for them at run time.
   executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
@@ -262,12 +256,6 @@ absl::Status CpuExecutable::ExecuteThunks(
   TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
-  // Prepare for executing XNNPACK fusions.
-  std::optional<Thunk::XnnParams> xnn_params;
-  if (has_xnn_fusions()) {
-    TF_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
-  }
-
   // Prepare for executing YNNPACK fusions.
   std::optional<Thunk::YnnParams> ynn_params;
   if (has_ynn_fusions()) {
@@ -287,7 +275,6 @@ absl::Status CpuExecutable::ExecuteThunks(
       &task_runner,
       &collective_execute_params,
       &custom_call_execute_params,
-      xnn_params ? &*xnn_params : nullptr,
       ynn_params ? &*ynn_params : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);

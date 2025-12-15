@@ -159,7 +159,7 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
-
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
   // Prepare arguments: a=42, b=0
   se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
@@ -178,7 +178,8 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -1383,6 +1384,8 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
 
   BufferAllocation::Slice slice_i(&alloc_i, 0, sizeof(int32_t));
+  Shape i_shape = ShapeUtil::MakeShape(S32, {});
+
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
@@ -1416,7 +1419,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 
   // Prepare commands sequence for thunk.
   CommandBufferCmdSequence commands;
-  commands.Emplace<CaseCmd>(slice_i, false, std::move(branches));
+  commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

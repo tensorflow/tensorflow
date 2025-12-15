@@ -239,6 +239,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
+#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
@@ -1434,6 +1435,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   TF_RETURN_IF_ERROR(RunLayoutAssignmentPasses(
       hlo_module, gpu_version, dnn_version, device_description));
+  if (options.early_exit_with_layouts) {
+    return absl::OkStatus();
+  }
 
   TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(
       hlo_module,
@@ -1487,6 +1491,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module));
   {
     HloPassPipeline pipeline("autotune-fusion-emitters");
+    pipeline.AddPass<FusionWrapper>(gpu_target_config.device_description);
     TF_RETURN_IF_ERROR(AddFusionAutotuningPass(
         &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
         &gpu_target_config, ShapeSizeBytesFunction()));
@@ -1756,8 +1761,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // normalized again.
   add_float_normalization(pipeline);
 
-  // Match the location of this pass in `gemm_fusion_autotuner.cc` to make sure
-  // that there is no discrepancy.
+  // GemmFusionAutotuner runs hoist-fused-bitcasts and nest-gemm-fusion,
+  // matching its behavior here.
+  pipeline.AddPass<HoistFusedBitcasts>();
   pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
                                    &mlir_context_);
 
@@ -1897,6 +1903,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), is_deviceless ? nullptr : stream_exec,
                         options, gpu_target_config, alias_info.get()));
+  if (options.early_exit_with_layouts) {
+    return std::move(module);
+  }
 
   TF_RETURN_IF_ERROR(RunPreSchedulingCopyInsertion(*module, device_description,
                                                    alias_info.get()));
@@ -2637,6 +2646,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   // compilation.
   CHECK_EQ(options.PlatformId(), PlatformId());
 
+  if (options.early_exit_point() !=
+      AotCompilationOptions::EarlyExitPoint::kNone) {
+    return EarlyExitCompileAheadOfTime(std::move(hlo_module), options);
+  }
+
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_experimental_aot_compiled_thunks()) {
@@ -2663,6 +2677,26 @@ GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                                         const AotCompilationOptions& options) {
+  bool early_exit_with_layouts =
+      options.early_exit_point() ==
+      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment;
+  CompileOptions compile_options;
+  compile_options.device_allocator = options.device_allocator();
+  compile_options.gpu_target_config = options.gpu_target_config();
+  compile_options.early_exit_with_layouts = early_exit_with_layouts;
+
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  TF_ASSIGN_OR_RETURN(
+      auto optimized_module,
+      RunHloPasses(std::move(hlo_module), options.executor(), compile_options));
+  results.push_back(std::make_unique<EarlyExitCompilationResult>(
+      std::move(optimized_module)));
+  return std::move(results);
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                       const AotCompilationOptions& options) {
   std::unique_ptr<HloModule> optimized_module;
@@ -2682,7 +2716,6 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
     optimized_module = std::move(hlo_module);
   }
 
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
 
   const std::optional<Compiler::GpuTargetConfig>& target_config =
       options.gpu_target_config();
@@ -2697,13 +2730,14 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                              {options.device_allocator()}, gpu_device_info));
 
   // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
+  std::vector<std::unique_ptr<AotCompilationResult>> results;
   TF_ASSIGN_OR_RETURN(
       results.emplace_back(),
       LegacyGpuAotCompilationResult::FromModule(
           optimized_module.get(),
           res.compile_module_results.buffer_assignment.get(),
           res.backend_result.asm_text, res.backend_result.binary,
-          res.backend_result.dnn_compiled_graphs, pointer_size_));
+          res.backend_result.dnn_compiled_graphs, pointer_size_, this));
 
   return std::move(results);
 }
@@ -2714,7 +2748,7 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
-    Executable* executable) const {
+    Executable* executable) {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) {
     return Internal("GpuExecutable is null");
@@ -2731,7 +2765,7 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   return LegacyGpuAotCompilationResult::FromModule(
       &gpu_executable->module(), gpu_executable->buffer_assignment(),
       gpu_executable->text(), gpu_executable->binary(),
-      gpu_executable->dnn_compiled_graphs(), pointer_size_);
+      gpu_executable->dnn_compiled_graphs(), pointer_size_, this);
 }
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
@@ -2968,7 +3002,7 @@ GpuCompiler::LoadAotCompilationResult(
   }
 
   return LegacyGpuAotCompilationResult::FromProto(gpu_executable_proto,
-                                                  pointer_size_);
+                                                  pointer_size_, this);
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>

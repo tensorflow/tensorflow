@@ -1172,7 +1172,7 @@ ENTRY triton_computation {
 }
 
 TEST_P(CollectiveTest,
-       UnsupportedAllReduceStartAndDoneFailGracefullyWithTriton) {
+       IsTritonSupportedAllReduceStartAndDoneWithNoReplicaGroups) {
   // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
   // the HLO verifier relies on one directly consuming the other.
   auto [data_type, cc] = GetParam();
@@ -1186,6 +1186,36 @@ apply_op {
 ENTRY triton_computation {
   input = $0[128,32] parameter(0)
   all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={},
+      to_apply=apply_op
+  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_start,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAllReduceStart));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti_done,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAllReduceDone));
+  RunSupportTest(std::move(ti_start), /*output_tile_sizes=*/{2, 2}, cc);
+  RunSupportTest(std::move(ti_done), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest,
+       IsTritonSupportedAllReduceStartAndDoneWithReplicaGroups) {
+  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
+  // the HLO verifier relies on one directly consuming the other.
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+apply_op {
+  x = $0[] parameter(0)
+  y = $0[] parameter(1)
+  ROOT apply_op = $0[] add(x, y)
+}
+
+ENTRY triton_computation {
+  input = $0[128,32] parameter(0)
+  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={{0,1}},
       to_apply=apply_op
   ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
 })";

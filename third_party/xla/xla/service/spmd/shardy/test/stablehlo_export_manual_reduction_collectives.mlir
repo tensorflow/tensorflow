@@ -84,7 +84,6 @@ func.func @all_reduce_single_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sh
   return %0 : tensor<8x8xf32>
 }
 
-
 // CHECK-LABEL: func @all_reduce_single_axis_2
 func.func @all_reduce_single_axis_2(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{"x"}, {}], unreduced={"y"}>}) -> tensor<8x8xf32> {
   // CHECK{LITERAL}: replica_groups = dense<[[0, 1], [2, 3]]>
@@ -344,4 +343,31 @@ func.func @unreduced_sine_of_replicated_dot(%arg0: tensor<8x4xf32>, %arg1: tenso
       {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x4xf32>, tensor<4x2xf32>) -> tensor<8x2xf32>
   %1 = stablehlo.sine %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}], unreduced={"x"}>]>} : tensor<8x2xf32>
   return %1 : tensor<8x2xf32>
+}
+
+// CHECK-LABEL: func @sharded_to_unreduced
+func.func @sharded_to_unreduced(%arg0: tensor<16x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<16x16xf32> {
+  // CHECK-NEXT: %[[MANUAL_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"x"}, {"y"}]>]
+  // CHECK-SAME:     out_shardings=[<@mesh, [{}, {"y"}], unreduced={"x"}>]
+  // CHECK-SAME:     manual_axes={"x", "y"} (%arg1: tensor<4x8xf32>) {
+  // CHECK-NEXT:   %[[CST:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT:   %[[BROADCAST:.*]] = stablehlo.broadcast %[[CST]], sizes = [16, 8] : (tensor<f32>) -> tensor<16x8xf32>
+  // CHECK-NEXT:   %[[PID:.*]] = stablehlo.partition_id : tensor<ui32>
+  // CHECK-NEXT:   %[[PID_I32:.*]] = stablehlo.convert %[[PID]] : (tensor<ui32>) -> tensor<i32>
+  // CHECK-NEXT:   %[[C2:.*]] = stablehlo.constant dense<2> : tensor<i32>
+  // CHECK-NEXT:   %[[REM2:.*]] = stablehlo.remainder %[[PID_I32]], %[[C2]] : tensor<i32>
+  // CHECK-NEXT:   %[[DIV2:.*]] = stablehlo.divide %[[PID_I32]], %[[C2]] : tensor<i32>
+  // CHECK-NEXT:   %[[C4:.*]] = stablehlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT:   %[[REM4:.*]] = stablehlo.remainder %[[DIV2]], %[[C4]] : tensor<i32>
+  // CHECK-NEXT:   %[[DIV4:.*]] = stablehlo.divide %[[DIV2]], %[[C4]] : tensor<i32>
+  // CHECK-NEXT:   %[[C0:.*]] = stablehlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT:   %[[C4_2:.*]] = stablehlo.constant dense<4> : tensor<i32>
+  // CHECK-NEXT:   %[[MULT:.*]] = stablehlo.multiply %[[REM4]], %[[C4_2]] : tensor<i32>
+  // CHECK-NEXT:   %[[DUS:.*]] = stablehlo.dynamic_update_slice %[[BROADCAST]], %arg1, %[[MULT]], %[[C0]] : (tensor<16x8xf32>, tensor<4x8xf32>, tensor<i32>, tensor<i32>) -> tensor<16x8xf32>
+  // CHECK-NEXT:   sdy.return %[[DUS]] : tensor<16x8xf32>
+  // CHECK-NEXT: } : (tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK-NEXT: return %[[MANUAL_COMP]] : tensor<16x16xf32>
+  %0 = sdy.sharded_to_unreduced [{"x"}, {}] %arg0 out_sharding=<@mesh, [{}, {"y"}], unreduced={"x"}> : tensor<16x16xf32>
+  return %0 : tensor<16x16xf32>
 }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 
@@ -82,6 +83,7 @@ void AttributeMap::ToProto(AttributeMapProto& proto,
   proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
+  absl::ReaderMutexLock lock(mu_);
   for (const auto& [key, value] : map_) {
     AttributeMapProto::Value value_proto;
     std::visit(
@@ -110,6 +112,7 @@ void AttributeMap::ToProto(AttributeMapProto& proto,
 
 std::string AttributeMap::DebugString(size_t max_string_length,
                                       size_t max_int64_list_size) const {
+  absl::ReaderMutexLock lock(mu_);
   auto formatter = [=](std::string* out,
                        const AttributeMap::Map::value_type& key_value) {
     absl::StrAppend(out, key_value.first, "=");

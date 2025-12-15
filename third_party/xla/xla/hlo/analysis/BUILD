@@ -604,7 +604,6 @@ cc_library(
     ],
     deps = [
         ":interval",
-        ":symbolic_expr",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -637,7 +636,6 @@ xla_cc_test(
         ":indexing_analysis",
         ":indexing_test_utils",
         ":interval",
-        ":symbolic_expr",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -657,7 +655,6 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        ":symbolic_expr",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
@@ -674,7 +671,6 @@ cc_library(
     hdrs = ["indexing_test_utils.h"],
     deps = [
         ":indexing_analysis",
-        ":symbolic_expr",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

@@ -80,48 +80,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "xnnpack_backend",
-    srcs = ["xnnpack_backend.cc"],
-    hdrs = ["xnnpack_backend.h"],
-    deps = [
-        ":cpu_codegen_backend",
-        "//xla:util",
-        "//xla/backends/autotuner:codegen_backend",
-        "//xla/backends/cpu:xnn_fusion_options_proto_cc",
-        "//xla/backends/cpu:xnn_support",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:compiler",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-xla_cc_test(
-    name = "xnnpack_backend_test",
-    srcs = ["xnnpack_backend_test.cc"],
-    deps = [
-        ":cpu_codegen_backend",
-        ":xnnpack_backend",
-        "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service:compiler",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:cpu_compiler",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "llvm_kernel_backend",
     srcs = ["llvm_kernel_backend.cc"],
     hdrs = ["llvm_kernel_backend.h"],

@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1729,7 +1728,8 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce is an elementwise op.
-      instr->opcode() == HloOpcode::kAllReduceStart) {
+      instr->opcode() == HloOpcode::kAllReduceStart ||
+      instr->opcode() == HloOpcode::kAllReduceDone) {
     return ComputeOutputToInputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
@@ -1815,7 +1815,8 @@ HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
       // b/65689298.
       instr->opcode() == HloOpcode::kMap ||
       // For a single device, all-reduce has 1:1 output to input mapping.
-      instr->opcode() == HloOpcode::kAllReduceStart) {
+      instr->opcode() == HloOpcode::kAllReduceStart ||
+      instr->opcode() == HloOpcode::kAllReduceDone) {
     return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {

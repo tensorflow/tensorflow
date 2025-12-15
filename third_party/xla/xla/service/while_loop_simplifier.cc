@@ -875,7 +875,8 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   };
 
   // Returns a new tuple without the elements of constant_tuple_indices.
-  auto remove_constant_elems = [&](HloInstruction* instr) {
+  auto remove_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -886,10 +887,24 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
                 while_shape.tuple_shapes(i), instr, i)));
       }
     }
-    return HloInstruction::CreateTuple(tuple_elems);
+    std::unique_ptr<HloInstruction> new_tuple =
+        HloInstruction::CreateTuple(tuple_elems);
+    if (instr->original_value()) {
+      auto new_ov = std::make_shared<OriginalValue>(new_tuple->shape());
+      int64_t new_i = 0;
+      for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+        if (!constant_tuple_indices.count(i)) {
+          CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+              instr->original_value()->tree(), {i}, {new_i++}));
+        }
+      }
+      new_tuple->set_original_value(new_ov);
+    }
+    return new_tuple;
   };
 
-  auto add_constant_elems = [&](HloInstruction* instr) {
+  auto add_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -952,6 +967,17 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
+  if (while_op->original_value()) {
+    auto new_ov = std::make_shared<OriginalValue>(new_while_op->shape());
+    int64_t new_i = 0;
+    for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+      if (!constant_tuple_indices.count(i)) {
+        CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+            while_op->original_value()->tree(), {i}, {new_i++}));
+      }
+    }
+    new_while_op->set_original_value(new_ov);
+  }
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);

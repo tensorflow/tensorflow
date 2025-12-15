@@ -1003,8 +1003,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}},
-                             frontend_attributes={_xla_send_recv_validation="{{0,6},{1,7},{2,8},{3,9}}"}
+  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
   one = s32[] constant(1)
   cond_plus_1 = s32[] add(cond, one)
   ROOT output_tuple = (f32[], s32[]) tuple(collective-permute, cond_plus_1)
@@ -1026,10 +1025,10 @@ ENTRY main {
   VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body {{.+}} {
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main {{.+}} {
@@ -1057,8 +1056,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,0}},
-                             frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10},{4,11},{5,12},{6,13},{7,14}}"}
+  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,0}}
   one = s32[] constant(1)
   cond_plus_1 = s32[] add(cond, one)
   ROOT output_tuple = (f32[], s32[]) tuple(collective-permute, cond_plus_1)
@@ -1080,13 +1078,13 @@ ENTRY main {
   VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]])
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6}{{[}]}}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main {{.+}} {
-    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0}{{[}]}}}
+    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.*}}), {{.+}}
     // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.*}}%[[cp_peeled]], {{.*}})
     // CHECK:   %[[while:.+]] = {{.+}} while({{.*}}%[[out_peeled]])
     // CHECK: }
@@ -1112,8 +1110,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}},
-                             frontend_attributes={_xla_send_recv_validation="{{7,13},{6,12},{5,11},{4,10},{3,9},{2,8},{1,7},{0,6}}"}
+  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}}
   one = s32[] constant(1)
   cond_plus_1 = s32[] add(cond, one)
   ROOT output_tuple = (f32[], s32[]) tuple(collective-permute, cond_plus_1)
@@ -1135,10 +1132,10 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%param_0), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{4,6},{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3}{{[}]}}}
+    // CHECK:   %[[cp1:.+]] = f32[] collective-permute(%param_0), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,5},{2,5},{2,4},{1,4},{1,3},{0,3},{0,2}{{[}]}}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: ENTRY %main
     // CHECK-NOT: collective-permute
@@ -1165,8 +1162,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}},
-                             frontend_attributes={_xla_send_recv_validation="{{7,14},{6,13},{5,12},{4,11},{3,10},{2,9},{1,8},{0,7}}"}
+  collective-permute = f32[] collective-permute(param_0), channel_id=1, source_target_pairs={{0,7},{1,0},{2,1},{3,2},{4,3},{5,4},{6,5},{7,6}}
   one = s32[] constant(1)
   cond_plus_1 = s32[] add(cond, one)
   ROOT output_tuple = (f32[], s32[]) tuple(collective-permute, cond_plus_1)
@@ -1188,14 +1184,14 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3}{{[}]}}}
+    // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{3,6},{2,5},{2,5},{1,4},{1,4},{0,3},{0,3},{0,2}{{[}]}}}
+    // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute({{.*}}%[[param2]]), {{.+}}
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
     // CHECK: ENTRY %main
-    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{1,0},{0,0}{{[}]}}}
+    // CHECK:   %[[cp_peeled:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}
     // CHECK:   %[[out_peeled:.+]] = {{.+}} tuple({{.*}}%[[cp_peeled]], {{.*}})
     // CHECK:   ROOT {{.+}} = {{.+}} while({{.*}}%[[out_peeled]])
     // CHECK: }
@@ -1221,8 +1217,7 @@ body {
   input_tuple = (f32[], s32[]) parameter(0)
   param_0 = f32[] get-tuple-element(input_tuple), index=0
   cond = s32[] get-tuple-element(input_tuple), index=1
-  collective-permute-start = (f32[], f32[], u32[], u32[]) collective-permute-start(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}},
-                             frontend_attributes={_xla_send_recv_validation="{{0,6},{1,7},{2,8},{3,9}}"}
+  collective-permute-start = (f32[], f32[], u32[], u32[]) collective-permute-start(param_0), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
   collective-permute = f32[] collective-permute-done(collective-permute-start)
   one = s32[] constant(1)
   cond_plus_1 = s32[] add(cond, one)
@@ -1245,11 +1240,11 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
+    // CHECK:   %[[cp_start1:.+]] = {{.+}} collective-permute-start({{.+}}), {{.+}}
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start1]])
     // CHECK:   %[[out1:.+]] = {{.+}} tuple({{.*}}%[[cp1]], {{.*}})
     // CHECK:   %[[param2:.+]] = {{.+}} get-tuple-element({{.*}}%[[out1]]), index=0
-    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}}
+    // CHECK:   %[[cp_start2:.+]] = {{.+}} collective-permute-start({{.*}}), {{.+}}
     // CHECK:   %[[cp2:.+]] = {{.+}} collective-permute-done({{.*}}%[[cp_start2]])
     // CHECK:   ROOT {{.+}} = {{.+}} tuple({{.*}}%[[cp2]], {{.*}})
     // CHECK: }
@@ -1281,8 +1276,7 @@ body {
   recv.0 = (f32[], u32[], token[]) recv(after-all.0), channel_id=1,
         frontend_attributes={
           _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,0}}",
-          _xla_send_recv_pipeline="0",
-          _xla_send_recv_validation="{{0,6},{1,7},{2,8},{3,9}}"
+          _xla_send_recv_pipeline="0"
         }
   recv-done.0 = (f32[], token[]) recv-done(recv.0), channel_id=1,
         frontend_attributes={
@@ -1310,8 +1304,8 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[recv1:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}
-    // CHECK:   %[[recv2:.+]] = {{.+}} recv({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}
+    // CHECK:   %[[recv1:.+]] = {{.+}} recv({{.+}}), {{.+}}
+    // CHECK:   %[[recv2:.+]] = {{.+}} recv({{.+}}), {{.+}}
     // CHECK: ENTRY %main
     // CHECK-NOT: recv
     // CHECK: }
@@ -1340,8 +1334,7 @@ body {
   send.0 = (f32[], u32[], token[]) send(param_0, after-all.0), channel_id=1,
         frontend_attributes={
           _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,0}}",
-          _xla_send_recv_pipeline="0",
-          _xla_send_recv_validation="{{0,6},{1,7},{2,8},{3,9}}"
+          _xla_send_recv_pipeline="0"
         }
   send-done.0 = token[] send-done(send.0), channel_id=1,
         frontend_attributes={
@@ -1368,8 +1361,8 @@ ENTRY main {
 
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
-    // CHECK:   %[[send1:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}
-    // CHECK:   %[[send2:.+]] = {{.+}} send({{.+}}), {{.+}},_xla_send_recv_validation={{[{]}}{0,2},{0,3},{1,3},{1,4}{{[}]}}
+    // CHECK:   %[[send1:.+]] = {{.+}} send({{.+}}), {{.+}}
+    // CHECK:   %[[send2:.+]] = {{.+}} send({{.+}}), {{.+}}
     // CHECK: ENTRY %main
     // CHECK-NOT: send
     // CHECK: }

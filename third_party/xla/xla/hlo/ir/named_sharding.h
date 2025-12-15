@@ -47,6 +47,8 @@ class NamedSharding {
 
     absl::Span<const AxisRef> axes() const { return axes_; }
 
+    int64_t getShardedSize(const Mesh& mesh) const;
+
    private:
     std::vector<AxisRef> axes_;
     bool is_closed_;
@@ -71,10 +73,15 @@ class NamedSharding {
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const OpMetadata> metadata = {})
       : mesh_(std::move(mesh)),
-        dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
+        dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
         replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
         unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
-        metadata_(metadata.begin(), metadata.end()) {}
+        metadata_(metadata.begin(), metadata.end()) {
+    sharded_sizes_.reserve(dim_shardings_.size());
+    for (const DimensionSharding& dim_sharding : dim_shardings_) {
+      sharded_sizes_.push_back(dim_sharding.getShardedSize(mesh_));
+    }
+  }
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -84,8 +91,37 @@ class NamedSharding {
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
 
+  // Returns number of dimensions.
+  int64_t num_dimensions() const { return dim_shardings_.size(); }
+
+  // Returns size of the given dimension.
+  int64_t dimension(int64_t dim) const {
+    return dim_shardings_[dim].getShardedSize(mesh_);
+  }
+
+  // Returns all sharding dimensions.
+  absl::Span<const int64_t> dimensions() const { return sharded_sizes_; }
+
+  // Returns the total number of devices used by sharding.
+  int64_t num_devices() const {
+    return mesh_.device_assignment().num_elements();
+  }
+
  private:
   friend class HloSharding;
+
+  std::vector<DimensionSharding> CanonicalizedDimShardings(
+      absl::Span<const DimensionSharding> dim_shardings) const {
+    bool all_dims_empty = absl::c_all_of(
+        dim_shardings,
+        [](const DimensionSharding& ds) { return ds.axes().empty(); });
+
+    if (all_dims_empty) {
+      return {};
+    }
+    return std::vector<DimensionSharding>(dim_shardings.begin(),
+                                          dim_shardings.end());
+  }
 
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
@@ -126,6 +162,13 @@ class NamedSharding {
   std::vector<AxisRef> replicated_axes_;
   std::vector<AxisRef> unreduced_axes_;
   std::vector<OpMetadata> metadata_;
+
+  // Stores sharded sizes for each dimension. Required to maintain backward
+  // compatibility with existing `HloSharding::dimensions()` implementation
+  // returning a span.
+  // Once we make API change for `HloSharding::dimensions()` to return a vector,
+  // we can remove this field.
+  std::vector<int64_t> sharded_sizes_;
 };
 
 // Contains test only helper functions.

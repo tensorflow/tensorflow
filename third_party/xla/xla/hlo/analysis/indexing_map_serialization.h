@@ -25,8 +25,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 

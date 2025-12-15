@@ -2,6 +2,7 @@
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
@@ -147,7 +148,7 @@ def gen_gpu_hlo_compile_tests(
         ]
 
         for backend in backends:
-            native.sh_test(
+            sh_test(
                 name = "gpu_compile_%s_%s_hlo_test" % (filename, backend),
                 srcs = [name + "_gensh"],
                 args = [

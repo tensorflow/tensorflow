@@ -107,6 +107,9 @@ using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::NotNull;
+using ::testing::Pointee;
+using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
@@ -453,6 +456,24 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
   }
+}
+
+TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
+  xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
+
+  TF_EXPECT_OK(GetOptimizedModule(R"(
+e {
+  a = f32[64,128] parameter(0)
+  t = f32[128,64] transpose(a), dimensions={1,0}
+})")
+                   .status());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+  AutotuneResults results;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
+                                                         &results));
+  EXPECT_THAT(results.results(), Not(IsEmpty()));
 }
 
 int64_t CountCopies(const HloComputation& computation) {
@@ -950,9 +971,8 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler_->LoadAotCompilationResult(serialized_aot_result));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -988,9 +1008,8 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
                           compiler_->Export(executable.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> new_executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(new_executable));
 
@@ -1001,6 +1020,32 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
                           test_runner_as_hlo_runner().ExecuteWithExecutable(
                               wrapped_executable.get(), {&literal_input}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
+}
+
+TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> add_1_hlo,
+      ParseAndReturnVerifiedModule(R"hlo(
+    add1 {
+      p = s32[] parameter(0)
+      c = s32[] constant(1)
+      ROOT a = s32[] add(p, c)
+    }
+
+    ENTRY e {
+      p = s32[] parameter(0)
+      ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+    })hlo",
+                                   GetModuleConfigForTest()));
+
+  aot_options_->set_early_exit_point(
+      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
+  EXPECT_THAT(aot_results,
+              ElementsAre(Pointee(Property(
+                  &AotCompilationResult::optimized_module, NotNull()))));
 }
 
 class KernelCacheTest : public HloTestBase {
@@ -1156,8 +1201,7 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        std::move(*aot_result)
-            .LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result).LoadExecutable(aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -1797,10 +1841,14 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
-TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
+TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusionAutotuner) {
+  VerifyPassOrder("gemm-fusion-autotuner", "hoist-fused-bitcasts");
+}
+
+TEST_F(PassOrderTest, NestGemmFusionRunsAfterHoistFusedBitcasts) {
   // NestGemmFusion expect to see __triton_gemm custom call with a backend
   // config created by gemm_fusion_autotuner.
-  VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+  VerifyPassOrder("hoist-fused-bitcasts", "nest_gemm_fusion");
 }
 
 TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {

@@ -290,12 +290,9 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     configs.push_back(std::move(any));
   }
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma =
-      debug_options().xla_gpu_experimental_enable_triton_tma() &&
-      stream_executor::gpu::IsTmaAvailableForDevice(
-          target_config().device_description);
-  if (autotune_tma) {
+  // Allow TMA tuning for Hopper+ devices.
+  if (stream_executor::gpu::IsTmaAvailableForDevice(
+          target_config().device_description)) {
     ExtendConfigsWithTma(configs);
   }
 

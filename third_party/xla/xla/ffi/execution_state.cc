@@ -125,4 +125,11 @@ bool ExecutionState::IsSet() const {
   return type_id_ != TypeRegistry::kUnknownTypeId;
 }
 
+bool ExecutionState::IsSerializable() const {
+  if (!IsSet()) {
+    return true;
+  }
+  return type_info_.serializer != nullptr;
+}
+
 }  // namespace xla::ffi

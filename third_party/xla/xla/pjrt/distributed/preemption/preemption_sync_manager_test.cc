@@ -149,8 +149,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
     job->set_name(kJobName);
     job->set_num_tasks(2);
-    return CoordinationService::Create(tsl::Env::Default(), config,
-                                       /*cache=*/nullptr);
+    return std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
   void InitializeAndConnectCoordinationAgents() {
     std::unique_ptr<CoordinationClient> coord_client =

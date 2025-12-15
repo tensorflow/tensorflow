@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/alias_info.h"

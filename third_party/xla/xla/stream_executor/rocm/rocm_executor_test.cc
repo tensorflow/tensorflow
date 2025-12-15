@@ -90,7 +90,7 @@ TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kUnified));
+      executor->CreateMemoryAllocator(MemorySpace::kUnified));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
@@ -104,7 +104,7 @@ TEST(RocmExecutorTest, CreateHostMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
-                          executor->CreateMemoryAllocator(MemoryType::kHost));
+                          executor->CreateMemoryAllocator(MemorySpace::kHost));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
@@ -119,7 +119,7 @@ TEST(RocmExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kCollective));
+      executor->CreateMemoryAllocator(MemorySpace::kCollective));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
@@ -132,7 +132,7 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemorySpace::kDevice),
               Not(absl_testing::IsOk()));
 }
 

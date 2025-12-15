@@ -41,7 +41,6 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
         tool_version = MINOR_MAPPING.get(HERMETIC_PYTHON_VERSION)
         if not tool_version:
             tool_version = HERMETIC_PYTHON_VERSION + ".0"
-        url_components = HERMETIC_PYTHON_URL.split("://", 1)
 
         sha256s = {}
         for platform in PLATFORMS.keys():
@@ -51,12 +50,12 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
 
         python_register_toolchains(
             name = get_toolchain_name_per_python_version(name),
-            base_url = url_components[0] + "://",
+            base_url = "",
             ignore_root_user_error = True,
             python_version = tool_version,
             tool_versions = {
                 tool_version: {
-                    "url": url_components[1],
+                    "url": HERMETIC_PYTHON_URL,
                     "sha256": sha256s,
                     "strip_prefix": HERMETIC_PYTHON_PREFIX,
                 },

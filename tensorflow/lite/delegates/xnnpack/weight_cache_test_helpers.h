@@ -86,14 +86,14 @@ class TempFileDesc : public FileDescriptor {
     errno_t err = tmpnam_s(filename, L_tmpnam_s);
     if (err) {
       fprintf(stderr, "Could not create temporary filename.\n");
-      std::abort();
+      return;
     }
     path_ = filename;
     FileDescriptor fd =
         FileDescriptor::Open(path_.c_str(), _O_CREAT | _O_EXCL | _O_RDWR, 0644);
     if (!fd.IsValid()) {
       fprintf(stderr, "Could not create temporary file.\n");
-      std::abort();
+      return;
     }
     Reset(fd.Release());
   }

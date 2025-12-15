@@ -43,11 +43,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -59,6 +59,7 @@ namespace {
 
 namespace LLVM = ::mlir::LLVM;
 namespace arith = ::mlir::arith;
+namespace se = stream_executor;
 namespace vector = ::mlir::vector;
 
 template <typename SourceOp>
@@ -365,7 +366,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
       return std::nullopt;
     }
 
-    mlir::Value vector = extract.getVector();
+    mlir::Value vector = extract.getSource();
 
     size_t element_count =
         mlir::cast<FixedVectorValue>(vector).getType().getNumElements();
@@ -389,7 +390,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
 
     for (const mlir::OpOperand& use : vector.getUses()) {
       extract = mlir::dyn_cast<vector::ExtractOp>(use.getOwner());
-      if (!extract || !extract->hasOneUse() || extract.getVector() != vector ||
+      if (!extract || !extract->hasOneUse() || extract.getSource() != vector ||
           !matchPos(extract, &pos)) {
         return std::nullopt;
       }
