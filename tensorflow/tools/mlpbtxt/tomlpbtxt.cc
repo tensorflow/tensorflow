@@ -30,9 +30,9 @@ namespace tensorflow {
 namespace {
 
 int Run(int argc, char** argv) {
-  string FLAGS_in = "";
-  string FLAGS_out = "";
-  string FLAGS_fields = "description";
+  std::string FLAGS_in = "";
+  std::string FLAGS_out = "";
+  std::string FLAGS_fields = "description";
 
   std::vector<Flag> flag_list = {
       Flag("in", &FLAGS_in, "Input proto text (.pbtxt) file name"),
@@ -41,7 +41,7 @@ int Run(int argc, char** argv) {
       Flag("fields", &FLAGS_fields, "Comma-separated list of field names")};
 
   // Parse the command-line.
-  const string usage = Flags::Usage(argv[0], flag_list);
+  const std::string usage = Flags::Usage(argv[0], flag_list);
   const bool parse_ok = Flags::Parse(&argc, argv, flag_list);
   if (argc != 1 || !parse_ok) {
     printf("%s", usage.c_str());
@@ -49,7 +49,7 @@ int Run(int argc, char** argv) {
   }
 
   // Parse the --fields option.
-  std::vector<string> fields =
+  std::vector<std::string> fields =
       str_util::Split(FLAGS_fields, ',', str_util::SkipEmpty());
   if (fields.empty()) {
     printf("--fields must be non-empty.\n%s", usage.c_str());
@@ -59,7 +59,7 @@ int Run(int argc, char** argv) {
   port::InitMain(argv[0], &argc, &argv);
 
   // Read the input file --in.
-  string in_contents;
+  std::string in_contents;
   absl::Status s = ReadFileToString(Env::Default(), FLAGS_in, &in_contents);
   if (!s.ok()) {
     printf("Error reading file %s: %s\n", FLAGS_in.c_str(),
@@ -68,7 +68,7 @@ int Run(int argc, char** argv) {
   }
 
   // Write the output file --out.
-  const string out_contents = PBTxtToMultiline(in_contents, fields);
+  const std::string out_contents = PBTxtToMultiline(in_contents, fields);
   s = WriteStringToFile(Env::Default(), FLAGS_out, out_contents);
   if (!s.ok()) {
     printf("Error writing file %s: %s\n", FLAGS_out.c_str(),
