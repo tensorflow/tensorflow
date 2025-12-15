@@ -575,7 +575,7 @@ TfrtGpuClient::DeserializeToLocalExecutable(
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal("Proto is too large (>2GB)");
   }
-  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+  if (!proto.ParseFromString(serialized)) {
     return Internal("Proto deserialization failed");
   }
   if (!proto.pjrt_client_name().empty() &&

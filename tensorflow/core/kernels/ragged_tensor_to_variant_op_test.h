@@ -140,7 +140,7 @@ class RaggedTensorToVariantGradientKernelTest
   void BuildEncodeRaggedTensorGradientGraph(
       const std::vector<Variant>& encoded_ragged_grad,
       const std::vector<SPLIT_TYPE>& row_splits,
-      const std::vector<int32>& dense_values_shape) {
+      const std::vector<int32_t>& dense_values_shape) {
     const auto values_dtype = DataTypeToEnum<VALUE_TYPE>::v();
     const auto splits_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
 
@@ -161,8 +161,8 @@ class RaggedTensorToVariantGradientKernelTest
     AddInputFromArray<SPLIT_TYPE>(TensorShape({splits_size}), row_splits);
 
     int64_t dense_values_shape_size = dense_values_shape.size();
-    AddInputFromArray<int32>(TensorShape({dense_values_shape_size}),
-                             dense_values_shape);
+    AddInputFromArray<int32_t>(TensorShape({dense_values_shape_size}),
+                               dense_values_shape);
   }
 
   template <typename VALUE_TYPE, typename SPLIT_TYPE>
