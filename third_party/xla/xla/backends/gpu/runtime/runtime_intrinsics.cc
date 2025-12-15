@@ -172,7 +172,7 @@ absl::Status AppendToFileCustomCall(se::Stream* stream, ffi::AnyBuffer buffer,
   std::string filename(path);
 
   {
-    absl::MutexLock lock(&host_mutex);
+    absl::MutexLock lock(host_mutex);
 
     TF_RETURN_IF_ERROR(env->NewAppendableFile(filename, &file));
     tsl::io::RecordWriter writer(file.get());
