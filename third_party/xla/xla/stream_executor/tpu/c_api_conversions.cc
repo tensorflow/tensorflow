@@ -183,9 +183,10 @@ xla::MaybeOwningDeviceAddress FromC(
     SE_MaybeOwningDeviceAddress* se_mem,
     stream_executor::DeviceAddressAllocator* allocator) {
   if (se_mem->owned) {
-    return xla::MaybeOwningDeviceAddress(stream_executor::OwningDeviceAddress(
-        ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
-        allocator));
+    return xla::MaybeOwningDeviceAddress(
+        stream_executor::ScopedDeviceAddress<uint8_t>(
+            ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
+            allocator));
   } else {
     return xla::MaybeOwningDeviceAddress(ApiConverter::FromC(se_mem->memory));
   }
@@ -243,7 +244,8 @@ stream_executor::DeviceAddressAllocator* FromC(
       c_allocator.ctx);
 }
 
-SE_MaybeOwningDeviceAddress ToC(stream_executor::OwningDeviceAddress* mem) {
+SE_MaybeOwningDeviceAddress ToC(
+    stream_executor::ScopedDeviceAddress<uint8_t>* mem) {
   SE_MaybeOwningDeviceAddress se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
   se_mem.memory = ApiConverter::ToC(mem->Release());

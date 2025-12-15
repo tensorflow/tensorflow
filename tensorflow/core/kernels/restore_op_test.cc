@@ -62,8 +62,8 @@ Tensor MakeInput(const TensorShape& shape,
 }
 
 TEST_F(RestoreOpTest, RestoreSimple) {
-  const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
-  const std::vector<string> tensor_names = {
+  const std::string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
+  const std::vector<std::string> tensor_names = {
       "tensor_bool",  "tensor_int",        "tensor_float",  "tensor_double",
       "tensor_qint8", "tensor_qint32",     "tensor_uint8",  "tensor_int8",
       "tensor_int16", "tensor_int64",      "tensor_string", "tensor_complex64",
@@ -103,7 +103,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     // Input #1 is the tensor names
     Tensor input_1 = MakeInput<tstring>(
         TensorShape({static_cast<int>(tensor_names.size())}),
-        [&tensor_names](int x) -> string { return tensor_names[x]; });
+        [&tensor_names](int x) -> std::string { return tensor_names[x]; });
     inputs.push_back({nullptr, &input_1});
 
     // Input #2 is a 1-d bool tensor
@@ -111,8 +111,8 @@ TEST_F(RestoreOpTest, RestoreSimple) {
         MakeInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });
     inputs.push_back({nullptr, &input_2});
     // Input #3 is a 1-d integer tensor
-    Tensor input_3 = MakeInput<int32>(TensorShape({10}),
-                                      [](int x) -> int32 { return x + 1; });
+    Tensor input_3 = MakeInput<int32_t>(TensorShape({10}),
+                                        [](int x) -> int32_t { return x + 1; });
     inputs.push_back({nullptr, &input_3});
     // Input #4 is a 2-d float tensor
     Tensor input_4 = MakeInput<float>(TensorShape({2, 4}), [](int x) -> float {
@@ -136,24 +136,25 @@ TEST_F(RestoreOpTest, RestoreSimple) {
         });
     inputs.push_back({nullptr, &input_7});
     // Input #8 is a 1-d uint8 tensor
-    Tensor input_8 = MakeInput<uint8>(TensorShape({11}),
-                                      [](int x) -> uint8 { return x + 1; });
+    Tensor input_8 = MakeInput<uint8_t>(TensorShape({11}),
+                                        [](int x) -> uint8_t { return x + 1; });
     inputs.push_back({nullptr, &input_8});
     // Input #9 is a 1-d int8 tensor
-    Tensor input_9 =
-        MakeInput<int8>(TensorShape({7}), [](int x) -> int8 { return x - 7; });
+    Tensor input_9 = MakeInput<int8_t>(TensorShape({7}),
+                                       [](int x) -> int8_t { return x - 7; });
     inputs.push_back({nullptr, &input_9});
     // Input #10 is a 1-d int16 tensor
-    Tensor input_10 = MakeInput<int16>(TensorShape({7}),
-                                       [](int x) -> int16 { return x - 8; });
+    Tensor input_10 = MakeInput<int16_t>(
+        TensorShape({7}), [](int x) -> int16_t { return x - 8; });
     inputs.push_back({nullptr, &input_10});
     // Input #11 is a 1-d int64 tensor
-    Tensor input_11 = MakeInput<int64_t>(TensorShape({9}),
-                                         [](int x) -> int64 { return x - 9; });
+    Tensor input_11 = MakeInput<int64_t>(
+        TensorShape({9}), [](int x) -> int64_t { return x - 9; });
     inputs.push_back({nullptr, &input_11});
     // Input #12 is a 1-d string tensor
     Tensor input_12 = MakeInput<tstring>(
-        TensorShape({2}), [](int x) -> string { return x ? "yes" : "no"; });
+        TensorShape({2}),
+        [](int x) -> std::string { return x ? "yes" : "no"; });
     inputs.push_back({nullptr, &input_12});
     // Input #13 is a 1-d complex64 tensor
     Tensor input_13 = MakeInput<complex64>(
@@ -212,7 +213,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     TensorShape expected({10});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
     for (int i = 0; i < 10; ++i) {
-      EXPECT_EQ(i + 1, output->flat<int32>()(i));
+      EXPECT_EQ(i + 1, output->flat<int32_t>()(i));
     }
   }
   // The 2-d float tensor
@@ -273,7 +274,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     TensorShape expected({11});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
     for (int i = 0; i < 11; ++i) {
-      EXPECT_EQ(i + 1, output->flat<uint8>()(i));
+      EXPECT_EQ(i + 1, output->flat<uint8_t>()(i));
     }
   }
   // The 1-d int8 tensor
@@ -285,7 +286,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     TensorShape expected({7});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
     for (int i = 0; i < 7; ++i) {
-      EXPECT_EQ(i - 7, output->flat<int8>()(i));
+      EXPECT_EQ(i - 7, output->flat<int8_t>()(i));
     }
   }
   // The 1-d int16 tensor
@@ -297,7 +298,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     TensorShape expected({7});
     EXPECT_TRUE(output->shape().IsSameSize(expected));
     for (int i = 0; i < 7; ++i) {
-      EXPECT_EQ(i - 8, output->flat<int16>()(i));
+      EXPECT_EQ(i - 8, output->flat<int16_t>()(i));
     }
   }
   // The 1-d int64 tensor
@@ -373,8 +374,8 @@ class RestoreSliceOpTest : public OpsTestBase {
 };
 
 TEST_F(RestoreSliceOpTest, RestoreInt) {
-  const string filename = io::JoinPath(testing::TmpDir(), "tensor_int");
-  const string tensor_name = "tensor_int";
+  const std::string filename = io::JoinPath(testing::TmpDir(), "tensor_int");
+  const std::string tensor_name = "tensor_int";
 
   // We first need to write a tensor using the save_op
   {
@@ -412,7 +413,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     // Input #2 is a 4x16 integer tensor.
     Tensor input_2(DT_INT32, TensorShape({4, 16}));
     for (int64_t i = 0; i < input_2.NumElements(); ++i) {
-      input_2.flat<int32>()(i) = i + 1;
+      input_2.flat<int32_t>()(i) = i + 1;
     }
     inputs.push_back({nullptr, &input_2});
 
@@ -433,7 +434,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
   // Now we restore
   MakeRestoreSliceOp(DT_INT32);
-  string shape_and_slice = "4 16 0,2:-";
+  std::string shape_and_slice = "4 16 0,2:-";
   // Add a file name
   AddInput<tstring>(TensorShape({}),
                     [&filename](int x) -> tstring { return filename; });
@@ -452,7 +453,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
   TensorShape expected({2, 16});
   EXPECT_TRUE(output->shape().IsSameSize(expected));
   for (int64_t i = 0; i < expected.num_elements(); ++i) {
-    EXPECT_EQ(i + 1, output->flat<int32>()(i));
+    EXPECT_EQ(i + 1, output->flat<int32_t>()(i));
   }
 }
 

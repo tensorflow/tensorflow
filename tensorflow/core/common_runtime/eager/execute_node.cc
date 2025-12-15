@@ -23,7 +23,7 @@ namespace tensorflow {
 #if !defined(IS_MOBILE_PLATFORM)
 bool ExecuteNodeArgs::IsRemote(EagerContext* ctx, Device* input_device,
                                TensorHandle* handle) {
-  uint64 context_view_id = ctx->GetContextViewId();
+  uint64_t context_view_id = ctx->GetContextViewId();
   if (handle->Type() == TensorHandle::REMOTE ||
       handle->HasRemoteMirror(input_device, context_view_id)) {
     if (!has_remote_inputs_) {

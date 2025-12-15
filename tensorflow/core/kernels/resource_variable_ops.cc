@@ -199,7 +199,7 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
 
   OP_REQUIRES_OK(ctx, LookupResources(ctx, handles, &variables));
 
-  std::vector<string> uninitialized_vars;
+  std::vector<std::string> uninitialized_vars;
   for (int64_t i = 0; i < variables.size(); i++) {
     if (variables[i] == nullptr) {
       uninitialized_vars.push_back(handles[i]->name());
@@ -340,9 +340,10 @@ REGISTER_KERNEL_BUILDER(
                                    DT_VARIANT, DT_BFLOAT16, DT_INT8}),
     ResourceHandlesOp<Var>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
-    VariableShapeOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("VariableShape")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32_t>("out_type"),
+                        VariableShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("out_type"),
@@ -350,10 +351,10 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
 
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("out_type")
+                            .TypeConstraint<int32_t>("out_type")
                             .HostMemory("output")
                             .HostMemory("input"),
-                        VariableShapeOp<int32>);
+                        VariableShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("VariableShape")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("out_type")
@@ -860,7 +861,7 @@ class ResourceGatherOp : public OpKernel {
     }
   }
 
-  int32 batch_dims_ = 0;
+  int32_t batch_dims_ = 0;
 };
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \
@@ -898,15 +899,15 @@ REGISTER_KERNEL_BUILDER(Name("ResourceGather")
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
-                            .TypeConstraint<int32>("Tindices"),
-                        ResourceGatherOp<CPUDevice, Variant, int32>)
+                            .TypeConstraint<int32_t>("Tindices"),
+                        ResourceGatherOp<CPUDevice, Variant, int32_t>)
 REGISTER_KERNEL_BUILDER(Name("ResourceGather")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceGatherOp<CPUDevice, Variant, int64>)
+                        ResourceGatherOp<CPUDevice, Variant, int64_t>)
 
 #undef REGISTER_GATHER_CPU
 #undef REGISTER_GATHER_ALL_INDICES
@@ -1286,8 +1287,8 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .HostMemory("resource")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
-                            .TypeConstraint<int32>("Tindices"),
-                        ResourceScatterUpdateOp<CPUDevice, Variant, int32,
+                            .TypeConstraint<int32_t>("Tindices"),
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int32_t,
                                                 scatter_op::UpdateOp::ASSIGN>)
 REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .Device(DEVICE_DEFAULT)
@@ -1295,7 +1296,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceScatterUpdate")
                             .HostMemory("indices")
                             .TypeConstraint<Variant>("dtype")
                             .TypeConstraint<int64_t>("Tindices"),
-                        ResourceScatterUpdateOp<CPUDevice, Variant, int64,
+                        ResourceScatterUpdateOp<CPUDevice, Variant, int64_t,
                                                 scatter_op::UpdateOp::ASSIGN>)
 
 #undef REGISTER_SCATTER_ARITHMETIC

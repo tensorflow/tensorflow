@@ -30,7 +30,7 @@ void NUMASetThreadNodeAffinity(int node) {}
 int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return ::tsl::port::AlignedMalloc(size, minimum_alignment);
+  return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
 }
 
 void NUMAFree(void* ptr, size_t size) { ::tsl::port::Free(ptr); }
