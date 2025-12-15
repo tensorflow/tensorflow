@@ -39,8 +39,8 @@ class HostMemoryAllocator {
     absl::AnyInvocable<absl::Status(void*)> unmap_fn;
   };
 
-  using Factory = std::function<std::unique_ptr<HostMemoryAllocator>(
-      const Options& options)>;
+  using Factory =
+      std::function<std::unique_ptr<HostMemoryAllocator>(Options options)>;
 
   struct Deleter {
     void operator()(void* ptr) { deleter(ptr, arg); }
