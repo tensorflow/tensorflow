@@ -99,8 +99,8 @@ absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     span_end = Clamp(static_cast<int64_t>(0), input_size - 1, span_end) + 1;
     const int this_span_size = span_end - span_start;
     if (this_span_size > spans->span_size) {
-      return errors::Internal(Printf("Span is too large: %d vs %d.",
-                                     this_span_size, spans->span_size));
+      return errors::Internal(absl::StrFormat(
+          "Span is too large: %d vs %d.", this_span_size, spans->span_size));
     }
     float total_weight_sum = 0.0f;
     temp_weights.clear();
@@ -228,8 +228,8 @@ absl::Status ComputeSpans(OpKernelContext* context,
                               input_size, scale, translate, antialias, spans);
     }
     default:
-      return errors::InvalidArgument(Printf("Unrecognized kernel type: %d",
-                                            static_cast<int>(kernel_type)));
+      return errors::InvalidArgument(absl::StrFormat(
+          "Unrecognized kernel type: %d", static_cast<int>(kernel_type)));
   }
   return absl::OkStatus();
 }
