@@ -191,7 +191,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
         ASSERT_NE(instances_[di]->status_.message().find("Deliberate failure"),
-                  string::npos);
+                  std::string::npos);
         ++failure_count_;
         continue;
       }
@@ -221,7 +221,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       // In the test we always broadcast from rank 0.
       col_params_->is_source = (rank == 0);
       col_params_->source_rank = 0;
-      string dev_name = col_params_->group.members[rank].device.name();
+      std::string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();
@@ -356,10 +356,10 @@ TEST_F(HierarchicalTreeBroadcasterInitParamsTest,
   cp->instance.impl_details.collective_name = "HierarchicalTreeBroadcast";
   std::vector<int> dev_per_task = {4, 4, 6, 8};
   for (int ti = 0; ti < cp->group.num_tasks; ti++) {
-    string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
+    std::string task_name = absl::StrCat("/job:worker/replica:0/task:", ti);
     for (int di = 0; di < dev_per_task[ti]; di++) {
       CollGroupMember member;
-      member.device.set_name(strings::StrCat(task_name, "/device:GPU:", di));
+      member.device.set_name(absl::StrCat(task_name, "/device:GPU:", di));
       member.task = task_name;
       cp->group.members.push_back(member);
       cp->group.group_size++;

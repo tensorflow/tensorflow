@@ -83,15 +83,15 @@ class EagerServiceImpl {
                              UpdateContextResponse* response);
 
   // Create a ServerContext for master eager context.
-  absl::Status CreateMasterContext(const tensorflow::uint64 context_id,
+  absl::Status CreateMasterContext(const uint64_t context_id,
                                    EagerContext* context);
 
-  static constexpr uint64 kInvalidStreamId = 0;
+  static constexpr uint64_t kInvalidStreamId = 0;
 
   // Used by both Enqueue and StreamingEnqueue RPCs.
   absl::Status Enqueue(CallOptions* call_opts, const EnqueueRequest* request,
                        EnqueueResponse* response,
-                       uint64 stream_id = kInvalidStreamId);
+                       uint64_t stream_id = kInvalidStreamId);
 
   absl::Status WaitQueueDone(const WaitQueueDoneRequest* request,
                              WaitQueueDoneResponse* response);
@@ -166,7 +166,7 @@ class EagerServiceImpl {
     const bool is_master_;
   };
   // The returned ServerContext will need to be Unrefed.
-  absl::Status GetServerContext(uint64, ServerContext**);
+  absl::Status GetServerContext(uint64_t, ServerContext**);
 
   class ClientTensorHandleDeleteNode : public EagerNode {
    public:
@@ -194,8 +194,8 @@ class EagerServiceImpl {
     // Remote node deletions are best effort
     bool Fatal() const override { return false; }
 
-    string DebugString() const override {
-      string out = "[ClientTensorHandleDeleteNode]";
+    std::string DebugString() const override {
+      std::string out = "[ClientTensorHandleDeleteNode]";
       absl::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);
       absl::StrAppend(&out, ", output_num: ", handle_to_delete_->output_num);
       return out;
@@ -225,7 +225,7 @@ class EagerServiceImpl {
   WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
-  std::unordered_map<uint64, ServerContext*> contexts_
+  std::unordered_map<uint64_t, ServerContext*> contexts_
       TF_GUARDED_BY(contexts_mu_);
 
   std::unique_ptr<Thread> gc_thread_;

@@ -86,7 +86,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor_V3) {
   AddInputFromArray<float>(TensorShape({1}), {-3.5});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1}));
@@ -103,7 +103,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor_V3) {
 template <typename T>
 std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                       const std::vector<T>& data) {
-  uint32 seed = 123;
+  uint32_t seed = 123;
   int64_t out_size = 1;
   for (int dim : dims) {
     out_size *= dim;
@@ -292,7 +292,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8_V3) {
   AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   // With int8, the tensor is quantized to {-128, -64, 0, 38, 102, 71}.
   // Scale is: 1/128
@@ -337,7 +337,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
   std::vector<float> init_value(num_slices, 0.0f);
   AddInputFromArray<float>(range_shape, init_value);  // Min
   AddInputFromArray<float>(range_shape, init_value);  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});     // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});   // num_bits
 
   // With int8, the values in the tensor are quantized to
   // {-127, -63, 0, 38, 102, 70, 64}.
@@ -490,7 +490,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4_V3) {
   AddInputFromArray<float>(TensorShape({6}), {-1, -0.5, 0, 0.3, 0.8, 0.555});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {4});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {4});  // num_bits
 
   // With int4, the tensor is quantized to {-8, -4, 0, 2, 6, 4}.
   // Scale is: 1/8
@@ -583,7 +583,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given_V3) {
                            {-0.8, -0.5, 0, 0.3, 0.8, 0.555, -2, 33});
   AddInputFromArray<float>(TensorShape({}), {-1.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {1.0});   // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});     // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});   // num_bits
 
   // Note that the range is given as [-1, 1].
   // With int8, the tensor is quantized to {-102, -64, 0, 38, 102, 70, -128,
@@ -664,7 +664,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given_V3) {
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {1.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   // Note that the range is given as [0, 1].
   // With int8, the tensor is quantized to {0, 0, 76, 204}
@@ -712,7 +712,7 @@ TEST_F(QuantizeAndDequantizeTest, Convert_tensor_with_all_0_V3) {
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {0, 0, 0, 0});
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
@@ -755,7 +755,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
   AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(),
@@ -778,7 +778,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_axis_given_V3) {
   AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
   AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
-  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+  AddInputFromArray<int32_t>(TensorShape({}), {8});  // num_bits
 
   EXPECT_THAT(
       RunOpKernel(),

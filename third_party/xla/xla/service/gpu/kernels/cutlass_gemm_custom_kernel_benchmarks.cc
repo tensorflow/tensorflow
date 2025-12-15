@@ -72,7 +72,7 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   CHECK_OK(stream->Memset32(&b, BitPattern(1.2f), b.size()));
   CHECK_OK(stream->MemZero(&c, c.size()));
 
-  se::KernelArgsDeviceMemoryArray args(
+  stream_executor::KernelArgsDeviceAddressArray args(
       std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
 

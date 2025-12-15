@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -29,7 +28,6 @@ limitations under the License.
 #include "mlir/Conversion/GPUToLLVMSPV/GPUToLLVMSPVPass.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
-#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -37,22 +35,20 @@ limitations under the License.
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/AMDGPU/Utils/Chipset.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
-#include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
-#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_common.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
@@ -86,78 +82,47 @@ class LowerToLLVMGPUPass
       CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     }
-    // Populate type conversions.
-    mlir::LowerToLLVMOptions llvm_opts(&getContext(),
-                                       mlir::DataLayout(getOperation()));
-    mlir::LLVMTypeConverter type_converter(getOperation().getContext(),
-                                           llvm_opts);
-    mlir::LLVMConversionTarget target(*getOperation().getContext());
 
-    // Populate patterns.
-    mlir::RewritePatternSet patterns(&getContext());
-    mlir::arith::populateArithExpandOpsPatterns(patterns);
-    mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
-                                                       patterns);
-    if (device_spec_.IsAmdGpu()) {
-      std::string chipset =
-          device_spec_.gpu().rocm_compute_capability().gfx_version();
-      llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
-          mlir::amdgpu::Chipset::parse(chipset);
-      if (failed(maybeChipset)) {
-        mlir::emitError(mlir::UnknownLoc::get(&getContext()),
-                        "Invalid chipset name: " + chipset);
-        return signalPassFailure();
+    auto populate_patterns =
+        [&](mlir::LLVMTypeConverter& converter,
+            mlir::RewritePatternSet& patterns,
+            mlir::ConversionTarget& target) -> mlir::LogicalResult {
+      if (device_spec_.IsAmdGpu()) {
+        std::string chipset =
+            device_spec_.gpu().rocm_compute_capability().gfx_version();
+        llvm::FailureOr<mlir::amdgpu::Chipset> maybeChipset =
+            mlir::amdgpu::Chipset::parse(chipset);
+        if (mlir::failed(maybeChipset)) {
+          mlir::emitError(mlir::UnknownLoc::get(&getContext()),
+                          "Invalid chipset name: " + chipset);
+          return mlir::failure();
+        }
+        mlir::populateGpuToROCDLConversionPatterns(
+            converter, patterns, mlir::gpu::amd::Runtime::Unknown,
+            *maybeChipset);
+        mlir::configureGpuToROCDLConversionLegality(target);
+      } else if (device_spec_.IsIntelGpu()) {
+        // Add sub-group-size attribute to functions.
+        int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
+        if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
+          module_op.walk([sub_group_size](mlir::func::FuncOp func) {
+            if (!func.getBody().empty()) {
+              mlir::OpBuilder b(func.getContext());
+              auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
+              func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
+            }
+          });
+        }
+        populateGpuToLLVMSPVConversionPatterns(converter, patterns);
+        populateGpuMemorySpaceAttributeConversions(converter);
+      } else {
+        mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
+        mlir::configureGpuToNVVMConversionLegality(target);
       }
-      mlir::populateGpuToROCDLConversionPatterns(
-          type_converter, patterns, mlir::gpu::amd::Runtime::Unknown,
-          *maybeChipset);
-      mlir::configureGpuToROCDLConversionLegality(target);
-    } else if (device_spec_.IsIntelGpu()) {
-      // Add sub-group-size attribute to functions.
-      int32_t sub_group_size = device_spec_.gpu().threads_per_warp();
-      if (auto module_op = mlir::dyn_cast<mlir::ModuleOp>(getOperation())) {
-        module_op.walk([sub_group_size](mlir::func::FuncOp func) {
-          if (!func.getBody().empty()) {
-            mlir::OpBuilder b(func.getContext());
-            auto sub_group_attr = b.getI32IntegerAttr(sub_group_size);
-            func->setAttr("intel_reqd_sub_group_size", sub_group_attr);
-          }
-        });
-      }
-      populateGpuToLLVMSPVConversionPatterns(type_converter, patterns);
-      populateGpuMemorySpaceAttributeConversions(type_converter);
-    } else {
-      mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
-      mlir::configureGpuToNVVMConversionLegality(target);
-    }
-    mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
-    mlir::populateFinalizeMemRefToLLVMConversionPatterns(type_converter,
-                                                         patterns);
-    mlir::ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
-    mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
-    mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
-                                                          patterns);
-    mlir::populateComplexToLLVMConversionPatterns(type_converter, patterns);
+      return mlir::success();
+    };
 
-    // Set up target.
-    target.addIllegalDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                             mlir::complex::ComplexDialect>();
-    target.addLegalOp<mlir::ModuleOp>();
-
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
-      signalPassFailure();
-      return;
-    }
-
-    // Clean up any leftover math ops not handled NVVM or ROCDL lowering.
-    mlir::RewritePatternSet mathPatterns(&getContext());
-    mlir::populateMathToLLVMConversionPatterns(type_converter, mathPatterns,
-                                               /*approximateLog1p=*/false);
-    target.addIllegalDialect<mlir::math::MathDialect>();
-
-    if (failed(applyFullConversion(getOperation(), target,
-                                   std::move(mathPatterns)))) {
+    if (mlir::failed(LowerToLLVM(getOperation(), populate_patterns))) {
       signalPassFailure();
     }
   }

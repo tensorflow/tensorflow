@@ -56,7 +56,7 @@ MATCHER_P(ShapeProtoEquals, other, "") {
   return true;
 }
 
-static void InitGraph(const string& s, Graph* graph) {
+static void InitGraph(const std::string& s, Graph* graph) {
   GraphDef graph_def;
 
   auto parser = protobuf::TextFormat::Parser();
@@ -97,8 +97,8 @@ Node* FindNode(const Graph& graph, std::string name) {
   return nullptr;
 }
 
-Node* AddNode(Graph& graph, const string& name, const string& node_type,
-              int num_inputs) {
+Node* AddNode(Graph& graph, const std::string& name,
+              const std::string& node_type, int num_inputs) {
   auto builder = NodeDefBuilder(name, node_type);
   for (int i = 0; i < num_inputs; ++i) {
     builder = builder.Input(absl::StrCat("node_", i), i, DT_FLOAT);
@@ -114,7 +114,7 @@ Node* AddNode(Graph& graph, const string& name, const string& node_type,
 }
 
 static void GenerateStepStats(Graph* graph, StepStats* step_stats,
-                              const string& device_name) {
+                              const std::string& device_name) {
   // Fill RunMetadata's step_stats and partition_graphs fields.
   DeviceStepStats* device_stepstats = step_stats->add_dev_stats();
   device_stepstats->set_device(device_name);
@@ -150,7 +150,7 @@ TEST(CostModelTest, WorksWithManager) {
   GenerateStepStats(graph1.get(), &step_stats, "DummyDevice1");
   GenerateStepStats(graph2.get(), &step_stats, "DummyDevice2");
   StepStatsCollector collector(&step_stats);
-  std::unordered_map<string, const Graph*> device_map;
+  std::unordered_map<std::string, const Graph*> device_map;
   device_map["DummyDevice1"] = graph1.get();
   device_map["DummyDevice2"] = graph2.get();
   CostModelManager cost_model_manager;
@@ -161,7 +161,7 @@ TEST(CostModelTest, WorksWithManager) {
   TF_ASSERT_OK(
       cost_model_manager.AddToCostGraphDef(graph2.get(), &cost_graph_def));
   ASSERT_EQ(cost_graph_def.node_size(), 12);
-  absl::flat_hash_map<int32, const CostGraphDef::Node> ids;
+  absl::flat_hash_map<int32_t, const CostGraphDef::Node> ids;
   for (auto node : cost_graph_def.node()) {
     int32_t index = node.id();
     auto result = ids.insert({index, node});
