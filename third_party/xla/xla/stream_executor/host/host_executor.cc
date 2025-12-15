@@ -85,7 +85,7 @@ DeviceAddressBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   // This should probably be kept in sync with
   // tsl::Allocator::kAllocatorAlignment.
   return DeviceAddressBase(
-      tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+      tsl::port::AlignedMalloc(size, static_cast<std::align_val_t>(64)), size);
 }
 
 void HostExecutor::Deallocate(DeviceAddressBase* mem) {
