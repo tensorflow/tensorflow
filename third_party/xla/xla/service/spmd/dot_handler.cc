@@ -2595,9 +2595,19 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
     if (!other.sharding().ReplicateOnLastTileDim() || !device_group_match) {
       other = other.Reshard(target_sharding);
     }
+
+    DimensionVector dims_to_replicate = other_grouped->group_dims;
+    for (auto it = dims_to_replicate.begin(); it != dims_to_replicate.end();) {
+      if (*it >= other.base_shape().dimensions().size()) {
+        it = dims_to_replicate.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
     partially_replicated_other =
         other.Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            other.sharding(), other_grouped->group_dims));
+            other.sharding(), dims_to_replicate));
     top_level_sharding_to_reset.emplace_back(
         partially_replicated_other, partially_replicated_other.sharding());
     partially_replicated_other.set_sharding(other_grouped->sharding);
