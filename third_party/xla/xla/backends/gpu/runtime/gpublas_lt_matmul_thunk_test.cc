@@ -191,12 +191,14 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      RunHloPass(
-          GemmRewriter(gpu_comp(executor),
-                       /*toolkit_version=*/se::SemanticVersion{12, 4, 0}),
-          module.get()));
+      RunHloPass(GemmRewriter(gpu_comp(executor),
+                              /*toolkit_version=*/se::SemanticVersion{12, 4, 0},
+                              options),
+                 module.get()));
   ASSERT_TRUE(changed);
 
   GpuBlasLtThunkBuilder builder(executor, gpu_comp(executor));

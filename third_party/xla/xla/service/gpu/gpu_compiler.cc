@@ -1638,7 +1638,8 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
       GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only, bias_mode});
   pipeline.AddPass<GemmRewriter>(
       gpu_version, toolkit_version,
-      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode});
+      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode,
+                          debug_options.xla_gpu_enable_cublaslt()});
 }
 }  // namespace
 
