@@ -34,7 +34,7 @@ const char kAutoParallelPrefix[] = "AutoParallel";
 
 NodeDef* AutoParallel::AddNodeDivConst() {
   NodeDef* node = graph_.add_node();
-  node->set_name(strings::StrCat(kAutoParallelPrefix, "-Div-Const"));
+  node->set_name(absl::StrCat(kAutoParallelPrefix, "-Div-Const"));
   node->set_op("Const");
 
   AttrValue attr_data_type;
@@ -49,10 +49,11 @@ NodeDef* AutoParallel::AddNodeDivConst() {
   return node;
 }
 
-NodeDef* AutoParallel::AddNodeDiv(const string& name, const string& input_a,
-                                  const string& input_b) {
+NodeDef* AutoParallel::AddNodeDiv(const std::string& name,
+                                  const std::string& input_a,
+                                  const std::string& input_b) {
   NodeDef* node = graph_.add_node();
-  node->set_name(strings::StrCat(kAutoParallelPrefix, "-Div-", name));
+  node->set_name(absl::StrCat(kAutoParallelPrefix, "-Div-", name));
   node->set_op("RealDiv");
   node->add_input(input_a);
   node->add_input(input_b);
@@ -62,14 +63,14 @@ NodeDef* AutoParallel::AddNodeDiv(const string& name, const string& input_a,
   return node;
 }
 
-NodeDef* AutoParallel::AddNodeControl(const string& name,
-                                      const std::set<string>& deps,
+NodeDef* AutoParallel::AddNodeControl(const std::string& name,
+                                      const std::set<std::string>& deps,
                                       GraphDef* graph) {
   NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op("NoOp");
   for (const auto& dep : deps) {
-    node->add_input(strings::StrCat("^", dep));
+    node->add_input(absl::StrCat("^", dep));
   }
   return node;
 }
@@ -102,17 +103,18 @@ absl::Status AutoParallel::Initialize(const GrapplerItem& item) {
     VLOG(2) << "Variable: " << var->name();
   }
 
-  const std::set<string> apply_gradients_ops = {"ApplyGradientDescent",
-                                                "ApplyProximalGradientDescent",
-                                                "ApplyAdadelta",
-                                                "ApplyAdagrad",
-                                                "ApplyProximalAdagrad",
-                                                "ApplyAdagradDA",
-                                                "ApplyFtrl",
-                                                "ApplyMomentum",
-                                                "ApplyAdam",
-                                                "ApplyRMSProp",
-                                                "ApplyCenteredRMSProp"};
+  const std::set<std::string> apply_gradients_ops = {
+      "ApplyGradientDescent",
+      "ApplyProximalGradientDescent",
+      "ApplyAdadelta",
+      "ApplyAdagrad",
+      "ApplyProximalAdagrad",
+      "ApplyAdagradDA",
+      "ApplyFtrl",
+      "ApplyMomentum",
+      "ApplyAdam",
+      "ApplyRMSProp",
+      "ApplyCenteredRMSProp"};
   for (int i = 0; i < graph_.node_size(); i++) {
     all_nodes_.insert(
         std::make_pair(graph_.node(i).name(), graph_.mutable_node(i)));
@@ -125,17 +127,18 @@ absl::Status AutoParallel::Initialize(const GrapplerItem& item) {
 
   auto div_const_node = AddNodeDivConst();
   all_nodes_.insert(std::make_pair(div_const_node->name(), div_const_node));
-  std::map<string, int> gradient_pos = {{"ApplyGradientDescent", 2},
-                                        {"ApplyProximalGradientDescent", 4},
-                                        {"ApplyAdadelta", 6},
-                                        {"ApplyAdagrad", 3},
-                                        {"ApplyProximalAdagrad", 5},
-                                        {"ApplyAdagradDA", 3},
-                                        {"ApplyFtrl", 3},
-                                        {"ApplyMomentum", 3},
-                                        {"ApplyAdam", 9},
-                                        {"ApplyRMSProp", 7},
-                                        {"ApplyCenteredRMSProp", 8}};
+  std::map<std::string, int> gradient_pos = {
+      {"ApplyGradientDescent", 2},
+      {"ApplyProximalGradientDescent", 4},
+      {"ApplyAdadelta", 6},
+      {"ApplyAdagrad", 3},
+      {"ApplyProximalAdagrad", 5},
+      {"ApplyAdagradDA", 3},
+      {"ApplyFtrl", 3},
+      {"ApplyMomentum", 3},
+      {"ApplyAdam", 9},
+      {"ApplyRMSProp", 7},
+      {"ApplyCenteredRMSProp", 8}};
   for (const auto& apply_gradient_node_name : apply_gradients_nodes_) {
     auto apply_gradients_op = all_nodes_[apply_gradient_node_name]->op();
     auto apply_gradients_node = all_nodes_[apply_gradient_node_name];
@@ -170,7 +173,7 @@ absl::Status AutoParallel::Initialize(const GrapplerItem& item) {
   }
   LOG(INFO) << "Number of input nodes: " << input_nodes.size();
 
-  std::set<string> dont_replicate_nodes;
+  std::set<std::string> dont_replicate_nodes;
   for (const auto& variable : item.MainVariables()) {
     dont_replicate_nodes.insert(variable->name());
   }
@@ -202,18 +205,18 @@ absl::Status AutoParallel::Initialize(const GrapplerItem& item) {
   return absl::OkStatus();
 }
 
-bool AutoParallel::NotSharedNode(const string& name) {
+bool AutoParallel::NotSharedNode(const std::string& name) {
   return shared_nodes_.find(name) == shared_nodes_.end();
 }
 
 void AutoParallel::AddSharedNodes(GraphDef* graph) {
-  string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", 0);
+  std::string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", 0);
   for (const auto& node : shared_nodes_) {
     auto new_node = graph->add_node();
     *new_node = *all_nodes_[node];
     for (int i = 0; i < new_node->input_size(); i++) {
       if (NotSharedNode(NodeName(new_node->input(i)))) {
-        string new_name = AddPrefixToNodeName(new_node->input(i), prefix);
+        std::string new_name = AddPrefixToNodeName(new_node->input(i), prefix);
         *new_node->mutable_input(i) = new_name;
       }
     }
@@ -221,18 +224,19 @@ void AutoParallel::AddSharedNodes(GraphDef* graph) {
 }
 
 void AutoParallel::AddOneReplica(GraphDef* graph, int number) {
-  string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", number);
+  std::string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", number);
   for (const auto& node : replica_nodes_) {
     auto new_node = graph->add_node();
     *new_node = *all_nodes_[node];
     if (NotSharedNode(new_node->name())) {
       new_node->set_name(AddPrefixToNodeName(new_node->name(), prefix));
       if (num_gpus_ > 0) {
-        new_node->set_device(strings::StrCat("/gpu:", number % num_gpus_));
+        new_node->set_device(absl::StrCat("/gpu:", number % num_gpus_));
       }
       for (int i = 0; i < new_node->input_size(); i++) {
         if (NotSharedNode(NodeName(new_node->input(i)))) {
-          string new_name = AddPrefixToNodeName(new_node->input(i), prefix);
+          std::string new_name =
+              AddPrefixToNodeName(new_node->input(i), prefix);
           *new_node->mutable_input(i) = new_name;
         }
       }
@@ -245,16 +249,16 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
   for (int i = 0; i < num_replicas_; i++) {
     AddOneReplica(graph, i);
   }
-  std::set<string> fetches;
+  std::set<std::string> fetches;
   for (size_t i = 0; i < item_->fetch.size(); i++) {
     for (int j = 0; j < num_replicas_; j++) {
-      string prefix = strings::StrCat(kAutoParallelPrefix, "-Replica-", j);
-      string fetch = AddPrefixToNodeName(item_->fetch[i], prefix);
+      std::string prefix = absl::StrCat(kAutoParallelPrefix, "-Replica-", j);
+      std::string fetch = AddPrefixToNodeName(item_->fetch[i], prefix);
       fetches.insert(fetch);
     }
   }
-  string name_control =
-      strings::StrCat(kAutoParallelPrefix, "-Control-", "Fetch");
+  std::string name_control =
+      absl::StrCat(kAutoParallelPrefix, "-Control-", "Fetch");
   auto control = AddNodeControl(name_control, fetches, graph);
 
   for (const auto& fetch : item_->fetch) {
