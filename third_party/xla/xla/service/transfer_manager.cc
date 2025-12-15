@@ -295,7 +295,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
     return absl::OkStatus();
   }
   se::DeviceAddressBase device_memory =
-      buffer_tree.element({}).AsDeviceMemoryBase();
+      buffer_tree.element({}).AsDeviceAddress();
   TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
                device_memory.size());
 
@@ -303,7 +303,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
   elements.reserve(ShapeUtil::TupleElementCount(buffer_tree.shape()));
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
        ++i) {
-    elements.push_back(buffer_tree.element({i}).AsDeviceMemoryBase());
+    elements.push_back(buffer_tree.element({i}).AsDeviceAddress());
   }
   return WriteSingleTupleIndexTable(stream, elements, buffer_tree.shape(),
                                     &device_memory);

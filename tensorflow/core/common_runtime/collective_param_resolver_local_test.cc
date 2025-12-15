@@ -60,8 +60,8 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
   }
 
   void RunCompleteDefaultRanking(
-      CollGroupParams group, const std::vector<int32>& gpu_ring_order,
-      const std::vector<string>& expected_device_order) {
+      CollGroupParams group, const std::vector<int32_t>& gpu_ring_order,
+      const std::vector<std::string>& expected_device_order) {
     ConfigProto config;
     if (!gpu_ring_order.empty()) {
       config.mutable_gpu_options()
@@ -70,20 +70,20 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     }
     ResetParamResolver(config);
     prl_->CompleteDefaultRanking(&group);
-    std::vector<string> actual_device_order;
+    std::vector<std::string> actual_device_order;
     for (const CollGroupMember& member : group.members) {
       actual_device_order.push_back(member.device.name());
     }
     EXPECT_EQ(actual_device_order, expected_device_order);
   }
 
-  DeviceAttributes GetDeviceAttributes(const string& device_name) {
+  DeviceAttributes GetDeviceAttributes(const std::string& device_name) {
     Device* device = nullptr;
     TF_CHECK_OK(device_mgr_->LookupDevice(device_name, &device));
     return device->attributes();
   }
 
-  string task_name_;
+  std::string task_name_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;
@@ -178,7 +178,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     cp->instance.impl_details.subdiv_offsets.push_back(0);
     cp->is_source = false;
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
@@ -232,7 +232,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
     CollectiveParams* cp = cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, i == 1, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
@@ -273,7 +273,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
     CollectiveParams* cp = cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, false, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       prl_->CompleteParamsAsync(GetDeviceAttributes(device), cp,
                                 nullptr /*CancellationManager*/,
@@ -320,7 +320,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
   BlockingCounter done(NUM_DEVS - 1);
   for (int i = 0; i < NUM_DEVS - 1; ++i) {
     Env::Default()->SchedClosure([this, i, &cancel_mgr, &cp, &start, &done] {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       cp[i] = MakeCollectiveParams(/*group_key*/ 100, /*instance_key*/ 100,
                                    /*is_source*/ i == 0);
@@ -351,7 +351,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
     for (int i = 0; i < NUM_DEVS; ++i) {
       Env::Default()->SchedClosure([this, group_key, instance_key, i,
                                     &cancel_mgr, &cp, &done] {
-        string device =
+        std::string device =
             absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
@@ -371,7 +371,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
   for (int i = 0; i < NUM_DEVS - 1; ++i) {
     Env::Default()->SchedClosure([this, group_key, instance_key, i, &cancel_mgr,
                                   &cp, &start, &done] {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       cp[i] = MakeCollectiveParams(group_key, instance_key + 1,
                                    /*is_source*/ i == 0);
@@ -402,7 +402,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     for (int i = 0; i < NUM_DEVS; ++i) {
       Env::Default()->SchedClosure([this, group_key, instance_key, i,
                                     &cancel_mgr, &cp, &done] {
-        string device =
+        std::string device =
             absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
@@ -420,7 +420,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
   prl_->StartAbort(absl::Status(absl::StatusCode::kAborted, "__aborted__"));
 
   auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
-    string device = "/job:localhost/replica:0/task:0/device:CPU:0";
+    std::string device = "/job:localhost/replica:0/task:0/device:CPU:0";
     absl::Notification done;
     auto* cp = MakeCollectiveParams(group_key, instance_key,
                                     /*is_source*/ true);
@@ -453,7 +453,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
     // Launching threads that keep doing CompleteInstanceLocal.
     BlockingCounter done(NUM_DEVS);
     for (int i = 0; i < NUM_DEVS; ++i) {
-      string device =
+      std::string device =
           absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       Env::Default()->SchedClosure(
           [this, i, device, &num_ok, &cancel_mgr, &done] {

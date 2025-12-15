@@ -60,7 +60,7 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   Platform* platform =
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
@@ -134,7 +134,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   Platform* platform =
       PlatformManager::PlatformWithName(GpuPlatformName()).value();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).value();
-  StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
+  StreamExecutorAddressAllocator se_allocator(platform, {stream_exec});
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   RedzoneAllocator allocator(stream.get(), &se_allocator,
                              /*memory_limit=*/(1LL << 32),

@@ -105,7 +105,8 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> Make(const string& name, const string& type) {
+  static std::unique_ptr<Device> Make(const std::string& name,
+                                      const std::string& type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
     device_attributes.set_device_type(DeviceType(type).type());
@@ -124,7 +125,7 @@ TEST_F(ConstantFoldingTest, Basic) {
                             nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* s1 = index.at("s1");
   Node* s2 = index.at("s2");
   // Nodes s1 and s2 now should now have a constant input
@@ -165,7 +166,7 @@ TEST_F(ConstantFoldingTest, DeterministicFolding) {
     TF_CHECK_OK(s.ToGraph(&g));
     bool was_mutated;
     int64_t unique_id = 0;
-    auto generate_new_name = [&unique_id](Graph* graph, string old_name) {
+    auto generate_new_name = [&unique_id](Graph* graph, std::string old_name) {
       return absl::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
     };
     ConstantFoldingOptions opt{};
@@ -203,7 +204,7 @@ TEST_F(ConstantFoldingTest, ConsiderFunction) {
       ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* s1 = index.at("s1");
   Node* s2 = index.at("s2");
   Node* m2 = index.at("m2");
@@ -232,7 +233,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceAnotherConstant) {
                             nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* d = index.at("d");
   Node* s3 = index.at("s3");
 
@@ -260,7 +261,7 @@ TEST_F(ConstantFoldingTest, TwoOutputs) {
                             nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* b0 = index.at("b0");
   Node* b1 = index.at("b1");
 
@@ -292,7 +293,7 @@ TEST_F(ConstantFoldingTest, TwoOutputsFoldOneOutput) {
       ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* b0 = index.at("b0");
   Node* b1 = index.at("b1");
   Node* b1_ident = index.at("b1_ident");
@@ -344,7 +345,7 @@ TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
   Graph g(flib_def);
   {
     Scope s = Scope::NewRootScope();
-    auto c = ops::Const<int32>(s.WithOpName("c"), {1}, {1});
+    auto c = ops::Const<int32_t>(s.WithOpName("c"), {1}, {1});
     TF_EXPECT_OK(s.graph()->AddFunctionLibrary(flib));
 
     // TODO(phawkins): there is no way to make a function call using the C++
@@ -427,7 +428,7 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
                             nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* recv1 = index.at("recv1");
   Node* recv2 = index.at("recv2");
   Node* send = index.at("send");
@@ -469,7 +470,7 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
                             "receiver");
     TF_ASSERT_OK(s.ToGraph(&g));
   }
-  std::unordered_map<string, Node*> orig_index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> orig_index = g.BuildNodeNameIndex();
   Node* recv0 = orig_index.at("recv0");
   Node* recv1 = orig_index.at("recv1");
   PartialTensorShape ps0;
@@ -478,7 +479,7 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
   PartialTensorShape ps1;
   int r1_dims[] = {2, 3, 4};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape<int>(r1_dims, 3, &ps1));
-  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  std::unordered_map<std::string, std::vector<PartialTensorShape>> map;
   map[recv0->name()].push_back(ps0);
   map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
@@ -488,7 +489,7 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
       ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* recv2 = index.at("recv2");
   Node* send0 = index.at("send0");
   Node* send1 = index.at("send1");
@@ -548,14 +549,14 @@ TEST_F(ConstantFoldingTest, PartialShape) {
                             "receiver");
     TF_ASSERT_OK(s.ToGraph(&g));
   }
-  std::unordered_map<string, Node*> orig_index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> orig_index = g.BuildNodeNameIndex();
   Node* recv0 = orig_index.at("recv0");
   Node* recv1 = orig_index.at("recv1");
   PartialTensorShape ps0;
   int r0_dims[] = {-1, -1};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
   PartialTensorShape ps1;
-  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  std::unordered_map<std::string, std::vector<PartialTensorShape>> map;
   map[recv0->name()].push_back(ps0);
   map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
@@ -565,7 +566,7 @@ TEST_F(ConstantFoldingTest, PartialShape) {
       ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* shape = index.at("shape");
   Node* size = index.at("size");
   Node* rank1 = index.at("rank1");
@@ -605,12 +606,12 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
                             "receiver");
     TF_ASSERT_OK(s.ToGraph(&g));
   }
-  std::unordered_map<string, Node*> orig_index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> orig_index = g.BuildNodeNameIndex();
   Node* c0 = orig_index.at("c0");
   PartialTensorShape ps0;
   int c0_dims[] = {};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(c0_dims, 0, &ps0));
-  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  std::unordered_map<std::string, std::vector<PartialTensorShape>> map;
   map[c0->name()].push_back(ps0);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
@@ -619,7 +620,7 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
       ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
   EXPECT_TRUE(was_mutated);
 
-  std::unordered_map<string, Node*> index = g.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> index = g.BuildNodeNameIndex();
   Node* recv0 = index.at("recv0");
   Node* send0 = index.at("send0");
 
@@ -666,14 +667,14 @@ const char kTestMemRegionName[] = "test://test";
 class TestReadOnlyMemoryRegion : public ::tensorflow::ReadOnlyMemoryRegion {
  public:
   ~TestReadOnlyMemoryRegion() override = default;
-  TestReadOnlyMemoryRegion(const void* data, uint64 length)
+  TestReadOnlyMemoryRegion(const void* data, uint64_t length)
       : data_(data), length_(length) {}
   const void* data() override { return data_; }
-  uint64 length() override { return length_; }
+  uint64_t length() override { return length_; }
 
  protected:
   const void* data_;
-  uint64 length_;
+  uint64_t length_;
 };
 
 class TestTFFileSystem : public ::tensorflow::NullFileSystem {
@@ -685,7 +686,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, ::tensorflow::TransactionToken* token,
+      const std::string& fname, ::tensorflow::TransactionToken* token,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
       return ::tensorflow::errors::Unimplemented(
@@ -707,7 +708,7 @@ class TestTFEnvironment : public ::tensorflow::EnvWrapper {
   using tf_base = ::tensorflow::EnvWrapper;
   TestTFEnvironment() : ::tensorflow::EnvWrapper(Default()) {}
   absl::Status GetFileSystemForFile(
-      const string& fname, ::tensorflow::FileSystem** result) override {
+      const std::string& fname, ::tensorflow::FileSystem** result) override {
     was_used_ = true;
     if (fname == "test://test") {
       *result = &test_filesystem_;

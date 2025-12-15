@@ -86,7 +86,7 @@ class DatasetRandomAccessCache {
 
   // Extends the temporary cache up to a given index and then updates
   // out_tensors with the element at that index.
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) {
     if (!iter_resource_) {
       TF_ASSIGN_OR_RETURN(iter_resource_,
@@ -104,7 +104,7 @@ class DatasetRandomAccessCache {
   std::vector<std::vector<Tensor>> GetCacheData() { return cache_; }
 
  private:
-  absl::Status ExtendTempCacheToIndex(int64 index, OpKernelContext* ctx) {
+  absl::Status ExtendTempCacheToIndex(int64_t index, OpKernelContext* ctx) {
     bool end_of_sequence;
     while (cache_.size() <= index) {
       std::vector<Tensor> out_tensors;
@@ -169,7 +169,7 @@ class IteratorRandomAccessCache {
 class CacheDatasetOp::FileDatasetBase : public DatasetBase {
  public:
   FileDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
-                  string filename, Env* env)
+                  std::string filename, Env* env)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         filename_(std::move(filename)),
@@ -184,7 +184,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
   ~FileDatasetBase() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.dataset_prefix = kFileDatasetPrefix;
     return std::make_unique<FileIterator>(FileIterator::Params{
@@ -199,7 +199,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kFileDatasetPrefix;
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -225,7 +225,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
 
  private:
   static size_t StringPaddingSize(size_t num_tensors) {
-    return strings::Printf(kPaddingSizeStrFormat, num_tensors - 1).size();
+    return absl::StrFormat(kPaddingSizeStrFormat, num_tensors - 1).size();
   }
 
   std::string FormatName(size_t item_index, size_t tensor_index) const {
@@ -328,14 +328,14 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       ~FileWriterIterator() override {
         if (!dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
           LOG(WARNING) << kIncompleteCacheErrorMessage;
-          std::vector<string> cache_files;
+          std::vector<std::string> cache_files;
           absl::Status s = dataset()->env_->GetMatchingPaths(
               absl::StrCat(filename_, "*"), &cache_files);
           if (!s.ok()) {
             LOG(WARNING) << "Failed to get matching files on " << filename_
                          << "* : " << s.ToString();
           }
-          for (const string& path : cache_files) {
+          for (const std::string& path : cache_files) {
             s = dataset()->env_->DeleteFile(path);
             if (!s.ok()) {
               LOG(WARNING) << "Failed to delete " << path << " : "
@@ -387,7 +387,7 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         size_t tensor_index = 0;
         for (const Tensor& t : *out_tensors) {
           DCHECK_LT(tensor_index, dataset()->num_tensors_);
-          string key = dataset()->FormatName(cur_index_, tensor_index++);
+          std::string key = dataset()->FormatName(cur_index_, tensor_index++);
           TF_RETURN_IF_ERROR(writer_->Add(key, t));
         }
         if (*end_of_sequence) {
@@ -576,9 +576,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // The current prefix for the cache file. This is equal to
       // `StrCat(dataset()->filename_, "_", shard_id_)`.
-      string filename_;
+      std::string filename_;
       std::unique_ptr<BundleWriter> writer_ TF_GUARDED_BY(mu_);
-      string lockfile_ TF_GUARDED_BY(mu_);
+      std::string lockfile_ TF_GUARDED_BY(mu_);
       bool lockfile_created_ TF_GUARDED_BY(mu_);
       bool iteration_completed_ TF_GUARDED_BY(mu_);
     };  // FileWriterIterator
@@ -730,7 +730,7 @@ class CacheDatasetOp::FileDataset : public CacheDatasetOp::FileDatasetBase {
 class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
  public:
   explicit FileDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                         string filename, Env* env,
+                         std::string filename, Env* env,
                          const Tensor& resource_handle)
       : FileDatasetBase(ctx, input, filename, env),
         resource_handle_(resource_handle) {}
@@ -768,7 +768,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
   ~MemoryDatasetBase() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.dataset_prefix = kMemoryDatasetPrefix;
     return std::make_unique<MemoryIterator>(
@@ -785,7 +785,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.dataset_prefix = kMemoryDatasetPrefix;
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -795,7 +795,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return input_->Cardinality(options);
   };
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     mutex_lock l(mu_);
 
@@ -815,7 +815,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     return dataset_random_access_cache_->Get(ctx, index, out_tensors);
   }
 
-  absl::Status Get(AnyContext ctx, int64 index,
+  absl::Status Get(AnyContext ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     mutex_lock l(mu_);
     if (!iterator_random_access_cache_) {
@@ -1182,7 +1182,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kFileName, &filename));
   if (filename.empty()) {
     static std::atomic<int64_t> resource_id_counter(0);
-    const string& container = ctx->resource_manager()->default_container();
+    const std::string& container = ctx->resource_manager()->default_container();
     auto name = strings::StrCat(ctx->op_kernel().name(), "/", kMemoryCache, "_",
                                 resource_id_counter.fetch_add(1));
     if (op_version_ == 2) {

@@ -223,7 +223,7 @@ struct MasterInfo {
       : master(master), default_timeout_in_ms(default_timeout_in_ms) {}
 };
 
-typedef std::unordered_map<string, MasterInfo> LocalMasterRegistry;
+typedef std::unordered_map<std::string, MasterInfo> LocalMasterRegistry;
 LocalMasterRegistry* local_master_registry() {
   static LocalMasterRegistry* local_master_registry_ = new LocalMasterRegistry;
   return local_master_registry_;
@@ -231,7 +231,7 @@ LocalMasterRegistry* local_master_registry() {
 }  // namespace
 
 /* static */
-void LocalMaster::Register(const string& target, Master* master,
+void LocalMaster::Register(const std::string& target, Master* master,
                            int64_t default_timeout_in_ms) {
   mutex_lock l(*get_local_master_registry_lock());
   local_master_registry()->insert(
@@ -239,7 +239,7 @@ void LocalMaster::Register(const string& target, Master* master,
 }
 
 /* static */
-std::unique_ptr<LocalMaster> LocalMaster::Lookup(const string& target) {
+std::unique_ptr<LocalMaster> LocalMaster::Lookup(const std::string& target) {
   std::unique_ptr<LocalMaster> ret;
   mutex_lock l(*get_local_master_registry_lock());
   auto iter = local_master_registry()->find(target);

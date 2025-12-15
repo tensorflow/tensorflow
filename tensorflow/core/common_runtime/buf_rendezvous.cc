@@ -75,16 +75,16 @@ void BufRendezvous::PurgeTable(const absl::Status& s, HookTable* table) {
   table->clear();
 }
 
-string BufRendezvous::Hook::DebugString() const {
+std::string BufRendezvous::Hook::DebugString() const {
   return absl::StrCat(
       "[dev:", (prod_dev ? prod_dev->name() : "none"),
-      ", ctx:", reinterpret_cast<uint64>(prod_ctx),
-      ", val:", reinterpret_cast<uint64>(prod_value),
-      ", pcb:", prod_cb ? reinterpret_cast<uint64>(&prod_cb) : 0,
-      ", ccb:", cons_cb ? reinterpret_cast<uint64>(&cons_cb) : 0, "]");
+      ", ctx:", reinterpret_cast<uint64_t>(prod_ctx),
+      ", val:", reinterpret_cast<uint64_t>(prod_value),
+      ", pcb:", prod_cb ? reinterpret_cast<uint64_t>(&prod_cb) : 0,
+      ", ccb:", cons_cb ? reinterpret_cast<uint64_t>(&cons_cb) : 0, "]");
 }
 
-void BufRendezvous::ProvideBuf(const string& key, Device* dev,
+void BufRendezvous::ProvideBuf(const std::string& key, Device* dev,
                                DeviceContext* dev_ctx, const Tensor* v,
                                const AllocatorAttributes& attr,
                                const ProducerCallback& done,
@@ -155,8 +155,9 @@ void BufRendezvous::ProvideBuf(const string& key, Device* dev,
   }
 }
 
-void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
-                               const uint64 device_incarnation,
+void BufRendezvous::ConsumeBuf(const std::string& key,
+                               const std::string& device_name,
+                               const uint64_t device_incarnation,
                                const ConsumerCallback& done,
                                CancellationManager* cancellation_manager) {
   DVLOG(4) << "ConsumeBuf: key = " << key << " device_name = " << device_name;
@@ -233,7 +234,7 @@ void BufRendezvous::ConsumeBuf(const string& key, const string& device_name,
   }
 }
 
-void BufRendezvous::CancelHook(const string& key) {
+void BufRendezvous::CancelHook(const std::string& key) {
   Hook* h = nullptr;
   {
     mutex_lock l(mu_);
@@ -264,7 +265,7 @@ void BufRendezvous::DoneWithHook(Hook* h) {
 void BufRendezvous::LogContents() {
   mutex_lock l(mu_);
   LOG(INFO) << strings::StrCat("BufRendezvous ",
-                               strings::Hex(reinterpret_cast<uint64>(this)),
+                               strings::Hex(reinterpret_cast<uint64_t>(this)),
                                " step_id=", step_id_, " current contents:");
   for (const auto& it : hook_table_) {
     LOG(INFO) << it.first << ":" << it.second->DebugString();
