@@ -43,11 +43,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -59,6 +59,7 @@ namespace {
 
 namespace LLVM = ::mlir::LLVM;
 namespace arith = ::mlir::arith;
+namespace se = stream_executor;
 namespace vector = ::mlir::vector;
 
 template <typename SourceOp>
