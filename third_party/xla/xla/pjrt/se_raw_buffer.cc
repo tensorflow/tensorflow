@@ -151,12 +151,8 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                 "host_memory_allocator should be initialized for "
                 "staging buffer transfer.");
           }
-          void* ptr = client->host_memory_allocator()->AllocateRaw(
-              tsl::Allocator::kAllocatorAlignment, transfer_size);
-          staging_buffer = std::shared_ptr<void>(
-              ptr,
-              [host_memory_allocator = client->host_memory_allocator()](
-                  void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
+          staging_buffer =
+              client->host_memory_allocator()->Allocate(transfer_size);
           auto copy_to_staging_buffer = [src, transfer_size,
                                          staging_buffer]() mutable {
             std::memcpy(staging_buffer.get(), src, transfer_size);
@@ -210,12 +206,8 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
                 "host_memory_allocator should be initialized for "
                 "staging buffer transfer.");
           }
-          void* ptr = client->host_memory_allocator()->AllocateRaw(
-              tsl::Allocator::kAllocatorAlignment, transfer_size);
-          std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
-              ptr,
-              [host_memory_allocator = client->host_memory_allocator()](
-                  void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
+          std::shared_ptr<void> staging_buffer =
+              client->host_memory_allocator()->Allocate(transfer_size);
           TF_RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
@@ -496,13 +488,10 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     src_usage_event_promise->Set(*std::move(d2h_event));
     return;
   } else {
-    void* ptr = client_->host_memory_allocator()->AllocateRaw(
-        tsl::Allocator::kAllocatorAlignment, GetOnDeviceSizeInBytes());
-    std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
-        ptr, [host_memory_allocator = client_->host_memory_allocator()](
-                 void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
-    auto d2h_event =
-        CopyRawDeviceToHostAndReturnEvent(ptr, 0, GetOnDeviceSizeInBytes());
+    std::shared_ptr<void> staging_buffer =
+        client_->host_memory_allocator()->Allocate(GetOnDeviceSizeInBytes());
+    auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
+        staging_buffer.get(), 0, GetOnDeviceSizeInBytes());
     if (!d2h_event.ok()) {
       definition_event_promise->SetError(d2h_event.status());
       src_usage_event_promise->SetError(d2h_event.status());

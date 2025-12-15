@@ -671,6 +671,7 @@ cc_library(
         ":device_event",
         ":event_pool",
         ":host_callback",
+        ":host_memory_allocator",
         ":host_memory_spaces",
         ":layout_mode",
         ":local_device_state",
@@ -1397,6 +1398,17 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "host_memory_allocator",
+    srcs = ["host_memory_allocator.cc"],
+    hdrs = ["host_memory_allocator.h"],
+    deps = [
+        "//xla/tsl/framework:allocator",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
     ],
 )
 

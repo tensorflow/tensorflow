@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/common_pjrt_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -238,7 +239,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       int process_index,
       std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
       std::unique_ptr<se::DeviceAddressAllocator> allocator,
-      std::unique_ptr<tsl::Allocator> host_memory_allocator,
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   ~PjRtStreamExecutorClient() override = default;
@@ -341,7 +342,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   }
   LocalClient* client() const { return client_; }
   se::DeviceAddressAllocator* allocator() const { return allocator_; }
-  tsl::Allocator* host_memory_allocator() const {
+  HostMemoryAllocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
   }
   bool should_stage_host_to_device_transfers() const {
@@ -483,7 +484,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   LocalClient* client_;
 
   // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<tsl::Allocator> host_memory_allocator_;
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to

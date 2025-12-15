@@ -48,10 +48,10 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -120,7 +120,7 @@ class TfrtGpuClient final : public PjRtClient {
                 bool should_stage_host_to_device_transfers,
                 bool abort_collectives_on_failure,
                 MaybeOwning<se::DeviceAddressAllocator> allocator,
-                std::unique_ptr<tsl::Allocator> host_memory_allocator,
+                std::shared_ptr<HostMemoryAllocator> host_memory_allocator,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<KeyValueStoreInterface> kv_store,
                 std::shared_ptr<const GpuTopology> gpu_topology);
@@ -339,7 +339,7 @@ class TfrtGpuClient final : public PjRtClient {
   // complete.
   MaybeOwning<se::DeviceAddressAllocator> allocator_;
   // Allocator to be used for staging memory transfers to devices.
-  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+  std::shared_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;

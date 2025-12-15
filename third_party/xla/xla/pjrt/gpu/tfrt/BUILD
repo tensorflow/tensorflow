@@ -37,7 +37,6 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_event",
-        ":host_memory_allocator",
         ":tracked_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
@@ -64,6 +63,7 @@ cc_library(
         "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:layout_mode",
         "//xla/pjrt:mlir_to_hlo",
@@ -354,13 +354,5 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
-    ],
-)
-
-cc_library(
-    name = "host_memory_allocator",
-    hdrs = ["host_memory_allocator.h"],
-    deps = [
-        "//xla/tsl/framework:allocator",
     ],
 )

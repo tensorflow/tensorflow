@@ -85,6 +85,7 @@ cc_library(
         "//xla/pjrt:common_pjrt_client",
         "//xla/pjrt:device_event",
         "//xla/pjrt:event_pool",
+        "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:local_device_state",
         "//xla/pjrt:mlir_to_hlo",

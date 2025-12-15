@@ -63,12 +63,12 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_async_host_to_device_transfer_manager.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_executable.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -149,7 +149,7 @@ TfrtGpuClient::TfrtGpuClient(
     bool should_stage_host_to_device_transfers,
     bool abort_collectives_on_failure,
     MaybeOwning<se::DeviceAddressAllocator> allocator,
-    std::unique_ptr<tsl::Allocator> host_memory_allocator,
+    std::shared_ptr<HostMemoryAllocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     std::shared_ptr<const GpuTopology> gpu_topology)
@@ -160,8 +160,7 @@ TfrtGpuClient::TfrtGpuClient(
           should_stage_host_to_device_transfers),
       abort_collectives_on_failure_(abort_collectives_on_failure),
       allocator_(std::move(allocator)),
-      host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
-          std::move(host_memory_allocator))),
+      host_memory_allocator_(std::move(host_memory_allocator)),
       devices_(InitializeDevices(this, devices)),
       id_to_device_(GetIdToDeviceMap(devices)),
       addressable_devices_(GetAddressableDevicePointers(devices)),
@@ -1189,11 +1188,36 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   EnablePeerAccess(xla_client->backend().stream_executors());
 
-  std::unique_ptr<tsl::Allocator> host_memory_allocator;
-  if (!xla_client->backend().stream_executors().empty()) {
+  std::shared_ptr<HostMemoryAllocator> host_memory_allocator;
+  if (options.host_memory_allocator_factory != nullptr) {
+    stream_executor::StreamExecutor* const stream_executor =
+        xla_client->backend().stream_executors().front();
+    HostMemoryAllocator::Options allocator_options;
+    allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
+    allocator_options.map_fn = [stream_executor](void* data, size_t size) {
+      bool success = stream_executor->HostMemoryRegister(data, size);
+      if (!success) {
+        return absl::InternalError(absl::StrFormat(
+            "Failed to register host memory at address: %ps", data));
+      }
+      return absl::OkStatus();
+    };
+    allocator_options.unmap_fn = [stream_executor](void* data) {
+      bool success = stream_executor->HostMemoryUnregister(data);
+      if (!success) {
+        return absl::InternalError(absl::StrFormat(
+            "Failed to unregister host memory at address: %ps", data));
+      }
+      return absl::OkStatus();
+    };
+    host_memory_allocator =
+        options.host_memory_allocator_factory(allocator_options);
+  } else if (!xla_client->backend().stream_executors().empty()) {
     TF_ASSIGN_OR_RETURN(
-        host_memory_allocator,
+        std::unique_ptr<tsl::Allocator> allocator,
         GetGpuHostAllocator(xla_client->backend().stream_executors().front()));
+    host_memory_allocator = std::make_shared<BasicHostMemoryAllocator>(
+        std::move(allocator), tsl::Allocator::kAllocatorAlignment);
   }
 
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
