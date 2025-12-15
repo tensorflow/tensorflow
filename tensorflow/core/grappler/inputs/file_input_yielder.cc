@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-FileInputYielder::FileInputYielder(const std::vector<string>& filenames,
+FileInputYielder::FileInputYielder(const std::vector<std::string>& filenames,
                                    size_t max_iterations)
     : filenames_(filenames),
       current_file_(0),
@@ -64,7 +64,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
     }
   }
 
-  const string& filename = filenames_[current_file_];
+  const std::string& filename = filenames_[current_file_];
   ++current_file_;
 
   if (!Env::Default()->FileExists(filename).ok()) {
@@ -97,12 +97,12 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
     metagraph = MetaGraphDef();
     return NextItem(item);
   } else {
-    std::unordered_set<string> train_ops;
-    for (const string& val :
+    std::unordered_set<std::string> train_ops;
+    for (const std::string& val :
          metagraph.collection_def().at("train_op").node_list().value()) {
       train_ops.insert(NodeName(val));
     }
-    std::unordered_set<string> train_ops_found;
+    std::unordered_set<std::string> train_ops_found;
     for (auto& node : metagraph.graph_def().node()) {
       if (train_ops.find(node.name()) != train_ops.end()) {
         train_ops_found.insert(node.name());
@@ -120,7 +120,8 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
     }
   }
 
-  const string id = absl::StrCat(Fingerprint64(metagraph.SerializeAsString()));
+  const std::string id =
+      absl::StrCat(Fingerprint64(metagraph.SerializeAsString()));
 
   ItemConfig cfg;
   std::unique_ptr<GrapplerItem> new_item =

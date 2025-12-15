@@ -22,9 +22,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-string RaggedTensorVariant::TypeName() const { return "RaggedTensorVariant"; }
+std::string RaggedTensorVariant::TypeName() const {
+  return "RaggedTensorVariant";
+}
 
-string RaggedTensorVariant::DebugString() const {
+std::string RaggedTensorVariant::DebugString() const {
   return absl::StrCat(
       "RaggedTensorVariant(dtype=", DataTypeString(values_.dtype()),
       ", ragged_rank=", nested_splits_.size(), ", splits_dtype=",

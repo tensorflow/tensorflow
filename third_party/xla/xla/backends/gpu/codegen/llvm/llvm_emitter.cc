@@ -251,6 +251,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm::IRBuilderBase* builder() { return &b_; }
 
+  llvm::Module* module() { return module_; }
+
   // Generate the code for the computation passed in the constructor, if it
   // wasn't already generated previously.
   // As well as generting the code for the function, emits code for global
@@ -855,6 +857,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
                                 op_name, num_blocks, kThreadsPerBlock);
   ThunkSequence thunks;
+  bool emit_iota_operands = true;
   auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
@@ -883,9 +886,9 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
 
     auto* comparator = sort->called_computations().front();
     auto* builder = ir_emitter.builder();
-    return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, output_arrays_span, llvm_ir::IrName(op_name),
-        xor_masks, ir_emitter.builder(), launch_dimensions,
+    auto result = llvm_ir::EmitSortInPlace(
+        sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
+        xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
         tile_size, kUnrollFactor,
@@ -894,6 +897,8 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
                                        llvm_module, *comparator, operands,
                                        output);
         });
+    emit_iota_operands = false;
+    return result;
   };
   std::vector<int64_t> xor_masks;
   for (int64_t stage = 0; stage < num_stages; ++stage) {
