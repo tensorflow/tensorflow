@@ -43,7 +43,6 @@ namespace xla {
 namespace {
 using tensorflow::CoordinatedJob;
 using tensorflow::CoordinatedTask;
-using tensorflow::CoordinationServiceConfig;
 
 constexpr char kJobName[] = "test_worker";
 
@@ -144,11 +143,11 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
   std::unique_ptr<CoordinationService> EnableCoordinationService() {
-    CoordinationServiceConfig config;
-    config.set_service_type("standalone");
-    CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
-    job->set_name(kJobName);
-    job->set_num_tasks(2);
+    CoordinationService::Config config;
+    CoordinatedJob job;
+    job.set_name(kJobName);
+    job.set_num_tasks(2);
+    config.coordinated_job_list.push_back(job);
     return std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
   void InitializeAndConnectCoordinationAgents() {
@@ -161,8 +160,8 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     auto error_fn = [](const absl::Status& status) {
       LOG(ERROR) << "Coordination service agent in error status: " << status;
     };
-    CoordinationServiceConfig coord_config;
-    coord_config.set_service_leader("test_leader");
+    CoordinationServiceAgent::Config coord_config;
+    coord_config.service_leader = "test_leader";
     CHECK_OK(coord_agent_->Initialize(tsl::Env::Default(), kJobName,
                                       /*task_id=*/0, coord_config,
                                       std::move(coord_client), error_fn));

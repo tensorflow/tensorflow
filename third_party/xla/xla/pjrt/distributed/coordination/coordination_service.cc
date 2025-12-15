@@ -42,9 +42,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
-#include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
@@ -61,16 +59,12 @@ namespace {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
 using tensorflow::CoordinatedTaskStateInfo;
-using tensorflow::CoordinationServiceConfig;
-using tensorflow::CoordinationServiceError;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
 constexpr char kClusterRegisterBarrierId[] =
     "[Init]Wait_for_all_tasks_to_register";
 constexpr absl::Duration kDevicePropagationTimeout = absl::Hours(1);
-constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
-constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
 // Limit the number of stragglers we log to avoid `RESOURCE_EXHAUSTED` errors in
@@ -200,25 +194,10 @@ bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
          tsl::Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
-CoordinationService::CoordinationService(
-    tsl::Env* env, const CoordinationServiceConfig& config)
-    : env_(*env),
-      heartbeat_timeout_ms_([&config]() -> uint64_t {
-        return config.heartbeat_timeout_in_ms() > 0
-                   ? config.heartbeat_timeout_in_ms()
-                   : kDefaultHeartbeatTimeoutMs;
-      }()),
-      cluster_register_with_barrier_(config.cluster_register_with_barrier()),
-      cluster_register_timeout_(
-          absl::Milliseconds(config.cluster_register_timeout_in_ms())),
-      shutdown_barrier_timeout_(
-          absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())),
-      allow_new_incarnation_to_reconnect_(
-          config.allow_new_incarnation_to_reconnect()) {
+CoordinationService::CoordinationService(tsl::Env* env, const Config& config)
+    : env_(*env), config_(config) {
   LOG(INFO) << "Initializing CoordinationService";
-  recoverable_jobs_ = absl::flat_hash_set<std::string>(
-      config.recoverable_jobs().cbegin(), config.recoverable_jobs().cend());
-  for (const auto& job : config.coordinated_job_list()) {
+  for (const auto& job : config_.coordinated_job_list) {
     for (int i = 0; i < job.num_tasks(); ++i) {
       const std::string task_name = GetTaskName(job.name(), i);
       cluster_state_.emplace(task_name, std::make_unique<TaskState>(task_name));
@@ -237,7 +216,8 @@ void CoordinationService::CheckHeartbeatTimeout() {
       continue;
     }
     const bool is_stale =
-        task_state->TimeSinceLastHeartbeatMs() > heartbeat_timeout_ms_;
+        absl::Milliseconds(task_state->TimeSinceLastHeartbeatMs()) >
+        config_.heartbeat_timeout;
     VLOG(10) << "Checking staleness for " << task_name
              << " stale?=" << is_stale;
     if (is_stale) {
@@ -598,7 +578,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
   const auto task_status = task_cluster_state->GetStatus();
 
   if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
-      ((allow_new_incarnation_to_reconnect_ ||
+      ((config_.allow_new_incarnation_to_reconnect ||
         task_cluster_state->IsRecoverable()) &&
        (absl::IsUnavailable(task_status) &&
         task_status.GetPayload(CoordinationErrorPayloadKey())))) {
@@ -609,7 +589,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
     //   an unavailable error state, but has now restarted (possibly with
     //   a new incarnation). This is only allowed if configured with
     //   `allow_new_incarnation_to_reconnect`.
-    if (cluster_register_with_barrier_) {
+    if (config_.cluster_register_with_barrier) {
       // Impose barrier so that all tasks can register together.
       // Note: it is possible that the same task restarts multiple times and
       // registers itself with new incarnations.
@@ -633,7 +613,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
       }
       BarrierAsyncLocked(
           kClusterRegisterBarrierId, kUniqueBarrierCounter,
-          cluster_register_timeout_, task, {},
+          config_.cluster_register_timeout, task, {},
           ConnectAfterBarrierPasses(task_name, incarnation, std::move(done)));
       ClusterStateUpdated();
       return;
@@ -711,7 +691,8 @@ void CoordinationService::WaitForAllTasks(const CoordinatedTask& task,
 void CoordinationService::ShutdownTaskAsync(const CoordinatedTask& task,
                                             tsl::StatusCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked ShutdownTaskAsync()";
-  if (shutdown_barrier_timeout_ > absl::ZeroDuration() && !task.recoverable()) {
+  if (config_.shutdown_barrier_timeout > absl::ZeroDuration() &&
+      !task.recoverable()) {
     // Impose shutdown barrier so that all (non-recoverable) tasks can
     // disconnect together.
     // Notes:
@@ -725,7 +706,7 @@ void CoordinationService::ShutdownTaskAsync(const CoordinatedTask& task,
     //    all tasks.
     auto shutdown_tasks = GetTasksForShutdownBarrier();
     BarrierAsync(shutdown_barrier_id_, kUniqueBarrierCounter,
-                 shutdown_barrier_timeout_, task, shutdown_tasks,
+                 config_.shutdown_barrier_timeout, task, shutdown_tasks,
                  [done = std::move(done)](const absl::Status& s,
                                           int64_t unused_counter) {
                    if (s.ok()) {
@@ -776,7 +757,8 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
 
   // Disconnect task.
   task_state->Disconnect(
-      /*grace_period_duration_us=*/heartbeat_timeout_ms_ * 1000);
+      /*grace_period_duration_us=*/absl::ToInt64Milliseconds(
+          config_.heartbeat_timeout));
   LeaveOngoingBarriers(task, "task disconnected");
   RefreshAliveness();
   error_polling_state_.RemoveTask(task, "task has disconnected.");
@@ -1443,7 +1425,8 @@ void CoordinationService::PassBarrier(BarrierState* barrier,
            "some tasks were never scheduled, or 3) scheduling delays. Consider "
            "setting a longer initialization timeout if such delays are "
            "expected, the timeout is currently set to: "
-        << cluster_register_timeout_ << ".\n\nOriginal error: " << result;
+        << config_.cluster_register_timeout
+        << ".\n\nOriginal error: " << result;
     return;
   }
   // Special hook for shutdown barrier to disconnect tasks at the barrier and
@@ -1829,7 +1812,8 @@ void CoordinationService::CompleteShutdownAfterBarrier(
 
 bool CoordinationService::isRecoverableJob(
     const absl::string_view task_name) const {
-  return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
+  return config_.recoverable_jobs.find(task_name) !=
+         config_.recoverable_jobs.end();
 }
 
 void CoordinationService::SendErrorPollingResponseOrFailAllTasks(

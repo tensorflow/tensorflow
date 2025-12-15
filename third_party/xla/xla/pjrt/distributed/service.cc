@@ -37,20 +37,15 @@ namespace {
 std::unique_ptr<xla::CoordinationService> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {
   const std::string job_name = "jax_worker";
-  tensorflow::CoordinationServiceConfig config;
-  config.set_service_type("standalone");
-  config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.cluster_register_timeout));
-  config.set_cluster_register_with_barrier(true);
-  config.set_heartbeat_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.heartbeat_timeout));
-  config.set_shutdown_barrier_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.shutdown_timeout));
-  tensorflow::CoordinatedJob* job =
-      config.mutable_coordinated_job_list()->Add();
-  job->set_name(job_name);
-  job->set_num_tasks(options.num_nodes);
+  xla::CoordinationService::Config config;
+  config.cluster_register_timeout = options.cluster_register_timeout;
+  config.cluster_register_with_barrier = true;
+  config.heartbeat_timeout = options.heartbeat_timeout;
+  config.shutdown_barrier_timeout = options.shutdown_timeout;
+  tensorflow::CoordinatedJob job;
+  job.set_name(job_name);
+  job.set_num_tasks(options.num_nodes);
+  config.coordinated_job_list.push_back(job);
   auto service =
       std::make_unique<xla::CoordinationService>(options.env, config);
   return service;

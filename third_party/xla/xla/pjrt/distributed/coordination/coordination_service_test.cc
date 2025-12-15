@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/*r Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -78,12 +78,12 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
   return kv;
 }
 
-CoordinationServiceConfig GetCoordinationServiceConfig(int num_tasks) {
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
-  CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
-  job->set_name("worker");
-  job->set_num_tasks(num_tasks);
+CoordinationService::Config GetCoordinationServiceConfig(int num_tasks) {
+  CoordinationService::Config config;
+  CoordinatedJob job;
+  job.set_name("worker");
+  job.set_num_tasks(num_tasks);
+  config.coordinated_job_list.push_back(std::move(job));
   return config;
 }
 
@@ -168,7 +168,8 @@ class CoordinationBarrierTest : public ::testing::Test {
       tasks_.push_back(task);
       clients_.push_back(std::move(client));
     }
-    CoordinationServiceConfig config = GetCoordinationServiceConfig(num_tasks);
+    CoordinationService::Config config =
+        GetCoordinationServiceConfig(num_tasks);
 
     coord_service_ =
         std::make_unique<CoordinationService>(tsl::Env::Default(), config);
@@ -232,24 +233,21 @@ class CoordinateTwoTasksTest : public ::testing::Test {
       bool enable_register_barrier = false,
       bool set_worker_job_recoverable = false,
       bool allow_new_incarnation_to_reconnect = false) {
-    CoordinationServiceConfig config =
+    CoordinationService::Config config =
         GetCoordinationServiceConfig(/*num_tasks=*/2);
-    config.set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
-                                       absl::Milliseconds(1));
+    config.heartbeat_timeout = kHeartbeatTimeout;
     if (set_worker_job_recoverable) {
-      config.mutable_recoverable_jobs()->Add("worker");
+      config.recoverable_jobs.insert("worker");
     }
     if (enable_shutdown_barrier) {
-      config.set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
-                                                absl::Milliseconds(1));
+      config.shutdown_barrier_timeout = kShutdownBarrierTimeout;
     }
     if (enable_register_barrier) {
-      config.set_cluster_register_with_barrier(true);
-      config.set_cluster_register_timeout_in_ms(absl::Seconds(1) /
-                                                absl::Milliseconds(1));
+      config.cluster_register_with_barrier = true;
+      config.cluster_register_timeout = absl::Seconds(1);
     }
     if (allow_new_incarnation_to_reconnect) {
-      config.set_allow_new_incarnation_to_reconnect(true);
+      config.allow_new_incarnation_to_reconnect = true;
     }
     // Init service.
     coord_service_ =
@@ -322,14 +320,15 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   evaluator.set_job_name("evaluator");
   evaluator.set_task_id(0);
 
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
-  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
-  chief_job->set_name("chief");
-  chief_job->set_num_tasks(1);
-  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
-  worker_job->set_name("worker");
-  worker_job->set_num_tasks(2);
+  CoordinationService::Config config;
+  CoordinatedJob chief_job;
+  chief_job.set_name("chief");
+  chief_job.set_num_tasks(1);
+  config.coordinated_job_list.push_back(chief_job);
+  CoordinatedJob worker_job;
+  worker_job.set_name("worker");
+  worker_job.set_num_tasks(2);
+  config.coordinated_job_list.push_back(worker_job);
 
   auto coord_service =
       std::make_unique<CoordinationService>(tsl::Env::Default(), config);
@@ -369,7 +368,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
 // In this case, the agent would retry Connect() and should succeed if it has
 // the same incarnation.
 TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
@@ -388,7 +387,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
 
 TEST(CoordinationServiceTest,
      RegisterTask_AlreadyConnectedDifferentIncarnation_Fails) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
@@ -408,7 +407,7 @@ TEST(CoordinationServiceTest,
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
-  CoordinationServiceConfig config =
+  CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
@@ -854,7 +853,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
 }
 
 TEST(CoordinationServiceTest, TryGetKeyValue) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   std::unique_ptr<CoordinationService> coord_service =
       std::make_unique<CoordinationService>(tsl::Env::Default(), config);
@@ -876,7 +875,7 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
 }
 
 TEST(CoordinationServiceTest, IncrementKeyValue) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   std::unique_ptr<CoordinationService> coord_service =
       std::make_unique<CoordinationService>(tsl::Env::Default(), config);
@@ -975,7 +974,7 @@ TEST_F(CoordinateTwoTasksTest,
 // Verify that coordination service can gather each task's device info and
 // propagate the aggregated cluster device info correctly.
 TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/3);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
@@ -1032,7 +1031,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
 // Task devices should not be added twice if same task calls WaitForAllDevices()
 // twice.
 TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/2);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
@@ -2110,10 +2109,9 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
+  CoordinationService::Config config;
   // Workers are recoverable, chief is not.
-  config.mutable_recoverable_jobs()->Add("worker");
+  config.recoverable_jobs.insert("worker");
   CoordinatedTask chief;
   chief.set_job_name("chief");
   chief.set_task_id(0);
@@ -2123,12 +2121,14 @@ TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
   CoordinatedTask task_1;
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
-  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
-  chief_job->set_name("chief");
-  chief_job->set_num_tasks(1);
-  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
-  worker_job->set_name("worker");
-  worker_job->set_num_tasks(2);
+  CoordinatedJob chief_job;
+  chief_job.set_name("chief");
+  chief_job.set_num_tasks(1);
+  config.coordinated_job_list.push_back(chief_job);
+  CoordinatedJob worker_job;
+  worker_job.set_name("worker");
+  worker_job.set_num_tasks(2);
+  config.coordinated_job_list.push_back(worker_job);
 
   std::unique_ptr<CoordinationService> coord_service =
       std::make_unique<CoordinationService>(tsl::Env::Default(), config);

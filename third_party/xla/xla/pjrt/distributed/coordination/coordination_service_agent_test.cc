@@ -41,7 +41,6 @@ limitations under the License.
 namespace xla {
 namespace {
 using tensorflow::CoordinatedTask;
-using tensorflow::CoordinationServiceConfig;
 using tensorflow::KeyValueEntry;
 
 using ::testing::_;
@@ -181,8 +180,8 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   }
 
   // Should be called after mocking service responses, before testing the agent.
-  void InitializeAgent(CoordinationServiceConfig config = {}) {
-    config.set_service_leader("test_leader");
+  void InitializeAgent(CoordinationServiceAgent::Config config = {}) {
+    config.service_leader = "test_leader";
     TF_ASSERT_OK(agent_->Initialize(
         tsl::Env::Default(), /*job_name=*/"test_job",
         /*task_id=*/0, config, std::move(client_),
@@ -456,8 +455,8 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
       .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
                       InvokeArgument<3>(absl::InternalError("Test Error."))));
 
-  CoordinationServiceConfig config;
-  config.set_poll_for_error_from_service_at_startup(true);
+  CoordinationServiceAgent::Config config;
+  config.poll_for_error_from_service_at_startup = true;
   InitializeAgent(config);
   // The agent will be in ERROR state after the first call to Connect()
   // because the error polling thread will be created and will immediately
@@ -483,8 +482,8 @@ TEST_F(CoordinationServiceAgentTest, CancelledPollForErrorRequest) {
       .WillOnce(DoAll(SetArgPointee<2>(mocked_response),
                       InvokeArgument<3>(absl::CancelledError("Test Error."))));
 
-  CoordinationServiceConfig config;
-  config.set_poll_for_error_from_service_at_startup(true);
+  CoordinationServiceAgent::Config config;
+  config.poll_for_error_from_service_at_startup = true;
   InitializeAgent(config);
   TF_ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
@@ -501,8 +500,8 @@ TEST_F(CoordinationServiceAgentTest, InvalidPollForErrorRequest) {
           DoAll(SetArgPointee<2>(mocked_response),
                 InvokeArgument<3>(absl::InvalidArgumentError("Test Error."))));
 
-  CoordinationServiceConfig config;
-  config.set_poll_for_error_from_service_at_startup(true);
+  CoordinationServiceAgent::Config config;
+  config.poll_for_error_from_service_at_startup = true;
   InitializeAgent(config);
   TF_ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
@@ -519,8 +518,8 @@ TEST_F(CoordinationServiceAgentTest,
           SetArgPointee<2>(mocked_response),
           InvokeArgument<3>(absl::FailedPreconditionError("Test Error."))));
 
-  CoordinationServiceConfig config;
-  config.set_poll_for_error_from_service_at_startup(true);
+  CoordinationServiceAgent::Config config;
+  config.poll_for_error_from_service_at_startup = true;
   InitializeAgent(config);
   TF_ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
@@ -598,10 +597,9 @@ TEST_F(CoordinationServiceAgentTest, Connect_AbortedErrorShouldFailEventually) {
   EXPECT_CALL(*GetClient(), RegisterTaskAsync(_, _, _, _))
       .WillRepeatedly(
           InvokeArgument<3>(absl::AbortedError("DuplicateTaskRegistration")));
-  CoordinationServiceConfig config;
+  CoordinationServiceAgent::Config config;
   // Connect should only be retried for 3 seconds.
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(absl::Seconds(3)));
+  config.cluster_register_timeout = absl::Seconds(3);
   InitializeAgent(config);
 
   absl::Status s = agent_->Connect();

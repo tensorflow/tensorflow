@@ -36,16 +36,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
-#include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/framework/cancellation.h"
@@ -59,7 +56,6 @@ namespace xla {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
 using tensorflow::CoordinatedTaskStateInfo;
-using tensorflow::CoordinationServiceConfig;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
@@ -69,27 +65,22 @@ auto* enabled_usage_metric = tsl::monitoring::Gauge<bool, 0>::New(
     "/coordination_service/v2/agent/enabled",
     "Tracks usage of coordination service.");
 
-constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
-constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
-constexpr absl::Duration kDefaultShutdownTimeout = absl::Seconds(10);
 constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 
 }  // namespace
 
 absl::Status CoordinationServiceAgent::Initialize(
     tsl::Env* env, absl::string_view job_name, int task_id,
-    const CoordinationServiceConfig& configs,
-    std::unique_ptr<CoordinationClient> leader_client,
+    const Config& config, std::unique_ptr<CoordinationClient> leader_client,
     tsl::StatusCallback error_fn) {
-  return Initialize(env, job_name, task_id, configs, std::move(leader_client),
+  return Initialize(env, job_name, task_id, config, std::move(leader_client),
                     error_fn,
                     /*recoverable=*/false);
 }
 
 absl::Status CoordinationServiceAgent::Initialize(
     tsl::Env* env, absl::string_view job_name, int task_id,
-    const CoordinationServiceConfig& configs,
-    std::unique_ptr<CoordinationClient> leader_client,
+    const Config& config, std::unique_ptr<CoordinationClient> leader_client,
     tsl::StatusCallback error_fn, bool recoverable) {
   CoordinatedTask task;
   task.set_job_name(std::string(job_name));
@@ -102,12 +93,11 @@ absl::Status CoordinationServiceAgent::Initialize(
            "`WaitAtBarrier` explicitly at the end of the program.";
     task.set_recoverable(true);
   }
-  return Initialize(env, task, configs, std::move(leader_client), error_fn);
+  return Initialize(env, task, config, std::move(leader_client), error_fn);
 }
 
 absl::Status CoordinationServiceAgent::Initialize(
-    tsl::Env* env, const CoordinatedTask& task,
-    const CoordinationServiceConfig& configs,
+    tsl::Env* env, const CoordinatedTask& task, const Config& config,
     std::unique_ptr<CoordinationClient> leader_client,
     tsl::StatusCallback error_fn) {
   enabled_usage_metric->GetCell()->Set(true);
@@ -119,8 +109,8 @@ absl::Status CoordinationServiceAgent::Initialize(
 
   env_ = env;
   task_ = task;
-  configs_ = configs;
-  if (configs_.service_leader().empty()) {
+  config_ = config;
+  if (config_.service_leader.empty()) {
     return MakeCoordinationError(absl::InvalidArgumentError(
         "CoordinationServiceAgent must be initialized with a valid leader."));
   }
@@ -183,13 +173,9 @@ absl::Status CoordinationServiceAgent::Connect() {
   request.set_incarnation(incarnation_id_.value());
   RegisterTaskResponse response;
 
-  const int64_t register_timeout =
-      configs_.cluster_register_timeout_in_ms() > 0
-          ? configs_.cluster_register_timeout_in_ms()
-          : absl::ToInt64Milliseconds(kDefaultClusterRegisterTimeout);
   // Give 5 seconds for any service-related timeouts to propagate.
   const absl::Time deadline =
-      absl::Now() + absl::Milliseconds(register_timeout) + absl::Seconds(5);
+      absl::Now() + config_.cluster_register_timeout + absl::Seconds(5);
   int attempt = 0;
   std::default_random_engine generator;
   std::uniform_real_distribution<double> distribution(0.0, 1.0);
@@ -244,7 +230,7 @@ absl::Status CoordinationServiceAgent::Connect() {
       tsl::ThreadOptions(), kHeartbeatThread,
       absl::bind_front(&CoordinationServiceAgent::StartSendingHeartbeats,
                        this)));
-  if (configs_.poll_for_error_from_service_at_startup()) {
+  if (config_.poll_for_error_from_service_at_startup) {
     StartPollingForError();
   }
   return absl::OkStatus();
@@ -255,12 +241,9 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_.value());
   HeartbeatResponse response;
-  const int64_t heartbeat_interval_ms =
-      configs_.heartbeat_timeout_in_ms() > 0
-          ? configs_.heartbeat_timeout_in_ms() / 2
-          : absl::ToInt64Milliseconds(kDefaultHeartbeatTimeout) / 2;
+  const absl::Duration heartbeat_interval = config_.heartbeat_timeout;
   tsl::CallOptions call_opts;
-  call_opts.SetTimeout(heartbeat_interval_ms);
+  call_opts.SetTimeout(absl::ToInt64Milliseconds(heartbeat_interval));
 
   while (true) {
     absl::Status status;
@@ -302,7 +285,7 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
     {
       absl::MutexLock l(shutdown_mu_);
       shutdown_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
-                                    absl::Milliseconds(heartbeat_interval_ms));
+                                    config_.heartbeat_timeout);
       if (shutting_down_) {
         return;
       }
@@ -524,18 +507,15 @@ absl::Status CoordinationServiceAgent::ShutdownInternal() {
     is_connected = state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
   }
   // Disconnect agent from service.
-  if (!configs_.agent_destruction_without_shutdown() && is_connected) {
+  if (!config_.agent_destruction_without_shutdown && is_connected) {
     LOG(INFO) << "Coordination agent has initiated Shutdown().";
     ShutdownTaskRequest request;
     *request.mutable_source_task() = task_;
     ShutdownTaskResponse response;
     tsl::CallOptions call_opts;
+    // Add 5s for service-related errors to propagate.
     const int64_t shutdown_timeout =
-        (configs_.shutdown_barrier_timeout_in_ms() > 0
-             ? configs_.shutdown_barrier_timeout_in_ms()
-             : absl::ToInt64Milliseconds(kDefaultShutdownTimeout)) +
-        // Add 5s for service-related errors to propagate.
-        5 * 1000;
+        absl::ToInt64Milliseconds(config_.shutdown_barrier_timeout) + 5 * 1000;
     call_opts.SetTimeout(shutdown_timeout);
 
     absl::Notification n;

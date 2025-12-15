@@ -54,7 +54,6 @@ limitations under the License.
 
 namespace xla {
 namespace {
-using ::tensorflow::CoordinationServiceConfig;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
@@ -79,42 +78,40 @@ MATCHER_P2(IsKvEntry, key, value, "") {
 
 class ClientServerTest : public ::testing::Test {
  public:
-  CoordinationServiceConfig GetConfig(
+  CoordinationServiceAgent::Config GetConfig(
       absl::Duration init_and_shutdown_timeout,
       bool shutdown_on_destruction = true,
       bool cluster_register_with_barrier = true,
       bool cluster_shutdown_with_barrier = true) {
     // Set config.
-    tensorflow::CoordinationServiceConfig config;
-    config.set_service_type("standalone");
-    config.set_service_leader("/job:agent/task:0");
-    config.set_cluster_register_timeout_in_ms(
-        absl::ToInt64Milliseconds(init_and_shutdown_timeout));
-    config.set_heartbeat_timeout_in_ms(
-        absl::ToInt64Milliseconds(kHeartbeatTimeout));
+    CoordinationServiceAgent::Config config;
+    config.service_leader = "/job:agent/task:0";
+    config.cluster_register_timeout = init_and_shutdown_timeout;
+    config.heartbeat_timeout = kHeartbeatTimeout;
     if (cluster_shutdown_with_barrier) {
-      config.set_shutdown_barrier_timeout_in_ms(
-          absl::ToInt64Milliseconds(init_and_shutdown_timeout));
+      config.shutdown_barrier_timeout = init_and_shutdown_timeout;
     }
-    config.set_agent_destruction_without_shutdown(!shutdown_on_destruction);
+    config.agent_destruction_without_shutdown = !shutdown_on_destruction;
     // TODO(b/369222279): Add more test cases that exercise TF behaviour (no
     // barrier).
-    config.set_cluster_register_with_barrier(cluster_register_with_barrier);
-    config.set_poll_for_error_from_service_at_startup(true);
+    config.poll_for_error_from_service_at_startup = true;
     return config;
   }
 
-  CoordinationServiceConfig GetServiceConfig(
+  CoordinationService::Config GetServiceConfig(
       int num_nodes, absl::Duration init_and_shutdown_timeout,
       bool cluster_register_with_barrier, bool cluster_shutdown_with_barrier) {
-    auto config =
-        GetConfig(init_and_shutdown_timeout,
-                  /*shutdown_on_destruction=*/true,
-                  cluster_register_with_barrier, cluster_shutdown_with_barrier);
-    tensorflow::CoordinatedJob* job =
-        config.mutable_coordinated_job_list()->Add();
-    job->set_name("agent");
-    job->set_num_tasks(num_nodes);
+    CoordinationService::Config config;
+    config.cluster_register_timeout = init_and_shutdown_timeout;
+    config.heartbeat_timeout = kHeartbeatTimeout;
+    if (cluster_shutdown_with_barrier) {
+      config.shutdown_barrier_timeout = init_and_shutdown_timeout;
+    }
+    config.cluster_register_with_barrier = cluster_register_with_barrier;
+    tensorflow::CoordinatedJob job;
+    job.set_name("agent");
+    job.set_num_tasks(num_nodes);
+    config.coordinated_job_list.push_back(job);
     auto service =
         std::make_unique<CoordinationService>(tsl::Env::Default(), config);
     return config;
@@ -134,7 +131,7 @@ class ClientServerTest : public ::testing::Test {
     leader_client.reset(NewGrpcCoordinationClient(channel));
 
     auto coord_agent = CreateCoordinationServiceAgent();
-    CoordinationServiceConfig config =
+    CoordinationServiceAgent::Config config =
         GetConfig(init_and_shutdown_timeout, shutdown_on_destruction);
     const absl::Status status = coord_agent->Initialize(
         tsl::Env::Default(), "agent", node_id, config, std::move(leader_client),

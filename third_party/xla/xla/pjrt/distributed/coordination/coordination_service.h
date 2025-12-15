@@ -19,8 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
-#include <utility>
+#include <tuple>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -35,10 +36,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
 #include "xla/service/global_device_id.h"
-#include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -65,6 +65,42 @@ namespace xla {
 // tasks. Each task interacts with the service through CoordinationServiceAgent.
 class CoordinationService {
  public:
+  struct Config {
+    // Maximum wait time for all members in the cluster to be registered.
+    absl::Duration cluster_register_timeout = absl::Minutes(60);
+
+    // Denotes if we should synchronize the agents' register attempts by
+    // blocking on a barrier. This is useful for synchronized restarts.
+    bool cluster_register_with_barrier = false;
+
+    // Heartbeat timeout, if a task does not record heartbeat in this time
+    // window, it will be considered disconnected.
+    // Note: This is also used as a grace period to accept any heartbeats after
+    // the agent has disconnected, to account for the lag time between the
+    // service recording the state change and the agent stopping heartbeats.
+    absl::Duration heartbeat_timeout = absl::Seconds(10);
+
+    // The list of `CoordinatedJob`s that will register in coordination service.
+    std::vector<tensorflow::CoordinatedJob> coordinated_job_list;
+
+    // Denotes how long to wait for all coordination agents to reach the
+    // barriers (after the first shutdown request) before disconnecting
+    // together. If set to 0, no barrier is imposed upon shutdown and each
+    // worker can disconnect individually.
+    absl::Duration shutdown_barrier_timeout = absl::ZeroDuration();
+
+    // The list of jobs which are recoverable. If a task in this list fails,
+    // it will not propagate error to other tasks.
+    // If empty, no jobs will be recoverable and every task failure will cause
+    // error propagation to other tasks.
+    absl::flat_hash_set<std::string> recoverable_jobs;
+
+    // If a task restarts with a new incarnation, we may allow it to reconnect
+    // silently. This is useful when we know that a task can immediately resume
+    // work upon re-connecting to the service.
+    bool allow_new_incarnation_to_reconnect = false;
+  };
+
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<absl::string_view>&)>;
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
@@ -89,8 +125,7 @@ class CoordinationService {
       absl::flat_hash_set<tensorflow::CoordinatedTask, CoordinatedTaskHash,
                           CoordinatedTaskEqual>;
 
-  CoordinationService(tsl::Env* env,
-                      const tensorflow::CoordinationServiceConfig& config);
+  CoordinationService(tsl::Env* env, const Config& config);
 
   ~CoordinationService() {
     absl::MutexLock lock(state_mu_);
@@ -612,14 +647,7 @@ class CoordinationService {
 
   tsl::Env& env_;
   const IncarnationId service_incarnation_{tsl::random::New64()};
-  const uint64_t heartbeat_timeout_ms_;
-  bool cluster_register_with_barrier_ = false;
-  const absl::Duration cluster_register_timeout_;
-  const absl::Duration shutdown_barrier_timeout_;
-  // If a task restarts with a new incarnation, we may allow it to reconnect
-  // silently if configured. This is useful when we know that a task can
-  // immediately resume work upon re-connecting to the service.
-  bool allow_new_incarnation_to_reconnect_ = false;
+  const Config config_;
 
   std::function<tensorflow::DeviceInfo(const tensorflow::DeviceInfo& devices)>
       post_aggregate_device_fn_;
@@ -649,8 +677,6 @@ class CoordinationService {
 
   // The state of all pending GetAliveTasks calls.
   std::vector<AlivenessState> aliveness_states_ ABSL_GUARDED_BY(state_mu_);
-
-  absl::flat_hash_set<std::string> recoverable_jobs_;
 
   // When the tasks connect to coordination service after cluster initialization
   // is done, they will be added to this set.

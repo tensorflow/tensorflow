@@ -78,7 +78,7 @@ class DistributedRuntimeCoordinationServiceClient
 
  private:
   std::unique_ptr<CoordinationServiceAgent> coord_agent_;
-  tensorflow::CoordinationServiceConfig config_;
+  CoordinationServiceAgent::Config config_;
   absl::Duration min_connect_barrier_timeout_;
   int task_id_;
 };
@@ -87,20 +87,14 @@ DistributedRuntimeCoordinationServiceClient::
     DistributedRuntimeCoordinationServiceClient(
         std::shared_ptr<::grpc::Channel> channel, const Options& options) {
   // Convert options to coordination config.
-  tensorflow::CoordinationServiceConfig config;
-  config.set_service_type("standalone");
-  config.set_service_leader("/job:jax_worker/task:0");
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.init_timeout));
-  config.set_heartbeat_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.heartbeat_timeout));
-  config.set_cluster_register_with_barrier(true);
-  config.set_shutdown_barrier_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.shutdown_timeout));
-  config.set_agent_destruction_without_shutdown(
-      !options.shutdown_on_destruction);
-  config.set_poll_for_error_from_service_at_startup(
-      options.poll_for_error_from_service_at_startup);
+  CoordinationServiceAgent::Config config;
+  config.service_leader = "/job:jax_worker/task:0";
+  config.cluster_register_timeout = options.init_timeout;
+  config.heartbeat_timeout = options.heartbeat_timeout;
+  config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;
+  config.poll_for_error_from_service_at_startup =
+      options.poll_for_error_from_service_at_startup;
 
   std::unique_ptr<CoordinationClient> leader_client;
   leader_client.reset(NewGrpcCoordinationClient(channel));
@@ -132,7 +126,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            "scheduled, or 3) scheduling delays. Consider setting a longer "
            "initialization timeout if such delays are expected, the timeout is "
            "currently set to: "
-        << absl::Milliseconds(config_.cluster_register_timeout_in_ms())
+        << config_.cluster_register_timeout
         << ".\n\nOriginal runtime error: " << s;
   } else {
     LOG(ERROR) << "Failed to connect to distributed JAX controller: " << s;
