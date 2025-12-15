@@ -405,19 +405,17 @@ bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
     }
     return changed;
   }
-  if (!may_combine_partial_sharding || !to_merge.HasPartialReplication() ||
-      !dst->HasPartialReplication() ||
-      to_merge.num_devices() != dst->num_devices()) {
-    goto check_if_more_specific;
-  }
 
-  if (MergeShardingIfCompatible(
+  if (may_combine_partial_sharding && to_merge.HasPartialReplication() &&
+      dst->HasPartialReplication() &&
+      to_merge.num_devices() == dst->num_devices() &&
+      MergeShardingIfCompatible(
           to_merge,
           /*minimum_tiles=*/std::max(to_merge.NumTiles(), dst->NumTiles()) + 1,
           dst)) {
     return true;
   }
-check_if_more_specific:
+
   return IsLeafShardingMoreSpecific(*dst, to_merge);
 }
 
@@ -2872,13 +2870,12 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
     // with the existing one. This avoids unexpected resharding when `sharding`
     // just has more tiles than existing sharding but they are not mergeable.
     if (!allow_aggressive_resharding && to_improved_shape.IsArray() &&
-        !to_improved->IsTileMaximal() && from.NumTiles() == sharding_tiles) {
-      if (!IsSubTilingOrEqualSharding(to_improved_shape, from, *to_improved)) {
-        VLOG(10) << "Not merging because of different device distribution";
-        VLOG(10) << "Instr sharding: " << to_improved->ToString();
-        VLOG(10) << "New sharding " << from.ToString();
-        return std::nullopt;
-      }
+        !to_improved->IsTileMaximal() && from.NumTiles() == sharding_tiles &&
+        !IsSubTilingOrEqualSharding(to_improved_shape, from, *to_improved)) {
+      VLOG(10) << "Not merging because of different device distribution";
+      VLOG(10) << "Instr sharding: " << to_improved->ToString();
+      VLOG(10) << "New sharding " << from.ToString();
+      return std::nullopt;
     }
     return from;
   }

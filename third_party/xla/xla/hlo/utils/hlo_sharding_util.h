@@ -99,8 +99,8 @@ bool IsSubTilingOrEqualSharding(const Shape& shape,
 // sharding with same preference level.
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 
-// Tries to refine `to_merge` by combining with `old`. Returns if the final
-// `to_merge` is more specific than `old`.
+// Tries to refine `dst` by merging `to_merge` into it. Returns if the final
+// `dst` is more specific than `to_merge`.
 bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
