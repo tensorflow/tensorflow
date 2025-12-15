@@ -154,10 +154,10 @@ absl::Status ParseInputNodeName(absl::string_view input_name,
 // fashion though). Idea for this algorithm was borrowed from:
 // https://stackoverflow.com/questions/11338746/directed-graphs-with-a-given-root-node-match-another-directed-graph-for-equali
 class GraphHasher {
-  using NodeCache = absl::flat_hash_map<const NodeDef*, uint64>;
-  using FunctionCache = absl::flat_hash_map<const FunctionDef*, uint64>;
+  using NodeCache = absl::flat_hash_map<const NodeDef*, uint64_t>;
+  using FunctionCache = absl::flat_hash_map<const FunctionDef*, uint64_t>;
   using AttrCache =
-      absl::flat_hash_map<std::pair<const NodeDef*, bool>, uint64>;
+      absl::flat_hash_map<std::pair<const NodeDef*, bool>, uint64_t>;
 
  public:
   // `GraphHasher` does not take ownership of `graph_def`, `root_node`, or
@@ -251,14 +251,14 @@ class GraphHasher {
     return absl::OkStatus();
   }
 
-  absl::Status HashRoot(uint64* hash) { return HashNode(root_, hash); }
+  absl::Status HashRoot(uint64_t* hash) { return HashNode(root_, hash); }
 
   absl::Status CheckEqual(GraphHasher* that) {
     return CheckNodesEqual(root_, that, that->root_);
   }
 
  private:
-  absl::Status HashNode(const NodeDef* node, uint64* hash) {
+  absl::Status HashNode(const NodeDef* node, uint64_t* hash) {
     auto it = node_cache_->find(node);
     if (it != node_cache_->end()) {
       *hash = it->second;
@@ -270,18 +270,18 @@ class GraphHasher {
       return errors::InvalidArgument("Could not find node: ", node->name());
     }
 
-    uint64 non_input_hash;
+    uint64_t non_input_hash;
     TF_RETURN_IF_ERROR(
         HashNodeNonInput(node, /*hash_functions=*/true, &non_input_hash));
 
-    uint64 control_inputs_hash;
+    uint64_t control_inputs_hash;
     TF_RETURN_IF_ERROR(
         HashControlInputs(node_rep->node_control_inputs, &control_inputs_hash));
 
     // Hash regular inputs. We combine them in an ordered fashion.
-    uint64 inputs_hash = 0;
+    uint64_t inputs_hash = 0;
     for (const auto& input : node_rep->node_inputs) {
-      uint64 node_hash = 0;
+      uint64_t node_hash = 0;
       EdgeRep edge(node, input.first);
       // If the edge was pruned we get the non input node hash to avoid cycles.
       if (cycle_forming_edges_.contains(edge.GetHash())) {
@@ -355,7 +355,7 @@ class GraphHasher {
   }
 
   absl::Status HashNodeNonInput(const NodeDef* node, bool hash_functions,
-                                uint64* hash) {
+                                uint64_t* hash) {
     auto iter = attr_cache_->find(std::make_pair(node, hash_functions));
     if (iter != attr_cache_->end()) {
       *hash = iter->second;
@@ -364,10 +364,10 @@ class GraphHasher {
     // Hash Attrs. We get the list of attrs from the op registry and then look
     // up their values in the NodeDef attr map. This avoids looping over
     // a map which is non-deterministic.
-    uint64 attrs_hash = 0;
+    uint64_t attrs_hash = 0;
     const OpRegistrationData* reg;
     TF_RETURN_IF_ERROR(flib_->LookUp(node->op(), &reg));
-    uint64 op_hash = 0;
+    uint64_t op_hash = 0;
     if (reg->is_function_op) {
       if (hash_functions) {
         TF_RETURN_IF_ERROR(HashFunction(node->op(), node->attr(), &op_hash));
@@ -390,14 +390,14 @@ class GraphHasher {
           attr_key == kColocationGroupPrefix) {
         continue;
       }
-      uint64 attr_hash = 0;
+      uint64_t attr_hash = 0;
       TF_RETURN_IF_ERROR(
           HashAttr(attr_key, attr_value, hash_functions, &attr_hash));
       attrs_hash = Hash64Combine(attrs_hash, attr_hash);
     }
 
     // Hash Device.
-    uint64 device_hash = Hash64(node->device());
+    uint64_t device_hash = Hash64(node->device());
 
     *hash = Hash64Combine(op_hash, Hash64Combine(attrs_hash, device_hash));
 
@@ -469,8 +469,8 @@ class GraphHasher {
 
   absl::Status HashAttr(const std::string& attr_name,
                         const AttrValue& attr_value, bool hash_functions,
-                        uint64* hash) {
-    uint64 value_hash = 0;
+                        uint64_t* hash) {
+    uint64_t value_hash = 0;
     if (attr_value.has_func()) {
       if (hash_functions) {
         TF_RETURN_IF_ERROR(HashFunction(attr_value.func(), &value_hash));
@@ -478,7 +478,7 @@ class GraphHasher {
     } else if (attr_value.has_list() && attr_value.list().func_size() > 0) {
       if (hash_functions) {
         for (auto& func : attr_value.list().func()) {
-          uint64 func_hash;
+          uint64_t func_hash;
           TF_RETURN_IF_ERROR(HashFunction(func, &func_hash));
           value_hash = Hash64Combine(value_hash, func_hash);
         }
@@ -525,7 +525,7 @@ class GraphHasher {
       }
       return absl::OkStatus();
     }
-    uint64 this_hash, that_hash;
+    uint64_t this_hash, that_hash;
     TF_RETURN_IF_ERROR(
         HashAttr(attr_name, this_attr, /*hash_functions=*/true, &this_hash));
     TF_RETURN_IF_ERROR(that->HashAttr(attr_name, that_attr,
@@ -538,12 +538,12 @@ class GraphHasher {
     return absl::OkStatus();
   }
 
-  absl::Status HashFunction(const NameAttrList& func, uint64* hash) {
+  absl::Status HashFunction(const NameAttrList& func, uint64_t* hash) {
     return HashFunction(func.name(), func.attr(), hash);
   }
 
   absl::Status HashFunction(const std::string& name, const AttrValueMap& attrs,
-                            uint64* hash) {
+                            uint64_t* hash) {
     const FunctionDef* fdef = flib_->Find(name);
     auto it = function_cache_->find(fdef);
     if (it != function_cache_->end()) {
@@ -559,9 +559,9 @@ class GraphHasher {
 
     // For each return node, we create a new GraphHasher to compute a hash.
     // We then combine these hashes to produce the hash ordered.
-    uint64 ret_nodes_hash = 0;
+    uint64_t ret_nodes_hash = 0;
     for (const auto& ret_node : fbody->ret_nodes) {
-      uint64 ret_node_hash = 0;
+      uint64_t ret_node_hash = 0;
       GraphHasher hasher(&graph_def, &ret_node->def(), flib_, node_cache_,
                          function_cache_, attr_cache_);
       TF_RETURN_IF_ERROR(hasher.Init());
@@ -574,7 +574,7 @@ class GraphHasher {
     for (const auto& control_ret_node : fbody->control_ret_nodes) {
       control_rets.push_back(&control_ret_node->def());
     }
-    uint64 control_ret_nodes_hash = 0;
+    uint64_t control_ret_nodes_hash = 0;
     TF_RETURN_IF_ERROR(
         HashControlInputs(control_rets, &control_ret_nodes_hash));
 
@@ -659,10 +659,10 @@ class GraphHasher {
   }
 
   absl::Status HashControlInputs(const std::vector<const NodeDef*>& inputs,
-                                 uint64* hash) {
+                                 uint64_t* hash) {
     *hash = 0;
     for (const NodeDef* input : inputs) {
-      uint64 node_hash = 0;
+      uint64_t node_hash = 0;
       TF_RETURN_IF_ERROR(
           HashNodeNonInput(input, /*hash_functions=*/false, &node_hash));
       *hash = Hash64CombineUnordered(*hash, node_hash);
@@ -673,16 +673,16 @@ class GraphHasher {
   absl::Status CheckControlInputsEqual(
       const std::vector<const NodeDef*>& this_inputs, GraphHasher* that,
       const std::vector<const NodeDef*>& that_inputs) {
-    absl::flat_hash_map<uint64, const NodeDef*> this_hashes;
+    absl::flat_hash_map<uint64_t, const NodeDef*> this_hashes;
     for (const NodeDef* input : this_inputs) {
-      uint64 node_hash = 0;
+      uint64_t node_hash = 0;
       TF_RETURN_IF_ERROR(
           HashNodeNonInput(input, /*hash_functions=*/false, &node_hash));
       this_hashes[node_hash] = input;
     }
-    absl::flat_hash_map<uint64, const NodeDef*> that_hashes;
+    absl::flat_hash_map<uint64_t, const NodeDef*> that_hashes;
     for (const NodeDef* input : that_inputs) {
-      uint64 node_hash = 0;
+      uint64_t node_hash = 0;
       TF_RETURN_IF_ERROR(
           HashNodeNonInput(input, /*hash_functions=*/false, &node_hash));
       auto this_iter = this_hashes.find(node_hash);
@@ -693,7 +693,7 @@ class GraphHasher {
       }
     }
     if (!this_hashes.empty()) {
-      auto formatter = [](string* out,
+      auto formatter = [](std::string* out,
                           const decltype(this_hashes)::value_type& item) {
         out->append(item.second->name());
       };
@@ -724,7 +724,7 @@ class GraphHasher {
     EdgeRep(const NodeDef* start, const NodeDef* end)
         : start_node(start), end_node(end) {}
 
-    uint64 GetHash() {
+    uint64_t GetHash() {
       return Hash64Combine(absl::Hash<const NodeDef*>()(start_node),
                            absl::Hash<const NodeDef*>()(end_node));
     }
@@ -733,7 +733,7 @@ class GraphHasher {
   const NodeDef* const root_;                    // Not owned.
   const FunctionLibraryDefinition* const flib_;  // Not owned.
   // Edges that need to be pruned as their presence will cause cycles.
-  absl::flat_hash_set<uint64> cycle_forming_edges_;
+  absl::flat_hash_set<uint64_t> cycle_forming_edges_;
   absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
   std::shared_ptr<NodeCache> node_cache_;
   std::shared_ptr<FunctionCache> function_cache_;
@@ -742,7 +742,7 @@ class GraphHasher {
 
 }  // anonymous namespace
 
-absl::Status HashTensor(const Tensor& tensor, uint64* hash) {
+absl::Status HashTensor(const Tensor& tensor, uint64_t* hash) {
   const tstring* s = nullptr;
   // Hash tensor type.
   *hash = Hash64Combine(0, tensor.dtype());
@@ -769,20 +769,21 @@ absl::Status HashTensor(const Tensor& tensor, uint64* hash) {
 }
 
 absl::Status HashNode(const GraphDef& graph, const NodeDef& node,
-                      uint64* hash) {
+                      uint64_t* hash) {
   const FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                            graph.library());
   return HashNode(graph, node, flib_def, hash);
 }
 
 absl::Status HashNode(const GraphDef& graph, const NodeDef& node,
-                      const FunctionLibraryDefinition& flib_def, uint64* hash) {
+                      const FunctionLibraryDefinition& flib_def,
+                      uint64_t* hash) {
   GraphHasher hasher(&graph, &node, &flib_def);
   TF_RETURN_IF_ERROR(hasher.Init());
   return hasher.HashRoot(hash);
 }
 
-absl::Status HashGraph(const GraphDef& graph_def, uint64* hash) {
+absl::Status HashGraph(const GraphDef& graph_def, uint64_t* hash) {
   const NodeDef* sink = nullptr;
   TF_RETURN_IF_ERROR(GetSink(graph_def, &sink));
   return HashNode(graph_def, *sink, hash);

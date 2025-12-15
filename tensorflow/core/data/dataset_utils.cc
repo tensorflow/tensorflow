@@ -79,12 +79,12 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string,
+static absl::flat_hash_map<std::string,
                            DatasetExperimentRegistry::ExperimentSelector>*
 get_dataset_experiments() {
   static absl::flat_hash_map<
-      string, DatasetExperimentRegistry::ExperimentSelector>* experiments =
-      new absl::flat_hash_map<string,
+      std::string, DatasetExperimentRegistry::ExperimentSelector>* experiments =
+      new absl::flat_hash_map<std::string,
                               DatasetExperimentRegistry::ExperimentSelector>;
   return experiments;
 }
@@ -499,15 +499,15 @@ bool MatchesAnyVersion(absl::string_view op_prefix,
   return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
-absl::flat_hash_set<string> GetExperiments() {
+absl::flat_hash_set<std::string> GetExperiments() {
   return GetExperiments(tsl::port::JobName(), tsl::port::TaskId(),
                         [](const tstring& str) { return Hash64(str); });
 }
 
-absl::flat_hash_set<string> GetExperiments(
-    const string& job_name, int64_t task_id,
-    std::function<uint64_t(const string&)> hash_func) {
-  absl::flat_hash_set<string> experiments;
+absl::flat_hash_set<std::string> GetExperiments(
+    const std::string& job_name, int64_t task_id,
+    std::function<uint64_t(const std::string&)> hash_func) {
+  absl::flat_hash_set<std::string> experiments;
   if (job_name.empty() || task_id < 0) {
     return experiments;
   }
@@ -515,13 +515,13 @@ absl::flat_hash_set<string> GetExperiments(
   // Parse the opt-in and opt-out settings.
   const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
   const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
-  string opt_ins_raw;
+  std::string opt_ins_raw;
   if (opt_ins_raw_cs != nullptr) {
-    opt_ins_raw = string(opt_ins_raw_cs);
+    opt_ins_raw = opt_ins_raw_cs;
   }
-  string opt_outs_raw;
+  std::string opt_outs_raw;
   if (opt_outs_raw_cs != nullptr) {
-    opt_outs_raw = string(opt_outs_raw_cs);
+    opt_outs_raw = opt_outs_raw_cs;
   }
 
   auto live_experiments = DatasetExperimentRegistry::Experiments();
@@ -530,7 +530,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_set<string> opt_outs;
+  absl::flat_hash_set<std::string> opt_outs;
   if (opt_outs_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       opt_outs.insert(pair.first);
@@ -583,7 +583,8 @@ absl::flat_hash_set<string> GetExperiments(
   return experiments;
 }
 
-void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments) {
+void LogAndRecordExperiments(
+    const absl::flat_hash_set<std::string>& experiments) {
   if (!experiments.empty()) {
     constexpr float TEN_MINUTES = 60.0 * 10.0;
     LOG_EVERY_N_SEC(INFO, TEN_MINUTES)
@@ -624,7 +625,7 @@ void GetOptimizations(const Options& options,
   }
 }
 
-Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64_t index) {
   Tensor slice = tensor.SubSlice(index);
   if (slice.IsAligned()) {
     return slice;
@@ -665,8 +666,9 @@ absl::Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
 }
 
 absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                       int64_t batch_size, const string& iterator_prefix,
-                       const string& batch_prefix, std::vector<Tensor>* batch) {
+                       int64_t batch_size, const std::string& iterator_prefix,
+                       const std::string& batch_prefix,
+                       std::vector<Tensor>* batch) {
   int64_t output_size;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, absl::StrCat(batch_prefix, "_", kOutputSize)),
@@ -697,8 +699,9 @@ absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
 }
 
 absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
-                        const string& iterator_prefix,
-                        const string& batch_prefix, IteratorStateWriter* writer,
+                        const std::string& iterator_prefix,
+                        const std::string& batch_prefix,
+                        IteratorStateWriter* writer,
                         std::vector<Tensor>* batch) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, absl::StrCat(batch_prefix, "_", kOutputSize)),
@@ -720,8 +723,9 @@ absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
   return absl::OkStatus();
 }
 
-absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
-                        IteratorStateReader* reader, absl::Status* status) {
+absl::Status ReadStatus(const std::string& iterator_prefix,
+                        const std::string& prefix, IteratorStateReader* reader,
+                        absl::Status* status) {
   int64_t code_int;
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, absl::StrCat(prefix, "_", kCode)), &code_int));
@@ -739,8 +743,8 @@ absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
   return absl::OkStatus();
 }
 
-absl::Status WriteStatus(const string& iterator_prefix, const string& prefix,
-                         const absl::Status& status,
+absl::Status WriteStatus(const std::string& iterator_prefix,
+                         const std::string& prefix, const absl::Status& status,
                          IteratorStateWriter* writer) {
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       FullName(iterator_prefix, absl::StrCat(prefix, "_", kCode)),
@@ -948,7 +952,7 @@ bool ShouldApplyOptimizations(
           !optimizations_enabled.empty() || !optimizations_default.empty());
 }
 
-int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
+int64_t GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   int64_t initial_parallelism = 16;
   if (ctx->options()) {
     int64_t initial_parallelism_option =
@@ -981,7 +985,7 @@ IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
 }
 
 // static
-void DatasetExperimentRegistry::Register(const string& experiment,
+void DatasetExperimentRegistry::Register(const std::string& experiment,
                                          JobSelector job_selector,
                                          TaskSelector task_selector) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
@@ -991,7 +995,7 @@ void DatasetExperimentRegistry::Register(const string& experiment,
 }
 
 // static
-absl::flat_hash_map<string, DatasetExperimentRegistry::ExperimentSelector>
+absl::flat_hash_map<std::string, DatasetExperimentRegistry::ExperimentSelector>
 DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
