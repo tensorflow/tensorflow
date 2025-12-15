@@ -34,7 +34,7 @@ namespace {
 
 const char* const kProfilePrefix = "Profile:\n";
 
-bool CreateRunMetadataNode(const string& name, NodeDef* def) {
+bool CreateRunMetadataNode(const std::string& name, NodeDef* def) {
   // TODO(xpan): Better solution than denylisting this 2 nodes. They
   // actually cost some resources, maybe include them. Some nodes, such
   // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
@@ -76,12 +76,12 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
   }
 }
 
-TFStats::TFStats(const string& filename,
+TFStats::TFStats(const std::string& filename,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
       miss_accelerator_stream_(false),
       ckpt_reader_(std::move(ckpt_reader)) {
-  string str;
+  std::string str;
   absl::Status s = ReadFileToString(Env::Default(), filename, &str);
   if (!s.ok()) {
     absl::FPrintF(stderr, "Failed to read profile: %s", s.ToString());
@@ -99,7 +99,7 @@ TFStats::TFStats(const string& filename,
   for (const auto& node_pb : profile.nodes()) {
     std::unique_ptr<TFGraphNode> node = std::make_unique<TFGraphNode>(
         node_pb.second, profile, &id_to_string_, &nodes_map_);
-    nodes_map_.insert(std::pair<string, std::unique_ptr<TFGraphNode>>(
+    nodes_map_.insert(std::pair<std::string, std::unique_ptr<TFGraphNode>>(
         node_pb.second.name(), std::move(node)));
   }
   has_code_traces_ = profile.has_trace();
@@ -108,7 +108,7 @@ TFStats::TFStats(const string& filename,
   }
 }
 
-void TFStats::BuildView(const string& cmd) {
+void TFStats::BuildView(const std::string& cmd) {
   if (cmd == kCmds[0] && !scope_view_) {
     scope_view_ = std::make_unique<TFScope>(ckpt_reader_.get());
     for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
@@ -140,18 +140,19 @@ void TFStats::BuildView(const string& cmd) {
 }
 
 void TFStats::BuildAllViews() {
-  std::vector<string> cmds_str(kCmds, kCmds + sizeof(kCmds) / sizeof(*kCmds));
-  for (const string& cmd : cmds_str) {
+  std::vector<std::string> cmds_str(kCmds,
+                                    kCmds + sizeof(kCmds) / sizeof(*kCmds));
+  for (const std::string& cmd : cmds_str) {
     BuildView(cmd);
   }
 }
 
-const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
+const GraphNodeProto& TFStats::ShowGraphNode(const std::string& cmd,
                                              const Options& opts) const {
   if (!Validate(opts)) {
     return empty_graph_node_;
   }
-  string prefix = MaybeReportMissingTrace();
+  std::string prefix = MaybeReportMissingTrace();
   prefix += QueryDoc(cmd, opts) + kProfilePrefix;
 
   if (cmd == kCmds[0]) {
@@ -173,11 +174,11 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
 }
 
 const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
-    const string& cmd, const Options& opts) const {
+    const std::string& cmd, const Options& opts) const {
   if (!Validate(opts)) {
     return empty_multi_graph_node_;
   }
-  string prefix = MaybeReportMissingTrace();
+  std::string prefix = MaybeReportMissingTrace();
   prefix += QueryDoc(cmd, opts) + kProfilePrefix;
 
   if (cmd == kCmds[2]) {
@@ -195,7 +196,7 @@ const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
 }
 
 void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
-  std::map<string, const NodeDef*> node_defs;
+  std::map<std::string, const NodeDef*> node_defs;
   bool node_added = false;
   for (const NodeDef& node : graph->node()) {
     if (nodes_map_.find(node.name()) != nodes_map_.end()) {
@@ -210,13 +211,13 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
   for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
     TFGraphNode* node = nodes_map_.at(it->first).get();
     for (int i = 0; i < it->second->input_size(); ++i) {
-      string node_input = it->second->input(i);
+      std::string node_input = it->second->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       // if not :src_output, then it's the first one (further verify?)
       auto prefix_pos = node_input.find(':');
       if (prefix_pos != node_input.npos) {
-        std::vector<string> input_parts = absl::StrSplit(node_input, ':');
+        std::vector<std::string> input_parts = absl::StrSplit(node_input, ':');
         DCHECK(input_parts.size() == 2)
             << "Unknown NodeDef.input format: " << node_input;
         node_input = input_parts[0];
@@ -252,7 +253,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   for (const OpLogEntry& entry : op_log->log_entries()) {
     auto node = nodes_map_.find(entry.name());
     if (node == nodes_map_.end()) continue;
-    for (const string& type : entry.types()) {
+    for (const std::string& type : entry.types()) {
       node->second->AddOpType(type);
     }
     if (entry.float_ops()) {
@@ -279,7 +280,7 @@ void TFStats::AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta) {
   bool has_gpu_stream = false;
 
   for (const auto& dev_stat : run_meta->step_stats().dev_stats()) {
-    string dev = absl::AsciiStrToLower(dev_stat.device());
+    std::string dev = absl::AsciiStrToLower(dev_stat.device());
     if (IsPlacedOnAccelerator(dev)) {
       has_gpu_scheduling = true;
       if (CountAsAcceleratorTime(dev)) {
@@ -287,7 +288,7 @@ void TFStats::AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta) {
       }
     }
     for (const NodeExecStats& node_stat : dev_stat.node_stats()) {
-      string name = node_stat.node_name();
+      std::string name = node_stat.node_name();
       // Sometimes the node_name is suffixed with unnecessary information.
       auto split_pos = node_stat.node_name().find(':');
       if (split_pos != node_stat.node_name().npos) {
@@ -314,8 +315,8 @@ void TFStats::AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta) {
   }
 }
 
-string TFStats::MaybeReportMissingTrace() const {
-  string report = "";
+std::string TFStats::MaybeReportMissingTrace() const {
+  std::string report = "";
   if (miss_accelerator_stream_) {
     report +=
         "\n\nFound accelerator operation but misses accelerator "
@@ -327,7 +328,7 @@ string TFStats::MaybeReportMissingTrace() const {
   return report;
 }
 
-void TFStats::SerializeToString(string* content) {
+void TFStats::SerializeToString(std::string* content) {
   ProfileProto profile;
   for (const auto& entry : id_to_string_) {
     (*profile.mutable_id_to_string())[entry.first] = entry.second;
@@ -348,8 +349,8 @@ void TFStats::SerializeToString(string* content) {
   *content = profile.SerializeAsString();
 }
 
-void TFStats::WriteProfile(const string& filename) {
-  string content;
+void TFStats::WriteProfile(const std::string& filename) {
+  std::string content;
   SerializeToString(&content);
   absl::Status s = WriteStringToFile(Env::Default(), filename, content);
   if (!s.ok()) {
