@@ -32,7 +32,7 @@ struct BucketizeFunctor {
   static absl::Status Compute(OpKernelContext* context,
                               const typename TTypes<T, 1>::ConstTensor& input,
                               const std::vector<float>& boundaries_vector,
-                              typename TTypes<int32, 1>::Tensor& output);
+                              typename TTypes<int32_t, 1>::Tensor& output);
 };
 
 }  // namespace functor

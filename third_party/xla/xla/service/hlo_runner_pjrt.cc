@@ -827,7 +827,8 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
       on_device_shape.IsTuple() && on_device_shape.tuple_shapes().size() == 0) {
     return LiteralUtil::MakeTuple({});
   }
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, buffer.ToLiteralSync());
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                      buffer.ToLiteral().Await());
   return std::move(*literal);
 }
 
