@@ -34,7 +34,7 @@ Output Linear(const Scope& scope, Input x, Input w, Input b) {
 }
 
 void GetColocationConstraints(const Output& tensor,
-                              std::vector<string>* constraints) {
+                              std::vector<std::string>* constraints) {
   constraints->clear();
   TF_EXPECT_OK(GetNodeAttr(tensor.op().node()->attrs(), kColocationAttrName,
                            constraints));
@@ -169,7 +169,7 @@ TEST(CCOpTest, ColocateWith) {
   Scope root = Scope::NewRootScope();
   auto c1 = Const(root.WithOpName("c1"), 1);
   auto c2 = Const(root.WithOpName("c2").ColocateWith(c1), 2);
-  std::vector<string> constraints;
+  std::vector<std::string> constraints;
   GetColocationConstraints(c2, &constraints);
   EXPECT_EQ(constraints[0], "loc:@c1");
 
@@ -239,13 +239,13 @@ TEST(CCOpTest, EmptyConst) {
 
 TEST(CCOpTest, InvalidFinalize) {
   Scope root = Scope::NewRootScope();
-  auto read_up_to =
-      ops::ReaderReadUpTo(root, Variable(root, {}, DT_STRING),
-                          Variable(root, {}, DT_STRING), static_cast<int32>(2));
+  auto read_up_to = ops::ReaderReadUpTo(root, Variable(root, {}, DT_STRING),
+                                        Variable(root, {}, DT_STRING),
+                                        static_cast<int32_t>(2));
   EXPECT_FALSE(root.status().ok());
   auto err_msg = std::string(root.status().message());
   EXPECT_NE(err_msg.find("'num_records' passed int32 expected int64"),
-            string::npos);
+            std::string::npos);
 }
 
 }  // namespace
