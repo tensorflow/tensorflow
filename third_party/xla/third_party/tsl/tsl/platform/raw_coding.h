@@ -27,41 +27,41 @@ namespace core {
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
 
-inline uint16 DecodeFixed16(const char* ptr) {
+inline uint16_t DecodeFixed16(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
-    uint16 result;
+    uint16_t result;
     memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
     return result;
   } else {
-    return ((static_cast<uint16>(static_cast<unsigned char>(ptr[0]))) |
-            (static_cast<uint16>(static_cast<unsigned char>(ptr[1])) << 8));
+    return ((static_cast<uint16_t>(static_cast<unsigned char>(ptr[0]))) |
+            (static_cast<uint16_t>(static_cast<unsigned char>(ptr[1])) << 8));
   }
 }
 
-inline uint32 DecodeFixed32(const char* ptr) {
+inline uint32_t DecodeFixed32(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
-    uint32 result;
+    uint32_t result;
     memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
     return result;
   } else {
-    return ((static_cast<uint32>(static_cast<unsigned char>(ptr[0]))) |
-            (static_cast<uint32>(static_cast<unsigned char>(ptr[1])) << 8) |
-            (static_cast<uint32>(static_cast<unsigned char>(ptr[2])) << 16) |
-            (static_cast<uint32>(static_cast<unsigned char>(ptr[3])) << 24));
+    return ((static_cast<uint32_t>(static_cast<unsigned char>(ptr[0]))) |
+            (static_cast<uint32_t>(static_cast<unsigned char>(ptr[1])) << 8) |
+            (static_cast<uint32_t>(static_cast<unsigned char>(ptr[2])) << 16) |
+            (static_cast<uint32_t>(static_cast<unsigned char>(ptr[3])) << 24));
   }
 }
 
-inline uint64 DecodeFixed64(const char* ptr) {
+inline uint64_t DecodeFixed64(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
-    uint64 result;
+    uint64_t result;
     memcpy(&result, ptr, sizeof(result));  // gcc optimizes this to a plain load
     return result;
   } else {
-    uint64 lo = DecodeFixed32(ptr);
-    uint64 hi = DecodeFixed32(ptr + 4);
+    uint64_t lo = DecodeFixed32(ptr);
+    uint64_t hi = DecodeFixed32(ptr + 4);
     return (hi << 32) | lo;
   }
 }
