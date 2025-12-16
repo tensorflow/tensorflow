@@ -81,7 +81,7 @@ absl::Status TpuCompilationCacheRpcLookup::Lookup(
       proto_key, "_", tpu::CompilationCacheFetchTarget_Name(fetch_target));
 
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = cache_.find(local_proto_key);
     if (iter == cache_.end()) {
       tpu::GetTpuProgramRequest request;
@@ -123,7 +123,7 @@ absl::Status TpuCompilationCacheRpcLookup::Lookup(
       absl::StrCat(" _ ", uid, ":", proto_index, "_",
                    tpu::CompilationCacheFetchTarget_Name(fetch_target));
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = cache_.find(local_proto_key);
     if (iter == cache_.end()) {
       tpu::GetTpuProgramRequest request;
