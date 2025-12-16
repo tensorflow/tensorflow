@@ -57,28 +57,22 @@ jobs:
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@v0.2.1
 
-      # ---- Trivy filesystem scan (vulnerabilities + misconfig) ----
-      - name: Run Trivy FS Scan
-        run: |
-          trivy fs . \
-            --exit-code 0 \
-            --severity HIGH,CRITICAL \
-            --format json \
-            --output trivy-fs-report.json
-
-      # ---- Trivy secret scanning ----
-      - name: Run Trivy Secret Scan
-        run: |
-          trivy fs . \
-            --exit-code 0 \
-            --security-checks secret \
-            --format json \
-            --output trivy-secret-report.json
+      # ---- Trivy SCA scan (vulnerabilities + secrets + license) ----
+      - name: Run Trivy Vulnerability + Secret + License SCA
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "json"
+          output: "trivy-sca-report.json"
+          security-checks: "vulnerability,secret,license"
+          vuln-type: "os,library"
+          list-all-deps: true
 
       # ===========================
       # SonarQube (Code Quality)
       # ===========================
-      - name: SonarQube Scan
+      - name: SonarQube Code Quality Scan
         uses: sonarsource/sonarqube-scan-action@master
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -88,6 +82,13 @@ jobs:
           args: >
             -Dsonar.projectKey=mukilathuruvan_tensorflow
             -Dsonar.organization=mukilathuruvan
+            -Dsonar.sources=tensorflow/core,tensorflow/python,tensorflow/cc,tensorflow/c
+            -Dsonar.inclusions=**/*.py,**/*.cpp,**/*.cc,**/*.cxx,**/*.c,**/*.h,**/*.hpp
+            -Dsonar.exclusions=**/*.java,**/*.js,**/*.ts,**/*.jsx,**/*.tsx,**/*.go,**/*.rs,**/*.md,**/*.txt,**/test/**,**/tests/**,**/__pycache__/**,**/*.pyc,**/third_party/**,**/bazel-*/**,**/.git/**
+            -Dsonar.java.binaries=
+            -Dsonar.java.libraries=
+            -Dsonar.java.test.binaries=
+            -Dsonar.java.test.libraries=
 
       # ===========================
       # Upload all reports
@@ -100,5 +101,4 @@ jobs:
           path: |
             cppcheck-report.xml
             bandit-report.json
-            trivy-fs-report.json
-            trivy-secret-report.json
+            trivy-sca-report.json
