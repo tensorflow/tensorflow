@@ -361,7 +361,7 @@ static bool IsLeafShardingMoreSpecific(const HloSharding& lhs,
     return false;
   }
   if (!rhs.IsTileMaximalLeaf()) {
-    return lhs.NumTilesLeaf() > rhs.NumTilesLeaf();
+    return lhs.NumTiles() > rhs.NumTiles();
   }
   // If we are not replicated then only tiled (not tile maximal) shardings
   // can improve us.
@@ -2864,7 +2864,10 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   if (from.IsManual()) {
     return std::nullopt;
   }
-  int64_t sharding_tiles = from.NumTiles();
+  int64_t sharding_tiles;
+  if (!from.IsTuple()) {
+    sharding_tiles = from.NumTiles();
+  }
   if (MergeSharding(*to_improved, &from, may_combine_partial_sharding)) {
     // Override existing tiled sharding only when the new sharding is compatible
     // with the existing one. This avoids unexpected resharding when `sharding`

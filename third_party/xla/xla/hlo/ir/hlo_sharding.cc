@@ -1099,23 +1099,12 @@ int64_t HloSharding::TotalNumTiles() const {
 }
 
 int64_t HloSharding::NumTiles() const {
-  if (IsTileMaximal()) {
-    return 1;
-  }
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
-                     .subspan(0, TiledDataRank()));
-}
-
-int64_t HloSharding::NumTilesLeaf() const {
-  DCHECK(!IsTuple());
   if (IsTileMaximalLeaf()) {
     return 1;
   }
   CHECK(!IsManualLeaf() && !IsUnknownLeaf());
   return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
-                     .subspan(0, TiledDataRankLeaf()));
+                     .subspan(0, TiledDataRank()));
 }
 
 int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
