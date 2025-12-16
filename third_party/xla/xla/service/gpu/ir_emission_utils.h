@@ -224,13 +224,19 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
 // 3. <8x2x32x7x6> -> <6x32x2x7x8> becomes <8x2x32x7x6x1> -> <6x32x2x7x8x1>.
 
 // TODO(b/370690811): Unify this with TransposeDescription.
-struct TransposeSpec {
-  PrimitiveType elem_type() const { return input_shape().element_type(); }
+struct PackedTransposeDescription {
+  explicit PackedTransposeDescription(const TransposeDescription& description);
 
-  const Shape& input_shape() const { return transpose->operand(0)->shape(); }
-  const Shape& output_shape() const { return transpose->shape(); }
+  PrimitiveType elem_type() const {
+    return original_input_shape().element_type();
+  }
 
-  int64_t rank() const { return input_shape().dimensions().size(); }
+  const Shape& original_input_shape() const {
+    return transpose->operand(0)->shape();
+  }
+  const Shape& original_output_shape() const { return transpose->shape(); }
+
+  int64_t rank() const { return original_input_shape().dimensions().size(); }
   int64_t canonical_rank() const { return canonical_input_shape.size(); }
 
   int64_t dim_A() const { return canonical_input_shape[dim_A_id()]; }
@@ -264,11 +270,12 @@ struct TransposeSpec {
   llvm::SmallVector<int64_t, 3> canonical_input_shape;
 };
 
-TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
+// Returns true if the given transpose can be emitted using the packed emitter.
+bool CanEmitPackedTranspose(const TransposeDescription& desc);
 
 // Returns the default tile sizes for the packed transpose emitter.
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
-    const TransposeSpec& spec);
+    const PackedTransposeDescription& spec);
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);

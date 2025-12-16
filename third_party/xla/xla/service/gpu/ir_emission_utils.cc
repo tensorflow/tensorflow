@@ -220,8 +220,8 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
   return buffer_assignment.GetUniqueSlice(instr, index);
 }
 
-bool IsNormalized(const HloTransposeInstruction& transpose) {
-  const auto& permutation = transpose.dimensions();
+bool IsNormalized(const TransposeDescription& desc) {
+  const auto& permutation = desc.permutation;
   for (int i = 0; i < permutation.size() - 1; ++i) {
     if (permutation[i] + 1 == permutation[i + 1]) {
       return false;
@@ -230,12 +230,12 @@ bool IsNormalized(const HloTransposeInstruction& transpose) {
   return true;
 }
 
-bool CanEmitPackedTranspose(const HloTransposeInstruction& transpose) {
+bool CanEmitPackedTranspose(const TransposeDescription& desc) {
   // Support only normalized transposes.
-  if (!IsNormalized(transpose)) {
+  if (!IsNormalized(desc)) {
     return false;
   }
-  const auto& spec = GetTransposeSpec(&transpose);
+  PackedTransposeDescription spec(desc);
   return GetPackedTransposeTileSizes(spec).ok();
 }
 
@@ -257,13 +257,15 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (CanEmitPackedTranspose(*Cast<HloTransposeInstruction>(&hero))) {
+
+  TransposeDescription desc{&hero, dimensions, permutation,
+                            /*shmem_usage=*/0};
+  if (CanEmitPackedTranspose(desc)) {
     int64_t vector_size =
         kBankBitwidth / GetBitwidth(hero.shape().element_type());
-    int64_t shmem_usage_bytes =
+    desc.shmem_usage =
         kNumShmemBanks * (kBankBitwidth / 8) * kNumShmemBanks * vector_size;
-    return TransposeDescription{&hero, dimensions, permutation,
-                                shmem_usage_bytes};
+    return desc;
   }
   if (permutation.back() == dimensions.size() - 1) {
     operand_most_minor_dim =
@@ -301,17 +303,17 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   return std::nullopt;
 }
 
-TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
-  auto inv_permutation = InversePermutation(transpose->dimensions());
-  auto& output_shape = transpose->shape();
-  llvm::SmallVector<int64_t, 3> canonical_output_shape =
-      llvm::to_vector<3>(output_shape.dimensions());
-  llvm::SmallVector<int64_t, 3> canonical_permutation =
-      llvm::to_vector<3>(transpose->dimensions());
+PackedTransposeDescription::PackedTransposeDescription(
+    const TransposeDescription& description)
+    : transpose(Cast<HloTransposeInstruction>(description.instr)) {
+  permutation = llvm::to_vector<3>(description.permutation);
+  inv_permutation = llvm::to_vector<3>(InversePermutation(permutation));
+  canonical_output_shape = llvm::to_vector<3>(description.dimensions);
+  canonical_permutation = llvm::to_vector<3>(description.permutation);
 
   // If the last dimension is transposed, add a size-1 B dimension.
   if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
-    canonical_permutation.push_back(output_shape.dimensions().size());
+    canonical_permutation.push_back(canonical_output_shape.size());
     canonical_output_shape.push_back(1);
   }
   int64_t dim_t1 = -1;
@@ -333,21 +335,13 @@ TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
     canonical_permutation.insert(canonical_permutation.begin() + dim_t1,
                                  dim_t1);
   }
-  auto canonical_inv_permutation = InversePermutation(canonical_permutation);
-  auto canonical_input_shape =
-      Permute(canonical_output_shape, canonical_inv_permutation);
-  return TransposeSpec{
-      transpose,
-      llvm::to_vector<3>(transpose->dimensions()),
-      llvm::to_vector<3>(inv_permutation),
-      canonical_output_shape,
-      canonical_permutation,
-      llvm::to_vector<3>(canonical_inv_permutation),
-      llvm::to_vector<3>(canonical_input_shape),
-  };
+  canonical_inv_permutation =
+      llvm::to_vector<3>(InversePermutation(canonical_permutation));
+  canonical_input_shape = llvm::to_vector<3>(
+      Permute(canonical_output_shape, canonical_inv_permutation));
 }
 
-std::string TransposeSpec::ToString() const {
+std::string PackedTransposeDescription::ToString() const {
   return absl::Substitute(R"(
 transpose: $0
 canonical_input_shape: $1
@@ -365,7 +359,7 @@ canonical_inv_permutation: $4
 }
 
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
-    const TransposeSpec& spec) {
+    const PackedTransposeDescription& spec) {
   // Check the side outputs, etc.
   int64_t bits_per_element = GetBitwidth(spec.elem_type());
   if (bits_per_element >= kBankBitwidth) {

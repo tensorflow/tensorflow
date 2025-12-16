@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,10 +51,27 @@ using ::testing::SizeIs;
 
 class IrEmissionUtilsTest : public HloHardwareIndependentTestBase {
  public:
-  TransposeSpec GetTransposeSpecFromRoot(absl::string_view hlo_text) {
+  PackedTransposeDescription GetTransposeSpecFromTransposeDescription(
+      absl::string_view hlo_text,
+      std::optional<absl::InlinedVector<int64_t, 3>> permutation = std::nullopt,
+      std::optional<absl::InlinedVector<int64_t, 3>> dimensions =
+          std::nullopt) {
     auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-    auto* root = module->entry_computation()->root_instruction();
-    return GetTransposeSpec(Cast<HloTransposeInstruction>(root));
+    auto* root = Cast<HloTransposeInstruction>(
+        module->entry_computation()->root_instruction());
+
+    if (!permutation.has_value()) {
+      permutation = absl::InlinedVector<int64_t, 3>(root->dimensions().begin(),
+                                                    root->dimensions().end());
+    }
+    if (!dimensions.has_value()) {
+      dimensions = absl::InlinedVector<int64_t, 3>(
+          root->shape().dimensions().begin(), root->shape().dimensions().end());
+    }
+
+    TransposeDescription description{root, *dimensions, *permutation,
+                                     /*shmem_usage=*/0};
+    return PackedTransposeDescription(description);
   }
 };
 
@@ -1117,7 +1135,7 @@ TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
 }
 
 TEST_F(IrEmissionUtilsTest, Transpose_10) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 32] parameter(0)
     ROOT transpose_p0 = f32[32, 8] transpose(p0), dimensions={1, 0}
   })");
@@ -1130,7 +1148,7 @@ TEST_F(IrEmissionUtilsTest, Transpose_10) {
 }
 
 TEST_F(IrEmissionUtilsTest, Transpose_210) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 2, 32] parameter(0)
     ROOT transpose_p0 = f32[32, 2, 8] transpose(p0), dimensions={2, 1, 0}
   })");
@@ -1141,11 +1159,70 @@ TEST_F(IrEmissionUtilsTest, Transpose_210) {
 }
 
 TEST_F(IrEmissionUtilsTest, Transpose_102) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 2, 32, 7, 6] parameter(0)
     ROOT transpose_p0 = f32[6, 32, 2, 7, 8] transpose(p0),
       dimensions={4, 2, 1, 3, 0}
   })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       PackedTransposeDescriptionUsesProvidedDims_Grouping) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p = f32[32,32,64]{2,1,0} parameter(0)
+    ROOT t = f32[64,32,32]{2,1,0} transpose(p), dimensions={2,0,1}
+  })",
+      /*permutation=*/InlinedVector({1, 0}),
+      /*dimensions=*/InlinedVector({64, 1024}));
+
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(64, 1, 1024, 1));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_10) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 4, 8] parameter(0)
+    ROOT transpose_p0 = f32[4, 8, 8] transpose(p0), dimensions={1, 2, 0}
+  })",
+      /*permutation=*/InlinedVector({1, 0}),
+      /*dimensions=*/InlinedVector({32, 8}));
+  EXPECT_THAT(spec.permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.inv_permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 1, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 1, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_210) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 2, 4, 8] parameter(0)
+    ROOT transpose_p0 = f32[4, 8, 2, 8] transpose(p0),
+      dimensions={2, 3, 1, 0}
+  })",
+      /*permutation=*/InlinedVector({2, 1, 0}),
+      /*dimensions=*/InlinedVector({32, 2, 8}));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 2, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_102) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 2, 32, 7, 2, 3] parameter(0)
+    ROOT transpose_p0 = f32[2, 3, 32, 2, 7, 8] transpose(p0),
+      dimensions={4, 5, 2, 1, 3, 0}
+  })",
+      /*permutation=*/InlinedVector({4, 2, 1, 3, 0}),
+      /*dimensions=*/InlinedVector({6, 32, 2, 7, 8}));
   EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
   EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
   EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
