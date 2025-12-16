@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
