@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
@@ -107,7 +109,9 @@ absl::StatusOr<bool> RunOptimizer(
         {},
     bool should_add_loop_invariant_op_in_chain = false,
     int64_t collective_size_threshold_to_delay_sinking = INT64_MAX,
-    bool unique_channel_id = true) {
+    bool unique_channel_id = true,
+    CollectivePipeliner::WhileLoopPostprocessor
+        postprocess_transformed_while_loop = {}) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
@@ -120,12 +124,14 @@ absl::StatusOr<bool> RunOptimizer(
       /*acceptable_formatting=*/acceptable_formatting,
       /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
       should_allow_loop_variant_parameter_in_chain,
-      /*should_allow_control_dependencies=*/false, postprocess_backward_peeled,
+      /*should_allow_control_dependencies=*/false,
+      /*additional_chain_start_op_finder=*/nullptr, postprocess_backward_peeled,
       postprocess_backward_rotated, postprocess_backward_peeled_trailing,
       should_add_loop_invariant_op_in_chain,
       /*postprocess_pipelined_ops=*/{},
       collective_size_threshold_to_delay_sinking,
-      /*delay_sinking_large_collectives=*/true, unique_channel_id};
+      /*delay_sinking_large_collectives=*/true, unique_channel_id,
+      postprocess_transformed_while_loop};
   HloPassPipeline pass("optimizer");
   pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                             /*allow_mixed_precision=*/false);
@@ -5623,6 +5629,210 @@ ENTRY entry {
     }
   }
   EXPECT_EQ(fusion_count, 4);
+}
+
+TEST_F(CollectivePipelinerTest, HostOffloadingForward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule jit_scanned
+
+%region_0.40 (arg_tuple.13: (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000])) -> (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) {
+  %arg_tuple.13 = (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) parameter(0)
+  %get-tuple-element.14 = s32[] get-tuple-element(%arg_tuple.13), index=0
+  %constant.19 = s32[] constant(1)
+  %add.38 = s32[] add(%get-tuple-element.14, %constant.19)
+  %get-tuple-element.15 = f32[1000,1000] get-tuple-element(%arg_tuple.13), index=1
+  %get-tuple-element.17 = f32[10,1000,8000] get-tuple-element(%arg_tuple.13), index=3
+  %constant.20 = s32[] constant(0)
+  %dynamic-slice.21 = f32[1,1000,8000] dynamic-slice(%get-tuple-element.17, %get-tuple-element.14, %constant.20, %constant.20), dynamic_slice_sizes={1,1000,8000}
+  %reshape.22 = f32[1000,8000] reshape(%dynamic-slice.21)
+  %dot.0 = f32[1000,8000] dot(%get-tuple-element.15, %reshape.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %get-tuple-element.18 = f32[10,8000,1000] get-tuple-element(%arg_tuple.13), index=4
+  %dynamic-slice.23 = f32[1,8000,1000] dynamic-slice(%get-tuple-element.18, %get-tuple-element.14, %constant.20, %constant.20), dynamic_slice_sizes={1,8000,1000}
+  %reshape.24 = f32[8000,1000] reshape(%dynamic-slice.23)
+  %dot.1 = f32[1000,1000] dot(%dot.0, %reshape.24), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %get-tuple-element.16 = f32[10,1000,1000] get-tuple-element(%arg_tuple.13), index=2
+  %custom-call.2 = f32[1000,1000] custom-call(%dot.1), custom_call_target="MoveToHost"
+  %reshape.36 = f32[1,1000,1000] reshape(%custom-call.2)
+  %dynamic-update-slice.37 = f32[10,1000,1000] dynamic-update-slice(%get-tuple-element.16, %reshape.36, %get-tuple-element.14, %constant.20, %constant.20)
+  ROOT %tuple.39 = (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) tuple(%add.38, %dot.1, %dynamic-update-slice.37, %get-tuple-element.17, %get-tuple-element.18)
+}
+
+%region_1.49 (arg_tuple.41: (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000])) -> pred[] {
+  %arg_tuple.41 = (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) parameter(0)
+  %get-tuple-element.42 = s32[] get-tuple-element(%arg_tuple.41), index=0
+  %constant.47 = s32[] constant(10)
+  ROOT %compare.48 = pred[] compare(%get-tuple-element.42, %constant.47), direction=LT
+}
+
+ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3: f32[1000,1000]) -> (f32[10,1000,8000], f32[10,8000,1000]) {
+  %constant.10 = s32[] constant(0)
+  %constant.4 = f32[] constant(0)
+  %Arg_2.3 = f32[1000,1000] parameter(2)
+  %broadcast.12 = f32[10,1000,1000] broadcast(%constant.4), dimensions={}
+  %Arg_0.1 = f32[10,1000,8000] parameter(0)
+  %Arg_1.2 = f32[10,8000,1000] parameter(1)
+  %tuple.50 = (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) tuple(%constant.10, %Arg_2.3, %broadcast.12, %Arg_0.1, %Arg_1.2)
+  %while.51 = (s32[], f32[1000,1000], f32[10,1000,1000], f32[10,1000,8000], f32[10,8000,1000]) while(%tuple.50), condition=%region_1.49, body=%region_0.40
+  %get-tuple-element.52 = f32[10,1000,8000] get-tuple-element(%while.51), index=3
+  %get-tuple-element.53 = f32[10,8000,1000] get-tuple-element(%while.51), index=4
+  ROOT %tuple.116 = (f32[10,1000,8000], f32[10,8000,1000]) tuple(%get-tuple-element.52, %get-tuple-element.53)
+}
+)";
+
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true, 0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          /*direction=*/
+          collective_pipeliner_utils::PipeliningDirection::kForward,
+          /*should_process=*/
+          host_offload_utils::IsMoveToHostWithDynamicUpdateSlice,
+          /*acceptable_formatting=*/HloPredicateTrue,
+          /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+          /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
+          /*should_add_loop_invariant_op_in_chain=*/false,
+          /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
+          /*unique_channel_id=*/true,
+          /*postprocess_transformed_while_loop=*/
+          host_offload_utils::MarkDynamicVariables)
+          .value());
+
+  std::vector<HloInstruction*> while_loops;
+  for (auto* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kWhile) {
+      while_loops.push_back(instr);
+    }
+  }
+  ASSERT_EQ(while_loops.size(), 1) << "Expected 1 while loop in the module";
+
+  XLA_VLOG_LINES(1, "Transformed while body:\n" +
+                        while_loops[0]->while_body()->ToString());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_loops[0]->backend_config<WhileLoopBackendConfig>());
+
+  std::set<int64_t> dynamic_indices(
+      config.dynamic_variable_tuple_indices().begin(),
+      config.dynamic_variable_tuple_indices().end());
+
+  std::set<int64_t> expected_indices = {0, 5};
+  EXPECT_EQ(dynamic_indices, expected_indices);
+}
+
+TEST_F(CollectivePipelinerTest, HostOffloadingBackward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule jit_scanned
+
+%region_2.98 (arg_tuple.55: (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000])) -> (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) {
+  %arg_tuple.55 = (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) parameter(0)
+  %get-tuple-element.56 = s32[] get-tuple-element(%arg_tuple.55), index=0
+  %constant.64 = s32[] constant(1)
+  %add.96 = s32[] add(%get-tuple-element.56, %constant.64)
+  %get-tuple-element.57 = f32[1000,1000] get-tuple-element(%arg_tuple.55), index=1
+  %get-tuple-element.62 = f32[10,8000,1000] get-tuple-element(%arg_tuple.55), index=6
+  %constant.1 = s32[] constant(9)
+  %subtract = s32[] subtract(%constant.1, %get-tuple-element.56)
+  %constant.63 = s32[] constant(0)
+  %dynamic-slice.72 = f32[1,8000,1000] dynamic-slice(%get-tuple-element.62, %subtract, %constant.63, %constant.63), dynamic_slice_sizes={1,8000,1000}
+  %reshape.73 = f32[8000,1000] reshape(%dynamic-slice.72)
+  %dot.2 = f32[1000,8000] dot(%get-tuple-element.57, %reshape.73), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  %get-tuple-element.61 = f32[10,1000,8000] get-tuple-element(%arg_tuple.55), index=5
+  %dynamic-slice.70 = f32[1,1000,8000] dynamic-slice(%get-tuple-element.61, %subtract, %constant.63, %constant.63), dynamic_slice_sizes={1,1000,8000}
+  %reshape.71 = f32[1000,8000] reshape(%dynamic-slice.70)
+  %dot.3 = f32[1000,1000] dot(%dot.2, %reshape.71), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  %get-tuple-element.58 = f32[10,1000,8000] get-tuple-element(%arg_tuple.55), index=2
+  %get-tuple-element.60 = f32[10,1000,1000] get-tuple-element(%arg_tuple.55), index=4
+  %dynamic-slice.68 = f32[1,1000,1000] dynamic-slice(%get-tuple-element.60, %subtract, %constant.63, %constant.63), dynamic_slice_sizes={1,1000,1000}
+  %reshape.69 = f32[1000,1000] reshape(%dynamic-slice.68)
+  %custom-call.3 = f32[1000,1000] custom-call(%reshape.69), custom_call_target="MoveToDevice"
+  %dot.7 = f32[1000,8000] dot(%custom-call.3, %dot.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  %reshape.92 = f32[1,1000,8000] reshape(%dot.7)
+  %dynamic-update-slice.93 = f32[10,1000,8000] dynamic-update-slice(%get-tuple-element.58, %reshape.92, %subtract, %constant.63, %constant.63)
+  %get-tuple-element.59 = f32[10,8000,1000] get-tuple-element(%arg_tuple.55), index=3
+  %dot.5 = f32[1000,8000] dot(%custom-call.3, %reshape.71), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %dot.8 = f32[8000,1000] dot(%dot.5, %get-tuple-element.57), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  %reshape.94 = f32[1,8000,1000] reshape(%dot.8)
+  %dynamic-update-slice.95 = f32[10,8000,1000] dynamic-update-slice(%get-tuple-element.59, %reshape.94, %subtract, %constant.63, %constant.63)
+  ROOT %tuple.97 = (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) tuple(%add.96, %dot.3, %dynamic-update-slice.93, %dynamic-update-slice.95, %get-tuple-element.60, /*index=5*/%get-tuple-element.61, %get-tuple-element.62)
+}
+
+%region_3.109 (arg_tuple.99: (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000])) -> pred[] {
+  %arg_tuple.99 = (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) parameter(0)
+  %get-tuple-element.100 = s32[] get-tuple-element(%arg_tuple.99), index=0
+  %constant.107 = s32[] constant(10)
+  ROOT %compare.108 = pred[] compare(%get-tuple-element.100, %constant.107), direction=LT
+}
+
+ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3: f32[10,1000,1000]) -> (f32[10,1000,8000], f32[10,8000,1000]) {
+  %constant.10 = s32[] constant(0)
+  %constant.8 = f32[] constant(1)
+  %broadcast.9 = f32[1000,1000] broadcast(%constant.8), dimensions={}
+  %constant.4 = f32[] constant(0)
+  %broadcast.7 = f32[10,1000,8000] broadcast(%constant.4), dimensions={}
+  %broadcast.5 = f32[10,8000,1000] broadcast(%constant.4), dimensions={}
+  %Arg_2.3 = f32[10,1000,1000] parameter(2)
+  %Arg_0.1 = f32[10,1000,8000] parameter(0)
+  %Arg_1.2 = f32[10,8000,1000] parameter(1)
+  %tuple.110 = (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) tuple(%constant.10, %broadcast.9, %broadcast.7, %broadcast.5, %Arg_2.3, /*index=5*/%Arg_0.1, %Arg_1.2)
+  %while.111 = (s32[], f32[1000,1000], f32[10,1000,8000], f32[10,8000,1000], f32[10,1000,1000], /*index=5*/f32[10,1000,8000], f32[10,8000,1000]) while(%tuple.110), condition=%region_3.109, body=%region_2.98
+  %get-tuple-element.114 = f32[10,1000,8000] get-tuple-element(%while.111), index=2
+  %get-tuple-element.115 = f32[10,8000,1000] get-tuple-element(%while.111), index=3
+  ROOT %tuple.116 = (f32[10,1000,8000], f32[10,8000,1000]) tuple(%get-tuple-element.114, %get-tuple-element.115)
+}
+)";
+
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true, 0,
+          /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          /*direction=*/
+          collective_pipeliner_utils::PipeliningDirection::kBackward,
+          /*should_process=*/
+          host_offload_utils::IsMoveToDeviceWithDynamicSlice,
+          /*acceptable_formatting=*/HloPredicateTrue,
+          /*reuse_pipelined_op_buffer=*/HloPredicateTrue,
+          /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+          /*postprocess_backward_peeled=*/{},
+          /*postprocess_backward_rotated=*/{},
+          /*postprocess_backward_peeled_trailing=*/{},
+          /*should_add_loop_invariant_op_in_chain=*/false,
+          /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
+          /*unique_channel_id=*/true,
+          /*postprocess_transformed_while_loop=*/
+          host_offload_utils::MarkDynamicVariables)
+          .value());
+
+  std::vector<HloInstruction*> while_loops;
+  for (auto* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kWhile) {
+      while_loops.push_back(instr);
+    }
+  }
+  ASSERT_EQ(while_loops.size(), 1) << "Expected 1 while loop in the module";
+
+  XLA_VLOG_LINES(1, "Transformed while body:\n" +
+                        while_loops[0]->while_body()->ToString());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      WhileLoopBackendConfig config,
+      while_loops[0]->backend_config<WhileLoopBackendConfig>());
+
+  std::set<int64_t> dynamic_indices(
+      config.dynamic_variable_tuple_indices().begin(),
+      config.dynamic_variable_tuple_indices().end());
+
+  std::set<int64_t> expected_indices = {0, 8};
+  EXPECT_EQ(dynamic_indices, expected_indices);
 }
 
 }  // namespace

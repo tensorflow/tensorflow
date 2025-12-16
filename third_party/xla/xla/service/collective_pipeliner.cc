@@ -514,7 +514,9 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
     HloPredicate should_allow_loop_variant_parameter_in_chain,
     const absl::flat_hash_set<const HloInstruction*>&
         loop_invariant_instructions,
-    bool should_add_loop_invariant_op_in_chain) {
+    bool should_add_loop_invariant_op_in_chain,
+    CollectivePipeliner::AdditionalChainStartOpFinder
+        additional_chain_start_op_finder) {
   std::vector<HloInstruction*> chain;
   absl::flat_hash_set<const HloInstruction*> visited_set({instr});
   std::vector<std::pair<HloInstruction*, int>> stack(1, {instr, 0});
@@ -527,6 +529,16 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
         return !IsLoopIterator(instr, loop_iter) &&
                !loop_invariant_params.count(instr);
       };
+
+  if (additional_chain_start_op_finder) {
+    auto maybe_additional_op = additional_chain_start_op_finder(instr);
+    if (maybe_additional_op.has_value()) {
+      if (visited_set.insert(maybe_additional_op.value()).second) {
+        stack.emplace_back(maybe_additional_op.value(), 0);
+      }
+    }
+  }
+
   while (!stack.empty()) {
     auto& curr = stack.back();
     if (curr.second == curr.first->operand_count()) {
@@ -600,14 +612,16 @@ std::optional<std::vector<HloInstruction*>> CollectChainsToPushBackwards(
     bool should_allow_control_dependencies,
     const absl::flat_hash_set<const HloInstruction*>&
         loop_invariant_instructions,
-    bool should_add_loop_invariant_op_in_chain) {
+    bool should_add_loop_invariant_op_in_chain,
+    CollectivePipeliner::AdditionalChainStartOpFinder
+        additional_chain_start_op_finder) {
   if (instr->HasControlDependencies() && !should_allow_control_dependencies) {
     return std::nullopt;
   }
   return CollectIndependentOperandChain(
       instr, loop_iter, loop_invariant_params,
       should_allow_loop_variant_parameter_in_chain, loop_invariant_instructions,
-      should_add_loop_invariant_op_in_chain);
+      should_add_loop_invariant_op_in_chain, additional_chain_start_op_finder);
 }
 
 // Given a dynamic-update-slice find the output index of the loop we feed into.
@@ -910,7 +924,9 @@ class WhileLoopAnalysis {
       HloPredicate should_allow_loop_variant_parameter_in_chain =
           HloPredicateFalse,
       bool should_allow_control_dependencies = false,
-      bool should_add_loop_invariant_op_in_chain = false);
+      bool should_add_loop_invariant_op_in_chain = false,
+      CollectivePipeliner::AdditionalChainStartOpFinder
+          additional_chain_start_op_finder = nullptr);
   HloInstruction* while_loop_instruction() const { return while_; }
   void ExtractLoopInvariantOps();
 
@@ -1321,7 +1337,9 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     HloPredicate should_process, HloPredicate acceptable_formatting,
     HloPredicate should_allow_loop_variant_parameter_in_chain,
     bool should_allow_control_dependencies,
-    bool should_add_loop_invariant_op_in_chain) {
+    bool should_add_loop_invariant_op_in_chain,
+    CollectivePipeliner::AdditionalChainStartOpFinder
+        additional_chain_start_op_finder) {
   move_infos_.clear();
   HloComputation* while_body = while_->while_body();
   const HloInstruction* loop_parameter =
@@ -1498,7 +1516,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
           invariant_loop_parameters_,
           should_allow_loop_variant_parameter_in_chain,
           should_allow_control_dependencies, invariant_loop_instructions_,
-          should_add_loop_invariant_op_in_chain);
+          should_add_loop_invariant_op_in_chain,
+          additional_chain_start_op_finder);
       if (!chain_collected.has_value()) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because didn't find compatible slice of parameter";
@@ -1691,7 +1710,7 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
 // }
 // xg_last = all-reduce(x)
 // yg_last = all-reduce(y)
-absl::Status TransformLoopForward(
+absl::StatusOr<HloInstruction*> TransformLoopForward(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
     int64_t level_to_operate_on, bool pipeline_use_tree,
     bool process_different_sized_ops, HloPredicate should_process,
@@ -2179,7 +2198,7 @@ absl::Status TransformLoopForward(
         absl::MakeSpan(loop_output_to_replace), output_stacked_data));
   }
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return absl::OkStatus();
+  return new_while_loop;
 }
 
 absl::Status TransformFormattingOp(
@@ -2412,7 +2431,7 @@ absl::Status TransformFormattingOp(
 // }
 // xg_all = all-reduce(x_all)
 // yg_all = all-reduce(y_all)
-absl::Status TransformLoopForwardSink(
+absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
     int64_t level_to_operate_on, bool pipeline_use_tree,
     bool process_different_sized_ops, HloPredicate should_process,
@@ -2767,7 +2786,7 @@ absl::Status TransformLoopForwardSink(
   TF_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return absl::OkStatus();
+  return new_while;
 }
 
 // Function that does the work of pushing backward instructions that have been
@@ -2793,7 +2812,7 @@ absl::Status TransformLoopForwardSink(
 //   x_ag = p0_ag_next
 // }
 // x_last = computation(p0_ag_next)
-static absl::Status TransformLoopBackward(
+static absl::StatusOr<HloInstruction*> TransformLoopBackward(
     const WhileLoopAnalysis& loop_analysis, bool insert_non_alias_custom_call,
     int64_t level_to_operate_on, bool process_different_sized_ops,
     HloPredicate acceptable_formatting,
@@ -3139,7 +3158,7 @@ static absl::Status TransformLoopBackward(
   TF_RETURN_IF_ERROR(
       loop_computation->RemoveInstructionAndUnusedOperands(while_loop));
   TF_RETURN_IF_ERROR(loop_computation->parent()->RemoveUnusedComputations());
-  return absl::OkStatus();
+  return new_while_loop;
 }
 
 absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
@@ -3162,6 +3181,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
       if (instruction->opcode() != HloOpcode::kWhile) {
         continue;
       }
+
       if (std::none_of(instruction->while_body()->instructions().begin(),
                        instruction->while_body()->instructions().end(),
                        config_.should_process)) {
@@ -3195,7 +3215,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         config_.should_process, config_.acceptable_formatting,
         config_.should_allow_loop_variant_parameter_in_chain,
         config_.should_allow_control_dependencies,
-        config_.should_add_loop_invariant_op_in_chain);
+        config_.should_add_loop_invariant_op_in_chain,
+        config_.additional_chain_start_op_finder);
     if (loop_analysis->GetMoveInfos().empty()) {
       continue;
     }
@@ -3207,31 +3228,44 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
         VLOG(1) << "MoveInfo #" << id++ << "\n" << ToString(to_move);
       }
     }
+    HloInstruction* transformed_while_loop;
     if (config_.pipelining_direction ==
         collective_pipeliner_utils::PipeliningDirection::kForward) {
       CHECK(config_.reuse_pipelined_op_buffer);
-      TF_RETURN_IF_ERROR(TransformLoopForward(
-          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
-          config_.pipeline_use_tree, config_.process_different_sized_ops,
-          config_.should_process, config_.acceptable_formatting,
-          config_.reuse_pipelined_op_buffer, next_channel_id,
-          config_.unique_channel_id, config_.postprocess_pipelined_ops));
+      TF_ASSIGN_OR_RETURN(
+          transformed_while_loop,
+          TransformLoopForward(
+              *loop_analysis, !config_.last_run, config_.level_to_operate_on,
+              config_.pipeline_use_tree, config_.process_different_sized_ops,
+              config_.should_process, config_.acceptable_formatting,
+              config_.reuse_pipelined_op_buffer, next_channel_id,
+              config_.unique_channel_id, config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
                collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
-      TF_RETURN_IF_ERROR(TransformLoopForwardSink(
-          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
-          config_.pipeline_use_tree, config_.process_different_sized_ops,
-          config_.should_process, next_channel_id, config_.unique_channel_id));
+      TF_ASSIGN_OR_RETURN(
+          transformed_while_loop,
+          TransformLoopForwardSink(
+              *loop_analysis, !config_.last_run, config_.level_to_operate_on,
+              config_.pipeline_use_tree, config_.process_different_sized_ops,
+              config_.should_process, next_channel_id,
+              config_.unique_channel_id));
     } else {
       CHECK_EQ(config_.pipelining_direction,
                collective_pipeliner_utils::PipeliningDirection::kBackward);
-      TF_RETURN_IF_ERROR(TransformLoopBackward(
-          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
-          config_.process_different_sized_ops, config_.acceptable_formatting,
-          config_.postprocess_backward_peeled_op,
-          config_.postprocess_backward_rotated_op,
-          config_.postprocess_backward_peeled_trailing_op, next_channel_id,
-          config_.unique_channel_id, config_.postprocess_pipelined_ops));
+      TF_ASSIGN_OR_RETURN(
+          transformed_while_loop,
+          TransformLoopBackward(
+              *loop_analysis, !config_.last_run, config_.level_to_operate_on,
+              config_.process_different_sized_ops,
+              config_.acceptable_formatting,
+              config_.postprocess_backward_peeled_op,
+              config_.postprocess_backward_rotated_op,
+              config_.postprocess_backward_peeled_trailing_op, next_channel_id,
+              config_.unique_channel_id, config_.postprocess_pipelined_ops));
+    }
+    if (config_.postprocess_transformed_while_loop) {
+      TF_RETURN_IF_ERROR(
+          config_.postprocess_transformed_while_loop(transformed_while_loop));
     }
     ++transformed_loops;
     changed = true;
