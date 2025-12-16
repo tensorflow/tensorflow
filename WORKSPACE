@@ -21,10 +21,10 @@ tf_http_archive(
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
 tf_http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "1a911c79fc734c39538781a7a4672b06aab8354c1ddb985c98e3df78f430bcde",
-    strip_prefix = "rules_ml_toolchain-f13852164b6fe240f8a989a744221a51e0d485cd",
+    sha256 = "e9842de3fefb5a120d3b1647d3a09e6e7071e8df8d1cd2dfe6f66ee31fd2595e",
+    strip_prefix = "rules_ml_toolchain-cb79a8fc8dcf3f75743dcd9b3418a70c884a7269",
     urls = tf_mirror_urls(
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/f13852164b6fe240f8a989a744221a51e0d485cd.tar.gz",
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/cb79a8fc8dcf3f75743dcd9b3418a70c884a7269.tar.gz",
     ),
 )
 
