@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/Passes.h"
+#include "triton/Dialect/Gluon/Transforms/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -138,10 +139,12 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
+  pm->addPass(mlir::triton::gluon::createGluonInline());
   pm->addPass(mt::createAllocateSharedMemoryNvPass(
       cuda_cc_as_int,
       mlir::triton::AllocateSharedMemoryNvOptions{}.ptxVersion));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
+  pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
   // We could add a flag to XLA to optionally enable the following pass:
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
@@ -153,7 +156,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mt::createConvertWarpSpecializeToLLVM());
-  pm->addPass(mlir::createArithToLLVMConversionPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());

@@ -211,6 +211,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Transforms",
+        "@triton//:GluonTransforms",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",

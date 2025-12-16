@@ -268,7 +268,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "num_warps":"8",
-        "output_tiles":[{"sizes":["128","64"]}],
+        "output_tiles":[{"sizes":["128","32"]}],
         "num_ctas":1,
         "num_stages":4,
         "is_tma_allowed":false}}}
@@ -281,7 +281,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "num_warps":"8",
-        "output_tiles":[{"sizes":["64","256"]}],
+        "output_tiles":[{"sizes":["32","256"]}],
         "num_ctas":1,
         "num_stages":4,
         "is_tma_allowed":false}}}
