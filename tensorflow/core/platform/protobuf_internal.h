@@ -27,12 +27,13 @@ namespace tensorflow {
 // Utility for parsing an Any value with full or lite protos.
 template <class T>
 absl::Status ParseAny(const google::protobuf::Any& any, T* message,
-                      const string& type_name) {
+                      const std::string& type_name) {
   CHECK_EQ(type_name, message->GetTypeName());
   if (!any.Is<T>()) {
     return errors::FailedPrecondition(
         "Expected Any type_url for: ", message->GetTypeName(),
-        ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
+        ". Got: ", std::string(any.type_url().data(), any.type_url().size()),
+        ".");
   }
   if (!any.UnpackTo(message)) {
     return errors::FailedPrecondition("Failed to unpack: ", any.DebugString());
