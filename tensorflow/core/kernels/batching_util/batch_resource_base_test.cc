@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/criticality.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
@@ -282,9 +283,13 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
         /*forced_warmup_batch_size=*/0));
   }
   blocking_counter.Wait();
+
+  TF_ASSERT_OK_AND_ASSIGN(absl::string_view policy_str,
+                          GetMixedPriorityBatchingPolicyString(
+                              GetParam().mixed_priority_batching_policy));
   EXPECT_EQ(
       mixed_priority_policy_reader_->Read("my_model_name", "my_batch_node"),
-      absl::StrCat(GetParam().mixed_priority_batching_policy));
+      policy_str);
 
   for (const auto& [batch_size, expected_count] :
        GetParam().expected_batch_size_count) {

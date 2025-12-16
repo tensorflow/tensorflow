@@ -535,6 +535,7 @@ tf_cc_test(
         "@local_xla//xla/tsl/lib/monitoring:cell_reader",
         "@local_xla//xla/tsl/lib/monitoring:test_utils",
         "@local_xla//xla/tsl/platform:criticality",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
