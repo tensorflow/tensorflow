@@ -37,7 +37,7 @@ class TransitiveFaninTest : public ::testing::Test {
 
     string name;
     string op;
-    std::vector<string> inputs;
+    std::vector<std::string> inputs;
   };
 
   static GraphDef CreateGraph(const std::vector<NodeConfig>& nodes) {

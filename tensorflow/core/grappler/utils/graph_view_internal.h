@@ -806,7 +806,7 @@ inline void UpdateOp(NewNode<GraphViewT>* new_node, absl::string_view op) {
   if (op.empty()) {
     new_node->node.clear_op();
   } else {
-    new_node->node.set_op(string(op));
+    new_node->node.set_op(std::string(op));
   }
 }
 

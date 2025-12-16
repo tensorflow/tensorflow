@@ -38,7 +38,7 @@ namespace tensorflow {
 namespace grappler {
 
 GrapplerFunctionItem::GrapplerFunctionItem(
-    string func_name, string description, AttrSlice func_attr,
+    std::string func_name, string description, AttrSlice func_attr,
     std::vector<const FunctionDef::ArgAttrs*> arg_attr,
     std::vector<InputArgInstantiation> input_args,
     std::vector<OutputArgInstantiation> output_args,

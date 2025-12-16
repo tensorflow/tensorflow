@@ -85,7 +85,7 @@ void ReassignColocation(GraphDef* graph) {
   constexpr char kColocPrefix[] = "loc:@";
 
   // A hashmap that maps from a node name to its parent node name.
-  std::unordered_map<string, string> coloc_groups;
+  std::unordered_map<string, std::string> coloc_groups;
   NodeMap node_map(graph);
   for (const auto& node : graph->node()) {
     auto iter = node.attr().find(kClassAttr);

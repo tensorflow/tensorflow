@@ -98,7 +98,7 @@ class GrapplerFunctionItem : public GrapplerItem {
                                             GrapplerFunctionItem*,
                                             std::vector<std::pair<int, int>>*);
 
-  GrapplerFunctionItem(string func_name, string description,
+  GrapplerFunctionItem(string func_name, std::string description,
                        AttrSlice func_attr,
                        std::vector<const FunctionDef::ArgAttrs*> arg_attr,
                        std::vector<InputArgInstantiation> input_args,

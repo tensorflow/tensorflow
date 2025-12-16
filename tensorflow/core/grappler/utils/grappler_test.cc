@@ -114,7 +114,7 @@ std::vector<Tensor> GrapplerTest::EvaluateNodes(
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names,
+    const GraphDef& graph, const std::vector<std::string>& node_names,
     const std::vector<std::pair<string, Tensor>>& inputs) const {
   std::unique_ptr<tensorflow::Session> session(NewSession(options_));
   TF_CHECK_OK(session->Create(graph));

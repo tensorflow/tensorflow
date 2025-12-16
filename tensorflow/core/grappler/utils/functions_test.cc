@@ -78,7 +78,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
       /* Mapping between function returns and function node outputs. */
       {{"x", "cx:output:0"}, {"y", "cy:output:0"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["key"].set_s("key-value");
   func_instantiation_attr["A"].set_type(DT_FLOAT);
   func_instantiation_attr["B"].set_type(DT_INT32);

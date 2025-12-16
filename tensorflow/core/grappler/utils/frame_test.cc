@@ -186,7 +186,7 @@ TYPED_TEST(FrameViewTest, MultipleEnterNodes) {
   FrameView frame_view;
   InferFromGraph<TypeParam>(&frame_view, &graph, /*valid=*/true);
 
-  std::unordered_map<string, std::vector<int>> expected = {
+  std::unordered_map<std::string, std::vector<int>> expected = {
       {"0", {}}, {"1", {0}}, {"2", {0}}, {"3", {0}}, {"4", {0}},
       {"5", {}}, {"6", {0}}, {"7", {0}}, {"8", {0}}, {"9", {0}}};
 
