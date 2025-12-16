@@ -2047,10 +2047,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction& instr,
       const GemmBackendConfig& gemm_backend_config) const {
-    if (!instr.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_cublaslt()) {
+    if (!options_.enable_cublaslt) {
       // cublasLt is not enabled.
       return absl::string_view(kGemmCallTarget);
     }

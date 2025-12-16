@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -1273,7 +1271,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1297,7 +1297,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1321,7 +1323,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -1342,7 +1346,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1366,7 +1372,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1394,7 +1402,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1422,7 +1432,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1452,7 +1464,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
