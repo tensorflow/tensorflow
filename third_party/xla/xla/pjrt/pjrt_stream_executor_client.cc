@@ -127,6 +127,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/profiling_context.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
