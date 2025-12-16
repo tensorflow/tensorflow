@@ -57,6 +57,8 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -439,6 +441,9 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
 
 std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
     HloInstruction* instr, std::vector<Config>& configs) {
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("CompileAll", 5);
+  tsl::profiler::TraceMe traceme("CompileAll");
+  tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
   if (thread_pool_ == nullptr) {
     std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
     executables.reserve(configs.size());
