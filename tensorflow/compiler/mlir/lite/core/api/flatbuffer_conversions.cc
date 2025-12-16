@@ -350,6 +350,7 @@ using tflite::TensorType_RESOURCE;
 using tflite::TensorType_STRING;
 using tflite::TensorType_UINT16;
 using tflite::TensorType_UINT32;
+using tflite::TensorType_UINT4;
 using tflite::TensorType_UINT64;
 using tflite::TensorType_UINT8;
 using tflite::TensorType_VARIANT;
@@ -1403,6 +1404,9 @@ absl::Status ConvertTensorType(TensorType tensor_type, TfLiteType* type) {
       return OkStatus();
     case TensorType_INT2:
       *type = kTfLiteInt2;
+      return OkStatus();
+    case TensorType_UINT4:
+      *type = kTfLiteUInt4;
       return OkStatus();
     default:
       *type = kTfLiteNoType;
