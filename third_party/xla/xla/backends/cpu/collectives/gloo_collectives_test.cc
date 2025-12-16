@@ -35,9 +35,9 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/global_device_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -94,9 +94,9 @@ RendezvousKey MakeRendezvousKey(std::vector<GlobalDeviceId> global_devices) {
 // TODO(cobley) - add tests for other collectives.
 
 template <typename T>
-static se::DeviceMemoryBase AsDeviceMemory(const std::vector<T>& data) {
-  return se::DeviceMemoryBase(const_cast<T*>(data.data()),
-                              data.size() * sizeof(T));
+static se::DeviceAddressBase AsDeviceMemory(const std::vector<T>& data) {
+  return se::DeviceAddressBase(const_cast<T*>(data.data()),
+                               data.size() * sizeof(T));
 }
 
 absl::StatusOr<std::vector<uint8_t>> AllReduce(

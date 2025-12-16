@@ -48,6 +48,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["context.h"],
     deps = [
@@ -61,6 +62,7 @@ cc_library(
     tags = [
         "manual",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["criticality.h"],
     deps = [
@@ -107,6 +109,7 @@ cc_library(
     tags = [
         "manual",
         "nobuilder",
+        "nofixdeps",
     ],
     deps = [
         "//xla/tsl/platform:logging",
@@ -118,10 +121,13 @@ cc_library(
         "@local_tsl//tsl/platform:load_library",
         "@local_tsl//tsl/platform:path",
     ] + if_oss([
-        "@nvshmem//:nvshmem_config",
+        # keep sorted
         "@local_config_nccl//:nccl_config",
         "@local_config_tensorrt//:tensorrt_headers",
+        "@local_tsl//tsl/platform",
+        "@nvshmem//:nvshmem_config",
     ]) + if_rocm_is_configured([
+        # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -148,6 +154,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     deps = [
         "//xla/tsl/concurrency:executor",
@@ -161,11 +168,14 @@ cc_library(
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
@@ -436,6 +446,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",  # build_cleaner doesn't work well with the conditional includes in subprocess.h
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
@@ -460,17 +471,15 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["tracing_impl.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:threadpool_listener_state",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
     ],
     alwayslink = True,
@@ -513,6 +522,7 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
+        "nofixdeps",
     ],
     textual_hdrs = ["crash_analysis.h"],
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),

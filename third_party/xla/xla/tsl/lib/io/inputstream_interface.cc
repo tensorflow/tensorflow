@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
+#include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace tsl {
@@ -26,7 +27,7 @@ static constexpr int64_t kMaxSkipSize = 8 * 1024 * 1024;
 
 absl::Status InputStreamInterface::SkipNBytes(int64_t bytes_to_skip) {
   if (bytes_to_skip < 0) {
-    return errors::InvalidArgument("Can't skip a negative number of bytes");
+    return absl::InvalidArgumentError("Can't skip a negative number of bytes");
   }
   tstring unused;
   // Read kDefaultSkipSize at a time till bytes_to_skip.

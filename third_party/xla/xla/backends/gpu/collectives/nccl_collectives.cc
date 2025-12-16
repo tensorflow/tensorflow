@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -95,7 +95,9 @@ bool NcclCollectives::IsGlobalConfig() const {
 absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
 NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
                                      bool is_local) {
-  if (clique_id_callback != nullptr) return clique_id_callback;
+  if (clique_id_callback != nullptr) {
+    return clique_id_callback;
+  }
 
   TF_RET_CHECK(is_local || IsGlobalConfig())
       << "If non-local devices are taking part of a collective API on "

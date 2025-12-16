@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/prefix_sum_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -67,8 +67,8 @@ class CubPrefixSumKernelCudaTest
   }
 
   template <typename T>
-  absl::StatusOr<se::DeviceMemory<T>> CheckNotNull(
-      se::DeviceMemory<T> device_memory, absl::string_view name) {
+  absl::StatusOr<se::DeviceAddress<T>> CheckNotNull(
+      se::DeviceAddress<T> device_memory, absl::string_view name) {
     if (device_memory.is_null()) {
       return absl::InternalError(
           absl::StrFormat("Device memory for %s is null", name));
@@ -87,9 +87,9 @@ class CubPrefixSumKernelCudaTest
 
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemory<T> device_input,
+        se::DeviceAddress<T> device_input,
         CheckNotNull(executor_->AllocateArray<T>(input.size()), "input"));
-    se::DeviceMemory<T> device_output;
+    se::DeviceAddress<T> device_output;
     if (in_place) {
       device_output = device_input;
     } else {

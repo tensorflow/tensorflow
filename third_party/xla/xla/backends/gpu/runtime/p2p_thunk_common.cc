@@ -32,9 +32,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -49,7 +49,9 @@ absl::Status ExecutionCounters::Initialize(se::StreamExecutor* executor,
                                            RunId run_id) {
   absl::MutexLock lock(mu_);
   CounterKey key = {executor, run_id};
-  if (counters_.contains(key)) return absl::OkStatus();
+  if (counters_.contains(key)) {
+    return absl::OkStatus();
+  }
   counters_.emplace(key, 0);
   return absl::OkStatus();
 }

@@ -18,56 +18,56 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "llvm/ADT/Twine.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 
 namespace mlir {
 namespace {
 
-TEST(ErrorUtilTest, BaseScopedDiagnosticHandler) {
-  MLIRContext context;
-  auto id = StringAttr::get(&context, "test.py");
-  auto loc = FileLineColLoc::get(&context, id, 0, 0);
+class ErrorUtilTest : public ::testing::Test {
+ protected:
+  ErrorUtilTest()
+      : id_(StringAttr::get(&context_, "test.py")),
+        loc_(FileLineColLoc::get(&context_, id_, 0, 0)) {}
 
-  // Test OK without diagnostic gets passed through.
-  {
-    TF_EXPECT_OK(
-        BaseScopedDiagnosticHandler(&context).Combine(absl::OkStatus()));
-  }
+  MLIRContext context_;
+  StringAttr id_;
+  FileLineColLoc loc_;
+};
 
-  // Verify diagnostics are captured as Unknown status.
-  {
-    BaseScopedDiagnosticHandler handler(&context);
-    emitError(loc) << "Diagnostic message";
-    ASSERT_TRUE(absl::IsUnknown(handler.ConsumeStatus()));
-  }
+using BaseScopedDiagnosticHandlerTest = ErrorUtilTest;
 
-  // Verify passed in errors are propagated.
-  {
-    absl::Status err = absl::InternalError("Passed in error");
-    ASSERT_TRUE(
-        absl::IsInternal(BaseScopedDiagnosticHandler(&context).Combine(err)));
-  }
+TEST_F(BaseScopedDiagnosticHandlerTest, OkWithoutDiagnosticGetsPassedThrough) {
+  TF_EXPECT_OK(
+      BaseScopedDiagnosticHandler(&context_).Combine(absl::OkStatus()));
+}
 
-  // Verify diagnostic reported are append to passed in error.
-  {
-    auto function = [&]() {
-      emitError(loc) << "Diagnostic message reported";
-      emitError(loc) << "Second diagnostic message reported";
-      return absl::InternalError("Passed in error");
-    };
+TEST_F(BaseScopedDiagnosticHandlerTest,
+       VerifyDiagnosticsAreCapturedAsUnknownStatus) {
+  BaseScopedDiagnosticHandler handler(&context_);
+  emitError(loc_) << "Diagnostic message";
+  ASSERT_TRUE(absl::IsUnknown(handler.ConsumeStatus()));
+}
 
-    BaseScopedDiagnosticHandler ssdh(&context);
-    absl::Status s = ssdh.Combine(function());
-    ASSERT_TRUE(absl::IsInternal(s));
-    EXPECT_TRUE(absl::StrContains(s.message(), "Passed in error"));
-    EXPECT_TRUE(absl::StrContains(s.message(), "Diagnostic message reported"));
-    EXPECT_TRUE(
-        absl::StrContains(s.message(), "Second diagnostic message reported"));
-  }
+TEST_F(BaseScopedDiagnosticHandlerTest, VerifyPassedInErrorsArePropagated) {
+  const absl::Status err = absl::InternalError("Passed in error");
+  ASSERT_TRUE(
+      absl::IsInternal(BaseScopedDiagnosticHandler(&context_).Combine(err)));
+}
+
+TEST_F(BaseScopedDiagnosticHandlerTest,
+       VerifyThatReportedDiagnosticsAreAppendedToPassedInError) {
+  BaseScopedDiagnosticHandler ssdh(&context_);
+  emitError(loc_) << "Diagnostic message reported";
+  emitError(loc_) << "Second diagnostic message reported";
+  const absl::Status s = ssdh.Combine(absl::InternalError("Passed in error"));
+  ASSERT_TRUE(absl::IsInternal(s));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Passed in error"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Diagnostic message reported"));
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "Second diagnostic message reported"));
 }
 
 }  // namespace

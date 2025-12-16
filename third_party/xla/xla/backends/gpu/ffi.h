@@ -20,10 +20,13 @@ limitations under the License.
 #include <optional>
 
 #include "absl/base/optimization.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
-#include "xla/ffi/api/api.h"  // IWYU pragma: export
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/ffi/ffi.h"  // IWYU pragma: export
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -33,12 +36,17 @@ namespace xla::ffi {
 // Type tags to bind parameters passed via execution context to FFI handler
 //===----------------------------------------------------------------------===//
 
-struct Stream {};            // binds `se::Stream*`
-struct Allocator {};         // binds `se::DeviceMemoryAllocator*`
-struct ScratchAllocator {};  // binds `se::OwningScratchAllocator`
+// Type tag binds to one of the following types defined by XLA:GPU runtime:
+struct Stream {};                    //  `se::Stream*`
+struct Allocator {};                 //  `se::DeviceAddressAllocator*`
+struct ScratchAllocator {};          //  `se::OwningScratchAllocator`
+struct CollectiveParams {};          //  `const xla::gpu::CollectiveParams*`
+struct CollectiveCliqueRequests {};  //  `xla::gpu::CollectiveCliqueRequests*`
+struct CollectiveCliques {};         //  `const xla::gpu::CollectiveCliques*`
 
+// Parametrized type tag for platform stream, e.g. `cudaStream_t`
 template <typename T>
-struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
+struct PlatformStream {};
 
 //===----------------------------------------------------------------------===//
 // Context decoding
@@ -51,37 +59,39 @@ struct CtxDecoding<Stream> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    void* stream = nullptr;
-    if (XLA_FFI_Error* error =
-            api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx, &stream);
-        ABSL_PREDICT_FALSE(error)) {
-      diagnostic.Emit("Failed to get stream: ")
-          << internal::GetErrorMessage(api, error);
-      internal::DestroyError(api, error);
-      return std::nullopt;
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic, api->internal_api->XLA_FFI_INTERNAL_Stream_Get,
+        "stream");
+  }
+};
+
+template <typename T>
+struct CtxDecoding<PlatformStream<T>> {
+  using Type = T;
+  static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
+      return reinterpret_cast<Type>(
+          stream.value()->platform_specific_handle().stream);
     }
-    return reinterpret_cast<Type>(stream);
+    return std::nullopt;
   }
 };
 
 template <>
 struct CtxDecoding<Allocator> {
-  using Type = stream_executor::DeviceMemoryAllocator*;
+  using Type = stream_executor::DeviceAddressAllocator*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    void* device_allocator = nullptr;
-    if (XLA_FFI_Error* error =
-            api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
-                ctx, &device_allocator);
-        ABSL_PREDICT_FALSE(error)) {
-      diagnostic.Emit("Failed to get device memory allocator: ")
-          << internal::GetErrorMessage(api, error);
-      internal::DestroyError(api, error);
-      return std::nullopt;
-    }
-    return reinterpret_cast<Type>(device_allocator);
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
+        "device memory allocator");
   }
 };
 
@@ -106,19 +116,45 @@ struct CtxDecoding<ScratchAllocator> {
   }
 };
 
-template <typename T>
-struct CtxDecoding<PlatformStream<T>> {
-  using Type = T;
-  static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
+template <>
+struct CtxDecoding<CollectiveParams> {
+  using Type = const xla::gpu::CollectiveParams*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
-      return reinterpret_cast<Type>(
-          stream.value()->platform_specific_handle().stream);
-    }
-    return std::nullopt;
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveParams_Get,
+        "collective params");
+  }
+};
+
+template <>
+struct CtxDecoding<CollectiveCliqueRequests> {
+  using Type = xla::gpu::CollectiveCliqueRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
+        "collective clique requests");
+  }
+};
+
+template <>
+struct CtxDecoding<CollectiveCliques> {
+  using Type = const xla::gpu::CollectiveCliques*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveCliques_Get,
+        "collective cliques");
   }
 };
 

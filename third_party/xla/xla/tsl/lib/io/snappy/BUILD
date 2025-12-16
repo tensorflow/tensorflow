@@ -56,6 +56,7 @@ cc_library(
     srcs = ["snappy_outputbuffer.cc"],
     hdrs = ["snappy_outputbuffer.h"],
     deps = [
+        "//xla/tsl/lib/io:zlib_compression_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
@@ -74,7 +75,6 @@ cc_library(
         "//xla/tsl/lib/io:inputstream_interface",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -101,7 +101,6 @@ tsl_cc_test(
         ":snappy_inputbuffer",
         ":snappy_inputstream",
         ":snappy_outputbuffer",
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/io:inputbuffer",
         "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/platform:env",

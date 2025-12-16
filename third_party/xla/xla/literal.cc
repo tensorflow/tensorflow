@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
@@ -455,11 +456,11 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
 
     auto copy_proc = [&](absl::Span<const int64_t> indexes) {
       // Map from multi-dimensional index, to source index.
-      std::transform(indexes.begin(), indexes.end(), src_base.begin(),
-                     src_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, src_base, src_indexes.begin(),
+                        std::plus<int64_t>());
       // Map from multi-dimensional index, to destination index.
-      std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
-                     dest_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, dest_base, dest_indexes.begin(),
+                        std::plus<int64_t>());
 
       int64_t src_index = linear_index(src_literal.shape(), src_indexes);
       int64_t dest_index = linear_index(shape(), dest_indexes);
@@ -1916,7 +1917,21 @@ template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64_t>* multi_index) const {
   if (multi_index->size() == subshape().dimensions().size()) {
-    return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
+    const NativeT value = Get<NativeT>(*multi_index);
+    const NativeT other_value = other.Get<NativeT>(*multi_index);
+    // The EqualElements function uses memcmp to compare two literals that have
+    // the same shape (including the layout!). This can be seen as a "fast path"
+    // comparison. This function on the other hand performs an elementwise
+    // comparison and is for cases where shapes or layouts differ.
+    //
+    // Instead of operator==(), we use memcmp so that the comparison of
+    // individual elements is consistent with the fast path.
+    //
+    // This also ensures consistency for hashing, as the hash of a literal is
+    // also computed on the underlying data rather than logical equivalence. If
+    // this were not the case, 0.0f and -0.0f would continue to have different
+    // hash values even though in C++ they are considered equal.
+    return memcmp(&value, &other_value, sizeof(NativeT)) == 0;
   }
   for (int64_t i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
     multi_index->push_back(i);

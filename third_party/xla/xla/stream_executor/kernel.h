@@ -23,7 +23,7 @@ limitations under the License.
 // compile time. TypedKernels express their argument types via template
 // parameters like so:
 //
-//  TypedKernel<DeviceMemory<int>*, int>
+//  TypedKernel<DeviceAddress<int>*, int>
 //
 // Which expresses a data parallel kernel signature for:
 //
@@ -31,7 +31,7 @@ limitations under the License.
 //
 // And for a const memory region:
 //
-//  TypedKernel<const DeviceMemory<int>&, int>
+//  TypedKernel<const DeviceAddress<int>&, int>
 //
 // Corresponds to a data parallel kernel signature for:
 //
@@ -41,7 +41,7 @@ limitations under the License.
 // be memcpy'ied from device memory to the host.
 //
 // Also note that a scalar integer residing in device memory and an array of
-// integers residing in device memory have the same signature: DeviceMemory<T>.
+// integers residing in device memory have the same signature: DeviceAddress<T>.
 // However, in the future, checks may be added for additional safety that arrays
 // of minimum sizes are passed when those minimum sizes are contractually
 // expected by the kernel.
@@ -51,13 +51,13 @@ limitations under the License.
 // defined types are similarly permitted to be expressed as residing in device
 // memory:
 //
-//  TypedKernel<DeviceMemory<MyUserDefinedStructure>>
+//  TypedKernel<DeviceAddress<MyUserDefinedStructure>>
 //
 // And, when the alignment and padding are agreed upon, POD types will also be
 // able to be passed by value; for example, it is a common idiom to specify a
 // bunch of options simultaneously with a structure:
 //
-//  TypedKernel<MyOptionsStructurePassedByValue, DeviceMemory<float>>
+//  TypedKernel<MyOptionsStructurePassedByValue, DeviceAddress<float>>
 //
 // Which corresponds to a data parallel kernel signature like:
 //
@@ -185,7 +185,7 @@ class TypedKernel {
 
   // Launches a kernel with the given (variadic) parameters for the invocation
   // onto the specified stream. These arguments can be things
-  // like DeviceMemory or primitive types such as int. What arguments you may
+  // like DeviceAddress or primitive types such as int. What arguments you may
   // pass to a given kernel are noted as the template parameters to the
   // TypedKernel type that the compiler generates.
   //
@@ -196,8 +196,8 @@ class TypedKernel {
   //
   // Implementation: A compile-time compatibility check is performed that has
   // some leniency versus an exact parameter pack match -- for example,
-  // `const DeviceMemory<T>` is considered "pack compatible" with a
-  // `const DeviceMemory<T>&` formal parameter; in part, because we don't have
+  // `const DeviceAddress<T>` is considered "pack compatible" with a
+  // `const DeviceAddress<T>&` formal parameter; in part, because we don't have
   // perfect forwarding support without rvalue references. It also attempts to
   // spit out helpful static_assert error traces with information as to the
   // argument number and types that were mismatched.

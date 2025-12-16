@@ -17,15 +17,9 @@ package(
 )
 
 cc_library(
-    name = "ir_emitter",
-    srcs = [
-        "ir_emitter.cc",
-        "ir_emitter_nested.cc",
-    ],
-    hdrs = [
-        "ir_emitter.h",
-        "ir_emitter_nested.h",
-    ],
+    name = "llvm_emitter",
+    srcs = ["llvm_emitter.cc"],
+    hdrs = ["llvm_emitter.h"],
     deps = [
         ":parallel_loop_emitter",
         ":sort_util",
@@ -71,9 +65,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -49,10 +51,10 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -206,9 +208,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   // Helpers for cross host transfers.
   absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
-  absl::StatusOr<Future<>> CrossHostSendBuffer(
-      PjRtBuffer* buffer, PjRtGlobalDeviceId dst_global_device_id,
-      CrossHostTransferKey transfer_key);
+  void ScheduleSendsOnLocalDevice(
+      PjRtDevice* device, std::vector<PjRtBuffer*> buffers,
+      std::vector<PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys,
+      std::vector<std::shared_ptr<Future<>::Promise>> promises);
 
   struct PrepareReceiveBufferResult {
     std::unique_ptr<PjRtBuffer> buffer;
@@ -220,11 +224,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   absl::StatusOr<PrepareReceiveBufferResult> PrepareReceiveBuffer(
       PjRtDevice* device, Shape shape);
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CrossHostReceiveBuffer(
-      xla::Shape shape, xla::PjRtDevice* device,
-      PjRtGlobalDeviceId src_global_device_ids,
-      CrossHostTransferKey transfer_keys);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

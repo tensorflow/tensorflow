@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -205,13 +205,13 @@ TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithHostMemory) {
               absl_testing::IsOkAndHolds(MemoryType::kHost));
 }
 
-TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceMemory) {
+TEST(CudaExecutorTest, GetPointerMemorySpaceWorksWithDeviceAddress) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
 
-  DeviceMemoryBase allocation = executor->Allocate(256);
+  DeviceAddressBase allocation = executor->Allocate(256);
   EXPECT_NE(allocation.opaque(), nullptr);
   EXPECT_THAT(executor->GetPointerMemorySpace(allocation.opaque()),
               absl_testing::IsOkAndHolds(MemoryType::kDevice));
@@ -225,7 +225,7 @@ TEST(CudaExecutorTest, AllocateMemoryWithVmmApi) {
 
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
-  DeviceMemoryBase ptr =
+  DeviceAddressBase ptr =
       cuda_executor->Allocate(1024, static_cast<int>(MemoryType::kP2P));
 
   EXPECT_NE(ptr.opaque(), nullptr);
@@ -247,7 +247,7 @@ TEST(CudaExecutorTest,
 
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
-  DeviceMemoryBase ptr =
+  DeviceAddressBase ptr =
       cuda_executor->Allocate(1024, static_cast<int>(MemoryType::kDevice));
 
   EXPECT_NE(ptr.opaque(), nullptr);

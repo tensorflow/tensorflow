@@ -68,7 +68,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -265,6 +265,15 @@ char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
+  return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
+}
+
+absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
+    mlir::ModuleOp module, xla::CompileOptions compile_options,
+    const xla::PjRtTopologyDescription& topology) {
+  TF_ASSIGN_OR_RETURN(auto pjrt_executable,
+                      PjRtCompile(std::move(compile_options), std::move(module),
+                                  topology, /*client=*/nullptr));
   return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
 }
 
@@ -727,16 +736,10 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   }
 
   if (options.custom_options.has_value()) {
-    const auto& attributes = options.custom_options->map();
-    // Check if the custom options contain a call location key.
-    if (auto it = attributes.find(
-            xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation);
-        it != attributes.end()) {
-      const xla::ifrt::AttributeMap::Value& value = it->second;
-      if (const auto* call_location =
-              std::get_if<xla::ifrt::AttributeMap::StringValue>(&value)) {
-        opts.call_location = call_location->value;
-      }
+    auto call_location = options.custom_options->Get<std::string>(
+        std::string(xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation));
+    if (call_location.ok()) {
+      opts.call_location = *call_location;
     }
   }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"

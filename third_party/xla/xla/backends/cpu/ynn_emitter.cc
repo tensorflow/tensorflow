@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <utility>
 #include <vector>
 
 #include "ynnpack/include/ynnpack.h"
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -38,9 +38,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -352,7 +351,7 @@ static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
   if (transpose_b) {
     uint32_t input2_id_transposed = YNN_INVALID_VALUE_ID;
     std::array<int32_t, YNN_MAX_TENSOR_RANK> perm;
-    std::iota(perm.begin(), perm.end(), 0);
+    absl::c_iota(perm, 0);
     CHECK_LT(b_rank, YNN_MAX_TENSOR_RANK);
     std::swap(perm[b_rank - 1], perm[b_rank - 2]);
     ynn_status status = ynn_define_static_transpose(
@@ -372,7 +371,7 @@ static ynn_status DefineBatchMatrixMultiply(ynn_subgraph_t subgraph,
 static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
     const HloDotInstruction* dot,
     std::vector<std::unique_ptr<Literal>>& literals,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers,
+    absl::Span<const se::DeviceAddressBase> arguments_buffers,
     bool capture_rhs) {
   TF_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
@@ -444,7 +443,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
 }
 
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnFusionBuilder(const HloComputation* computation) {
   // We do not support non-array parameters for YNNPACK operations.
   for (auto& param : computation->parameter_instructions()) {
@@ -461,19 +460,22 @@ EmitYnnFusionBuilder(const HloComputation* computation) {
                            computation->root_instruction()->shape().ToString());
   }
 
-  return [computation, literals = std::vector<std::unique_ptr<Literal>>()](
-             absl::Span<const se::DeviceMemoryBase> arguments_buffers) mutable {
-    return EmitYnnSubgraph(computation, literals);
-  };
+  return
+      [computation, literals = std::vector<std::unique_ptr<Literal>>()](
+          absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
+        return EmitYnnSubgraph(computation, literals);
+      };
 }
 
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs) {
-  return [dot, capture_rhs, literals = std::vector<std::unique_ptr<Literal>>()](
-             absl::Span<const se::DeviceMemoryBase> arguments_buffers) mutable {
-    return EmitYnnDotSubgraph(dot, literals, arguments_buffers, capture_rhs);
-  };
+  return
+      [dot, capture_rhs, literals = std::vector<std::unique_ptr<Literal>>()](
+          absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
+        return EmitYnnDotSubgraph(dot, literals, arguments_buffers,
+                                  capture_rhs);
+      };
 }
 
 }  // namespace xla::cpu

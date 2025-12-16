@@ -88,7 +88,8 @@ class KernelApiIrBuilderTestBase : public HloHardwareIndependentTestBase {
         [](const BufferValue& buffer) {
           return CpuExecutable::ShapeSizeBytes(buffer.shape());
         },
-        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; });
+        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+        BufferAssigner::Options{});
   }
 
   void SetKernelFunctionAttributes(llvm::Function* function) {

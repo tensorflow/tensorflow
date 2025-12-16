@@ -4,7 +4,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -68,9 +68,11 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/core/collectives",
@@ -109,7 +111,6 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
-        "//xla/service:global_device_id",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -187,30 +188,22 @@ cc_library(
 
 xla_test(
     name = "se_gpu_pjrt_client_test",
+    size = "large",
     srcs = ["se_gpu_pjrt_client_test.cc"],
     backend_tags = {
         "gpu": [
             "multi_gpu",
-            "no_oss",
             "noasan",
             "nomsan",
         ],
-        "b200": [
-            # TODO(b/452317320): Re-enable once fixed.
-            "broken",
-            "no_oss",
-        ],
-        "h100": [
-            # TODO(b/452317320): Re-enable once fixed.
-            "broken",
-            "no_oss",
-        ],
+        # TODO(464116734): Re-enable once multi-device presubmits will be available in OSS.
         "nvgpu_any": [
             "broken",
             "no_oss",
         ],
     },
     backends = ["gpu"],
+    tags = ["nofixdeps"],
     deps = [
         ":gpu_topology",
         ":gpu_topology_proto_cc",
@@ -226,6 +219,7 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_computation",
@@ -265,6 +259,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:subprocess",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -283,7 +278,11 @@ xla_test(
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:platform_port",
-    ],
+    ] + if_google([
+        # In OSS this dependency is added automatically for xla_test targets. See
+        # third_party/tensorflow/compiler/xla/xla.default.bzl.
+        "//xla/tsl/framework:allocator",
+    ]),
 )
 
 xla_test(

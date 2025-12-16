@@ -213,7 +213,11 @@ class IfrtBackend final : public BackendInterface {
 
   tsl::Future<Response> HandleLoadedExecutableMetadataRequest(
       std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleLoadedExecutableMpmdMetadataRequest(
+      std::unique_ptr<IfrtRequest> request);
   tsl::Future<Response> HandleLoadedExecutableCostAnalysisRequest(
+      std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleLoadedExecutableMpmdCostAnalysisRequest(
       std::unique_ptr<IfrtRequest> request);
   tsl::Future<Response> HandleLoadedExecutableHumanReadableProgramTextRequest(
       std::unique_ptr<IfrtRequest> request);

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <optional>
 
-#include "absl/base/optimization.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/ffi.h"  // IWYU pragma: export
@@ -46,18 +45,10 @@ struct CtxDecoding<IntraOpThreadPool> {
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
-    void* thread_pool = nullptr;
-    if (XLA_FFI_Error* error =
-            api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
-                ctx, &thread_pool);
-        ABSL_PREDICT_FALSE(error)) {
-      diagnostic.Emit("Failed to get intra op thread pool: ")
-          << internal::GetErrorMessage(api, error);
-      internal::DestroyError(api, error);
-      return std::nullopt;
-    }
-
-    return reinterpret_cast<Type>(thread_pool);
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
+        "intra op thread pool");
   }
 };
 

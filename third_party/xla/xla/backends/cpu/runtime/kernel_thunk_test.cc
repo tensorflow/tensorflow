@@ -204,8 +204,8 @@ TEST(KernelThunkInvariantBuffersTest,
   // But runtime output buffer overlaps with invariant input buffer.
   std::array<float, 5> runtime_buffer;
   BufferAllocations runtime_allocations(BufferAllocations::Buffers{
-      se::DeviceMemoryBase(runtime_buffer.data(), 16),
-      se::DeviceMemoryBase(runtime_buffer.data() + 1, 16)});
+      se::DeviceAddressBase(runtime_buffer.data(), 16),
+      se::DeviceAddressBase(runtime_buffer.data() + 1, 16)});
   Thunk::ExecuteParams params = {&host_kernels, &runtime_allocations};
 
   auto execute_event = thunk->Execute(params);

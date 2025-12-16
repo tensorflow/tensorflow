@@ -72,7 +72,9 @@ absl::Status TestBijection(const IndexingMap& map,
     intervals.push_back({0, size - 1});
   }
   auto status = VerifyBijection(map, intervals);
-  if (status.ok()) return status;
+  if (status.ok()) {
+    return status;
+  }
   return absl::FailedPreconditionError(
       absl::StrCat(status.message(), " in map ", ToString(map)));
 }
@@ -162,7 +164,9 @@ int main(int argc, char* argv[]) {
       tsl::Flag(
           "bijection_inputs",
           [](std::string name_and_ids) {
-            if (name_and_ids.empty()) return false;
+            if (name_and_ids.empty()) {
+              return false;
+            }
             flags.bijection_inputs.push_back(
                 xla::gpu::ParseHeroAndIds(name_and_ids));
             return true;
@@ -174,7 +178,9 @@ int main(int argc, char* argv[]) {
       tsl::Flag(
           "bijection_outputs",
           [](std::string name) {
-            if (name.empty()) return false;
+            if (name.empty()) {
+              return false;
+            }
             flags.bijection_outputs.push_back(name);
             return true;
           },

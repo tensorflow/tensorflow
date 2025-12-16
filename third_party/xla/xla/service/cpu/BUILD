@@ -50,24 +50,13 @@ cc_library(
 
 filegroup(
     name = "runtime_srcs",
-    srcs = [
-        # Single-threaded support.
-        "runtime_single_threaded_matmul_common.h",
-        "runtime_single_threaded_matmul_f32.cc",
-        # Multi-threaded support.
-        "//xla/backends/cpu/runtime:runtime_srcs",
-    ],
+    srcs = ["//xla/backends/cpu/runtime:runtime_srcs"],
     visibility = internal_visibility([":friends"]),
 )
 
 filegroup(
     name = "runtime_hdrs",
-    srcs = [
-        # Single-threaded support.
-        "runtime_single_threaded_matmul.h",
-        # Multi-threaded support.
-        "//xla/backends/cpu/runtime:runtime_hdrs",
-    ],
+    srcs = ["//xla/backends/cpu/runtime:runtime_hdrs"],
     visibility = internal_visibility([":friends"]),
 )
 
@@ -117,7 +106,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/host:host_platform_id",
@@ -406,6 +395,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -425,7 +415,6 @@ cc_library(
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -564,8 +553,8 @@ cc_library(
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:xla_debug_info_manager",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
@@ -596,7 +585,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
-        "//xla/codegen/intrinsic:tanh",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Core",
@@ -887,7 +875,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -981,7 +969,6 @@ cc_library(
         ":cpu_executable_run_options",
         "//xla:executable_run_options",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/collectives:cpu_clique_key",
@@ -992,10 +979,10 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
-        "//xla/service:global_device_id",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
@@ -1044,11 +1031,6 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
-    srcs = [
-        "runtime_single_threaded_matmul_common.h",
-        "runtime_single_threaded_matmul_f32.cc",
-    ],
-    hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
@@ -1056,7 +1038,6 @@ cc_library(
         "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1172,16 +1153,15 @@ cc_library(
         ":dot_op_emitter",
         ":ir_emission_utils",
         "//xla:shape_util",
-        "//xla:util",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_layout",
         "//xla/service:layout_assignment",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -1423,6 +1403,7 @@ onednn_cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/mkl:onednn",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1629,8 +1610,6 @@ cc_library(
     hdrs = ["cpu_float_support.h"],
     copts = tsl_copts(),
     deps = [
-        "//xla/backends/cpu:xnn_support",
-        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/service:float_support",
     ],
@@ -1742,7 +1721,6 @@ cc_library(
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:env",

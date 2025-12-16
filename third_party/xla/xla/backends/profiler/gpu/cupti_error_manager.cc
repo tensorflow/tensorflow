@@ -65,6 +65,9 @@ void CuptiErrorManager::RegisterUndoFunction(
 CUptiResult CuptiErrorManager::ActivityDisable(CUpti_ActivityKind kind) {
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->ActivityDisable(kind);
+  if (error != CUPTI_SUCCESS) {
+    LOG(ERROR) << "ActivityDisable() error on activity kind: " << kind;
+  }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
 }
@@ -75,6 +78,8 @@ CUptiResult CuptiErrorManager::ActivityEnable(CUpti_ActivityKind kind) {
   if (error == CUPTI_SUCCESS) {
     auto f = std::bind(&CuptiErrorManager::ActivityDisable, this, kind);
     RegisterUndoFunction(f);
+  } else {
+    LOG(ERROR) << "ActivityEnable() error on activity kind: " << kind;
   }
   LOG_AND_DISABLE_IF_ERROR(error);
   return error;
@@ -301,6 +306,14 @@ CUptiResult CuptiErrorManager::SetThreadIdType(
   IGNORE_CALL_IF_DISABLED;
   CUptiResult error = interface_->SetThreadIdType(type);
   LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
+CUptiResult CuptiErrorManager::ActivityEnableHWTrace(bool enable) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->ActivityEnableHWTrace(enable);
+  // Don't disable cupti just because the gpu hardware or cuda don't support
+  // hardware event system.
   return error;
 }
 

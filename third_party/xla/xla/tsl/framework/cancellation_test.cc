@@ -16,13 +16,15 @@ limitations under the License.
 #include "xla/tsl/framework/cancellation.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
-#include <numeric>
 #include <random>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -225,7 +227,7 @@ TEST(Cancellation, Parent_CancelManyChildren) {
   CancellationManager parent;
   std::vector<std::unique_ptr<CancellationManager>> children;
   for (size_t i = 0; i < 5; ++i) {
-    children.push_back(absl::make_unique<CancellationManager>(&parent));
+    children.push_back(std::make_unique<CancellationManager>(&parent));
     EXPECT_FALSE(children.back()->IsCancelled());
   }
   parent.StartCancel();
@@ -267,13 +269,13 @@ TEST(Cancellation, Parent_RandomDestructionOrder) {
     std::uniform_int_distribution<int> dist(1, 9);
     const size_t round_size = dist(rd);
     for (size_t i = 0; i < round_size; ++i) {
-      children.push_back(absl::make_unique<CancellationManager>(&parent));
+      children.push_back(std::make_unique<CancellationManager>(&parent));
       EXPECT_FALSE(children.back()->IsCancelled());
     }
 
     // 2. Deregister the children in a random order.
     std::vector<size_t> destruction_order(round_size);
-    std::iota(destruction_order.begin(), destruction_order.end(), 0);
+    absl::c_iota(destruction_order, 0);
     std::shuffle(destruction_order.begin(), destruction_order.end(), g);
     for (size_t index : destruction_order) {
       children[index].reset();

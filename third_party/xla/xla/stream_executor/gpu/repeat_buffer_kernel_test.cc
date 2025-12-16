@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -64,7 +64,7 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
   // We use a non-dividing number of elements here to ensure that also the last
   // non-complete section is handled correctly.
   constexpr int kNumberOfTotalElements = 129;
-  DeviceMemory<float> buffer =
+  DeviceAddress<float> buffer =
       executor_->AllocateArray<float>(kNumberOfTotalElements);
 
   CHECK_OK(stream->MemcpyH2D(absl::MakeConstSpan(kInitialBuf), &buffer));
@@ -78,7 +78,7 @@ TEST_F(RepeatBufferKernelTest, CreateRepeatedBufferAndTestResult) {
       kernel.Launch(
           ThreadDim{kNumberOfRepeatedElements * sizeof(float), 1, 1},
           BlockDim{1, 1, 1}, stream.get(),
-          static_cast<const DeviceMemoryBase&>(buffer),
+          static_cast<const DeviceAddressBase&>(buffer),
           static_cast<int64_t>(kNumberOfRepeatedElements * sizeof(float)),
           static_cast<int64_t>(kNumberOfTotalElements * sizeof(float))),
       absl_testing::IsOk());

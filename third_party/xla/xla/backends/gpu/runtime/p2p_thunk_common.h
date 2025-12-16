@@ -77,7 +77,9 @@ struct P2PConfig {
   static SourceTargetMapEntry GetSourceTarget(
       const IdToSourceTargetMap& id_to_source_target, int64_t id) {
     auto it = id_to_source_target.find(id);
-    if (it != id_to_source_target.end()) return it->second;
+    if (it != id_to_source_target.end()) {
+      return it->second;
+    }
     return SourceTargetMapEntry{};
   }
 

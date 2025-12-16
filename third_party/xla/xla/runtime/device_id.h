@@ -32,6 +32,16 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(LocalDeviceId, int64_t);
 
 using ::tsl::IncarnationId;  // NOLINT(misc-unused-using-decls)
 
+template <typename Sink>
+void AbslStringify(Sink& sink, GlobalDeviceId id) {
+  absl::Format(&sink, "%d", id.value());
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, LocalDeviceId id) {
+  absl::Format(&sink, "%d", id.value());
+}
+
 }  // namespace xla
 
 #endif  // XLA_RUNTIME_DEVICE_ID_H_

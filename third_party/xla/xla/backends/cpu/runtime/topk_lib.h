@@ -20,9 +20,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 
@@ -43,7 +43,7 @@ void TopK(int64_t batch_size, int64_t input_size, int64_t k, const T* values,
 
   std::vector<int32_t> temp_indices(input_size);
   for (int64_t batch = 0; batch != batch_size; ++batch) {
-    std::iota(temp_indices.begin(), temp_indices.end(), 0);
+    absl::c_iota(temp_indices, 0);
 
     const T* values_batch = values + batch * input_size;
 

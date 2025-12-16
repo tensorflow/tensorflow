@@ -168,11 +168,14 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
+
   FakeThunkPassBufferAllocator allocator;
   BufferAllocation alloc(0, 1024, 0);
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
   BufferAllocation::Slice slice(&alloc, 0, 1);
+
   auto fake_thunk = std::make_unique<FakeThunk>(
-      Thunk::ThunkInfo(), Thunk::BufferUses{BufferUse::Read(slice)});
+      Thunk::ThunkInfo(), Thunk::BufferUses{BufferUse::Read(slice, arg_shape)});
   Thunk* fake_thunk_ptr = fake_thunk.get();
   std::vector<std::unique_ptr<Thunk>> thunks;
   thunks.push_back(std::move(fake_thunk));
@@ -266,6 +269,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
   // Create a fake thunk with a few different buffer uses.
+  Shape arg_shape = ShapeUtil::MakeShape(U8, {1});
   BufferAllocation::Slice slice_while_condition = CreateSlice();
   BufferAllocation::Slice slice_while_body = CreateSlice();
   BufferAllocation::Slice slice_branch0 = CreateSlice();
@@ -273,20 +277,20 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   // Setup a thunk tree.
   auto while_condition_fake_thunk = std::make_unique<FakeThunk>(
       ThunkInfoWithId(kWhileConditionFakeThunkId),
-      Thunk::BufferUses{BufferUse::Read(slice_while_condition)});
+      Thunk::BufferUses{BufferUse::Read(slice_while_condition, arg_shape)});
   const Thunk* const while_condition_fake_thunk_ptr =
       while_condition_fake_thunk.get();
   auto while_body_fake_thunk = std::make_unique<FakeThunk>(
       ThunkInfoWithId(kWhileBodyId),
-      Thunk::BufferUses{BufferUse::Read(slice_while_body)});
+      Thunk::BufferUses{BufferUse::Read(slice_while_body, arg_shape)});
   const Thunk* const while_body_fake_thunk_ptr = while_body_fake_thunk.get();
   auto conditional_branch0_thunk = std::make_unique<FakeThunk>(
       ThunkInfoWithId(kBranch0ThunkId),
-      Thunk::BufferUses{BufferUse::Read(slice_branch0)});
+      Thunk::BufferUses{BufferUse::Read(slice_branch0, arg_shape)});
   const Thunk* const branch0_thunk_ptr = conditional_branch0_thunk.get();
   auto conditional_branch1_thunk = std::make_unique<FakeThunk>(
       ThunkInfoWithId(kBranch1ThunkId),
-      Thunk::BufferUses{BufferUse::Read(slice_branch1)});
+      Thunk::BufferUses{BufferUse::Read(slice_branch1, arg_shape)});
   const Thunk* const branch1_thunk_ptr = conditional_branch1_thunk.get();
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.push_back(
@@ -380,16 +384,21 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       new_thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
-          ThunkKindIs(Thunk::Kind::kWhile),
+          ThunkKindIs(Thunk::Kind::kSequential),
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
 
   {
-    ASSERT_EQ(new_thunks[1]->kind(), Thunk::Kind::kWhile);
+    ASSERT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
+    const SequentialThunk& top_seq_thunk =
+        static_cast<const SequentialThunk&>(*new_thunks[1]);
+
+    ASSERT_EQ(top_seq_thunk.thunks()[1]->kind(), Thunk::Kind::kWhile);
     const WhileThunk& while_thunk =
-        static_cast<const WhileThunk&>(*new_thunks[1]);
+        static_cast<const WhileThunk&>(*top_seq_thunk.thunks()[1]);
+
     EXPECT_THAT(while_thunk.body_thunk_sequence()->thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
-                            Pointer(conditional_thunk_ptr)));
+                            ThunkKindIs(Thunk::Kind::kSequential)));
     const SequentialThunk& condition_fake_thunk_sequence =
         static_cast<const SequentialThunk&>(
             *while_thunk.condition_thunk_sequence()->thunks()[0]);
@@ -410,10 +419,18 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
                     IsChecksumThunkChecking(SliceList{{0, slice_while_body}})));
 
     ASSERT_EQ(while_thunk.body_thunk_sequence()->thunks()[1]->kind(),
+              Thunk::Kind::kSequential);
+    const SequentialThunk& condition_warpper_thunk =
+        static_cast<const SequentialThunk&>(
+            *while_thunk.body_thunk_sequence()->thunks()[1]);
+
+    ASSERT_EQ(condition_warpper_thunk.thunks()[1]->kind(),
               Thunk::Kind::kConditional);
     const ConditionalThunk& conditional_thunk =
         static_cast<const ConditionalThunk&>(
-            *while_thunk.body_thunk_sequence()->thunks()[1]);
+            *condition_warpper_thunk.thunks()[1]);
+    EXPECT_EQ(&conditional_thunk, conditional_thunk_ptr);
+
     EXPECT_THAT(conditional_thunk.branch_thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
                             ThunkKindIs(Thunk::Kind::kSequential)));
@@ -594,16 +611,19 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   FakeThunkPassBufferAllocator allocator;
   // Create a fake thunk with a few different buffer uses.
   BufferAllocation alloc(0, 1024, 0);
+  Shape slice_shape = ShapeUtil::MakeShape(U8, {1});
   BufferAllocation::Slice slice1_io(&alloc, 0, 1);
   BufferAllocation::Slice slice2_io(&alloc, 1, 1);
   Thunk::ThunkInfo fake_thunk1_info;
   fake_thunk1_info.thunk_id = ThunkId(1);
   auto fake_thunk1 = std::make_unique<FakeThunk>(
-      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+      fake_thunk1_info,
+      Thunk::BufferUses{BufferUse::Read(slice1_io, slice_shape)});
   Thunk::ThunkInfo fake_thunk2_info;
   fake_thunk2_info.thunk_id = ThunkId(2);
   auto fake_thunk2 = std::make_unique<FakeThunk>(
-      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+      fake_thunk2_info,
+      Thunk::BufferUses{BufferUse::Read(slice2_io, slice_shape)});
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -654,23 +674,27 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   FakeThunkPassBufferAllocator allocator;
   // Create a fake thunk with a few different buffer uses.
   BufferAllocation alloc(0, 1024, 0);
+  Shape slice_shape = ShapeUtil::MakeShape(U8, {1});
   BufferAllocation::Slice slice1_io(&alloc, 0, 1);
   BufferAllocation::Slice slice2_io(&alloc, 1, 1);
   Thunk::ThunkInfo fake_thunk1_info;
   fake_thunk1_info.thunk_id = ThunkId(1);
   fake_thunk1_info.profile_annotation = "fake_thunk1";
   auto fake_thunk1 = std::make_unique<FakeThunk>(
-      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+      fake_thunk1_info,
+      Thunk::BufferUses{BufferUse::Read(slice1_io, slice_shape)});
   Thunk::ThunkInfo fake_thunk2_info;
   fake_thunk2_info.profile_annotation = "fake_thunk2";
   fake_thunk2_info.thunk_id = ThunkId(2);
   auto fake_thunk2 = std::make_unique<FakeThunk>(
-      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+      fake_thunk2_info,
+      Thunk::BufferUses{BufferUse::Read(slice2_io, slice_shape)});
   Thunk::ThunkInfo fake_thunk3_info;
   fake_thunk3_info.profile_annotation = "fake_thunk3";
   fake_thunk3_info.thunk_id = ThunkId(3);
   auto fake_thunk3 = std::make_unique<FakeThunk>(
-      fake_thunk3_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+      fake_thunk3_info,
+      Thunk::BufferUses{BufferUse::Read(slice2_io, slice_shape)});
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
   Thunk* fake_thunk3_ptr = fake_thunk3.get();
@@ -740,6 +764,7 @@ TEST_F(ThunkBufferDebugPassTest,
   FakeThunkPassBufferAllocator allocator;
   // Create a fake thunk with a few different buffer uses.
   BufferAllocation alloc(0, 1024, 0);
+  Shape slice_shape = ShapeUtil::MakeShape(U8, {1});
   BufferAllocation::Slice slice1_io(&alloc, 0, 1);
   BufferAllocation::Slice slice2_io(&alloc, 1, 1);
   BufferAllocation::Slice slice3_io(&alloc, 2, 1);
@@ -747,17 +772,20 @@ TEST_F(ThunkBufferDebugPassTest,
   fake_thunk1_info.thunk_id = ThunkId(1);
   fake_thunk1_info.profile_annotation = "instrument_me";
   auto fake_thunk1 = std::make_unique<FakeThunk>(
-      fake_thunk1_info, Thunk::BufferUses{BufferUse::Read(slice1_io)});
+      fake_thunk1_info,
+      Thunk::BufferUses{BufferUse::Read(slice1_io, slice_shape)});
   Thunk::ThunkInfo fake_thunk2_info;
   fake_thunk2_info.thunk_id = ThunkId(2);
   fake_thunk2_info.profile_annotation = "ignore_me";
   auto fake_thunk2 = std::make_unique<FakeThunk>(
-      fake_thunk2_info, Thunk::BufferUses{BufferUse::Read(slice2_io)});
+      fake_thunk2_info,
+      Thunk::BufferUses{BufferUse::Read(slice2_io, slice_shape)});
   Thunk::ThunkInfo fake_thunk3_info;
   fake_thunk3_info.thunk_id = ThunkId(3);
   fake_thunk3_info.profile_annotation = "instrument_me";
   auto fake_thunk3 = std::make_unique<FakeThunk>(
-      fake_thunk3_info, Thunk::BufferUses{BufferUse::Read(slice3_io)});
+      fake_thunk3_info,
+      Thunk::BufferUses{BufferUse::Read(slice3_io, slice_shape)});
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
   Thunk* fake_thunk3_ptr = fake_thunk3.get();

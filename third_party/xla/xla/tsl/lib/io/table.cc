@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/table.h"
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/cache.h"
 #include "xla/tsl/lib/io/format.h"
@@ -44,7 +45,7 @@ absl::Status Table::Open(const Options& options, RandomAccessFile* file,
                          uint64_t size, Table** table) {
   *table = nullptr;
   if (size < Footer::kEncodedLength) {
-    return errors::DataLoss("file is too short to be an sstable");
+    return absl::DataLossError("file is too short to be an sstable");
   }
 
   char footer_space[Footer::kEncodedLength];

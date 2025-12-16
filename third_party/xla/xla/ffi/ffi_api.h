@@ -34,11 +34,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/chain.h"
-
-namespace xla::ffi {
 
 // This is an implementation of XLA FFI API defined in `api/c_api.h` header. It
 // should be linked statically into the "main" XLA binary, and third party FFI
@@ -47,6 +43,27 @@ namespace xla::ffi {
 // FFI handlers registered statically (and built from the same XLA commit with
 // the same toolchain) can also use `api/c_api_internal.h` to get access to
 // various internal data structures.
+
+//===----------------------------------------------------------------------===//
+// Forward declare backend-specific types.
+//===----------------------------------------------------------------------===//
+
+namespace Eigen {
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
+namespace stream_executor {
+class Stream;
+class DeviceAddressAllocator;
+}  // namespace stream_executor
+
+namespace xla::gpu {
+struct CollectiveParams;
+class CollectiveCliqueRequests;
+class CollectiveCliques;
+}  // namespace xla::gpu
+
+namespace xla::ffi {
 
 //===----------------------------------------------------------------------===//
 // Calling XLA FFI handlers
@@ -62,7 +79,10 @@ struct CallOptions {
 
   struct GpuOptions {
     se::Stream* stream = nullptr;
-    se::DeviceMemoryAllocator* allocator = nullptr;
+    se::DeviceAddressAllocator* allocator = nullptr;
+    const xla::gpu::CollectiveParams* collective_params = nullptr;
+    xla::gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
+    const xla::gpu::CollectiveCliques* collective_cliques = nullptr;
   };
 
   using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -1040,13 +1039,13 @@ TEST(ShapeUtilTest, PermuteDimensionsIgnoringLayout) {
 
 TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   std::vector<int64_t> layout(3);
-  std::iota(layout.begin(), layout.end(), 0);
+  absl::c_iota(layout, 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 100, 1000}, layout);
     SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
     std::vector<int64_t> permutation(3);
-    std::iota(permutation.begin(), permutation.end(), 0);
+    absl::c_iota(permutation, 0);
     do {
       SCOPED_TRACE(
           absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
@@ -1082,7 +1081,7 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
   SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
 
   std::vector<int64_t> permutation(3);
-  std::iota(permutation.begin(), permutation.end(), 0);
+  absl::c_iota(permutation, 0);
   do {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 

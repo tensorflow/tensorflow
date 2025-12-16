@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/random/random.h"
@@ -558,6 +559,56 @@ TEST_F(LiteralUtilTest, DifferentLayoutInEquality) {
 
   EXPECT_FALSE(rowmajor.Equal(colmajor, true));
   EXPECT_FALSE(colmajor.Equal(rowmajor, true));
+}
+
+TEST_F(LiteralUtilTest, LogicalInequalityFastPath) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  a.Set<float>({0, 0}, 1.0);
+  a.Set<float>({0, 1}, 2.0);
+  a.Set<float>({1, 0}, 0.0);
+  a.Set<float>({1, 1}, 4.0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal b,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  b.Set<float>({0, 0}, 1.0);
+  b.Set<float>({0, 1}, 2.0);
+  b.Set<float>({1, 0}, -0.0);
+  b.Set<float>({1, 1}, 4.0);
+
+  EXPECT_FALSE(a.Equal(b, true));
+  EXPECT_FALSE(b.Equal(a, true));
+  EXPECT_FALSE(a.Equal(b, false));
+  EXPECT_FALSE(b.Equal(a, false));
+}
+
+TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
+  // This test is similar to the above test, but these literals are compared
+  // using the slow path because their layouts are different. This test ensures
+  // that comparisons using the fast and slow path are equivalent.
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal a,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})));
+  a.Set<float>({0, 0}, 1.0);
+  a.Set<float>({0, 1}, 2.0);
+  a.Set<float>({1, 0}, 0.0);
+  a.Set<float>({1, 1}, 4.0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal b,
+      Literal::Make(ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0})));
+  b.Set<float>({0, 0}, 1.0);
+  b.Set<float>({0, 1}, 2.0);
+  b.Set<float>({1, 0}, -0.0);
+  b.Set<float>({1, 1}, 4.0);
+
+  EXPECT_FALSE(a.Equal(b, true));
+  EXPECT_FALSE(b.Equal(a, true));
+  EXPECT_FALSE(a.Equal(b, false));
+  EXPECT_FALSE(b.Equal(a, false));
 }
 
 TEST_F(LiteralUtilTest, CreateWithoutLayout) {
@@ -1375,11 +1426,11 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     bool matched = true;
     auto check_proc = [&](absl::Span<const int64_t> indexes) {
       std::copy(indexes.begin(), indexes.end(), source_indexes.begin());
-      std::transform(source_indexes.begin(), source_indexes.end(), src_base,
-                     source_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(source_indexes, src_base, source_indexes.begin(),
+                        std::plus<int64_t>());
       std::copy(indexes.begin(), indexes.end(), blank_indexes.begin());
-      std::transform(blank_indexes.begin(), blank_indexes.end(), dest_base,
-                     blank_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(blank_indexes, dest_base, blank_indexes.begin(),
+                        std::plus<int64_t>());
       auto bval = blank.Get<uint32_t>(blank_indexes);
       matched = (bval != 0 && bval == source.Get<uint32_t>(source_indexes));
       return matched;

@@ -570,3 +570,21 @@ func.func @testIgnoreInferenceType(%arg0: tensor<1x384x384xf32>, %arg1: tensor<1
 // CHECK-IGNORE-INFERENCE-TYPE:   %[[RES2:.*]] = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "QUANTIZED_INT8"} : tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK-IGNORE-INFERENCE-TYPE:   return %[[RES1]], %[[RES2]] : tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK-IGNORE-INFERENCE-TYPE: }
+
+// -----
+
+func.func @testStackVersionPropagation(%arg0: tensor<1x4x4x1920xf32>) -> tensor<1x4x4x64xf32> {
+  %cst = arith.constant dense<1.200000e+00> : tensor<64xf32>
+  %0 = "tfl.pseudo_qconst"() <{qtype = tensor<64x1x1x1920x!quant.uniform<i8<-127:127>:f32, 0.002>>, value = dense<1> : tensor<64x1x1x1920xi8>}> : () -> tensor<64x1x1x1920x!quant.uniform<i8<-127:127>:f32, 0.002>>
+  %1 = "tfl.conv_2d"(%arg0, %0, %cst) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> {tac.delegate_compiler_version = "V_1_0", tac.device = "DARWINN", tac.inference_type = "HYBRID"} : (tensor<1x4x4x1920xf32>, tensor<64x1x1x1920x!quant.uniform<i8<-127:127>:f32, 0.002>>, tensor<64xf32>) -> tensor<1x4x4x64xf32>
+  %2 = tfl.add %1, %1 {fused_activation_function = "NONE", tac.delegate_compiler_version = "V_1_5", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<1x4x4x64xf32>
+  func.return %2 : tensor<1x4x4x64xf32>
+}
+
+// CHECK-LABEL: func @testStackVersionPropagation
+// CHECK: %[[RES0:.*]] = call @func_0_DARWINN_HYBRID(%arg0, %{{.*}}, %{{.*}}) {tac.device = "DARWINN", tac.inference_type = "HYBRID", tac.interface_name = "func_0"} : (tensor<1x4x4x1920xf32>, tensor<64x1x1x1920x!quant.uniform<i8<-127:127>:f32, 2.000000e-03>>, tensor<64xf32>) -> tensor<1x4x4x64xf32>
+// CHECK: %[[RES1:.*]] = call @func_1_DARWINN_FLOAT(%[[RES0]]) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<1x4x4x64xf32>) -> tensor<1x4x4x64xf32>
+// CHECK: return %[[RES1]]
+// CHECK: }
+// CHECK: func.func private @func_0_DARWINN_HYBRID(%arg0: tensor<1x4x4x1920xf32>, %arg1: tensor<64x1x1x1920x!quant.uniform<i8<-127:127>:f32, 2.000000e-03>>, %arg2: tensor<64xf32>) -> tensor<1x4x4x64xf32> attributes {tac.delegate_compiler_version = "V_1_0", tac.device = "DARWINN", tac.inference_type = "HYBRID", tac.interface_name = "func_0"}
+// CHECK: func.func private @func_1_DARWINN_FLOAT(%arg0: tensor<1x4x4x64xf32>) -> tensor<1x4x4x64xf32> attributes {tac.delegate_compiler_version = "V_1_5", tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_1"}

@@ -71,7 +71,7 @@ ENTRY main {
   lhs = f32[20,20]{1,0} parameter(0)
   rhs = f32[20,30]{1,0} parameter(1)
   bias = f32[20,30]{1,0} parameter(2)
-  ROOT cublas-lt-matmul = (f32[20,30]{1,0}, s8[33554432]{0}) custom-call(lhs, rhs, bias), custom_call_target="__cublas$lt$matmul", frontend_attributes={grad_x="false",grad_y="false"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"selected_algorithm":"0","alpha_real":1,"beta":1,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["HIGHEST","HIGHEST"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"400","rhs_stride":"600","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  ROOT cublas-lt-matmul = (f32[20,30]{1,0}, s8[33554432]{0}) custom-call(lhs, rhs, bias), custom_call_target="__cublas$lt$matmul", frontend_attributes={grad_x="false",grad_y="false"}, backend_config={"gemm_backend_config":{"selected_algorithm":"0","alpha_real":1,"beta":1,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["HIGHEST","HIGHEST"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"400","rhs_stride":"600","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 }
 )";
 
@@ -90,7 +90,7 @@ HloModule m
 ENTRY main {
   lhs = f32[20,20]{1,0} parameter(0)
   rhs = f32[20,30]{1,0} parameter(1)
-  ROOT cublas-lt-matmul = (f32[20,30]{1,0}, s8[33554432]{0}) custom-call(lhs, rhs, rhs), custom_call_target="__cublas$lt$matmul", frontend_attributes={grad_x="false",grad_y="false"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"selected_algorithm":"0","alpha_real":1,"beta":1,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["HIGHEST","HIGHEST"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"400","rhs_stride":"600","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+  ROOT cublas-lt-matmul = (f32[20,30]{1,0}, s8[33554432]{0}) custom-call(lhs, rhs, rhs), custom_call_target="__cublas$lt$matmul", frontend_attributes={grad_x="false",grad_y="false"}, backend_config={"gemm_backend_config":{"selected_algorithm":"0","alpha_real":1,"beta":1,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["HIGHEST","HIGHEST"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"400","rhs_stride":"600","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
 }
 )";
 

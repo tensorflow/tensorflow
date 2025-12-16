@@ -447,22 +447,6 @@ class Thunk {
     return absl::OkStatus();
   }
 
-  // A helper function to get the `GpuCollectives*` pointer from the
-  // CollectiveParams.
-  static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
-      CollectiveParams const& params);
-
-  // A helper function to get the `GpuCollectives*` pointer from the
-  // thunk parameters. Returns an error if collectives API is not provided.
-  template <typename Params>
-  static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
-      const Params& params) {
-    if (params.collective_params == nullptr) {
-      return Internal("Collective params are not provided");
-    }
-    return GetGpuCollectives(*params.collective_params);
-  }
-
   // Serializes the thunk into a `ThunkProto`.
   virtual absl::StatusOr<ThunkProto> ToProto() const;
 

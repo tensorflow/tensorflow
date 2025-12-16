@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -73,7 +73,7 @@ class XnnConvolutionThunk final : public XnnFusionThunk {
 
   absl::StatusOr<XnnSubgraph> BuildConvolutionSubgraph(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   ConvolutionSlices convolution_slices_;
   ConvolutionCanonicalDims convolution_canonical_dims_;

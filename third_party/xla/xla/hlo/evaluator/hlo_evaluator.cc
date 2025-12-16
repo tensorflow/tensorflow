@@ -1173,20 +1173,20 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
   // If the parent computation has multiple callers, we cannot determine from
   // which caller the arguments are passed.
   if (computation_callers.size() != 1) {
-    return tsl::errors::FailedPrecondition(
-        "The computation ", parent_computation->name(), " is called by ",
-        computation_callers.size(),
-        " callers and thus its argument value "
-        "cannot be determined statically.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("The computation ", parent_computation->name(),
+                     " is called by ", computation_callers.size(),
+                     " callers and thus its argument value "
+                     "cannot be determined statically."));
   }
   const HloInstruction* computation_caller = computation_callers[0];
   const HloInstruction* caller_operand = computation_caller->operand(0);
   if (computation_caller->opcode() != HloOpcode::kWhile &&
       computation_caller->opcode() != HloOpcode::kCall) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "The computation ", parent_computation->name(), " is called by ",
         "instruction ", computation_caller->name(),
-        ", which is not yet supported.");
+        ", which is not yet supported."));
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
     if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
@@ -1433,7 +1433,7 @@ absl::Status HloEvaluator::HandleSetDimensionSize(
 absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
   if (!IsAlreadyEvaluated(parameter, visitor_shape_index_)) {
     if (!enable_partial_evaluation_) {
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Failed to evaluate instruction since its operands are unknown "
           "or undetermined and partial evaluation is not enabled.");
     }
@@ -1467,7 +1467,7 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
 
 absl::Status HloEvaluator::HandleInfeed(const HloInstruction* infeed) {
   if (!enable_partial_evaluation_) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to evaluate instruction since its operands are unknown "
         "or undetermined and partial evaluation is not enabled.");
   }
@@ -3618,8 +3618,8 @@ absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
   std::vector<int64_t> result_index(rank, 0);
 
   auto func = [&](absl::Span<const int64_t> update_index) {
-    std::transform(update_index.begin(), update_index.end(), start.begin(),
-                   result_index.begin(), std::plus<int64_t>());
+    absl::c_transform(update_index, start, result_index.begin(),
+                      std::plus<int64_t>());
     result.CopyElementFrom(update_literal, update_index, result_index);
     return true;
   };
@@ -3675,7 +3675,7 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
   std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_hlo, /*precomputed_analyses=*/{});
   if (!parsed_while_loop.has_value() || parsed_while_loop->is_dynamic()) {
-    return FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot evaluate a while loop's induction variable since the loop "
         "does not match a known loop pattern or the loop is not static.");
   }

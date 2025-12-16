@@ -59,6 +59,9 @@ if [ ! -d /tf ];then
     mkdir /tf
 fi
 
+# Failing tests:
+# //tensorflow/python/distribute:multi_process_runner_test_2gpu TIMEOUT
+
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
         --local_test_jobs=${N_TEST_JOBS} \
         --jobs=30 \

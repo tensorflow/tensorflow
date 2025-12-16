@@ -717,15 +717,18 @@ NVPTXCompiler::CompileTargetBinary(
                         compilation_provider->CompileToRelocatableModule(
                             cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{std::move(ptx),
-                                std::move(relocatable_module.cubin)};
+    return BackendCompileResult{
+        std::move(ptx), std::move(relocatable_module.cubin),
+        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
   }
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
-  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin)};
+  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
+                              /*dnn_compiled_graphs=*/{},
+                              std::move(assembly.module_stats)};
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(

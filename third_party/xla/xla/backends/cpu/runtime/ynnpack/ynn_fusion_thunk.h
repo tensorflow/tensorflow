@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -84,7 +84,7 @@ class YnnFusionThunk : public Thunk {
   // constant, i.e. convolution filters and one of the dot arguments).
   using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
+      absl::Span<const se::DeviceAddressBase> arguments_buffers)>;
 
   static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> Create(
       Options options, Info info, const HloInstruction* hlo,
@@ -145,17 +145,17 @@ class YnnFusionThunk : public Thunk {
   // Creates YnnExecutable for the fusion operation using one of the builders.
   absl::StatusOr<YnnExecutable> CreateYnnExecutable(
       const YnnThreadpool& threadpool,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Updates YnnExecutable to the YNN subgraph constructed with the given
   // arguments buffers.
   absl::Status UpdateYnnExecutable(
       const YnnThreadpool& threadpool, YnnExecutable& executable,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Returns the list of captured arguments buffers.
-  std::vector<se::DeviceMemoryBase> CaptureArguments(
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+  std::vector<se::DeviceAddressBase> CaptureArguments(
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   YnnFusionKind ynn_fusion_kind_;
   Options options_;
@@ -181,7 +181,7 @@ class YnnFusionThunk : public Thunk {
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of YNNPACK executables to avoid data races.
   using YnnExecutablePool = ObjectPool<YnnExecutable, const YnnThreadpool&,
-                                       absl::Span<const se::DeviceMemoryBase>>;
+                                       absl::Span<const se::DeviceAddressBase>>;
   YnnExecutablePool ynn_executable_pool_;
 
   // The number of YNNPACK executables created for capturing graphs.

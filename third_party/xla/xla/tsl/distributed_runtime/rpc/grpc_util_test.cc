@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "grpcpp/grpcpp.h"
 #include "xla/tsl/distributed_runtime/rpc/test_request.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -73,7 +74,7 @@ TestRequest MakeProto(int size) {
 }
 
 TEST(PayloadSerialization, PayloadsAreTransmitted) {
-  absl::Status status = errors::InvalidArgument("invalid arg message");
+  absl::Status status = absl::InvalidArgumentError("invalid arg message");
   status.SetPayload("a", absl::Cord("\\xFF\\x02\\x03"));
   absl::Status status_recovered = FromGrpcStatus(ToGrpcStatus(status));
 

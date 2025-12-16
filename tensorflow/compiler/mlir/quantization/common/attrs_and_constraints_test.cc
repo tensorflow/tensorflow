@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace mlir::quant {
 namespace {

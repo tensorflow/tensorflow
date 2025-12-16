@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"

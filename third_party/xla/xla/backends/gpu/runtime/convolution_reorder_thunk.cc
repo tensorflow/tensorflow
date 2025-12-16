@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
@@ -63,17 +63,17 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  auto filter_input = se::DeviceMemory<int8_t>(
+  auto filter_input = se::DeviceAddress<int8_t>(
       buffer_allocations.GetDeviceAddress(filter_input_));
-  auto filter_output = se::DeviceMemory<int8_t>(
+  auto filter_output = se::DeviceAddress<int8_t>(
       buffer_allocations.GetDeviceAddress(filter_output_));
 
-  std::optional<se::DeviceMemory<float>> bias_input;
-  std::optional<se::DeviceMemory<float>> bias_output;
+  std::optional<se::DeviceAddress<float>> bias_input;
+  std::optional<se::DeviceAddress<float>> bias_output;
   if (biases_.has_value()) {
-    bias_input = se::DeviceMemory<float>(
+    bias_input = se::DeviceAddress<float>(
         buffer_allocations.GetDeviceAddress(biases_->bias_input));
-    bias_output = se::DeviceMemory<float>(
+    bias_output = se::DeviceAddress<float>(
         buffer_allocations.GetDeviceAddress(biases_->bias_output));
   }
 

@@ -139,7 +139,7 @@ inline absl::Status InputBuffer::ReadVarint32(uint32_t* result) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
     const char* const new_pos = core::GetVarint32Ptr(pos_, limit_, result);
-    if (new_pos == nullptr) return errors::OutOfRange("Parsed past limit.");
+    if (new_pos == nullptr) return absl::OutOfRangeError("Parsed past limit.");
     const int offset = new_pos - buf();
     pos_ = buf() + offset;
     return absl::OkStatus();
@@ -154,7 +154,7 @@ inline absl::Status InputBuffer::ReadVarint64(uint64_t* result) {
     // Fast path: directly parse from buffered data.
     // Reads strictly from the range [pos_, limit_).
     const char* const new_pos = core::GetVarint64Ptr(pos_, limit_, result);
-    if (new_pos == nullptr) return errors::OutOfRange("Parsed past limit.");
+    if (new_pos == nullptr) return absl::OutOfRangeError("Parsed past limit.");
     const int offset = new_pos - buf();
     pos_ = buf() + offset;
     return absl::OkStatus();

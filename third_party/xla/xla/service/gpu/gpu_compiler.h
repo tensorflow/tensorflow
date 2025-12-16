@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -144,6 +145,7 @@ class GpuCompiler : public LLVMCompiler {
     std::string asm_text;
     std::vector<uint8_t> binary;
     BinaryMap dnn_compiled_graphs;
+    ModuleStats module_stats;
   };
 
   // During compilation with device, stream_exec != null and autotune_results

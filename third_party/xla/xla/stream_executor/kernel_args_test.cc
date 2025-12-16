@@ -24,7 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -47,28 +47,29 @@ static_assert(
 static_assert(std::is_same_v<ArgsStorage<Data, const Data, Data&, const Data>,
                              std::tuple<Data, Data, Data, Data>>);
 
-// We pass DeviceMemoryBase as an opaque pointer.
+// We pass DeviceAddressBase as an opaque pointer.
 static_assert(std::is_same_v<
-              ArgsStorage<DeviceMemoryBase, const DeviceMemoryBase,
-                          DeviceMemoryBase&, const DeviceMemoryBase&>,
+              ArgsStorage<DeviceAddressBase, const DeviceAddressBase,
+                          DeviceAddressBase&, const DeviceAddressBase&>,
               std::tuple<const void*, const void*, const void*, const void*>>);
 
-// We pass DeviceMemory<T> as an opaque pointer.
+// We pass DeviceAddress<T> as an opaque pointer.
 static_assert(std::is_same_v<
-              ArgsStorage<DeviceMemory<float>, const DeviceMemory<float>,
-                          DeviceMemory<float>&, const DeviceMemory<float>&>,
+              ArgsStorage<DeviceAddress<float>, const DeviceAddress<float>,
+                          DeviceAddress<float>&, const DeviceAddress<float>&>,
               std::tuple<const void*, const void*, const void*, const void*>>);
 
-// We accept pointers to DeviceMemoryBase and extract opaque pointers from them.
+// We accept pointers to DeviceAddressBase and extract opaque pointers from
+// them.
 static_assert(
-    std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
+    std::is_same_v<ArgsStorage<DeviceAddressBase*, const DeviceAddressBase*>,
                    std::tuple<const void*, const void*>>);
 
-TEST(KernelTest, PackDeviceMemoryArguments) {
-  DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
-  DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
+TEST(KernelTest, PackDeviceAddressArguments) {
+  DeviceAddressBase a(reinterpret_cast<void*>(0x12345678));
+  DeviceAddressBase b(reinterpret_cast<void*>(0x87654321));
 
-  auto args = PackKernelArgs<DeviceMemoryBase>({a, b}, 0).value();
+  auto args = PackKernelArgs<DeviceAddressBase>({a, b}, 0).value();
   ASSERT_EQ(args->number_of_arguments(), 2);
 
   auto packed = args->argument_addresses();
@@ -113,7 +114,7 @@ TEST(KernelTest, PackTupleArguments) {
 
 TEST(KernelTest, PackArgumentsWithInt64) {
   std::vector<KernelArgument> args;
-  DeviceMemoryBase somemem(reinterpret_cast<void*>(0x12345678));
+  DeviceAddressBase somemem(reinterpret_cast<void*>(0x12345678));
   int64_t someint64 = 1234;
   args.emplace_back(somemem);
   args.emplace_back(someint64);
@@ -131,19 +132,19 @@ TEST(KernelTest, PackArgumentsWithInt64) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-static void BM_PackDeviceMemoryArgs(benchmark::State& state) {
-  std::vector<DeviceMemoryBase> args(state.range(0));
+static void BM_PackDeviceAddressArgs(benchmark::State& state) {
+  std::vector<DeviceAddressBase> args(state.range(0));
   for (int i = 0; i < state.range(0); ++i) {
-    args[i] = DeviceMemoryBase(reinterpret_cast<void*>(0x12345678), 42);
+    args[i] = DeviceAddressBase(reinterpret_cast<void*>(0x12345678), 42);
   }
 
   for (auto s : state) {
-    auto packed = PackKernelArgs<DeviceMemoryBase>(args, 0);
+    auto packed = PackKernelArgs<DeviceAddressBase>(args, 0);
     benchmark::DoNotOptimize(packed);
   }
 }
 
-BENCHMARK(BM_PackDeviceMemoryArgs)
+BENCHMARK(BM_PackDeviceAddressArgs)
     ->Arg(4)
     ->Arg(8)
     ->Arg(32)

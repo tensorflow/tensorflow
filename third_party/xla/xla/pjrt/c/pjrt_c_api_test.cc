@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <set>
 #include <string>
 #include <tuple>
@@ -27,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -329,7 +329,7 @@ void destroy_executable(PJRT_LoadedExecutable* executable,
 TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
 
   PJRT_Client_BufferFromHostBuffer_Args args = CreateBufferFromHostBufferArgs(
       float_data, shape,
@@ -683,7 +683,7 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   EXPECT_EQ(error, nullptr);
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
@@ -945,6 +945,10 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     }
     if (minor_version >= 82) {
       add_field("PJRT_Client_CreateErrorBuffer", kFnPtrSize);
+    }
+    if (minor_version >= 83) {
+      add_field("PJRT_AsyncHostToDeviceTransferManager_TransferLiteral",
+                kFnPtrSize);
     }
     return version_offsets_and_sizes;
   }
@@ -1340,6 +1344,11 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Client_CreateErrorBuffer",
            {offsetof(PJRT_Api, PJRT_Client_CreateErrorBuffer),
             sizeof(PJRT_Api::PJRT_Client_CreateErrorBuffer)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_TransferLiteral",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_TransferLiteral),
+            sizeof(PJRT_Api::
+                       PJRT_AsyncHostToDeviceTransferManager_TransferLiteral)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

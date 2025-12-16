@@ -21,6 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {

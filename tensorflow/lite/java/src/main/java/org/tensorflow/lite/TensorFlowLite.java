@@ -281,7 +281,7 @@ public final class TensorFlowLite {
       case FROM_APPLICATION_ONLY:
         message =
             String.format(
-                "You should declare a build dependency on org.tensorflow.lite:tensorflow-lite,"
+                "You should declare a build dependency on com.google.ai.edge.litert:litert,"
                     + " or call .%s with a value other than TfLiteRuntime.FROM_APPLICATION_ONLY"
                     + " (see docs for %s#%s(TfLiteRuntime)).",
                 methodName, className, methodName);
@@ -298,7 +298,7 @@ public final class TensorFlowLite {
       default:
         message =
             "You should declare a build dependency on"
-                + " org.tensorflow.lite:tensorflow-lite or"
+                + " com.google.ai.edge.litert:litert or"
                 + " com.google.android.gms:play-services-tflite-java";
         break;
     }

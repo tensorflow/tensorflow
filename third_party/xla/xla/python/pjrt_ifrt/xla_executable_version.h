@@ -20,12 +20,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,8 +45,16 @@ struct XlaExecutableVersion
 
   bool IsCompatibleWith(const ExecutableVersion& other) const override;
 
+  absl::Status ToProto(SerializedXlaExecutableVersion& executable_version_proto,
+                       SerDesVersion version = SerDesVersion::current()) const;
+
   absl::StatusOr<SerializedXlaExecutableVersion> ToProto(
-      SerDesVersion version = SerDesVersion::current()) const;
+      SerDesVersion version = SerDesVersion::current()) const {
+    SerializedXlaExecutableVersion proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
+
   static absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> FromProto(
       const SerializedXlaExecutableVersion& proto);
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -55,8 +56,9 @@ class AllGatherStartThunk : public CollectiveThunk {
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 
  private:
   const AllGatherConfig config_;
@@ -64,7 +66,7 @@ class AllGatherStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm,
+                          se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer = false);
 
 }  // namespace gpu

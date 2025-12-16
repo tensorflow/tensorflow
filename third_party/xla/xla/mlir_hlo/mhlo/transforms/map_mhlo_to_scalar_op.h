@@ -349,8 +349,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(
 // Return a constant for v of type t, splat if t is a vector type.
 inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
                                 Attribute v) {
-  if (VectorType vecType = mlir::dyn_cast<VectorType>(t)) {
-    v = SplatElementsAttr::get(vecType, v);
+  if (ShapedType shapedType = mlir::dyn_cast<ShapedType>(t)) {
+    v = SplatElementsAttr::get(shapedType, v);
   }
   return b->create<arith::ConstantOp>(loc, t, cast<TypedAttr>(v));
 }

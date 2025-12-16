@@ -35,11 +35,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.cc.inc"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"  // IWYU pragma: keep
 
 using mlir::LogicalResult;
 using mlir::Type;
 
 namespace mlir::triton::xla {
+
+using ::xla::xtile::LayoutAttr;
 
 // Parser hook for triton_xla.extract/insert ops assembly format.
 ParseResult parseAsMemRefType(OpAsmParser& parser, Type& type,
@@ -175,7 +178,7 @@ class ExtractOpOffsetsSizesStridesFolder final
   using OpRewritePattern<ExtractOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ExtractOp op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     SmallVector<OpFoldResult> mixed_offsets(op.getMixedOffsets());
     if (failed(foldDynamicIndexList(mixed_offsets, /*onlyNonNegative=*/true))) {
       // No constant operands were folded, just return;
@@ -191,8 +194,8 @@ class ExtractOpOffsetsSizesStridesFolder final
   }
 };
 
-void ExtractOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                            MLIRContext *context) {
+void ExtractOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                            MLIRContext* context) {
   results.add<ExtractOpOffsetsSizesStridesFolder>(context);
 }
 
@@ -233,7 +236,7 @@ class InsertOpOffsetsSizesStridesFolder final
   using OpRewritePattern<InsertOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(InsertOp op,
-                                PatternRewriter &rewriter) const override {
+                                PatternRewriter& rewriter) const override {
     SmallVector<OpFoldResult> mixed_offsets(op.getMixedOffsets());
     // No constant operands were folded, just return;
     if (failed(foldDynamicIndexList(mixed_offsets, /*onlyNonNegative=*/true))) {
@@ -249,8 +252,8 @@ class InsertOpOffsetsSizesStridesFolder final
   }
 };
 
-void InsertOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                           MLIRContext *context) {
+void InsertOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                           MLIRContext* context) {
   results.add<InsertOpOffsetsSizesStridesFolder>(context);
 }
 

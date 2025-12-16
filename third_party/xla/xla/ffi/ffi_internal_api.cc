@@ -131,6 +131,44 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveParams_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_params) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_params = const_cast<xla::gpu::CollectiveParams*>(  // NOLINT
+        gpu->collective_params);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_clique_requests = gpu->collective_clique_requests;
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_clique = const_cast<xla::gpu::CollectiveCliques*>(  // NOLINT
+        gpu->collective_cliques);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 const XLA_FFI_InternalApi* GetInternalApi() {
   static XLA_FFI_InternalApi internal_api = {
       // Generic XLA APIs available on all XLA backends.
@@ -148,6 +186,9 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       // XLA:GPU specific APIs.
       XLA_FFI_INTERNAL_Stream_Get,
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
+      XLA_FFI_INTERNAL_CollectiveParams_Get,
+      XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
+      XLA_FFI_INTERNAL_CollectiveCliques_Get,
   };
 
   return &internal_api;

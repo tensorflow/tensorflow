@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -38,6 +40,7 @@
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
+#include "xla/python/ifrt_proxy/client/mpmd_executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
@@ -139,6 +142,33 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
                         client_->LookupDevice(DeviceId(device_id)));
     addressable_devices.push_back(device);
   }
+  absl::StatusOr<
+      absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
+      mpmd_addressable_devices;
+  bool is_mpmd_executable = false;
+
+  if (response->has_mpmd_addressable_devices()) {
+    is_mpmd_executable = true;
+    mpmd_addressable_devices =
+        absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>();
+    for (const auto& [name, devices_proto] :
+         response->mpmd_addressable_devices().mpmd_addressable_devices()) {
+      std::vector<xla::ifrt::Device*> current_devices;
+      current_devices.reserve(devices_proto.mpmd_addressable_device_ids_size());
+
+      for (const auto& device_id :
+           devices_proto.mpmd_addressable_device_ids()) {
+        TF_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+                            client_->LookupDevice(DeviceId(device_id)));
+        current_devices.push_back(device);
+      }
+      mpmd_addressable_devices->insert({name, std::move(current_devices)});
+    }
+  } else if (response->has_mpmd_addressable_devices_error()) {
+    is_mpmd_executable = true;
+    mpmd_addressable_devices = xla::ifrt::ReattachUserContextRefs(
+        tsl::StatusFromProto(response->mpmd_addressable_devices_error()));
+  }
 
   absl::StatusOr<std::optional<std::string>> fingerprint;
   switch (response->fingerprint_case()) {
@@ -182,6 +212,15 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     TF_ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
   }
 
+  if (is_mpmd_executable) {
+    return std::make_unique<MpmdLoadedExecutable>(
+        client_, rpc_helper_, response->loaded_executable_handle(),
+        response->name(), response->num_devices(), device_list,
+        std::move(addressable_devices), std::move(mpmd_addressable_devices),
+        std::move(fingerprint), std::move(ready_future),
+        std::move(loaded_host_callbacks),
+        std::move(loaded_host_callback_handles));
+  }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
       response->name(), response->num_devices(), device_list,

@@ -27,6 +27,7 @@ def get_cub_sort_kernel_types(name = ""):
         "u16_b32",
         "u16_b64",
         "u32_b16",
+        "s32_b32",
         "u32_b32",
         "u32_b64",
         "u64_b16",

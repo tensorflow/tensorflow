@@ -26,8 +26,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -103,28 +110,43 @@ class ReduceDecomposerVisitor : public DfsHloRewriteVisitor {
         ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
     TF_ASSIGN_OR_RETURN(auto expected_output_shape,
                         ShapeUtil::MakeValidatedMaybeTupleShape(output_shapes));
-    if (expected_tuple_shape != expected_output_shape) {
-      TF_ASSIGN_OR_RETURN(auto r_prime,
-                          MakeReduceHlo(reduce->inputs(), reduce->init_values(),
-                                        reduce->dimensions(),
-                                        reduce->called_computations()[0]));
-      TF_RET_CHECK(r_prime->shape() == expected_tuple_shape);
-
-      if (!shape.IsTuple()) {
-        auto copy = MakeCopyHlo(r_prime, shape);
-        TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, copy));
-        return absl::OkStatus();
-      }
-
-      std::vector<HloInstruction*> copies;
-      for (int i = 0; i < reduce->input_count(); i++) {
-        TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
-        auto copy = MakeCopyHlo(from, output_shapes[i]);
-        copies.push_back(copy);
-      }
-      auto out = MaybeMakeTuple(copies);
-      TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
+    if (expected_tuple_shape == expected_output_shape) {
+      return absl::OkStatus();  // Nothing to do here.
     }
+
+    TF_ASSIGN_OR_RETURN(
+        auto r_prime,
+        MakeReduceHlo(reduce->inputs(), reduce->init_values(),
+                      reduce->dimensions(), reduce->called_computations()[0],
+                      &reduce->metadata()));
+    TF_RET_CHECK(r_prime->shape() == expected_tuple_shape);
+
+    // Handle non-variadic reductions.
+    if (!shape.IsTuple()) {
+      HloInstruction* to_replace = reduce;
+      HloInstruction* to_copy = r_prime;
+      if (reduce->users().size() == 1 &&
+          reduce->users()[0]->opcode() == HloOpcode::kConvert) {
+        // Keep reduction+convert ops adjacent and insert the copy after them.
+        to_replace = reduce->users()[0];
+        to_copy = MakeConvertToHlo(r_prime, to_replace->shape().element_type(),
+                                   &to_replace->metadata());
+        shape.set_element_type(to_replace->shape().element_type());
+      }
+      auto copy = MakeCopyHlo(to_copy, shape);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(to_replace, copy));
+      return absl::OkStatus();
+    }
+
+    // Handle variadic reductions.
+    std::vector<HloInstruction*> copies;
+    for (int i = 0; i < reduce->input_count(); i++) {
+      TF_ASSIGN_OR_RETURN(auto from, GetOutput(r_prime, i));
+      auto copy = MakeCopyHlo(from, output_shapes[i]);
+      copies.push_back(copy);
+    }
+    auto out = MaybeMakeTuple(copies);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, out));
     return absl::OkStatus();
   }
 

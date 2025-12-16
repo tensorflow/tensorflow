@@ -587,7 +587,9 @@ SmallVector<Value> ReductionFusion::EvaluateEpilogue(
     EmitterState& state, int group_id, ValueRange symbol_values) const {
   ImplicitLocOpBuilder& b = state.builder;
   const auto& epilogue = state.computations.epilogues()[group_id];
-  if (epilogue.roots.empty()) return outputs;
+  if (epilogue.roots.empty()) {
+    return outputs;
+  }
 
   auto epilogue_input_indices = state.thread_and_block_ids;
   epilogue_input_indices.append(symbol_values.begin(), symbol_values.end());

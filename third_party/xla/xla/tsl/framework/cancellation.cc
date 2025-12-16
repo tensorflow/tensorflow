@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -165,7 +164,7 @@ bool CancellationManager::RegisterChild(CancellationManager* child) {
   }
 
   if (!state_) {
-    state_ = absl::make_unique<State>();
+    state_ = std::make_unique<State>();
   }
 
   // Push `child` onto the front of the list of children.

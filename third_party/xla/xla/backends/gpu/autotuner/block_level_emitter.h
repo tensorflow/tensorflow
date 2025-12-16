@@ -67,7 +67,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   // Determines whether the given HLO instruction is supported by this backend.
-  bool IsSupported(const HloInstruction& instr);
+  bool IsSupported(const HloInstruction& instr) override;
 
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.

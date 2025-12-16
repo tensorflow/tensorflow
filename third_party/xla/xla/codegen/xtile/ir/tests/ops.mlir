@@ -149,3 +149,16 @@ func.func @illegal_mask_out_of_bounds(%src: tensor<32xf64>, %mask: f64) -> tenso
   return %masked : tensor<32xf64>
 }
 
+// -----
+
+// expected-error @+1 {{layout has 0 dimensions, but shape has 1}}
+func.func @memref_layout_shape_size_mismatch(%arg0: memref<1024xf32, #xtile.layout<[]>>) {
+  return
+}
+
+// -----
+
+// expected-error @+1 {{layout is not a permutation}}
+func.func @memref_layout_is_not_a_permutation(%arg0: memref<1024xf32, #xtile.layout<[1]>>) {
+  return
+}

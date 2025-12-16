@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -90,8 +92,17 @@ class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
+  ABSL_DEPRECATED(
+      "Use the `Create()` that takes an MLIR module and compiles it "
+      "internally.")
   static absl::StatusOr<ExecutableRef> Create(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
+
+  // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
+  // provided MLIR module into an `xla::PjRtExecutable`.
+  static absl::StatusOr<ExecutableRef> Create(
+      mlir::ModuleOp module, xla::CompileOptions compile_options,
+      const xla::PjRtTopologyDescription& topology);
 
   // PjRtCompatibleExecutable implementation.
 

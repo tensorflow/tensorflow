@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
+#include "xla/service/hlo_cse_constant_key.h"
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -43,27 +43,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
-
 namespace {
-
-template <bool kIsLayoutSensitive>
-struct ConstantKey {
-  template <typename H>
-  friend H AbslHashValue(H h, const ConstantKey& key) {
-    h = H::combine(std::move(h), key.domain);
-    return Literal::Hash<H, kIsLayoutSensitive, /*kByteLimit=*/64>(
-        std::move(h), key.hlo->literal());
-  }
-  friend bool operator==(const ConstantKey& lhs, const ConstantKey& rhs) {
-    return lhs.domain == rhs.domain &&
-           (kIsLayoutSensitive ? Shape::Equal()
-                               : Shape::Equal().IgnoreLayout())(
-               lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive);
-  }
-  HloConstantInstruction* hlo;
-  int64_t domain;
-};
 
 // Find and combine identical constants. Constants are identical if they have
 // the same type and value.
@@ -88,7 +68,9 @@ absl::StatusOr<bool> CombineConstants(
   // Map from the literal hash of a constant or the shape hash of an iota all
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
-  absl::flat_hash_set<ConstantKey<kIsLayoutSensitive>> constants;
+  absl::flat_hash_map<CseConstantKey<kIsLayoutSensitive>,
+                      HloConstantInstruction*>
+      constants;
   int64_t combined = 0;
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
@@ -105,11 +87,14 @@ absl::StatusOr<bool> CombineConstants(
 
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
-      auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
-          constant_inst,
-          (domain_map != nullptr ? domain_map->GetDomainId(instruction) : 0)});
-      if (!insert_result.second) {
-        match = insert_result.first->hlo;
+      auto [it, did_insert] = constants.insert(
+          {CseConstantKey<kIsLayoutSensitive>{
+               constant_inst->literal(), constant_inst->shape(),
+               (domain_map != nullptr ? domain_map->GetDomainId(instruction)
+                                      : 0)},
+           constant_inst});
+      if (!did_insert) {
+        match = it->second;
       }
     }
 

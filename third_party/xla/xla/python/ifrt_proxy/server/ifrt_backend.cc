@@ -19,13 +19,13 @@
 #include <deque>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -49,6 +49,7 @@
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -57,6 +58,7 @@
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/mpmd_executable.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -615,8 +617,12 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
       return tsl::Future<Response>(HandleCompileRequest(std::move(request)));
     case IfrtRequest::RequestCase::kLoadedExecutableMetadataRequest:
       return HandleLoadedExecutableMetadataRequest(std::move(request));
+    case IfrtRequest::RequestCase::kLoadedExecutableMpmdMetadataRequest:
+      return HandleLoadedExecutableMpmdMetadataRequest(std::move(request));
     case IfrtRequest::RequestCase::kLoadedExecutableCostAnalysisRequest:
       return HandleLoadedExecutableCostAnalysisRequest(std::move(request));
+    case IfrtRequest::RequestCase::kLoadedExecutableMpmdCostAnalysisRequest:
+      return HandleLoadedExecutableMpmdCostAnalysisRequest(std::move(request));
     case IfrtRequest::RequestCase::
         kLoadedExecutableHumanReadableProgramTextRequest:
       return HandleLoadedExecutableHumanReadableProgramTextRequest(
@@ -685,7 +691,7 @@ uint64_t IfrtBackend::HandleGenerator::GenerateAtServer() {
 void IfrtBackend::HandleGenerator::GenerateAtServerBulk(
     absl::Span<uint64_t> result_handles) {
   absl::MutexLock lock(mu_);
-  std::iota(result_handles.begin(), result_handles.end(), current_);
+  absl::c_iota(result_handles, current_);
   current_ += result_handles.size();
   CHECK_GE(current_, kServerGeneratedHandlesMinValue);
 }
@@ -751,18 +757,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    if (protocol_version() <= 3) {
-      for (const auto& [name, attr] : device->Attributes().map()) {
-        TF_ASSIGN_OR_RETURN(
-            (*d->mutable_deprecated_attributes())[name],
-            std::visit(
-                [&](const auto& attr) { return ToVariantProto(attr.value); },
-                attr));
-      }
-    } else {
-      *d->mutable_attributes() =
-          device->Attributes().ToProto(ifrt_serdes_version());
-    }
+    device->Attributes().ToProto(*d->mutable_attributes(),
+                                 ifrt_serdes_version());
 
     if (device->IsAddressable()) {
       init_resp->add_addressable_device_ids(device->Id().value());
@@ -794,8 +790,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
-  *init_resp->mutable_client_attributes() =
-      client_->Attributes().ToProto(ifrt_serdes_version());
+  client_->Attributes().ToProto(*init_resp->mutable_client_attributes(),
+                                ifrt_serdes_version());
 
   return response;
 }
@@ -950,7 +946,6 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  UserContextScope user_context_scope(client_->CreateUserContext());
   TF_ASSIGN_OR_RETURN(
       std::vector<xla::ifrt::ArrayRef> arrays,
       client_->MakeArraysFromHostBufferShards(
@@ -1001,7 +996,6 @@ IfrtBackend::HandleMakeErrorArraysRequest(
     array_specs.push_back(std::move(array_spec));
   }
 
-  UserContextScope user_context_scope(client_->CreateUserContext());
   TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
                       client_->MakeErrorArrays(error, array_specs));
 
@@ -1472,6 +1466,28 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     } else if (fingerprint->has_value()) {
       compile_resp->set_fingerprint_value(std::move(fingerprint)->value());
     }
+    if (protocol_version() >= protocol_version::kMpmdLoadedExecutableMethods) {
+      auto* mpmd_executable =
+          llvm::dyn_cast<MpmdLoadedExecutable>(executable.get());
+      // Only populate MPMD addressable devices for MPMD executables.
+      if (mpmd_executable != nullptr) {
+        auto mpmd_addressable_devices =
+            mpmd_executable->GetMpmdAddressableDevices();
+        if (mpmd_addressable_devices.ok()) {
+          for (const auto& [name, devices] : *mpmd_addressable_devices) {
+            auto& device_list =
+                (*compile_resp->mutable_mpmd_addressable_devices()
+                      ->mutable_mpmd_addressable_devices())[name];
+            for (const auto* device : devices) {
+              device_list.add_mpmd_addressable_device_ids(device->Id().value());
+            }
+          }
+        } else {
+          *compile_resp->mutable_mpmd_addressable_devices_error() =
+              tsl::StatusToProto(mpmd_addressable_devices.status());
+        }
+      }
+    }
     // Register the ready future to `futures_`. Caller is expected to call
     // `CheckFuture` exactly once to check for its status and erase it. In
     // future, we may introduce separate mechanisms to remove futures from
@@ -1615,6 +1631,60 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
 }
 
 tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableMpmdMetadataRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(request->loaded_executable_mpmd_metadata_request()
+                              .mpmd_loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return tsl::Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  return AsyncExecute([executable_info = *std::move(executable_info),
+                       request = std::shared_ptr<IfrtRequest>(
+                           std::move(request))]() -> absl::StatusOr<Response> {
+    std::unique_ptr<IfrtResponse> ifrt_resp =
+        NewIfrtResponse(request->request_metadata().op_id());
+    auto* metadata_resp =
+        ifrt_resp->mutable_loaded_executable_mpmd_metadata_response();
+
+    const std::shared_ptr<xla::ifrt::LoadedExecutable>& base_executable =
+        executable_info->executable;
+    auto* mpmd_executable =
+        llvm::dyn_cast<MpmdLoadedExecutable>(base_executable.get());
+
+    if (mpmd_executable == nullptr) {
+      *metadata_resp->mutable_mpmd_compiled_memory_stats_error() =
+          tsl::StatusToProto(absl::InvalidArgumentError(
+              "LoadedExecutable is not an MPMD executable"));
+    } else {
+      auto mpmd_compiled_memory_stats =
+          mpmd_executable->GetMpmdCompiledMemoryStats();
+      if (mpmd_compiled_memory_stats.ok()) {
+        for (const auto& [name, stats] : *mpmd_compiled_memory_stats) {
+          xla::CompiledMemoryStatsProto& compiled_memory_stats =
+              (*metadata_resp->mutable_mpmd_compiled_memory_stats()
+                    ->mutable_compiled_memory_stats())[name];
+          compiled_memory_stats = stats.ToProto();
+          // `serialized_buffer_assignment` is a legacy field that is a
+          // serialized proto that is undocumented, not semantically
+          // well-defined across HLO versions, and is used only by one
+          // Google-internal library as of Jul 2025. Do not send it across to
+          // the proxy-client.
+          compiled_memory_stats.clear_serialized_buffer_assignment();
+        }
+      } else {
+        *metadata_resp->mutable_mpmd_compiled_memory_stats_error() =
+            tsl::StatusToProto(mpmd_compiled_memory_stats.status());
+      }
+    }
+
+    return ifrt_resp;
+  });
+}
+
+tsl::Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableCostAnalysisRequest(
     std::unique_ptr<IfrtRequest> request) {
   absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
@@ -1636,6 +1706,48 @@ IfrtBackend::HandleLoadedExecutableCostAnalysisRequest(
   } else {
     *ifrt_resp->mutable_loaded_executable_cost_analysis_response()
          ->mutable_status() = tsl::StatusToProto(cost_analysis.status());
+  }
+  return tsl::Future<BackendInterface::Response>(std::move(ifrt_resp));
+}
+
+tsl::Future<BackendInterface::Response>
+IfrtBackend::HandleLoadedExecutableMpmdCostAnalysisRequest(
+    std::unique_ptr<IfrtRequest> request) {
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(
+          request->loaded_executable_mpmd_cost_analysis_request()
+              .loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return tsl::Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  const std::shared_ptr<xla::ifrt::LoadedExecutable>& base_executable =
+      (*executable_info)->executable;
+
+  auto* mpmd_executable =
+      llvm::dyn_cast<MpmdLoadedExecutable>(base_executable.get());
+  if (mpmd_executable == nullptr) {
+    return tsl::Future<BackendInterface::Response>(absl::InvalidArgumentError(
+        "LoadedExecutable is not an MPMD executable"));
+  }
+
+  absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
+      mpmd_cost_analysis = mpmd_executable->GetMpmdCostAnalysis();
+
+  std::unique_ptr<IfrtResponse> ifrt_resp =
+      NewIfrtResponse(request->request_metadata().op_id());
+
+  if (mpmd_cost_analysis.ok()) {
+    auto* attributes_proto =
+        ifrt_resp->mutable_loaded_executable_mpmd_cost_analysis_response()
+            ->mutable_attributes();
+    for (const auto& [key, value] : *mpmd_cost_analysis) {
+      attributes_proto->mutable_attributes()->insert({key, value.ToProto()});
+    }
+  } else {
+    *ifrt_resp->mutable_loaded_executable_mpmd_cost_analysis_response()
+         ->mutable_status() = tsl::StatusToProto(mpmd_cost_analysis.status());
   }
   return tsl::Future<BackendInterface::Response>(std::move(ifrt_resp));
 }
@@ -1769,9 +1881,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   if (execute.result_array_handle().empty()) {
     output_sharding_protos.reserve(result.outputs.size());
     for (int i = 0; i < result.outputs.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
-          output_sharding_protos.emplace_back(),
-          result.outputs[i]->sharding().ToProto(ifrt_serdes_version()));
+      TF_RETURN_IF_ERROR(result.outputs[i]->sharding().ToProto(
+          output_sharding_protos.emplace_back(), ifrt_serdes_version()));
     }
   }
 
@@ -1803,10 +1914,10 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       for (int i = 0; i < result.outputs.size(); ++i) {
         LoadedExecutableExecuteResponse::Output* output =
             execute_response->add_outputs();
-        *output->mutable_dtype() =
-            result.outputs[i]->dtype().ToProto(ifrt_serdes_version());
-        *output->mutable_shape() =
-            result.outputs[i]->shape().ToProto(ifrt_serdes_version());
+        result.outputs[i]->dtype().ToProto(*output->mutable_dtype(),
+                                           ifrt_serdes_version());
+        result.outputs[i]->shape().ToProto(*output->mutable_shape(),
+                                           ifrt_serdes_version());
         *output->mutable_sharding() = std::move(output_sharding_protos[i]);
         output->set_array_handle(result_handles[i]);
       }

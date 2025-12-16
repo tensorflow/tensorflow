@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/cpu_clique_key.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 

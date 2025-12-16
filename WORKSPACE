@@ -13,6 +13,34 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
 )
 
+# Initialize toolchains for ML projects.
+#
+# A hermetic build system is designed to produce completely reproducible builds for C++.
+# Details: https://github.com/google-ml-infra/rules_ml_toolchain
+http_archive(
+    name = "rules_ml_toolchain",
+    sha256 = "7f00b3e94bbca1a4737ded6b9ed5358f6d1c86430c2ec97c90081343c0482f18",
+    strip_prefix = "rules_ml_toolchain-29d54c875da37e74b8548924ed30e78cb28126b9",
+    urls = [
+        "https://github.com/yuriivcs/rules_ml_toolchain/archive/29d54c875da37e74b8548924ed30e78cb28126b9.tar.gz",
+    ],
+)
+
+load(
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
+
 # Initialize the TensorFlow repository and all dependencies.
 #
 # The cascade of load() statements and tf_workspace?() calls works around the
@@ -90,21 +118,6 @@ nvidia_wheel_versions_repository(
 )
 
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
-
-load(
-    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 load(
     "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",

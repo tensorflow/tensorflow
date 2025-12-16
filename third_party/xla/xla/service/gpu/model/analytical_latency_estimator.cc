@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "xla/hlo/analysis/symbolic_expr.h"

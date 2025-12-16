@@ -383,15 +383,10 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     compile_pipeline_options.propagate_shardings =
         compile_options->propagate_shardings;
     for (const auto device : devices) {
-      const auto it = device->Attributes().map().find("platform_name");
-      if (it != device->Attributes().map().end()) {
-        if (auto* const str = std::get_if<xla::ifrt::AttributeMap::StringValue>(
-                &it->second)) {
-          compile_pipeline_options.platform_names.push_back(str->value);
-        } else {
-          return absl::FailedPreconditionError(
-              "Device platform name is not a string");
-        }
+      auto platform_name =
+          device->Attributes().Get<std::string>("platform_name");
+      if (platform_name.ok()) {
+        compile_pipeline_options.platform_names.push_back(*platform_name);
       } else {
         compile_pipeline_options.platform_names.push_back(
             std::string(client->platform_name()));

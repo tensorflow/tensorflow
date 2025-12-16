@@ -194,8 +194,8 @@ tsl_cc_test(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
     ],
 )
 

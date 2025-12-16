@@ -203,7 +203,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_large_constants(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
   opts.set_xla_dump_full_hlo_config(true);
-  opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
   opts.set_xla_debug_buffer_assignment_show_max(15);
   opts.set_xla_cpu_use_onednn(false);
   opts.set_xla_cpu_experimental_onednn_custom_call(false);
@@ -417,13 +416,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
-  opts.set_xla_enable_command_buffers_during_profiling(false);
+  opts.set_xla_enable_command_buffers_during_profiling(true);
 
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
 
   opts.set_xla_gpu_pgle_accuracy_checker(
       DebugOptions::PGLE_STRICTNESS_LEVEL_WARN);
 
+  opts.set_xla_gpu_executable_embed_debug_info(true);
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
 
@@ -460,7 +460,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_tma(true);
   opts.set_xla_gpu_experimental_enable_triton_warp_specialization(false);
-  opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_detect_unstable_reductions_post_optimizations(
       DebugOptions::DETECTION_MODE_NONE);
@@ -469,6 +468,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
+  opts.set_xla_cpu_collective_timeout_seconds(30 * 60);
 
   opts.set_xla_keep_shardings_after_spmd(false);
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
@@ -1327,15 +1327,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_flags_reset", bool_setter_for(&DebugOptions::set_xla_flags_reset),
       debug_options->xla_flags_reset(),
       "Whether to reset XLA_FLAGS next time to parse."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_unsupported_annotate_with_emitter_loc",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_unsupported_annotate_with_emitter_loc),
-      debug_options->xla_gpu_unsupported_annotate_with_emitter_loc(),
-      "Forces emitters that use MLIR to annotate all the created MLIR "
-      "instructions with the emitter's C++ source file and line number. The "
-      "annotations should appear in the MLIR dumps. The emitters should use "
-      "EmitterLocOpBuilder for that."));
   flag_list->push_back(tsl::Flag(
       "xla_dump_hlo_as_text",
       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_text),
@@ -2411,7 +2402,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "missing instructions in the profile, then the compilation will halt "
       "(ERROR), or a warning will be emitted (WARN), or the checker is "
       "disabled (OFF)"));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_executable_embed_debug_info",
+      bool_setter_for(&DebugOptions::set_xla_gpu_executable_embed_debug_info),
+      debug_options->xla_gpu_executable_embed_debug_info(),
+      "Add debug information to the executable such as HLO module, asm_text "
+      "etc."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_executable_warn_stuck_timeout",
       int32_setter_for(
@@ -2655,14 +2651,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_enable_triton_warp_specialization(),
       "Enable Triton's auto warp specialization feature where applicable."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_enable_command_buffer_on_thunks",
-      bool_setter_for(
-          &DebugOptions::
-              set_xla_gpu_experimental_enable_command_buffer_on_thunks),
-      debug_options->xla_gpu_experimental_enable_command_buffer_on_thunks(),
-      "Enables an experimental feature for command buffer conversion on "
-      "thunks."));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_autotuner_pass",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_experimental_use_autotuner_pass),
@@ -2718,6 +2706,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_cpu_collective_call_terminate_timeout_seconds),
       debug_options->xla_cpu_collective_call_terminate_timeout_seconds(),
       "Set timeout for Collective Call Rendezvous termination"));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_collective_timeout_seconds",
+      int32_setter_for(&DebugOptions::set_xla_cpu_collective_timeout_seconds),
+      debug_options->xla_cpu_collective_timeout_seconds(),
+      "Set timeout for CPU collectives"));
   flag_list->push_back(tsl::Flag(
       "xla_keep_shardings_after_spmd",
       bool_setter_for(&DebugOptions::set_xla_keep_shardings_after_spmd),

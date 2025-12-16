@@ -176,6 +176,7 @@ cc_library(
         "//tensorflow/lite/toco:tooling_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@flatbuffers",
     ],
 )

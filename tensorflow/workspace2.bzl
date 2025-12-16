@@ -1,5 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
+load("//third_party:repo.bzl", "tf_vendored")
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -168,9 +169,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "a633a48ba393211771204d25ebc5f35359b71bfbefaa6e955aa92570caede727",
-        strip_prefix = "XNNPACK-fa0fd6471a39a5d66a59d4cd8f8cc4a93a4bd470",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/fa0fd6471a39a5d66a59d4cd8f8cc4a93a4bd470.zip"),
+        sha256 = "f644ad3ac88b3b0208a82742938bca35235865d6ca64950dac58b166877eb2a5",
+        strip_prefix = "XNNPACK-1b918df9d1744ae40725254f4baa592ed05c912e",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/1b918df9d1744ae40725254f4baa592ed05c912e.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -409,8 +410,16 @@ def _tf_repositories():
         },
     )
 
-    tf_http_archive(
+    # Use XLA's googletest wrapper which provides EXPECT_OK and ASSERT_OK macros.
+    # This wrapper adds those macros to the open-source gmock/gmock.h header,
+    # matching the behavior of internal builds.
+    tf_vendored(
         name = "com_google_googletest",
+        path = "third_party/xla/third_party/xla_googletest_wrapper",
+    )
+
+    tf_http_archive(
+        name = "com_google_googletest_upstream",
         # Use the commit on 2025/6/09:
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",

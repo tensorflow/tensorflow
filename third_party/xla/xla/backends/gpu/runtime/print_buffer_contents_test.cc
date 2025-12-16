@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -46,7 +46,7 @@ TEST(PrintBufferContentsTest, PrintBufferContents) {
 
   auto stream = executor->CreateStream().value();
 
-  stream_executor::DeviceMemory<int> arg1 =
+  stream_executor::DeviceAddress<int> arg1 =
       executor->AllocateArray<int32_t>(10, 0);
 
   TF_ASSERT_OK(stream->Memset32(&arg1, 0x12345678, 10 * sizeof(int32_t)));

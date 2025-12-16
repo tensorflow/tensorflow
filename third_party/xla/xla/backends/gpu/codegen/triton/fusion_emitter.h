@@ -18,9 +18,11 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -29,17 +31,22 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// This function (or its future equivalent) should emit the MLIR module in the
-// shared dialect between XLA:CPU and XLA:GPU. At the moment it is still
-// emitting GPU specific modules. It is currently exposed only for testing
-// purposes and will only be used to make sure we are properly emitting the
-// shared dialect.
+// Emits an xtile module.
+// fn_name: The name of the function to emit.
+// emitter_specific_constraints_builder: A builder for the emitter specific
+//   constraints.
+// fusion: The fusion instruction to emit.
+// block_level_parameters: The block level parameters.
+// mlir_context: The MLIR context to use.
+// opaque_args_types: The types of the opaque arguments to the function, e.x.
+// arguments for collectives in XLA:GPU.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     const HloFusionInstruction* fusion,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context,
+    absl::Span<mlir::Type> opaque_args_types = {});
 
 }  // namespace xla::gpu
 

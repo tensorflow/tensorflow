@@ -16,16 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GLOBAL_DEVICE_ID_H_
 #define XLA_SERVICE_GLOBAL_DEVICE_ID_H_
 
-#include <string>
-
-#include "absl/types/span.h"
+// TODO(ezhulenev): Remove this file once all references are updated.
 #include "xla/runtime/device_id.h"
-
-namespace xla {
-
-// Returns a comma-separated string of global device IDs.
-std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids);
-
-}  // namespace xla
 
 #endif  // XLA_SERVICE_GLOBAL_DEVICE_ID_H_

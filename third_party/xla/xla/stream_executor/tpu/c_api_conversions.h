@@ -32,8 +32,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/xla_data.pb.h"
 
@@ -56,12 +56,12 @@ void CreateVector(absl::Span<const bool> src, BoolList* dst);
 
 void CreateVector(absl::Span<const xla::DimLevelType> src, IntList* dst);
 
-// se::DeviceMemoryBase
-SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
-void ToC(const stream_executor::DeviceMemoryBase& base,
-         SE_DeviceMemoryBase* se_base);
-stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
-void Destroy(SE_DeviceMemoryBase*);
+// se::DeviceAddressBase
+SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base);
+void ToC(const stream_executor::DeviceAddressBase& base,
+         SE_DeviceAddressBase* se_base);
+stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base);
+void Destroy(SE_DeviceAddressBase*);
 
 // xla::Tile
 xla::Tile FromC(const XLA_Tile* c_tile);
@@ -93,10 +93,10 @@ void ToC(const xla::ShapedBuffer& buffer, XLA_ShapedBuffer* c_device_buffer);
 xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer);
 void Destroy(XLA_ShapedBuffer* c_buffer);
 
-// se::DeviceMemoryBase
-SE_DeviceMemoryBase ToC(const stream_executor::DeviceMemoryBase& base);
-stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base);
-void Destroy(SE_DeviceMemoryBase*);
+// se::DeviceAddressBase
+SE_DeviceAddressBase ToC(const stream_executor::DeviceAddressBase& base);
+stream_executor::DeviceAddressBase FromC(const SE_DeviceAddressBase& se_base);
+void Destroy(SE_DeviceAddressBase*);
 
 // Literal
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal);
@@ -119,15 +119,16 @@ std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
 
 xla::MaybeOwningDeviceMemory FromC(
     SE_MaybeOwningDeviceMemory* se_mem,
-    stream_executor::DeviceMemoryAllocator* allocator);
+    stream_executor::DeviceAddressAllocator* allocator);
 
-// DeviceMemoryAllocator
-SE_DeviceMemoryAllocator ToC(stream_executor::DeviceMemoryAllocator* allocator);
-stream_executor::DeviceMemoryAllocator* FromC(
-    const SE_DeviceMemoryAllocator& c_allocator);
+// DeviceAddressAllocator
+SE_DeviceAddressAllocator ToC(
+    stream_executor::DeviceAddressAllocator* allocator);
+stream_executor::DeviceAddressAllocator* FromC(
+    const SE_DeviceAddressAllocator& c_allocator);
 
-// OwningDeviceMemory
-SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem);
+// OwningDeviceAddress
+SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceAddress* mem);
 // mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
 // released. 'aliased' should be true in this case. 'aliased' has no effect if
 // 'mem' is unowned.

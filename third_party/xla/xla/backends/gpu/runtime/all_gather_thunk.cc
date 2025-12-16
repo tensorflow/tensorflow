@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/platform/casts.h"
 
 namespace xla {
@@ -92,26 +94,25 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
 }
 
 absl::StatusOr<bool> AllGatherStartThunk::RunCollective(
-    const ExecuteParams& params, se::Stream& stream,
-    CommunicatorHandle comm_handle) {
+    const ExecuteParams& params, const GpuCliqueKey& clique_key,
+    se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(
-      xla::gpu::RunAllGather(device_buffers, stream, comm_handle.comm,
-                             config_.config.use_symmetric_buffer));
+  TF_RETURN_IF_ERROR(xla::gpu::RunAllGather(
+      device_buffers, stream, comm, config_.config.use_symmetric_buffer));
   return true;
 }
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm,
+                          se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal << "] Performing all-gather";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-gather";
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
                                           use_symmetric_buffer));
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {
@@ -124,8 +125,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
       });
 
   TF_RETURN_IF_ERROR(future.Await());
-  VLOG(3) << "[" << device_ordinal
-          << "] Done performing all-gather for ordinal: " << device_ordinal;
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Done performing all-gather";
   return absl::OkStatus();
 }
 

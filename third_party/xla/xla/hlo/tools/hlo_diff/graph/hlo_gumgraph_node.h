@@ -39,6 +39,14 @@ struct ListPosition {
 struct HloInstructionNodeProps {
   int64_t generation = 0;
   int64_t height = 0;
+  // This fingerprint represents the structure and content of the entire
+  // subgraph rooted at this node. It is computed recursively in a bottom-up
+  // manner: a node's subgraph fingerprint is derived by combining its own
+  // instruction fingerprint with the subgraph fingerprints of all its children
+  // nodes. The combination of fingerprints is order-dependent, meaning it
+  // accounts for the order of child nodes (e.g., operands). The
+  // `GreedySubGraphExactMatcher` utilizes this fingerprint to efficiently
+  // identify and match structurally identical subgraphs between two HLO graphs.
   uint64_t subgraph_fingerprint = 0;
   // fingerprint is used to determine if two instructions should be matched.
   uint64_t fingerprint = 0;

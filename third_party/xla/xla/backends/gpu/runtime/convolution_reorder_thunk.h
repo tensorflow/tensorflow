@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -49,6 +50,18 @@ class ConvolutionReorderThunk : public Thunk {
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses res{
+        BufferUse::Read(filter_input_),
+        BufferUse::Write(filter_output_),
+    };
+    if (biases_.has_value()) {
+      res.push_back(BufferUse::Read(biases_->bias_input));
+      res.push_back(BufferUse::Write(biases_->bias_output));
+    }
+    return res;
+  }
 
   static absl::StatusOr<std::unique_ptr<ConvolutionReorderThunk>> FromProto(
       ThunkInfo thunk_info, const ConvolutionReorderThunkProto& proto,

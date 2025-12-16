@@ -25,6 +25,26 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// DotAlgorithmRewriter is an HLO pass that rewrites Dot operations marked
+// with specific algorithm precision config enums into a sequence of Dot
+// operations that emulate higher precision accumulation using lower precision
+// operations. For example, it can rewrite an F32 dot marked as
+// BF16_BF16_F32_X3 into three BF16xBF16->F32 dots to achieve higher precision.
+//
+// This is useful for hardware that has much higher throughput for
+// lower-precision types like BF16 or TF32 than for F32. By decomposing a
+// single F32 operation into multiple lower-precision ones, we can achieve
+// higher precision than a single truncated lower-precision operation, and
+// potentially higher performance than a native F32 operation, thus allowing a
+// tradeoff between performance and precision.
+//
+// This pass rewrites HloOpcode::kDot instructions based on their
+// PrecisionConfig algorithm enum (e.g. ALG_DOT_BF16_BF16_F32_X3).
+//
+// This class also provides static methods to emulate elementwise multiplication
+// with higher precision (e.g. MakeMultiplyForBF16BF16F32X3). These are used
+// to emit equivalent logic for HloOpcode::kMultiply, for example in fusion
+// emitters like Triton.
 class DotAlgorithmRewriter : public HloModulePass {
  public:
   DotAlgorithmRewriter() = default;

@@ -1477,7 +1477,8 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
                            use_region_based_live_range_analysis_);
         if (copy_remover.TryElideCopy(
                 instruction, &region_analysis_cost_now,
-                insert_post_scheduling_control_dependencies)) {
+                insert_post_scheduling_control_dependencies,
+                should_skip_removal_)) {
           changed = true;
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(

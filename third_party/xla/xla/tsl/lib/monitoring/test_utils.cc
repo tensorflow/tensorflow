@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/errors.h"
@@ -49,10 +51,10 @@ absl::StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
 
   if (!absl::c_equal(histogram_proto.bucket_limit(),
                      other.histogram_proto_.bucket_limit())) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Subtracting a histogram with different buckets. Left: [",
         absl::StrJoin(histogram_proto.bucket_limit(), ", "), "], right: [",
-        absl::StrJoin(other.histogram_proto_.bucket_limit(), ", "), "].");
+        absl::StrJoin(other.histogram_proto_.bucket_limit(), ", "), "]."));
   }
 
   histogram_proto.set_num(histogram_proto.num() - other.histogram_proto_.num());
@@ -69,10 +71,10 @@ absl::StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
       absl::c_all_of(histogram_proto.bucket(),
                      [](const double num) { return num >= 0; });
   if (!histogram_is_valid) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Failed to subtract a histogram by a larger histogram. Left operand: ",
         histogram_proto.ShortDebugString(),
-        ", right operand: ", other.histogram_proto_.ShortDebugString());
+        ", right operand: ", other.histogram_proto_.ShortDebugString()));
   }
   return Histogram(histogram_proto);
 }

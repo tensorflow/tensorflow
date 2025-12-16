@@ -276,24 +276,22 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
           [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-            std::string kernel_name = GetSanitizedUniqueName(
-                ir_emitter_context, std::string{fusion.name()});
+            std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
+                std::string(fusion.name()));
             if (ir_emitter_context.emit_kernels()) {
               mlir_context.appendDialectRegistry(GetDialectRegistry());
               mlir_context.loadAllAvailableDialects();
               TF_ASSIGN_OR_RETURN(
                   module,
                   CreateLLVMModule(
-                      mlir_context,
-                      ir_emitter_context.llvm_module()->getContext(),
+                      mlir_context, *ir_emitter_context.llvm_context(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
               auto* kernel_func = module->getFunction(kernel_name);
               AddRanges(kernel_func, launch_dims, module.get());
 
-              auto* target = ir_emitter_context.llvm_module();
-              module->setDataLayout(target->getDataLayout());
-              module->setTargetTriple(target->getTargetTriple());
+              module->setDataLayout(ir_emitter_context.data_layout());
+              module->setTargetTriple(ir_emitter_context.target_triple());
 
               llvm::IRBuilder<> builder(module->getContext());
               AnnotateFunctionAsGpuKernel(module.get(), kernel_func, &builder);

@@ -49,8 +49,8 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -915,10 +915,9 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
       // MIOpen requires arrays of ints.
       std::vector<int> strides(nd);
       std::vector<int> dims(nd);
-      std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                     &CheckedNarrowing<int64_t, int>);
-      std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                     &CheckedNarrowing<int64_t, int>);
+      absl::c_transform(strides64, strides.begin(),
+                        &CheckedNarrowing<int64_t, int>);
+      absl::c_transform(dims64, dims.begin(), &CheckedNarrowing<int64_t, int>);
       status = wrap::miopenSetTensorDescriptor(obj.handle_, data_type, nd,
                                                dims.data(), strides.data());
 #endif
@@ -1032,15 +1031,15 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
   // MIOpen requires arrays of ints.
   std::vector<int> strides(convolution_descriptor.ndims());
   std::vector<int> padding(convolution_descriptor.ndims());
-  std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(strides64, strides.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(padding64, padding.begin(),
+                    &CheckedNarrowing<int64_t, int>);
 
   std::vector<int> upscale(convolution_descriptor.ndims());
   const auto& dilations64 = convolution_descriptor.dilations();
-  std::transform(dilations64.cbegin(), dilations64.cend(), upscale.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(dilations64, upscale.begin(),
+                    &CheckedNarrowing<int64_t, int>);
 
   status = wrap::miopenInitConvolutionNdDescriptor(
       obj.handle_, convolution_descriptor.ndims(), padding.data(),
@@ -1089,12 +1088,11 @@ absl::StatusOr<ScopedPoolingDescriptor> scope(
   std::vector<int> shape(nd);
   std::vector<int> padding(nd);
   std::vector<int> strides(nd);
-  std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
-                 &CheckedNarrowing<int64_t, int>);
-  std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(strides64, strides.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(padding64, padding.begin(),
+                    &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(shape64, shape.begin(), &CheckedNarrowing<int64_t, int>);
 
   status = wrap::miopenSetNdPoolingDescriptor(
       obj.handle_,
@@ -2058,7 +2056,7 @@ class MIOpenDropoutDescriptor {
     }
 
     if (dropout > 0.0f) {
-      DeviceMemory<uint8_t> state_memory;
+      DeviceAddress<uint8_t> state_memory;
       if (state_allocator) {
         size_t state_sizes_in_bytes = 0;
         status = wrap::miopenDropoutGetStatesSize(miopen_handle,
@@ -2337,17 +2335,17 @@ template <class T>
 bool ExtractAndCheckRnnForward(
     const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<T>& input_data,
+    const DeviceAddress<T>& input_data,
     const MIOpenRnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<T>& input_h_data,
+    const DeviceAddress<T>& input_h_data,
     const MIOpenRnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<T>& input_c_data, const DeviceMemory<T>& params,
+    const DeviceAddress<T>& input_c_data, const DeviceAddress<T>& params,
     const MIOpenRnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<T>& output_data,
+    const DeviceAddress<T>& output_data,
     const MIOpenRnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<T>& output_h_data,
+    const DeviceAddress<T>& output_h_data,
     const MIOpenRnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<T>& output_c_data, RnnModelDims* model_dims) {
+    const DeviceAddress<T>& output_c_data, RnnModelDims* model_dims) {
   // extract model parameters
   model_dims->num_layers = rnn_desc.num_layers();
   model_dims->batch_size = input_desc.batch_size();
@@ -2414,7 +2412,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
                         const MIOpenRnnDescriptor& rnn_desc,
                         const MIOpenRnnSequenceTensorDescriptor& input_desc,
                         ScratchAllocator* workspace_allocator,
-                        DeviceMemory<uint8_t>* workspace) {
+                        DeviceAddress<uint8_t>* workspace) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
   auto status = wrap::miopenGetRNNWorkspaceSize(
@@ -2438,7 +2436,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
       return false;
     }
   } else {
-    *workspace = DeviceMemory<uint8_t>();
+    *workspace = DeviceAddress<uint8_t>();
   }
   return true;
 }
@@ -2449,17 +2447,17 @@ template <class T>
 absl::Status MIOpenSupport::DoRnnForwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<T>& input_data,
+    const DeviceAddress<T>& input_data,
     const MIOpenRnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<T>& input_h_data,
+    const DeviceAddress<T>& input_h_data,
     const MIOpenRnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<T>& input_c_data, const DeviceMemory<T>& params,
+    const DeviceAddress<T>& input_c_data, const DeviceAddress<T>& params,
     const MIOpenRnnSequenceTensorDescriptor& output_desc,
-    DeviceMemory<T>* output_data,
+    DeviceAddress<T>* output_data,
     const MIOpenRnnStateTensorDescriptor& output_h_desc,
-    DeviceMemory<T>* output_h_data,
+    DeviceAddress<T>* output_h_data,
     const MIOpenRnnStateTensorDescriptor& output_c_desc,
-    DeviceMemory<T>* output_c_data, bool is_training,
+    DeviceAddress<T>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
@@ -2485,7 +2483,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
   }
 
   // create the workspace
-  DeviceMemory<uint8_t> workspace;
+  DeviceAddress<uint8_t> workspace;
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
@@ -2494,7 +2492,7 @@ absl::Status MIOpenSupport::DoRnnForwardImpl(
 
   // query the reserve space size
   // allocate the reserve space
-  DeviceMemory<uint8_t> reserve_space;
+  DeviceAddress<uint8_t> reserve_space;
   if (is_training) {
     size_t reserve_space_size_in_bytes = 0;
     auto status = wrap::miopenGetRNNTrainingReserveSize(
@@ -2581,25 +2579,25 @@ template <class T>
 absl::Status MIOpenSupport::DoRnnBackwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<T>& input_data,
+    const DeviceAddress<T>& input_data,
     const MIOpenRnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<T>& input_h_data,
+    const DeviceAddress<T>& input_h_data,
     const MIOpenRnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<T>& input_c_data, const DeviceMemory<T>& params,
+    const DeviceAddress<T>& input_c_data, const DeviceAddress<T>& params,
     const MIOpenRnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<T>& output_data,
+    const DeviceAddress<T>& output_data,
     const MIOpenRnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<T>& output_h_data,
+    const DeviceAddress<T>& output_h_data,
     const MIOpenRnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<T>& output_c_data,
-    const DeviceMemory<T>& output_backprop_data,
-    const DeviceMemory<T>& output_h_backprop_data,
-    const DeviceMemory<T>& output_c_backprop_data,
-    DeviceMemory<T>* input_backprop_data,
-    DeviceMemory<T>* input_h_backprop_data,
-    DeviceMemory<T>* input_c_backprop_data,
-    DeviceMemory<T>* params_backprop_data,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    const DeviceAddress<T>& output_c_data,
+    const DeviceAddress<T>& output_backprop_data,
+    const DeviceAddress<T>& output_h_backprop_data,
+    const DeviceAddress<T>& output_c_backprop_data,
+    DeviceAddress<T>* input_backprop_data,
+    DeviceAddress<T>* input_h_backprop_data,
+    DeviceAddress<T>* input_c_backprop_data,
+    DeviceAddress<T>* params_backprop_data,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   // extract model parameters
@@ -2623,7 +2621,7 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   }
 
   // create the workspace
-  DeviceMemory<uint8_t> workspace;
+  DeviceAddress<uint8_t> workspace;
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
@@ -2800,7 +2798,7 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
-    DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
+    DeviceAddress<uint8_t>* scratch_memory, int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2827,7 +2825,7 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
         "Failed to determine scratch memory size for MIOpen CTC Loss");
   }
 
-  *scratch_memory = DeviceMemory<uint8_t>();
+  *scratch_memory = DeviceAddress<uint8_t>();
 
   // Allocate the workspace.
   if (workspace_size_in_bytes != 0) {
@@ -2857,12 +2855,12 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
 
 absl::Status MIOpenSupport::DoCtcLossImpl(
     Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
-    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+    const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
-    absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
+    absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
     const MIOpenRnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
+    DeviceAddressBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
+    DeviceAddress<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2888,11 +2886,11 @@ absl::Status MIOpenSupport::DoCtcLossImpl(
 absl::Status MIOpenSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
-    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+    const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
-    absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
+    absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8_t> scratch_memory,
+    DeviceAddressBase grads_data, DeviceAddress<uint8_t> scratch_memory,
     int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
@@ -2981,19 +2979,19 @@ MIOpenSupport::CreateRnnStateTensorDescriptor(int num_layer, int batch_size,
 bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<Eigen::half>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<Eigen::half>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<Eigen::half>& input_h_data,
+    const DeviceAddress<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<Eigen::half>& input_c_data,
-    const DeviceMemory<Eigen::half>& params,
+    const DeviceAddress<Eigen::half>& input_c_data,
+    const DeviceAddress<Eigen::half>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    DeviceMemory<Eigen::half>* output_data,
+    DeviceAddress<Eigen::half>* output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    DeviceMemory<Eigen::half>* output_h_data,
+    DeviceAddress<Eigen::half>* output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    DeviceMemory<Eigen::half>* output_c_data, bool is_training,
+    DeviceAddress<Eigen::half>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
@@ -3025,18 +3023,19 @@ bool MIOpenSupport::DoRnnForward(
 bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<float>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<float>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<float>& input_h_data,
+    const DeviceAddress<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<float>& input_c_data, const DeviceMemory<float>& params,
+    const DeviceAddress<float>& input_c_data,
+    const DeviceAddress<float>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    DeviceMemory<float>* output_data,
+    DeviceAddress<float>* output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    DeviceMemory<float>* output_h_data,
+    DeviceAddress<float>* output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    DeviceMemory<float>* output_c_data, bool is_training,
+    DeviceAddress<float>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
@@ -3068,19 +3067,19 @@ bool MIOpenSupport::DoRnnForward(
 bool MIOpenSupport::DoRnnForward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<double>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<double>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<double>& input_h_data,
+    const DeviceAddress<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<double>& input_c_data,
-    const DeviceMemory<double>& params,
+    const DeviceAddress<double>& input_c_data,
+    const DeviceAddress<double>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    DeviceMemory<double>* output_data,
+    DeviceAddress<double>* output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    DeviceMemory<double>* output_h_data,
+    DeviceAddress<double>* output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    DeviceMemory<double>* output_c_data, bool is_training,
+    DeviceAddress<double>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
@@ -3091,27 +3090,27 @@ bool MIOpenSupport::DoRnnForward(
 bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<Eigen::half>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<Eigen::half>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<Eigen::half>& input_h_data,
+    const DeviceAddress<Eigen::half>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<Eigen::half>& input_c_data,
-    const DeviceMemory<Eigen::half>& params,
+    const DeviceAddress<Eigen::half>& input_c_data,
+    const DeviceAddress<Eigen::half>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<Eigen::half>& output_data,
+    const DeviceAddress<Eigen::half>& output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<Eigen::half>& output_h_data,
+    const DeviceAddress<Eigen::half>& output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<Eigen::half>& output_c_data,
-    const DeviceMemory<Eigen::half>& output_backprop_data,
-    const DeviceMemory<Eigen::half>& output_h_backprop_data,
-    const DeviceMemory<Eigen::half>& output_c_backprop_data,
-    DeviceMemory<Eigen::half>* input_backprop_data,
-    DeviceMemory<Eigen::half>* input_h_backprop_data,
-    DeviceMemory<Eigen::half>* input_c_backprop_data,
-    DeviceMemory<Eigen::half>* params_backprop_data,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    const DeviceAddress<Eigen::half>& output_c_data,
+    const DeviceAddress<Eigen::half>& output_backprop_data,
+    const DeviceAddress<Eigen::half>& output_h_backprop_data,
+    const DeviceAddress<Eigen::half>& output_c_backprop_data,
+    DeviceAddress<Eigen::half>* input_backprop_data,
+    DeviceAddress<Eigen::half>* input_h_backprop_data,
+    DeviceAddress<Eigen::half>* input_c_backprop_data,
+    DeviceAddress<Eigen::half>* params_backprop_data,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -3145,26 +3144,27 @@ bool MIOpenSupport::DoRnnBackward(
 bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<float>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<float>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<float>& input_h_data,
+    const DeviceAddress<float>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<float>& input_c_data, const DeviceMemory<float>& params,
+    const DeviceAddress<float>& input_c_data,
+    const DeviceAddress<float>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<float>& output_data,
+    const DeviceAddress<float>& output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<float>& output_h_data,
+    const DeviceAddress<float>& output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<float>& output_c_data,
-    const DeviceMemory<float>& output_backprop_data,
-    const DeviceMemory<float>& output_h_backprop_data,
-    const DeviceMemory<float>& output_c_backprop_data,
-    DeviceMemory<float>* input_backprop_data,
-    DeviceMemory<float>* input_h_backprop_data,
-    DeviceMemory<float>* input_c_backprop_data,
-    DeviceMemory<float>* params_backprop_data,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    const DeviceAddress<float>& output_c_data,
+    const DeviceAddress<float>& output_backprop_data,
+    const DeviceAddress<float>& output_h_backprop_data,
+    const DeviceAddress<float>& output_c_backprop_data,
+    DeviceAddress<float>* input_backprop_data,
+    DeviceAddress<float>* input_h_backprop_data,
+    DeviceAddress<float>* input_c_backprop_data,
+    DeviceAddress<float>* params_backprop_data,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -3198,27 +3198,27 @@ bool MIOpenSupport::DoRnnBackward(
 bool MIOpenSupport::DoRnnBackward(
     Stream* stream, const dnn::RnnDescriptor& rnn_desc,
     const dnn::RnnSequenceTensorDescriptor& input_desc,
-    const DeviceMemory<double>& input_data,
-    const DeviceMemory<int>& seq_lengths_data,
+    const DeviceAddress<double>& input_data,
+    const DeviceAddress<int>& seq_lengths_data,
     const dnn::RnnStateTensorDescriptor& input_h_desc,
-    const DeviceMemory<double>& input_h_data,
+    const DeviceAddress<double>& input_h_data,
     const dnn::RnnStateTensorDescriptor& input_c_desc,
-    const DeviceMemory<double>& input_c_data,
-    const DeviceMemory<double>& params,
+    const DeviceAddress<double>& input_c_data,
+    const DeviceAddress<double>& params,
     const dnn::RnnSequenceTensorDescriptor& output_desc,
-    const DeviceMemory<double>& output_data,
+    const DeviceAddress<double>& output_data,
     const dnn::RnnStateTensorDescriptor& output_h_desc,
-    const DeviceMemory<double>& output_h_data,
+    const DeviceAddress<double>& output_h_data,
     const dnn::RnnStateTensorDescriptor& output_c_desc,
-    const DeviceMemory<double>& output_c_data,
-    const DeviceMemory<double>& output_backprop_data,
-    const DeviceMemory<double>& output_h_backprop_data,
-    const DeviceMemory<double>& output_c_backprop_data,
-    DeviceMemory<double>* input_backprop_data,
-    DeviceMemory<double>* input_h_backprop_data,
-    DeviceMemory<double>* input_c_backprop_data,
-    DeviceMemory<double>* params_backprop_data,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    const DeviceAddress<double>& output_c_data,
+    const DeviceAddress<double>& output_backprop_data,
+    const DeviceAddress<double>& output_h_backprop_data,
+    const DeviceAddress<double>& output_c_backprop_data,
+    DeviceAddress<double>* input_backprop_data,
+    DeviceAddress<double>* input_h_backprop_data,
+    DeviceAddress<double>* input_c_backprop_data,
+    DeviceAddress<double>* params_backprop_data,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
   LOG(ERROR) << "miopen does not support half type RNN bwd yet";
@@ -3238,7 +3238,7 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
   auto* mac = static_cast<MIOpenAllocatorContext*>(ctx);
   auto allocated = mac->scratch_allocator_->AllocateBytes(size_in_bytes);
 
-  DeviceMemory<uint8_t> scratch;
+  DeviceAddress<uint8_t> scratch;
   if (allocated.ok()) {
     scratch = allocated.value();
     return scratch.opaque();
@@ -3250,53 +3250,6 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
 void MIOpenDeallocatorCallback(void* ctx, void* mem) {
   // Don't need deallocator since the TensorFlow heap will automatically
   // reclaim the memory
-}
-
-absl::Status MIOpenSupport::DoPrepareForConvolution(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8_t>* scratch_memory) {
-  std::optional<dnn::AlgorithmDesc> input_algo_desc =
-      algorithm_config.algorithm();
-
-  assert(input_algo_desc.has_value());
-
-  // An algorithm has been specified.
-  *algorithm_desc = *input_algo_desc;
-
-  assert(algorithm_config.scratch_size().has_value());
-
-  size_t scratch_memory_size = *(algorithm_config.scratch_size());
-
-  // allocate scratch memory
-  if (scratch_memory_size != 0) {
-    if (scratch_allocator == nullptr) {
-      return absl::InternalError(
-          "An allocator must be specified when scratch memory is needed");
-    }
-    auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
-    if (allocated.ok()) {
-      *scratch_memory = allocated.value();
-    } else {
-      LOG(ERROR)
-          << "Failed to allocate scratch memory - "
-          << allocated.status().message() << "\n"
-          << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
-             "larger number (e.g. 8192) to increase the max memory limit.\n"
-          << "\tIncreasing the max memory limit might help resolve this "
-             "error";
-      return absl::InternalError(absl::StrCat(
-          "Failed to allocate scratch memory of size: ", scratch_memory_size));
-    }
-  }
-
-  return absl::OkStatus();
 }
 
 class RocmConvRunner : public dnn::ConvRunner {
@@ -3341,10 +3294,10 @@ class RocmConvRunner : public dnn::ConvRunner {
 
   absl::Status operator()(Stream* stream,
                           dnn::ProfileResult* output_profile_result,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase output_data) const override {
+                          DeviceAddressBase scratch_memory,
+                          DeviceAddressBase input_data,
+                          DeviceAddressBase filter_data,
+                          DeviceAddressBase output_data) const override {
     auto miopen = miopen_->GetHandle(parent_, stream);
     // Alpha is the scaling factor for input.
     float alpha = 1.0;
@@ -3459,33 +3412,14 @@ class RocmConvRunner : public dnn::ConvRunner {
   ScopedConvolutionDescriptor conv_desc_;
 };
 
-absl::Status MIOpenSupport::DoConvolve(
-    dnn::ConvolutionKind kind, dnn::DataType element_type,
-    dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
-    dnn::ProfileResult* output_profile_result) {
-  TF_ASSIGN_OR_RETURN(
-      auto runner,
-      ConvolveRunnerFromDesc(stream, algorithm_desc, kind, element_type,
-                             output_type, input_descriptor, filter_descriptor,
-                             output_descriptor, convolution_descriptor));
-
-  return (*runner)(stream, output_profile_result, scratch_memory, input_data,
-                   filter_data, output_data);
-}
-
 absl::Status MIOpenSupport::GetConvolveRunners(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
     ScratchAllocator* scratch_allocator, const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
@@ -3541,10 +3475,11 @@ MIOpenSupport::ConvolveRunnerFromDesc(
 bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
@@ -3566,10 +3501,11 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithms(
 absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
@@ -3779,10 +3715,11 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
 absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     dnn::ConvolutionKind kind, dnn::DataType input_type,
     dnn::DataType output_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::BatchDescriptor& input_descriptor, DeviceAddressBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
+    DeviceAddressBase filter_data,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     ScratchAllocator* scratch_allocator,
     std::vector<dnn::ProfileResult>* out_algorithms) {
@@ -3854,7 +3791,7 @@ absl::Status MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
   }
 
   // allocate scratch memory
-  DeviceMemory<uint8_t> scratch_memory;
+  DeviceAddress<uint8_t> scratch_memory;
   if (scratch_memory_size != 0) {
     if (scratch_allocator == nullptr) {
       return absl::InternalError(
@@ -3961,17 +3898,17 @@ bool MIOpenSupport::GetRnnAlgorithms(
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
-    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
-    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
-    const DeviceMemory<float>& estimated_mean,
-    const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<Eigen::bfloat16>& side_input,
+    Stream* stream, const DeviceAddress<Eigen::bfloat16>& x,
+    const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+    const DeviceAddress<float>& estimated_mean,
+    const DeviceAddress<float>& estimated_variance,
+    const DeviceAddress<Eigen::bfloat16>& side_input,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
-    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    dnn::ActivationMode activation_mode, DeviceAddress<Eigen::bfloat16>* y,
+    DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
+    DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
@@ -3984,17 +3921,17 @@ bool MIOpenSupport::DoBatchNormalizationForward(
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
-    Stream* stream, const DeviceMemory<Eigen::half>& x,
-    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
-    const DeviceMemory<float>& estimated_mean,
-    const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<Eigen::half>& side_input,
+    Stream* stream, const DeviceAddress<Eigen::half>& x,
+    const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+    const DeviceAddress<float>& estimated_mean,
+    const DeviceAddress<float>& estimated_variance,
+    const DeviceAddress<Eigen::half>& side_input,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
-    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    dnn::ActivationMode activation_mode, DeviceAddress<Eigen::half>* y,
+    DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
+    DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
@@ -4007,16 +3944,16 @@ bool MIOpenSupport::DoBatchNormalizationForward(
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
-    Stream* stream, const DeviceMemory<float>& x,
-    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
-    const DeviceMemory<float>& estimated_mean,
-    const DeviceMemory<float>& estimated_variance,
-    const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
+    Stream* stream, const DeviceAddress<float>& x,
+    const DeviceAddress<float>& scale, const DeviceAddress<float>& offset,
+    const DeviceAddress<float>& estimated_mean,
+    const DeviceAddress<float>& estimated_variance,
+    const DeviceAddress<float>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
-    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
-    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    dnn::ActivationMode activation_mode, DeviceAddress<float>* y,
+    DeviceAddress<float>* batch_mean, DeviceAddress<float>* batch_var,
+    DeviceAddress<float>* saved_mean, DeviceAddress<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<float, float>(
@@ -4031,16 +3968,16 @@ bool MIOpenSupport::DoBatchNormalizationForward(
 template <class T, class U>
 absl::Status MIOpenSupport::DoBatchNormalizationForwardImpl(
     Stream* stream, dnn::DataType input_data_type,
-    dnn::DataType scale_data_type, const DeviceMemory<T>& x,
-    const DeviceMemory<U>& scale, const DeviceMemory<U>& offset,
-    const DeviceMemory<U>& estimated_mean,
-    const DeviceMemory<U>& estimated_variance,
-    const DeviceMemory<T>& side_input, const dnn::BatchDescriptor& x_desc,
+    dnn::DataType scale_data_type, const DeviceAddress<T>& x,
+    const DeviceAddress<U>& scale, const DeviceAddress<U>& offset,
+    const DeviceAddress<U>& estimated_mean,
+    const DeviceAddress<U>& estimated_variance,
+    const DeviceAddress<T>& side_input, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     const double exponential_average_factor,
-    dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
-    DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
-    DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
+    dnn::ActivationMode activation_mode, DeviceAddress<T>* y,
+    DeviceAddress<U>* batch_mean, DeviceAddress<U>* batch_var,
+    DeviceAddress<U>* saved_mean, DeviceAddress<U>* saved_inv_var,
     bool is_training) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
@@ -4079,17 +4016,17 @@ absl::Status MIOpenSupport::DoBatchNormalizationForwardImpl(
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
-    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
-    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
-    const dnn::BatchDescriptor& x_desc,
+    Stream* stream, const DeviceAddress<Eigen::bfloat16>& y_backprop,
+    const DeviceAddress<Eigen::bfloat16>& x, const DeviceAddress<float>& scale,
+    const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+    const DeviceAddress<float>& inv_var,
+    const DeviceAddress<Eigen::bfloat16>& y, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     dnn::ActivationMode activation_mode,
-    DeviceMemory<Eigen::bfloat16>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    DeviceAddress<Eigen::bfloat16>* x_backprop,
+    DeviceAddress<float>* scale_backprop, DeviceAddress<float>* offset_backprop,
+    DeviceAddress<Eigen::bfloat16>* side_input_backprop,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::bfloat16, float>(
              stream, miopenBFloat16, miopenFloat, y_backprop, x, scale, mean,
@@ -4099,16 +4036,16 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
-    Stream* stream, const DeviceMemory<Eigen::half>& y_backprop,
-    const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::half>& y,
+    Stream* stream, const DeviceAddress<Eigen::half>& y_backprop,
+    const DeviceAddress<Eigen::half>& x, const DeviceAddress<float>& scale,
+    const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+    const DeviceAddress<float>& inv_var, const DeviceAddress<Eigen::half>& y,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<Eigen::half>* side_input_backprop,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    dnn::ActivationMode activation_mode, DeviceAddress<Eigen::half>* x_backprop,
+    DeviceAddress<float>* scale_backprop, DeviceAddress<float>* offset_backprop,
+    DeviceAddress<Eigen::half>* side_input_backprop,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<Eigen::half, float>(
              stream, miopenHalf, miopenFloat, y_backprop, x, scale, mean,
@@ -4118,16 +4055,16 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
-    Stream* stream, const DeviceMemory<float>& y_backprop,
-    const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
-    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
-    const DeviceMemory<float>& variance, const DeviceMemory<float>& y,
+    Stream* stream, const DeviceAddress<float>& y_backprop,
+    const DeviceAddress<float>& x, const DeviceAddress<float>& scale,
+    const DeviceAddress<float>& offset, const DeviceAddress<float>& mean,
+    const DeviceAddress<float>& variance, const DeviceAddress<float>& y,
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* x_backprop,
-    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
-    DeviceMemory<float>* side_input_backprop,
-    DeviceMemory<uint8_t>* reserve_space_data,
+    dnn::ActivationMode activation_mode, DeviceAddress<float>* x_backprop,
+    DeviceAddress<float>* scale_backprop, DeviceAddress<float>* offset_backprop,
+    DeviceAddress<float>* side_input_backprop,
+    DeviceAddress<uint8_t>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationBackwardImpl<float, float>(
              stream, miopenFloat, miopenFloat, y_backprop, x, scale, mean,
@@ -4139,12 +4076,12 @@ bool MIOpenSupport::DoBatchNormalizationBackward(
 template <class T, class U>
 absl::Status MIOpenSupport::DoBatchNormalizationBackwardImpl(
     Stream* stream, int miopen_input_type, int miopen_scale_type,
-    const DeviceMemory<T>& y_backprop, const DeviceMemory<T>& x,
-    const DeviceMemory<U>& scale, const DeviceMemory<U>& mean,
-    const DeviceMemory<U>& variance, const dnn::BatchDescriptor& x_desc,
+    const DeviceAddress<T>& y_backprop, const DeviceAddress<T>& x,
+    const DeviceAddress<U>& scale, const DeviceAddress<U>& mean,
+    const DeviceAddress<U>& variance, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
-    DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
-    DeviceMemory<U>* offset_backprop) {
+    DeviceAddress<T>* x_backprop, DeviceAddress<U>* scale_backprop,
+    DeviceAddress<U>* offset_backprop) {
   auto miopen = miopen_->GetHandle(parent_, stream);
   TF_ASSIGN_OR_RETURN(
       auto x_descriptor,
@@ -4181,9 +4118,9 @@ void launchInplaceBiasActivation(hipStream_t stream, void* c_data,
 
 class ROCmFusedMatmulRunner : public dnn::FusedMatmulRunner {
   template <typename T>
-  absl::Status gemm(Stream*, DeviceMemoryBase /* a_data */,
-                    DeviceMemoryBase /* b_data */,
-                    DeviceMemoryBase /* c_data */) const;
+  absl::Status gemm(Stream*, DeviceAddressBase /* a_data */,
+                    DeviceAddressBase /* b_data */,
+                    DeviceAddressBase /* c_data */) const;
 
   Stream* _stream;
   dnn::DataType _input_type, _bias_type, _output_type;
@@ -4199,11 +4136,11 @@ class ROCmFusedMatmulRunner : public dnn::FusedMatmulRunner {
   absl::StatusOr<AlgorithmDesc> ToAlgorithmDesc() const override;
   // Launch the operation, with the signature determined by `Sig`.
   absl::Status operator()(Stream*, dnn::ProfileResult*,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase /* a_data */,
-                          DeviceMemoryBase /* b_data */,
-                          DeviceMemoryBase /* bias_data */,
-                          DeviceMemoryBase /* c_data */) const override;
+                          DeviceAddressBase scratch_memory,
+                          DeviceAddressBase /* a_data */,
+                          DeviceAddressBase /* b_data */,
+                          DeviceAddressBase /* bias_data */,
+                          DeviceAddressBase /* c_data */) const override;
 
   ROCmFusedMatmulRunner(Stream* stream, dnn::DataType input_type,
                         dnn::DataType bias_type, dnn::DataType output_type,
@@ -4253,9 +4190,9 @@ std::string ROCmFusedMatmulRunner::ToString() const {
 
 template <typename T>
 absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
-                                         DeviceMemoryBase a_data,
-                                         DeviceMemoryBase b_data,
-                                         DeviceMemoryBase c_data) const {
+                                         DeviceAddressBase a_data,
+                                         DeviceAddressBase b_data,
+                                         DeviceAddressBase c_data) const {
   blas::Transpose ta =
       _trans_a ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
   blas::Transpose tb =
@@ -4266,16 +4203,16 @@ absl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
     return absl::InternalError("No Blas support for stream");
   }
   return blas->BlasGemm<T, T>(stream, tb, ta, _n, _m, _k,
-                              static_cast<DeviceMemory<T>>(b_data), _ldb,
-                              static_cast<DeviceMemory<T>>(a_data), _lda,
-                              static_cast<DeviceMemory<T>*>(&c_data), _ldc,
+                              static_cast<DeviceAddress<T>>(b_data), _ldb,
+                              static_cast<DeviceAddress<T>>(a_data), _lda,
+                              static_cast<DeviceAddress<T>*>(&c_data), _ldc,
                               EngineOptions{}, blas::CallContext::kNone);
 }
 
 template <typename T, typename Tbias = T>
 absl::Status InplaceBiasActivation(
-    Stream* stream, DeviceMemoryBase c_data, DeviceMemoryBase bias_data,
-    DeviceMemoryBase side_input_data, float side_input_scale,
+    Stream* stream, DeviceAddressBase c_data, DeviceAddressBase bias_data,
+    DeviceAddressBase side_input_data, float side_input_scale,
     dnn::ActivationMode activation_mode, uint64_t batch, uint64_t m, uint64_t n,
     int64_t ldc, float param, bool transpose = false) {
   typedef typename std::conditional<
@@ -4296,17 +4233,17 @@ absl::Status InplaceBiasActivation(
 }
 
 template <typename Ta, typename Tb, typename... Args>
-absl::Status InplaceBiasActivation(Stream* stream, DeviceMemory<Ta> c_data,
-                                   DeviceMemory<Tb> bias_data, Args... args) {
-  return InplaceBiasActivation<Ta, Tb>(stream, DeviceMemoryBase(c_data),
-                                       DeviceMemoryBase(bias_data), args...);
+absl::Status InplaceBiasActivation(Stream* stream, DeviceAddress<Ta> c_data,
+                                   DeviceAddress<Tb> bias_data, Args... args) {
+  return InplaceBiasActivation<Ta, Tb>(stream, DeviceAddressBase(c_data),
+                                       DeviceAddressBase(bias_data), args...);
 }
 
 // Launch the operation, with the signature determined by `Sig`.
 absl::Status ROCmFusedMatmulRunner::operator()(
-    Stream* stream, dnn::ProfileResult* prof, DeviceMemoryBase scratch_memory,
-    DeviceMemoryBase a_data, DeviceMemoryBase b_data,
-    DeviceMemoryBase bias_data, DeviceMemoryBase c_data) const {
+    Stream* stream, dnn::ProfileResult* prof, DeviceAddressBase scratch_memory,
+    DeviceAddressBase a_data, DeviceAddressBase b_data,
+    DeviceAddressBase bias_data, DeviceAddressBase c_data) const {
   absl::Status status;
   if (_input_type == dnn::DataType::kFloat)
     status = gemm<float>(stream, a_data, b_data, c_data);
@@ -4321,7 +4258,7 @@ absl::Status ROCmFusedMatmulRunner::operator()(
 
   if (!status.ok()) return status;
 
-  DeviceMemory<uint8_t> side_input;
+  DeviceAddress<uint8_t> side_input;
   if (_input_type == dnn::DataType::kFloat)
     return InplaceBiasActivation<float>(stream, c_data, bias_data, side_input,
                                         0.0f, _activation_mode, 1, _m, _n, _ldc,
@@ -4371,15 +4308,15 @@ absl::Status MIOpenSupport::DoFusedConvolve(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
     const dnn::BatchDescriptor& conv_input_descriptor,
-    DeviceMemoryBase conv_input_data, double conv_input_scale,
+    DeviceAddressBase conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data,
+    DeviceAddressBase filter_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor,
-    DeviceMemoryBase side_input_data, double side_input_scale,
-    const dnn::BatchDescriptor& bias_descriptor, DeviceMemoryBase biases,
+    DeviceAddressBase side_input_data, double side_input_scale,
+    const dnn::BatchDescriptor& bias_descriptor, DeviceAddressBase biases,
     dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor, DeviceMemoryBase output_data,
-    ScratchAllocator* scratch_allocator,
+    const dnn::BatchDescriptor& output_descriptor,
+    DeviceAddressBase output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   return absl::UnimplementedError("fused convolve not implemented yet");
@@ -4388,10 +4325,10 @@ absl::Status MIOpenSupport::DoFusedConvolve(
 bool MIOpenSupport::DoTransformTensor(Stream* stream,
                                       const dnn::BatchDescriptor& input_desc,
                                       dnn::DataType input_type,
-                                      const DeviceMemoryBase& input_data,
+                                      const DeviceAddressBase& input_data,
                                       const dnn::BatchDescriptor& output_desc,
                                       dnn::DataType output_type, float scale,
-                                      DeviceMemoryBase* output_data) {
+                                      DeviceAddressBase* output_data) {
   // ROCM TODO implement this operation
   LOG(ERROR) << "transform tensor not implemented yet";
   return false;
@@ -4400,9 +4337,9 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
 absl::Status MIOpenSupport::DoPoolForward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
-    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
-    ScratchAllocator* workspace_allocator) {
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceAddressBase output_data, ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
     return absl::InvalidArgumentError(
         "MIOpen does not support pooling for double type yet");
@@ -4500,7 +4437,7 @@ void PoolingWorkspaceCache::insert(
     const void* p, const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions, int _type,
-    ScopedDeviceMemory<uint8_t>& workspace, size_t wsp_size,
+    ScopedDeviceAddress<uint8_t>& workspace, size_t wsp_size,
     hipStream_t hip_stream) {
   PoolingWorkspaceDescriptor* desc = nullptr;
   auto it = cache.find(p);
@@ -4553,10 +4490,10 @@ void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
 absl::Status MIOpenSupport::DoPoolBackward(
     dnn::DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
-    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
-    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
-    ScratchAllocator* workspace_allocator) {
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceAddressBase output_data, DeviceAddressBase input_diff_data,
+    DeviceAddressBase output_diff_data, ScratchAllocator* workspace_allocator) {
   if (element_type == dnn::DataType::kDouble) {
     return absl::InvalidArgumentError(
         "MIOpen does not support pooling for double type yet");
@@ -4577,7 +4514,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
   TF_ASSIGN_OR_RETURN(auto pooling_desc, scope(pooling_dimensions));
 
   uint8_t* workspace_ptr = nullptr;
-  DeviceMemory<uint8_t> workspace;
+  DeviceAddress<uint8_t> workspace;
   PoolingWorkspaceDescriptor* pdesc = nullptr;
 
   size_t workspace_size_in_bytes = 0;
@@ -4609,7 +4546,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
         return absl::InternalError(
             "Failed to allocate backward pooling workspace");
       }
-      DeviceMemory<uint8_t> dest2;  // duplicated dest from forward:
+      DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
       int64_t dest2_size = 0;
 
       // miopen requires the strides and dims to be ordered as BDYX.
@@ -4676,7 +4613,7 @@ absl::Status MIOpenSupport::DoPoolBackward(
 bool MIOpenSupport::DoNormalizeWithDimensions(
     Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
     const dnn::BatchDescriptor& dimensions,
-    const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
+    const DeviceAddress<float>& input_data, DeviceAddress<float>* output_data) {
   // Check for unsupported modes.
   if (normalize_descriptor.wrap_around()) {
     LOG(ERROR) << "MIOpen LRN does not support wrap-around mode";
@@ -4711,10 +4648,11 @@ bool MIOpenSupport::DoNormalizeWithDimensions(
 
 bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
-    const dnn::BatchDescriptor& dimensions, const DeviceMemory<float>& raw_data,
-    const DeviceMemory<float>& normalized_data,
-    const DeviceMemory<float>& normalized_variable_gradient,
-    DeviceMemory<float>* raw_variable_gradient,
+    const dnn::BatchDescriptor& dimensions,
+    const DeviceAddress<float>& raw_data,
+    const DeviceAddress<float>& normalized_data,
+    const DeviceAddress<float>& normalized_variable_gradient,
+    DeviceAddress<float>* raw_variable_gradient,
     ScratchAllocator* workspace_allocator) {
   // Check for unsupported modes.
   if (normalize_descriptor.wrap_around()) {
@@ -4734,7 +4672,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   float alpha = 1.0f;
   float beta = 0.0f;
 
-  DeviceMemory<uint8_t> workspace;
+  DeviceAddress<uint8_t> workspace;
   size_t workspace_size_in_bytes = 0;
   auto status =
       wrap::miopenLRNGetWorkSpaceSize(dims.handle(), &workspace_size_in_bytes);
@@ -4755,7 +4693,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     }
   }
 
-  DeviceMemory<uint8_t> dest2;  // duplicated dest from forward:
+  DeviceAddress<uint8_t> dest2;  // duplicated dest from forward:
   int dest2_size = 0;
 
   // miopen requires the strides and dims to be ordered as BDYX.
@@ -4765,8 +4703,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   // miopen does not use strides and must have 4D tensor.
   std::vector<int> dimsint(4);
 
-  std::transform(dims64.cbegin(), dims64.cend(), dimsint.begin(),
-                 &CheckedNarrowing<int64_t, int>);
+  absl::c_transform(dims64, dimsint.begin(), &CheckedNarrowing<int64_t, int>);
 
   dest2_size =
       dimsint[0] * dimsint[1] * dimsint[2] * dimsint[3] * sizeof(float);
@@ -4852,12 +4789,12 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
   }
 
   absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase side_input_data,
-                          DeviceMemoryBase bias_data,
-                          DeviceMemoryBase output_data) const override {
+                          DeviceAddressBase scratch_memory,
+                          DeviceAddressBase input_data,
+                          DeviceAddressBase filter_data,
+                          DeviceAddressBase side_input_data,
+                          DeviceAddressBase bias_data,
+                          DeviceAddressBase output_data) const override {
     VLOG(2) << "RocmFusedConvRunner()";
     if (parent_ != stream->parent()) {
       return absl::InternalError(
@@ -5030,9 +4967,9 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
   absl::Status execute_unfused(
       Stream* stream, dnn::ProfileResult* profile_result,
-      DeviceMemoryBase scratch_memory, DeviceMemoryBase input_data,
-      DeviceMemoryBase filter_data, DeviceMemoryBase side_input_data,
-      DeviceMemoryBase bias_data, DeviceMemoryBase output_data) const {
+      DeviceAddressBase scratch_memory, DeviceAddressBase input_data,
+      DeviceAddressBase filter_data, DeviceAddressBase side_input_data,
+      DeviceAddressBase bias_data, DeviceAddressBase output_data) const {
     auto miopen = miopen_->GetHandle(parent_, stream);
     auto status = wrap::miopenConvolutionForwardImmediate(
         miopen.handle(), filter_.handle(), filter_data.opaque(),
@@ -5075,24 +5012,24 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     absl::Status biasActStatus;
     if (input_type_ == dnn::DataType::kFloat &&
         bias_type_ == dnn::DataType::kFloat)
-      biasActStatus = inplace_call(DeviceMemory<float>(output_data),
-                                   DeviceMemory<float>(bias_data));
+      biasActStatus = inplace_call(DeviceAddress<float>(output_data),
+                                   DeviceAddress<float>(bias_data));
     else if (input_type_ == dnn::DataType::kHalf &&
              bias_type_ == dnn::DataType::kFloat)
-      biasActStatus = inplace_call(DeviceMemory<Eigen::half>(output_data),
-                                   DeviceMemory<float>(bias_data));
+      biasActStatus = inplace_call(DeviceAddress<Eigen::half>(output_data),
+                                   DeviceAddress<float>(bias_data));
     else if (input_type_ == dnn::DataType::kHalf &&
              bias_type_ == dnn::DataType::kHalf)
-      biasActStatus = inplace_call(DeviceMemory<Eigen::half>(output_data),
-                                   DeviceMemory<Eigen::half>(bias_data));
+      biasActStatus = inplace_call(DeviceAddress<Eigen::half>(output_data),
+                                   DeviceAddress<Eigen::half>(bias_data));
     else if (input_type_ == dnn::DataType::kBF16 &&
              bias_type_ == dnn::DataType::kFloat)
-      biasActStatus = inplace_call(DeviceMemory<Eigen::bfloat16>(output_data),
-                                   DeviceMemory<float>(bias_data));
+      biasActStatus = inplace_call(DeviceAddress<Eigen::bfloat16>(output_data),
+                                   DeviceAddress<float>(bias_data));
     else if (input_type_ == dnn::DataType::kBF16 &&
              bias_type_ == dnn::DataType::kBF16)
-      biasActStatus = inplace_call(DeviceMemory<Eigen::bfloat16>(output_data),
-                                   DeviceMemory<Eigen::bfloat16>(bias_data));
+      biasActStatus = inplace_call(DeviceAddress<Eigen::bfloat16>(output_data),
+                                   DeviceAddress<Eigen::bfloat16>(bias_data));
     else
       return absl::InternalError("Unsupported data type");
 

@@ -70,19 +70,6 @@ def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
   ];
 }
 
-def TTXLA_LayoutAttr : TTXLA_Attr<"Layout", [
-    DeclareAttrInterfaceMethods<MemRefLayoutAttrInterface>]> {
-  let mnemonic = "layout";
-  let parameters = (ins "::mlir::DenseI64ArrayAttr":$minor_to_major);
-  let assemblyFormat = "`<` $minor_to_major `>`";
-  let extraClassDeclaration = [{
-    LogicalResult verifyLayout(
-        ArrayRef<int64_t> shape, function_ref<InFlightDiagnostic()> emit_error) const;
-    LogicalResult getStridesAndOffset(
-        ArrayRef<int64_t> shape, SmallVectorImpl<int64_t>& strides, int64_t& offset) const;
-  }];
-}
-
 def TTXLA_ComparatorEnum : I32Enum<"Comparator",
     "A comparison operator for instructions.",
     [

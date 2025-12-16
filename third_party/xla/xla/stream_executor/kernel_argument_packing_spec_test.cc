@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -41,16 +41,16 @@ using ::testing::SizeIs;
 using tsl::proto_testing::EqualsProto;
 using tsl::proto_testing::ParseTextProtoOrDie;
 
-// This function creates a `DeviceMemoryBase` with an opaque pointer that
+// This function creates a `DeviceAddressBase` with an opaque pointer that
 // contains the given value. The size of the device memory is set to 0 since
 // it's unused.
 // Note that this device pointer is not a valid pointer to device memory, it
 // is only used for testing and can't be dereferenced.
-DeviceMemoryBase MakeDevicePointer(uint32_t value) {
+DeviceAddressBase MakeDevicePointer(uint32_t value) {
   // To construct a pointer that works both on 32bit and 64bit platforms and
   // does not invoke undefined behaviour, we first cast our integer to uintptr_t
   // and then cast it to void*.
-  return DeviceMemoryBase(
+  return DeviceAddressBase(
       tsl::safe_reinterpret_cast<void*>(static_cast<uintptr_t>(value)),
       /*size=*/0);
 }
