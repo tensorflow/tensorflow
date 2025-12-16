@@ -308,7 +308,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
                 primitive_util::ByteWidth(on_device_shape.element_type());
             options.dims = on_device_shape.dimensions();
             options.permutation = permutation;
-            options.input_layout = TransposePlan::Striding{byte_strides};
+            options.input_striding = TransposePlan::Striding{byte_strides};
             {
               absl::MutexLock lock(client->transpose_mu_);
               absl::StatusOr<std::shared_ptr<TransposePlan>> t =

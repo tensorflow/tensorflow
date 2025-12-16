@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -682,9 +683,13 @@ int64_t TransposePlan::OutputNumElems() const {
 
 // Parses and validates a tiling specification, and populates `tiling`.
 static absl::Status ParseTilingSpecification(
-    int ndim, absl::Span<int64_t const> tiling_spec,
+    int ndim, const std::optional<TransposePlan::Tiling>& tiling_opt,
     absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
+  if (!tiling_opt) {
+    return absl::OkStatus();
+  }
+  absl::Span<int64_t const> tiling_spec = tiling_opt->tiling;
   if (tiling_spec.size() > ndim) {
     return InvalidArgument(
         "Tiling (%s) must have at most as many dimensions as the array (%d)",
@@ -909,7 +914,15 @@ void TransposePlan::BuildPlanNodes(
 }
 
 absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
-    const Options& o) {
+    Options o) {
+  if (o.input_layout.has_value()) {
+    if (const auto* t = std::get_if<Tiling>(&*o.input_layout)) {
+      o.input_tiling = *t;
+    } else if (const auto* s = std::get_if<Striding>(&*o.input_layout)) {
+      o.input_striding = *s;
+    }
+  }
+
   auto is_negative = [](int64_t d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
@@ -952,68 +965,82 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   plan->original_b_dims_ = Permute(o.dims, o.permutation);
 
   TF_RETURN_IF_ERROR(
-      ParseTilingSpecification(ndim, o.output_tiling.tiling, plan->b_tiling_));
+      ParseTilingSpecification(ndim, o.output_tiling, plan->b_tiling_));
 
-  // Handles strides.
-  if (std::holds_alternative<Striding>(o.input_layout)) {
+  // Temporary vectors to hold un-permuted attributes
+  absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
+
+  // Parse the tile and stride specifications.
+  TF_RETURN_IF_ERROR(
+      ParseTilingSpecification(ndim, o.input_tiling, temp_a_tiling));
+  ComputeStrides(plan->elem_size_in_bytes_, o.dims, temp_a_tiling, temp_lda,
+                 temp_lda_tile);
+
+  // Determine tile (outer) strides
+  absl::InlinedVector<int64_t, 4> input_outer_strides;
+  if (o.input_striding) {
     absl::Span<int64_t const> input_strides_in_bytes =
-        std::get<Striding>(o.input_layout).strides_in_bytes;
+        o.input_striding->strides_in_bytes;
     if (input_strides_in_bytes.size() != o.dims.size()) {
       return InvalidArgument(
-          "dims and input_strides_in_bytes must have equal sizes, got %d "
-          "and %d",
+          "dims and input_striding must have equal sizes, "
+          "got %d and %d",
           o.dims.size(), input_strides_in_bytes.size());
     }
+    input_outer_strides.assign(input_strides_in_bytes.begin(),
+                               input_strides_in_bytes.end());
+    // Also save original strides if explicit
     plan->original_a_strides_.resize(ndim);
     absl::c_copy(input_strides_in_bytes, plan->original_a_strides_.begin());
-    // Sort the dimensions from slowest-varying (largest strides) to
-    // fastest-varying (smallest strides).
-    std::vector<int64_t> dim_order(ndim);
-    absl::c_iota(dim_order, 0);
-
-    auto cost = [&](int k) {
-      int64_t stride = input_strides_in_bytes.at(k);
-      // If there is a dimension with size equal to the element size, sort it
-      // last. This ensures that we place any stride-1 dimension last.
-      bool is_stride1 = stride == o.elem_size_in_bytes;
-      // If there are multiple stride-1 dimensions, we'd prefer the one that
-      // matches the stride-1 dimension of the output.
-      // Failing that, we'd just prefer the largest stride-1 dimension last.
-      bool is_trailing_dim_in_b = o.permutation.back() == k;
-
-      // If we are applying ef57 conversion, we want a size-2 stride-1
-      // dimension last.
-      bool ef57_even =
-          (is_stride1 && o.transformation == Transformation::kF64ToEf57 &&
-           o.dims[k] == 2);
-
-      return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
-                             is_trailing_dim_in_b, o.dims[k]);
-    };
-    absl::c_stable_sort(dim_order,
-                        [&cost](int i, int j) { return cost(i) < cost(j); });
-    // dim_order maps new input dim -> old input dim, we need its inverse to
-    // compute the new permutation.
-    auto inv_dim_order = InversePermutation(dim_order);
-    plan->lda_.reserve(ndim);
-    plan->a_dims_.reserve(ndim);
-    plan->permutation_.reserve(ndim);
-    for (int i = 0; i < ndim; ++i) {
-      plan->lda_.push_back(input_strides_in_bytes.at(dim_order[i]));
-      plan->a_dims_.push_back(o.dims[dim_order[i]]);
-      plan->permutation_.push_back(inv_dim_order[o.permutation[i]]);
-    }
-    plan->lda_tile_.resize(ndim, 1);
-    plan->a_tiling_.resize(ndim, 1);
   } else {
-    TF_RETURN_IF_ERROR(ParseTilingSpecification(
-        ndim, std::get<Tiling>(o.input_layout).tiling, plan->a_tiling_));
+    input_outer_strides = temp_lda;
+  }
 
-    plan->a_dims_ = plan->original_a_dims_;
-    plan->permutation_.resize(ndim);
-    absl::c_copy(o.permutation, plan->permutation_.begin());
-    ComputeStrides(plan->elem_size_in_bytes_, plan->a_dims_, plan->a_tiling_,
-                   plan->lda_, plan->lda_tile_);
+  // Sort the dimensions from slowest-varying (largest strides) to
+  // fastest-varying (smallest strides).
+  // Maps new input dim -> old input dim
+  std::vector<int64_t> dim_order(ndim);
+  absl::c_iota(dim_order, 0);
+
+  auto cost = [&](int k) {
+    int64_t stride = input_outer_strides.at(k);
+    // If there is a dimension with size equal to the element size, sort it
+    // last. This ensures that we place any stride-1 dimension last.
+    bool is_stride1 = stride == o.elem_size_in_bytes;
+    // If there are multiple stride-1 dimensions, we'd prefer the one that
+    // matches the stride-1 dimension of the output.
+    // Failing that, we'd just prefer the largest stride-1 dimension last.
+    bool is_trailing_dim_in_b = o.permutation.back() == k;
+
+    // If we are applying ef57 conversion, we want a size-2 stride-1
+    // dimension last.
+    bool ef57_even =
+        (is_stride1 && o.transformation == Transformation::kF64ToEf57 &&
+         o.dims[k] == 2);
+
+    return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
+                           is_trailing_dim_in_b, o.dims[k]);
+  };
+  absl::c_stable_sort(dim_order,
+                      [&cost](int i, int j) { return cost(i) < cost(j); });
+
+  // Apply permutation to all plan attributes
+  // dim_order maps new input dim -> old input dim, we need its inverse to
+  // compute the new permutation.
+  auto inv_dim_order = InversePermutation(dim_order);
+  plan->lda_.reserve(ndim);
+  plan->lda_tile_.reserve(ndim);
+  plan->a_dims_.reserve(ndim);
+  plan->permutation_.reserve(ndim);
+  plan->a_tiling_.reserve(ndim);
+
+  for (int i = 0; i < ndim; ++i) {
+    int old_idx = dim_order[i];
+    plan->lda_.push_back(input_outer_strides.at(old_idx));
+    plan->lda_tile_.push_back(temp_lda_tile.at(old_idx));
+    plan->a_dims_.push_back(o.dims[old_idx]);
+    plan->permutation_.push_back(inv_dim_order[o.permutation[i]]);
+    plan->a_tiling_.push_back(temp_a_tiling[old_idx]);
   }
 
   auto is_not_one = [](int64_t x) { return x != 1; };
@@ -1354,8 +1381,8 @@ bool TransposePlanCacheKey::operator==(
     const TransposePlanCacheKey& other) const {
   return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
          permutation == other.permutation &&
-         input_layout_is_tiling == other.input_layout_is_tiling &&
-         input_layout == other.input_layout &&
+         input_tiling == other.input_tiling &&
+         input_striding == other.input_striding &&
          output_tiling == other.output_tiling &&
          transformation == other.transformation &&
          num_threads == other.num_threads;
@@ -1363,10 +1390,9 @@ bool TransposePlanCacheKey::operator==(
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key) {
-  return H::combine(std::move(h), key.elem_size_in_bytes,
-                    key.input_layout_is_tiling, key.num_threads,
+  return H::combine(std::move(h), key.elem_size_in_bytes, key.num_threads,
                     key.transformation, key.dims, key.permutation,
-                    key.input_layout, key.output_tiling);
+                    key.input_tiling, key.input_striding, key.output_tiling);
 }
 
 TransposePlanCache::TransposePlanCache(int capacity)
@@ -1382,21 +1408,18 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   absl::c_copy(o.dims, key.dims.begin());
   key.permutation.resize(o.permutation.size());
   absl::c_copy(o.permutation, key.permutation.begin());
-  if (std::holds_alternative<TransposePlan::Striding>(o.input_layout)) {
-    absl::Span<int64_t const> input_strides_in_bytes =
-        std::get<TransposePlan::Striding>(o.input_layout).strides_in_bytes;
-    key.input_layout = absl::InlinedVector<int64_t, 4>(
-        input_strides_in_bytes.begin(), input_strides_in_bytes.end());
-    key.input_layout_is_tiling = false;
-  } else {
-    absl::Span<int64_t const> input_tiling =
-        std::get<TransposePlan::Tiling>(o.input_layout).tiling;
-    key.input_layout = absl::InlinedVector<int64_t, 4>(input_tiling.begin(),
-                                                       input_tiling.end());
-    key.input_layout_is_tiling = true;
+  if (o.input_tiling) {
+    key.input_tiling.emplace(o.input_tiling->tiling.begin(),
+                             o.input_tiling->tiling.end());
   }
-  key.output_tiling.resize(o.output_tiling.tiling.size());
-  absl::c_copy(o.output_tiling.tiling, key.output_tiling.begin());
+  if (o.input_striding) {
+    key.input_striding.emplace(o.input_striding->strides_in_bytes.begin(),
+                               o.input_striding->strides_in_bytes.end());
+  }
+  if (o.output_tiling) {
+    key.output_tiling.emplace(o.output_tiling->tiling.begin(),
+                              o.output_tiling->tiling.end());
+  }
   key.transformation = o.transformation;
   key.num_threads = o.num_threads;
   return cache_.GetOrCreateIfAbsent(

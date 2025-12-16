@@ -50,7 +50,9 @@ class TransposePlan {
   // dims: the input shape, in elements.
   // permutation: for each output dimension, gives the number of the
   //   corresponding input dimension. Must be a permutation of [0..dims.size())
-  // input_layout: either byte strides or an input tiling.
+  // input_tiling: optional input tiling.
+  // input_striding: optional input byte strides.
+  // output_tiling: optional output tiling.
   //
   // A Striding represents the strides of the input array in bytes. (N.B. not
   // elements).
@@ -71,7 +73,9 @@ class TransposePlan {
   // tiled dimensions. This is acceptable because in the intended use case for
   // this code we expect at most 2 tiled dimensions on input and output.
   //
-  // The input may have either a striding or a tiling but not both.
+  // The input may have both a tiling and a striding. If both are present,
+  // the striding determines the strides between tiles (in bytes).
+  //
   //
   // num_threads: is the number of threads requested. The actual number of
   //   threads used may be smaller if there isn't enough work per thread.
@@ -94,14 +98,19 @@ class TransposePlan {
     size_t elem_size_in_bytes;
     absl::Span<int64_t const> dims;
     absl::Span<int64_t const> permutation;
-    std::variant<Tiling, Striding> input_layout = Tiling{};
-    Tiling output_tiling;
+    std::optional<Tiling> input_tiling = std::nullopt;
+    std::optional<Striding> input_striding = std::nullopt;
+    std::optional<Tiling> output_tiling = std::nullopt;
     Transformation transformation = Transformation::kNone;
     int num_threads = 1;
+
+    // DEPRECATED: Use input_tiling or input_striding instead.
+    // This field is only present for backward compatibility.
+    // TODO(phawkins): remove me.
+    std::optional<std::variant<Tiling, Striding>> input_layout = std::nullopt;
   };
 
-  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(
-      const Options& options);
+  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(Options options);
 
   TransposePlan();
   ~TransposePlan();
@@ -199,10 +208,10 @@ class TransposePlan {
   absl::InlinedVector<int64_t, 4> permutation_;
 
   // Leading-dimension sizes (byte strides) of each dimension.
-  absl::InlinedVector<int64_t, 4> lda_;
-  absl::InlinedVector<int64_t, 4> lda_tile_;
-  absl::InlinedVector<int64_t, 4> ldb_;
-  absl::InlinedVector<int64_t, 4> ldb_tile_;
+  absl::InlinedVector<int64_t, 4> lda_;       // Strides for tiles
+  absl::InlinedVector<int64_t, 4> lda_tile_;  // Strides for tile interiors
+  absl::InlinedVector<int64_t, 4> ldb_;       // Strides for tiles
+  absl::InlinedVector<int64_t, 4> ldb_tile_;  // Strides for tile interiors
 
   // Tile sizes in each dimension. Has size equal to the number of dimensions.
   // A 1 entry means that dimension is not tiled.
@@ -257,9 +266,9 @@ struct TransposePlanCacheKey {
   size_t elem_size_in_bytes;
   absl::InlinedVector<int64_t, 4> dims;
   absl::InlinedVector<int64_t, 4> permutation;
-  bool input_layout_is_tiling;
-  absl::InlinedVector<int64_t, 4> input_layout;
-  absl::InlinedVector<int64_t, 4> output_tiling;
+  std::optional<absl::InlinedVector<int64_t, 4>> input_tiling;
+  std::optional<absl::InlinedVector<int64_t, 4>> input_striding;
+  std::optional<absl::InlinedVector<int64_t, 4>> output_tiling;
   TransposePlan::Transformation transformation;
   int num_threads;
 

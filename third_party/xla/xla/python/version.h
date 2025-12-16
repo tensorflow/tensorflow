@@ -18,7 +18,6 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER \
-  42  // PjRtExecutable is created using IFRT Compiler::Compile() API.
+#define JAX_IFRT_VERSION_NUMBER 43  // Transpose API update
 
 #endif  // XLA_PYTHON_VERSION_H_

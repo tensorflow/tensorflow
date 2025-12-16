@@ -644,7 +644,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     options.elem_size_in_bytes = primitive_util::ByteWidth(type);
     options.dims = dims;
     options.permutation = permutation;
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    options.input_striding = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }

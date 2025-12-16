@@ -232,7 +232,7 @@ CpuRawBuffer::CopyFromHostBuffer(
       options.dims = dims;
       options.permutation = permutation;
       if (byte_strides) {
-        options.input_layout = TransposePlan::Striding{*byte_strides};
+        options.input_striding = TransposePlan::Striding{*byte_strides};
       }
       if (thread_pool) {
         options.num_threads =
