@@ -222,6 +222,9 @@ void TestResizeBilinear(const Tensor& image_tensor, const DataType dt,
   }
   const int64_t one_run_duration = total_duration / iterations;
 
+  // Security fix: Check bounds before accessing outputs->at(0) to prevent
+  // buffer out-of-bounds access (CWE-119)
+  ASSERT_FALSE(outputs->empty()) << "Outputs vector is empty, cannot access outputs->at(0)";
   const int64_t num_ops = outputs->at(0).NumElements();
 
   const double million_ops_per_second =
