@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -248,7 +249,7 @@ ENTRY main {
       backend().default_stream_executor()->GetDeviceDescription();
   std::unique_ptr<GpuAliasInfo> alias_info =
       compiler.GetAliasInfo(device_description);
-  TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
+  EXPECT_OK(compiler.RunPostSchedulingPipelines(
       module.get(), 100000, device_description, alias_info.get()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(

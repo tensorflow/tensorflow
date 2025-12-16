@@ -147,7 +147,7 @@ class DeterminismTest : public GpuCodegenTest {
                                 std::move(module), &executor, GetAllocator()));
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_module->ToString(), expected_hlo_regex);
-    TF_ASSERT_OK(filecheck_result.status());
+    ASSERT_OK(filecheck_result.status());
     EXPECT_TRUE(filecheck_result.value());
   }
 
