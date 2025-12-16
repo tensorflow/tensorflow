@@ -258,18 +258,8 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100_pcie_80.txtpb",
-        "gpu_specs/mi200.txtpb",
+        "//xla/backends/gpu:all_gpu_specs",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
-
-filegroup(
-    name = "all_gpu_specs",
-    data = glob(["gpu_specs/*.txtpb"]),
-)
-
-exports_files(glob([
-    "gpu_specs/*.txtpb",
-]))

@@ -206,13 +206,13 @@ def lit_test_suite_for_gpus(
             "--param=GPU=%s" % (gpu),
         ]
         gpu_data = data + [
-            "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/b200.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
+            "//xla/backends/gpu:specs/a100_pcie_80.txtpb",
+            "//xla/backends/gpu:specs/a6000.txtpb",
+            "//xla/backends/gpu:specs/b200.txtpb",
+            "//xla/backends/gpu:specs/h100_sxm.txtpb",
+            "//xla/backends/gpu:specs/mi200.txtpb",
+            "//xla/backends/gpu:specs/p100.txtpb",
+            "//xla/backends/gpu:specs/v100.txtpb",
         ]
         lit_test_suite(
             "%s_%s" % (name, gpu),

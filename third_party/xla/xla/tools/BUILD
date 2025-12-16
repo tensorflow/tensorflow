@@ -1103,8 +1103,8 @@ xla_test(
     ],
     data = [
         ":data/add.hlo",
+        "//xla/backends/gpu:specs/h100_sxm.txtpb",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
-        "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
     ],
     deps = [
         ":xla_compile_lib",
