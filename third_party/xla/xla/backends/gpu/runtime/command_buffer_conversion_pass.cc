@@ -144,7 +144,6 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAllStart:
     case Thunk::kCollectiveBroadcastStart:
     case Thunk::kCollectivePermuteStart:
-    case Thunk::kRaggedAllToAllStart:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;

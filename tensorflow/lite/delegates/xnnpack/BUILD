@@ -333,6 +333,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "macros",
+    hdrs = ["macros.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:minimal_logging",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "weight_cache_schema",
     srcs = ["weight_cache_schema.fbs"],
@@ -350,8 +360,10 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":macros",
         ":mmap_handle",
         ":weight_cache_schema",
+        "//tensorflow/lite:logger",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "@XNNPACK",
@@ -387,8 +399,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":macros",
         ":windows_util",
-        "//tensorflow/lite:minimal_logging",
     ],
 )
 
