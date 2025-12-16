@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
-#define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
+#ifndef XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
+#define XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
 
 #include <atomic>
 #include <cstddef>
@@ -32,21 +32,28 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nccl/nccl.h"
+#include "rocm/rocm_config.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"
+#else
+#include "rocm/include/rccl.h"
+#endif  // TF_ROCM_VERSION >= 50200
+
 namespace xla::gpu {
 
-// XLA collectives communicator wrapping an NCCL communicator.
-class NcclCommunicator : public GpuCommunicator {
+// XLA collectives communicator wrapping an RCCL communicator.
+class RcclCommunicator : public GpuCommunicator {
  public:
-  // Creates a NCCL communicator.
+  // Creates a RCCL communicator.
   //
   // make_comm should construct and return a new ncclComm_t. For example, it
   // could call ncclCommInitRank. make_comm should not return a ncclComm_t that
@@ -55,18 +62,18 @@ class NcclCommunicator : public GpuCommunicator {
   // If is_async is true, all collective methods (e.g., AllReduce) are performed
   // asynchronously on a separate thread. Otherwise, they are performed
   // synchronously on the calling thread.
-  static absl::StatusOr<std::unique_ptr<NcclCommunicator>> Create(
+  static absl::StatusOr<std::unique_ptr<RcclCommunicator>> Create(
       absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
       bool is_async = false, std::atomic_bool* cancel = nullptr,
       tsl::Env& env = *tsl::Env::Default());
 
-  ~NcclCommunicator() override;
+  ~RcclCommunicator() override;
 
-  // NcclCommunicator is not copyable or movable.
-  NcclCommunicator(const NcclCommunicator&) = delete;
-  NcclCommunicator(NcclCommunicator&&) = delete;
-  NcclCommunicator& operator=(const NcclCommunicator&) = delete;
-  NcclCommunicator& operator=(NcclCommunicator&&) = delete;
+  // RcclCommunicator is not copyable or movable.
+  RcclCommunicator(const RcclCommunicator&) = delete;
+  RcclCommunicator(RcclCommunicator&&) = delete;
+  RcclCommunicator& operator=(const RcclCommunicator&) = delete;
+  RcclCommunicator& operator=(RcclCommunicator&&) = delete;
 
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
@@ -127,9 +134,9 @@ class NcclCommunicator : public GpuCommunicator {
       se::DeviceAddressBase buffer, int device_ordinal,
       bool use_symmetric_buffer);
 
-  class NcclRegisteredBufferHandle;
+  class RcclRegisteredBufferHandle;
 
-  explicit NcclCommunicator(ncclComm_t comm,
+  explicit RcclCommunicator(ncclComm_t comm,
                             std::unique_ptr<tsl::Executor> executor)
       : comm_(comm), executor_(std::move(executor)) {
     VLOG(1) << "Created " << *this;
@@ -201,12 +208,12 @@ class NcclCommunicator : public GpuCommunicator {
     return Execute<T>(std::move(f)).Await();
   }
 
-  // Underlying NCCL communicator.
+  // Underlying RCCL communicator.
   ncclComm_t comm_;
 
   // If not null, used to execute methods.
   //
-  // NCCL communicators (instances of ncclComm_t) are not thread safe. Thus,
+  // RCCL communicators (instances of ncclComm_t) are not thread safe. Thus,
   // multiple threads cannot concurrently access the same ncclComm_t. This is
   // not surprising. What is very surprising is that multiple threads cannot
   // serially access the same ncclComm_t. In fact, a ncclComm_t must be created
@@ -214,7 +221,7 @@ class NcclCommunicator : public GpuCommunicator {
   // accessed by any thread except the one that created it. To accomplish this,
   // we perform all comm_ operations on executor_, if it is not null.
   //
-  // Concretely, the lack of thread safety comes from the fact that the NCCL
+  // Concretely, the lack of thread safety comes from the fact that the RCCL
   // code uses thread-local variables that do not work properly when a
   // ncclComm_t is accessed from multiple threads. Emperically, the lack of
   // thread safety only manifests as buggy behavior when using non-blocking
@@ -227,7 +234,7 @@ class NcclCommunicator : public GpuCommunicator {
   // Has comm_ been aborted?
   bool aborted_ = false;
 
-  // Nesting level of current NCCL group
+  // Nesting level of current RCCL group
   int group_nesting_level_ = 0;
 
   // Keep track of which communicators we have registered for already.
@@ -244,4 +251,4 @@ class NcclCommunicator : public GpuCommunicator {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
+#endif  // XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
