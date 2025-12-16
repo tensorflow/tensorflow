@@ -550,6 +550,8 @@ message DebugOptions {
 
   optional bool xla_gpu_enable_pipelined_collectives = 239 [deprecated = true];
 
+  optional bool xla_gpu_enable_pipelined_host_offloading = 440;
+
   optional bool xla_gpu_enable_pipelined_p2p = 246;
 
   optional bool xla_gpu_enable_pipelined_reduce_scatter = 231;
@@ -1328,7 +1330,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 440
+  // Next id: 441
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

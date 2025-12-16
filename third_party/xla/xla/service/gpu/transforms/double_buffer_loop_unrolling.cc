@@ -256,8 +256,13 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     changed = true;
   }
 
-  WhileLoopBackendConfig new_config;
+  WhileLoopBackendConfig old_config;
+  TF_ASSIGN_OR_RETURN(old_config,
+                      while_instr->backend_config<WhileLoopBackendConfig>());
+
+  WhileLoopBackendConfig new_config = old_config;
   new_config.mutable_known_trip_count()->set_n(1);
+
   TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
 
   return changed;
@@ -394,14 +399,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
                                                &old_loop_roots, input_parameter,
                                                skip_control_dep_injection));
 
-  WhileLoopBackendConfig new_config;
+  WhileLoopBackendConfig new_config = config;
   new_config.mutable_known_trip_count()->set_n(exact_trip_count / 2);
-
-  // Keep known induction variable metadata if it was present before.
-  if (config.has_known_induction_variable()) {
-    *new_config.mutable_known_induction_variable() =
-        config.known_induction_variable();
-  }
 
   // Update the init/step metadata if it was present before.
   if (config.has_known_init_step()) {

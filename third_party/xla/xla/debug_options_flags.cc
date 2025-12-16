@@ -312,6 +312,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_pipelined_all_reduce(false);
   opts.set_xla_gpu_enable_pipelined_all_gather(false);
   opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
+  opts.set_xla_gpu_enable_pipelined_host_offloading(false);
   opts.set_xla_gpu_enable_pipelined_p2p(false);
 
   opts.set_xla_gpu_collective_permute_decomposer_threshold(
@@ -1932,6 +1933,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                     &DebugOptions::set_xla_gpu_enable_pipelined_reduce_scatter),
                 debug_options->xla_gpu_enable_pipelined_reduce_scatter(),
                 "[Stable] Enable pipelinling of reduce-scatter instructions."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pipelined_host_offloading",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_pipelined_host_offloading),
+      debug_options->xla_gpu_enable_pipelined_host_offloading(),
+      "Enable pipelining of host offloading instructions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_pipelined_p2p",
       bool_setter_for(&DebugOptions::set_xla_gpu_enable_pipelined_p2p),

@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -274,10 +275,12 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/layout_normalization.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
@@ -882,6 +885,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
         /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
         /*should_allow_control_dependencies=*/false,
+        /*additional_chain_start_op_finder=*/nullptr,
         /*postprocess_backward_peeled_op=*/{},
         /*postprocess_backward_rotated_op=*/{},
         /*postprocess_backward_peeled_trailing_op=*/{},
@@ -905,6 +909,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
         /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
         /*should_allow_control_dependencies=*/false,
+        /*additional_chain_start_op_finder=*/nullptr,
         /*postprocess_backward_peeled_op=*/{},
         /*postprocess_backward_rotated_op=*/{},
         /*postprocess_backward_peeled_trailing_op=*/{},
@@ -928,6 +933,7 @@ absl::Status RunCollectiveOptimizationPasses(
         /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
         /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
         /*should_allow_control_dependencies=*/false,
+        /*additional_chain_start_op_finder=*/nullptr,
         /*postprocess_backward_peeled_op=*/{},
         /*postprocess_backward_rotated_op=*/{},
         /*postprocess_backward_peeled_trailing_op=*/{},
@@ -935,6 +941,105 @@ absl::Status RunCollectiveOptimizationPasses(
         /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
     };
     collectives_pipeline.AddPass<CollectivePipeliner>(config);
+  }
+
+  if (debug_options.xla_gpu_enable_pipelined_host_offloading() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
+    // Forward pass host offloading pipelining
+    CollectivePipeliner::Config config{
+        /*level_to_operate_on=*/0,
+        /*max_pipelining_per_loop=*/INT64_MAX,
+        /*last_run=*/true,
+        /*pipeline_use_tree=*/true,
+        /*process_different_sized_ops=*/true,
+        /*pipelining_direction=*/
+        collective_pipeliner_utils::PipeliningDirection::kForward,
+        /*should_process=*/
+        host_offload_utils::IsMoveToHostWithDynamicUpdateSlice,
+        /*acceptable_formatting=*/HloPredicateTrue,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
+        /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+        /*should_allow_control_dependencies=*/false,
+        /*additional_chain_start_op_finder=*/nullptr,
+        /*postprocess_backward_peeled_op=*/{},
+        /*postprocess_backward_rotated_op=*/{},
+        /*postprocess_backward_peeled_trailing_op=*/{},
+        /*should_add_loop_invariant_op_in_chain=*/false,
+        /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
+        /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
+        /*delay_sinking_large_collectives=*/true,
+        /*unique_channel_id=*/true,
+        /*postprocess_transformed_while_loop=*/
+        host_offload_utils::MarkDynamicVariables,
+    };
+    collectives_pipeline.AddPass<CollectivePipeliner>(config);
+  }
+
+  if (debug_options.xla_gpu_enable_pipelined_host_offloading() ||
+      IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(*hlo_module)) {
+    // Backward pass host offloading pipelining
+    auto acceptable_formatting = [](const HloInstruction* instr) {
+      return instr->opcode() == HloOpcode::kReshape ||
+             instr->opcode() == HloOpcode::kBroadcast ||
+             instr->opcode() == HloOpcode::kTranspose;
+    };
+    CollectivePipeliner::Config config_backward{
+        /*level_to_operate_on=*/0,
+        /*max_pipelining_per_loop=*/INT64_MAX,
+        /*last_run=*/true,
+        /*pipeline_use_tree=*/true,
+        /*process_different_sized_ops=*/true,
+        /*pipelining_direction=*/
+        collective_pipeliner_utils::PipeliningDirection::kBackward,
+        /*should_process=*/host_offload_utils::IsMoveToDeviceWithDynamicSlice,
+        /*acceptable_formatting=*/acceptable_formatting,
+        /*reuse_pipelined_op_buffer=*/HloPredicateFalse,
+        /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateFalse,
+        /*should_allow_control_dependencies=*/false,
+        /*additional_chain_start_op_finder=*/
+        [acceptable_formatting](
+            HloInstruction* instr) -> std::optional<HloInstruction*> {
+          if (!instr->IsCustomCall(
+                  memory_annotations::kMoveToDeviceCustomCallTarget)) {
+            return std::nullopt;
+          }
+          if (instr->operand_count() == 0) {
+            return std::nullopt;
+          }
+
+          std::vector<HloInstruction*> to_check = {instr->mutable_operand(0)};
+          std::set<HloInstruction*> visited;
+
+          while (!to_check.empty()) {
+            HloInstruction* current = to_check.back();
+            to_check.pop_back();
+
+            if (visited.insert(current).second) {
+              if (current->opcode() == HloOpcode::kDynamicSlice) {
+                return current;
+              }
+              if (acceptable_formatting(current)) {
+                for (HloInstruction* operand : current->operands()) {
+                  to_check.push_back(operand);
+                }
+              }
+            }
+          }
+          return std::nullopt;
+        },
+        /*postprocess_backward_peeled_op=*/{},
+        /*postprocess_backward_rotated_op=*/{},
+        /*postprocess_backward_peeled_trailing_op=*/{},
+        /*should_add_loop_invariant_op_in_chain=*/true,
+        /*postprocess_pipelined_ops=*/AppendPipelinedInstruction,
+        /*collective_size_threshold_to_delay_sinking=*/INT64_MAX,
+        /*delay_sinking_large_collectives=*/true,
+        /*unique_channel_id=*/true,
+        /*postprocess_transformed_while_loop=*/
+        host_offload_utils::MarkDynamicVariables,
+    };
+
+    collectives_pipeline.AddPass<CollectivePipeliner>(config_backward);
   }
 
   DebugOptions::PipelineParallelismOptLevel pipeline_parallelism_opt_level =

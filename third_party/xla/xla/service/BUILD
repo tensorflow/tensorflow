@@ -504,6 +504,7 @@ xla_cc_test(
         ":collective_pipeliner_utils",
         ":hlo_module_config",
         ":hlo_verifier",
+        ":host_offload_utils",
         ":legalize_scheduling_annotations",
         ":memory_annotations_hdr",
         ":scheduling_annotations_util",
