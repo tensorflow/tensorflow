@@ -74,7 +74,7 @@ bool IsCompatibleCacheFile(const char* path);
 // restored upon exiting.
 //
 // Note: the file descriptor must be open and valid.
-bool IsCompatibleCacheFile(const FileDescriptor& fd);
+bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };

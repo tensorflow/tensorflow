@@ -672,12 +672,14 @@ bool IsCompatibleCacheFile(const char* path) {
   return IsCompatibleCacheFile(std::move(fd));
 }
 
-bool IsCompatibleCacheFile(const FileDescriptor& fd) {
+bool IsCompatibleCacheFile(FileDescriptorView fd) {
   XNNPACK_RETURN_CHECK(fd.IsValid(), "Invalid file descriptor: %d.",
                        fd.Value());
   const size_t current_pos = fd.GetPos();
   ScopeGuard reset_pos_on_return(
       [current_pos, &fd] { fd.SetPos(current_pos); });
+  XNNPACK_RETURN_CHECK(fd.SetPos(0) != -1,
+                       "Couldn't move to the start of the file.");
 
   XNNPackCacheHeader header;
   XNNPACK_RETURN_CHECK(fd.Read(&header, sizeof(header)),

@@ -972,8 +972,13 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackRebuildOnVersionMismatch) {
   ASSERT_TRUE(cache_provider.StartBuildStep());
 }
 
-class IsCompatibleCacheFileTest : public testing::Test {
+enum class IsCompatibleCacheFileTestOverload { kPath, kDescriptor };
+
+class IsCompatibleCacheFileTest
+    : public testing::TestWithParam<IsCompatibleCacheFileTestOverload> {
  public:
+  using Param = IsCompatibleCacheFileTestOverload;
+
   void SetUp() override {
     header_.version = XNNPackCacheHeader::kVersion;
     memcpy(header_.xnnpack_build_identifier,
@@ -982,28 +987,54 @@ class IsCompatibleCacheFileTest : public testing::Test {
   }
 
   bool WriteHeaderAndReturnIsCompatibleCacheFile() {
-    const bool res = fd_.Write(&header_, sizeof(header_));
-    fd_.Close();
-    return res && IsCompatibleCacheFile(fd_.GetCPath());
+    if (!fd_.Write(&header_, sizeof(header_))) {
+      return false;
+    }
+    if (GetParam() == Param::kPath) {
+      fd_.Close();
+      return IsCompatibleCacheFile(fd_.GetCPath());
+    } else {
+      const FileDescriptor::Offset pos = fd_.GetPos();
+      EXPECT_NE(pos, 0);  // Ensure that we are testing with a non 0 position.
+      const bool compatible = IsCompatibleCacheFile(fd_);
+      EXPECT_EQ(pos, fd_.GetPos());
+      return compatible;
+    }
   }
 
   XNNPackCacheHeader header_{};
   TempFileDesc fd_;
 };
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
+std::string Name(
+    const testing::TestParamInfo<IsCompatibleCacheFileTestOverload>& info) {
+  switch (info.param) {
+    case IsCompatibleCacheFileTestOverload::kPath:
+      return "WithPathOverload";
+    case IsCompatibleCacheFileTestOverload::kDescriptor:
+      return "WithFileDescriptorOverload";
+  }
+}
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
   EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
 }
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
   header_.version += 1;
   EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
 }
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
   header_.xnnpack_build_identifier[0] += 1;
   EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    Test, IsCompatibleCacheFileTest,
+    testing::Values(IsCompatibleCacheFileTest::Param::kPath,
+                    IsCompatibleCacheFileTest::Param::kDescriptor),
+    Name);
 
 }  // namespace
 }  // namespace tflite::xnnpack
