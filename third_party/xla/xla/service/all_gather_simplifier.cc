@@ -66,11 +66,7 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
           HloInstruction* ds = all_gather->users().front();
           HloInstruction* ag_operand = all_gather->mutable_operand(0);
           if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
-            ag_operand = ag_operand->AddInstruction(HloInstruction::CreateSlice(
-                ds->shape(), ag_operand,
-                DimensionVector(ds->shape().dimensions().size(), 0),
-                ds->shape().dimensions(),
-                DimensionVector(ds->shape().dimensions().size(), 1)));
+            continue;
           }
           changed = true;
           TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));

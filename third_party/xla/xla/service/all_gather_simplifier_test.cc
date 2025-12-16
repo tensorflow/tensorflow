@@ -80,9 +80,7 @@ test {
   AllGatherSimplifier ag_simplifier;
   auto result = ag_simplifier.Run(module.get());
   ASSERT_TRUE(result.ok()) << result.status();
-  ASSERT_TRUE(result.value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Slice(m::Parameter(0))));
+  ASSERT_FALSE(result.value());
 }
 
 }  // namespace
