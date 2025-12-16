@@ -38,5 +38,10 @@ positive-frequency terms.
 Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
 corresponding dimension of `input`, the dimension is cropped. If it is larger,
 the dimension is padded with zeros.
+
+Note: Currently, if any value in `fft_length` is larger than the corresponding
+dimension of `input`, `tf.raw_ops.RFFT2D` raises an `InvalidArgumentError`
+instead of padding with zeros.
+
 END
 }
