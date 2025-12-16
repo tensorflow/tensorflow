@@ -680,7 +680,7 @@ class TFLiteConverterBase:
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
     self._experimental_qdq_conversion_mode = None
-    self._experimental_disable_per_channel_quantization_for_dense_layers = False
+
     self._experimental_enable_composite_direct_lowering = True
     self.model_origin_framework = constants.UNSET
     self.canonicalizing_inf_as_min_max_float = True
@@ -773,9 +773,7 @@ class TFLiteConverterBase:
           input_data_type=input_type,
           output_data_type=output_type,
           enable_variable_quantization=enable_variable_quantization,
-          disable_per_channel_for_dense_layers=(
-              self._experimental_disable_per_channel_quantization_for_dense_layers
-          ),
+
           debug_options_str=debug_options.SerializeToString(),
       )
     else:
@@ -787,9 +785,7 @@ class TFLiteConverterBase:
           activations_type,
           bias_type,
           disable_per_channel=self._experimental_disable_per_channel,
-          disable_per_channel_quantization_for_dense_layers=(
-              self._experimental_disable_per_channel_quantization_for_dense_layers
-          ),
+
       )
 
   def _is_unknown_shapes_allowed(self):
@@ -848,9 +844,7 @@ class TFLiteConverterBase:
         ),
         "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
         "strict_qdq_mode": self._experimental_strict_qdq,
-        "disable_per_channel_quantization_for_dense_layers": (
-            self._experimental_disable_per_channel_quantization_for_dense_layers
-        ),
+
         "enable_composite_direct_lowering": (
             self._experimental_enable_composite_direct_lowering
         ),

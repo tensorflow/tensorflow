@@ -63,6 +63,12 @@ class LiteTest(test_util.TensorFlowTestCase):
 
 class TestModels(LiteTest):
 
+  def testNewDynamicRangeQuantizerDefaultsToFalse(self):
+    """Ensure that the experimental new dynamic range quantizer defaults to False."""
+    converter = lite.TFLiteConverter(None, None, None, input_arrays_with_shape=[('input', [1, 1])])
+    self.assertFalse(converter.experimental_new_dynamic_range_quantizer)
+
+
   def assertValidDebugInfo(self, debug_info):
     """Verify the DebugInfo is valid."""
     file_names = set()
