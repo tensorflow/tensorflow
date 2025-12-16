@@ -361,6 +361,54 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
 }
 
+TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_CommandBuffer) {
+  absl::string_view kModuleReplicatedStr = R"(
+  HloModule module, num_partitions=1
+
+  ENTRY entry {
+    input = f32[4] parameter(0)
+    output = f32[4] parameter(1)
+    input_offsets = s32[2] parameter(2)
+    send_sizes = s32[2] parameter(3)
+    output_offsets = s32[2] parameter(4)
+    recv_sizes = s32[2] parameter(5)
+    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                        kModuleReplicatedStr, kNumReplicas));
+
+  // Verify correctness of ragged-all-to-all when command buffers for
+  // collectives are enabled.
+  // As of Dec 2025, ragged-all-to-all command is not implemented, so this test
+  // verifies that we don't try to accidentally create a command buffer and
+  // crash.
+  DebugOptions& debug_options =
+      module->mutable_config().mutable_debug_options();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
+
+  ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module), GetInputLiteralPtrs()));
+
+  const std::vector<Literal>& results = execution_result.results;
+
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
+}
+
 TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
   absl::string_view kModuleReplicatedStr = R"(
   HloModule module, num_partitions=1
