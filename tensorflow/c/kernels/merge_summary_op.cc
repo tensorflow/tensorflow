@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 #include <sstream>
+#include <string>
 #include <unordered_set>
 
 #include "absl/log/check.h"
