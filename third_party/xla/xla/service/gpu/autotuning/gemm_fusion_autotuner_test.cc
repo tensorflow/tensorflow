@@ -592,6 +592,8 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
+  GTEST_SKIP() << "GemmFusionAutotuner has been replaced by the new autotuner. "
+                  "This will be removed soon.";
   const std::string kHloText = R"(
 triton_dot {
   p0 = f16[55,120] parameter(0)
@@ -749,6 +751,8 @@ ENTRY main {
 }
 
 TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
+  GTEST_SKIP() << "GemmFusionAutotuner has been replaced by the new autotuner. "
+                  "This will be removed soon.";
   if (GpuComputeComp().IsRocm() ||
       GetDebugOptionsForTest()
           .xla_gpu_experimental_disable_binary_libraries()) {

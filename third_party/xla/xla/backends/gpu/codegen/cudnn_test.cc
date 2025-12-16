@@ -1217,22 +1217,15 @@ TEST_F(CuDnnFusionRewriteTest,
        DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
   // Dimension size 61 does not satisfy the requirement on alignment
   // (multiple of 2).
-  MatchOptimizedHlo(R"(
-ENTRY e {
+  EXPECT_FALSE(Run(R"(
+ENTRY e {AndCompare
   p0 = f16[20,40,61] parameter(0)
   p0n = f16[20,40,61] negate(p0)
   p1 = f16[20,80,61] parameter(1)
   ROOT r = f16[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
-})",
-                    R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-NOT: cudnn
-)");
+})"));
 }
 
 TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
