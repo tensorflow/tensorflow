@@ -403,7 +403,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = internal_visibility([":friends"]),
     deps = [
-        "//xla/backends/cpu/runtime:work_queue",
+        ":work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",

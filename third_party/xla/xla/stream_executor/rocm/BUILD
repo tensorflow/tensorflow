@@ -676,6 +676,7 @@ cc_library(
     deps = [
         ":hip_blas_utils",
         ":hipblas_lt_header",
+        ":hipblaslt_if_static",
         ":rocblas_plugin",
         ":rocm_executor",
         ":rocm_platform_id",
@@ -705,8 +706,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:dso_loader",
         "@local_tsl//tsl/platform:ml_dtypes",
-    ] + [
-        ":hipblaslt_if_static",
     ],
     alwayslink = True,
 )
