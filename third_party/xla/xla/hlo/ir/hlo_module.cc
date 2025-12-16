@@ -406,7 +406,7 @@ void HloModule::Print(
         },
         value);
   }
-  PrintStackFrameIndex(printer);
+  PrintStackFrameIndex(printer, options);
   printer->Append("\n\n");
   PrintComputations(printer, options);
 }
@@ -479,8 +479,10 @@ void HloModule::PrintComputations(Printer* printer,
   }
 }
 
-void HloModule::PrintStackFrameIndex(Printer* printer) const {
-  if (!stack_frame_index_.has_value()) {
+void HloModule::PrintStackFrameIndex(Printer* printer,
+                                     const HloPrintOptions& options) const {
+  if (!stack_frame_index_.has_value() ||
+      stack_frame_index_->file_names().empty() || !options.print_metadata()) {
     return;
   }
   printer->Append("\n\nFileNames\n");

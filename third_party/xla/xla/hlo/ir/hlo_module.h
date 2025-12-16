@@ -448,7 +448,8 @@ class HloModule {
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
-  void PrintStackFrameIndex(Printer* printer) const;
+  void PrintStackFrameIndex(Printer* printer,
+                            const HloPrintOptions& options) const;
 
  public:
   // Prints a string representation of the module.
