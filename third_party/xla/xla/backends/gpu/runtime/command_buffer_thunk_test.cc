@@ -1132,8 +1132,9 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   CommandBufferCmdSequence commands;
   commands.Emplace<CublasLtCmd>(CublasLtMatmulThunk(
       Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
-      se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a, slice_b, slice_c,
-      slice_d, BufferAllocation::Slice(), BufferAllocation::Slice(),
+      se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
+      /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c, slice_d,
+      BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), BufferAllocation::Slice(),
       BufferAllocation::Slice(), slice_workspace));

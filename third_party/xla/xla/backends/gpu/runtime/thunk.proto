@@ -309,6 +309,7 @@ message CublasLtMatmulThunkProto {
   optional xla.buffer_assignment.BufferAllocationSliceProto d_scale = 14;
   optional xla.buffer_assignment.BufferAllocationSliceProto d_amax = 15;
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
+  int64 autotune_workspace_size = 17;
 }
 
 message CubSortThunkProto {
