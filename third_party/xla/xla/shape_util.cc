@@ -2403,19 +2403,25 @@ absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
 
 }  // namespace
 
-/*static*/ absl::InlinedVector<int64_t, 3>
+/*static*/ absl::StatusOr<absl::InlinedVector<int64_t, 3>>
 ShapeUtil::GetNormalizedLogicalTransposeShape(
-    const Shape& output_shape, absl::Span<int64_t const> dimensions,
+    const Shape& input_shape, const Shape& output_shape,
+    absl::Span<int64_t const> dimensions,
     absl::InlinedVector<int64_t, 3>& permutation) {
+  if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
+      !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
+    return FailedPrecondition(
+        "Transpose normalization requires monotonic layouts. Layout "
+        "normalization should have assigned the default layout.");
+  }
+
   permutation.clear();
   // Drop degenerate dimensions.
   absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions().size() + 1,
                                         0);
-  auto input_dimensions =
-      Permute(output_shape.dimensions(), InversePermutation(dimensions));
   for (int i = 0; i < output_shape.dimensions().size(); ++i) {
     delta[i + 1] = delta[i];
-    if (input_dimensions[i] == static_cast<int64_t>(1)) {
+    if (input_shape.dimensions(i) == static_cast<int64_t>(1)) {
       ++delta[i + 1];
     }
   }
