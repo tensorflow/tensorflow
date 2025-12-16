@@ -1814,7 +1814,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       return absl::OkStatus();
     };
     host_memory_allocator =
-        options.host_memory_allocator_factory(allocator_options);
+        options.host_memory_allocator_factory(std::move(allocator_options));
   } else {
     TF_ASSIGN_OR_RETURN(
         auto allocator,

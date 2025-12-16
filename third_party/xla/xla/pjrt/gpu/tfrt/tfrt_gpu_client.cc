@@ -1211,7 +1211,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
       return absl::OkStatus();
     };
     host_memory_allocator =
-        options.host_memory_allocator_factory(allocator_options);
+        options.host_memory_allocator_factory(std::move(allocator_options));
   } else if (!xla_client->backend().stream_executors().empty()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<tsl::Allocator> allocator,
