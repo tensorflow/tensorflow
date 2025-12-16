@@ -94,6 +94,11 @@ struct HloModuleSplitGroup {
       : address_book(std::move(address_book)),
         module_splits(std::move(module_splits)),
         linking_manifest(std::move(linking_manifest)) {}
+
+  // Returns the cloned version of the given original computation, or
+  // an error if the computation is not part of this split group.
+  absl::StatusOr<const HloComputation*> GetClonedComputation(
+      const HloComputation* original_computation) const;
 };
 
 // Split the given module. Returns a mapping from `HloComputation*` to
