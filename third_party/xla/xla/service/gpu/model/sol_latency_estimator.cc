@@ -61,7 +61,10 @@ using ::mlir::MLIRContext;
 bool IsSupportedCollectiveOp(const HloInstruction& instr) {
   return HloPredicateIsOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
                           HloOpcode::kReduceScatter, HloOpcode::kAllGatherStart,
-                          HloOpcode::kAllGather, HloOpcode::kAllToAll>(&instr);
+                          HloOpcode::kAllToAll,
+                          HloOpcode::kCollectivePermuteStart,
+                          HloOpcode::kCollectivePermute, HloOpcode::kAllGather>(
+      &instr);
 }
 
 bool IsHostOffloaded(const HloInstruction& instr) {
@@ -183,7 +186,9 @@ absl::StatusOr<absl::Duration> DCNCollectiveDuration(
       break;
     }
     case HloOpcode::kRecv:
-    case HloOpcode::kSend: {
+    case HloOpcode::kSend:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart: {
       TF_ASSIGN_OR_RETURN(
           absl::Duration runtime,
           sol_model.RingLatency(msg_size, num_participating_hosts,
@@ -325,26 +330,53 @@ SolLatencyEstimator::ComputeCollectiveTime(
     return absl::ZeroDuration();
   }
 
-  const HloCollectiveInstruction* collective_instr =
-      DynCast<HloCollectiveInstruction>(
-          instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr);
+  const HloInstruction* collective =
+      instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr;
+  if (const auto* cp = DynCast<HloCollectivePermuteInstruction>(collective)) {
+    // Handles the collective-permute ops.
+    int64_t partition_size = GetPartitionSize(*cp, sol_flags);
+    CollectivePermuteCostModelType cost_model_type =
+        GetCollectivePermuteCostModelType(*cp, partition_size);
 
-  if (collective_instr == nullptr) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported collective instruction: ", instr.ToString()));
+    switch (cost_model_type) {
+      case CollectivePermuteCostModelType::kIntraPartitionOneWay:
+      case CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual:
+      case CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual:
+        return collective_interpolator->EstimatedRuntime(*cp);
+      case CollectivePermuteCostModelType::kInterPartitionOneWay:
+      case CollectivePermuteCostModelType::kInterPartitionTwoWayAllMutual:
+      case CollectivePermuteCostModelType::kInterPartitionTwoWayHasNonMutual: {
+        // TODO(wfelix): Distinguish different types of inter-partition
+        // collectives.
+        TF_ASSIGN_OR_RETURN(
+            absl::Duration duration,
+            DCNCollectiveDuration(/*num_participating_hosts=*/2,
+                                  /*num_communicators=*/1, *cp, gpu_device_info,
+                                  sol_flags, analysis, mlir_context));
+        return duration;
+      }
+      case CollectivePermuteCostModelType::kUnknown:
+        return absl::InvalidArgumentError(
+            "Unknown collective permute cost model type.");
+    }
+  } else if (const auto* collective_instr =
+                 DynCast<HloCollectiveInstruction>(collective)) {
+    // Handles the collective ops.
+    int64_t partition_size = GetPartitionSize(*collective_instr, sol_flags);
+    TF_ASSIGN_OR_RETURN(
+        GPUCommunicationType communication_type,
+        CommunicationType(partition_size, *collective_instr,
+                          gpu_device_info.gpu_compute_capability()));
+    TF_ASSIGN_OR_RETURN(
+        absl::Duration result,
+        DispatchEstimation(communication_type, *collective_instr,
+                           gpu_device_info, sol_flags, analysis,
+                           collective_interpolator, mlir_context));
+    return result;
   }
 
-  int64_t partition_size = GetPartitionSize(*collective_instr, sol_flags);
-  TF_ASSIGN_OR_RETURN(
-      GPUCommunicationType communication_type,
-      CommunicationType(partition_size, *collective_instr,
-                        gpu_device_info.gpu_compute_capability()));
-  TF_ASSIGN_OR_RETURN(
-      absl::Duration result,
-      DispatchEstimation(communication_type, *collective_instr, gpu_device_info,
-                         sol_flags, analysis, collective_interpolator,
-                         mlir_context));
-  return result;
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported collective instruction: ", instr.ToString()));
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<SolLatencyEstimator>>
