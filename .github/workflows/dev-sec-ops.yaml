@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.10"
 
+      # ===========================
+      # Cppcheck (C++ SAST)
+      # ===========================
       - name: Install Cppcheck
         run: |
           sudo apt-get update
@@ -36,6 +39,9 @@ jobs:
             2>&1 || true
         continue-on-error: true
 
+      # ===========================
+      # Bandit (Python SAST)
+      # ===========================
       - name: Install Bandit
         run: pip install bandit
 
@@ -44,6 +50,48 @@ jobs:
           bandit -r tensorflow/ -ll -f json -o bandit-report.json || true
         continue-on-error: true
 
+      # ===========================
+      # Trivy (Dependency + Code + Secrets)
+      # ===========================
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+
+      # ---- Trivy filesystem scan (vulnerabilities + misconfig) ----
+      - name: Run Trivy FS Scan
+        run: |
+          trivy fs . \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-fs-report.json
+
+      # ---- Trivy secret scanning ----
+      - name: Run Trivy Secret Scan
+        run: |
+          trivy fs . \
+            --exit-code 0 \
+            --security-checks secret \
+            --format json \
+            --output trivy-secret-report.json
+
+      # ===========================
+      # SonarQube (Code Quality)
+      # ===========================
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=mukilathuruvan_tensorflow
+            -Dsonar.organization=mukilathuruvan
+
+      # ===========================
+      # Upload all reports
+      # ===========================
       - name: Upload SAST Reports
         uses: actions/upload-artifact@v4
         if: always()
@@ -52,23 +100,5 @@ jobs:
           path: |
             cppcheck-report.xml
             bandit-report.json
-
-      - name: Display Cppcheck Summary
-        if: always()
-        run: |
-          echo "=== Cppcheck Summary ==="
-          if [ -f cppcheck-report.xml ]; then
-            grep -o 'severity="[^"]*"' cppcheck-report.xml | sort | uniq -c || echo "No issues found"
-          else
-            echo "Cppcheck report not found"
-          fi
-
-      - name: Display Bandit Summary
-        if: always()
-        run: |
-          echo "=== Bandit Summary ==="
-          if [ -f bandit-report.json ]; then
-            python3 -c "import json; data=json.load(open('bandit-report.json')); print(f\"High: {len([i for i in data['results'] if i['issue_severity']=='HIGH'])}\\nMedium: {len([i for i in data['results'] if i['issue_severity']=='MEDIUM'])}\\nLow: {len([i for i in data['results'] if i['issue_severity']=='LOW'])}\")" || echo "No issues or error parsing"
-          else
-            echo "Bandit report not found"
-          fi
+            trivy-fs-report.json
+            trivy-secret-report.json
