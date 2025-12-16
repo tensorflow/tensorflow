@@ -473,9 +473,7 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        ":cuda_platform",
         ":cuda_platform_id",
-        "//xla:util",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
@@ -497,7 +495,6 @@ xla_test(
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_address",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",

@@ -59,7 +59,6 @@ namespace {
 
 using testing::ElementsAre;
 using testing::Eq;
-using testing::IsEmpty;
 using testing::Pair;
 using testing::Pointer;
 using testing::SizeIs;
@@ -104,16 +103,17 @@ using SliceList =
 class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
  public:
   absl::StatusOr<BufferAllocation*> NewEmptyAllocation(int64_t size) override {
-    allocs_.push_back(std::make_unique<BufferAllocation>(0, size, 0));
-    return allocs_.back().get();
+    if (CreatedAlloc()) {
+      return absl::InvalidArgumentError("Expected only one allocation");
+    }
+    alloc_ = std::make_unique<BufferAllocation>(0, size, 0);
+    return alloc_.get();
   }
 
-  const std::vector<std::unique_ptr<BufferAllocation>>& allocs() const {
-    return allocs_;
-  }
+  bool CreatedAlloc() { return alloc_ != nullptr; }
 
  private:
-  std::vector<std::unique_ptr<BufferAllocation>> allocs_;
+  std::unique_ptr<BufferAllocation> alloc_;
 };
 
 class FakeThunk : public Thunk {
@@ -189,7 +189,6 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
   EXPECT_THAT(root_thunk->thunks(), ElementsAre(Pointer(fake_thunk_ptr)));
-  EXPECT_THAT(allocator.allocs(), IsEmpty());
 }
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
@@ -258,8 +257,6 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
                                                 {2, slice_io},
                                             }))),
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
-
-  EXPECT_THAT(allocator.allocs(), SizeIs(1));
 }
 
 TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
@@ -467,8 +464,6 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
                     Pointer(branch1_thunk_ptr),
                     IsChecksumThunkChecking(SliceList{{0, slice_branch1}})));
   }
-
-  EXPECT_THAT(allocator.allocs(), SizeIs(1));
 }
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
@@ -552,9 +547,6 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
       static_cast<const BuffersDebugFloatCheckThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
-
-  // 1 for the log buffer, 1 per wrapped thunk for the temp buffer
-  EXPECT_THAT(allocator.allocs(), SizeIs(2));
 }
 
 TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
