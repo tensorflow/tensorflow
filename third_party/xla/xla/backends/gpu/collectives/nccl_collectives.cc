@@ -159,7 +159,9 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     return InvalidArgument(
         "CliqueIds size must be 1 for NCCL communicator initialization");
   }
-  VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
+  VLOG(1) << "Initialize NCCL (version "
+          << absl::StrCat(NCCL_MAJOR, ".", NCCL_MINOR, ".", NCCL_PATCH)
+          << ") communicator for " << ranks.size() << " devices"
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   const auto& gpu_config =
