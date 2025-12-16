@@ -103,7 +103,8 @@ class WhileThunk : public Thunk {
 
   BufferUses buffer_uses() const override {
     return {
-        BufferUse::Read(condition_result_buffer_index_),
+        BufferUse::Read(condition_result_buffer_index_,
+                        ShapeUtil::MakeShape(PRED, {})),
     };
   }
 
