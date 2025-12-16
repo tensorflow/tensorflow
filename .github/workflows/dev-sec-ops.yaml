@@ -82,13 +82,16 @@ jobs:
           args: >
             -Dsonar.projectKey=mukilathuruvan_tensorflow
             -Dsonar.organization=mukilathuruvan
-            -Dsonar.sources=tensorflow/core,tensorflow/python,tensorflow/cc,tensorflow/c
-            -Dsonar.inclusions=**/*.py,**/*.cpp,**/*.cc,**/*.cxx,**/*.c,**/*.h,**/*.hpp
-            -Dsonar.exclusions=**/*.java,**/*.js,**/*.ts,**/*.jsx,**/*.tsx,**/*.go,**/*.rs,**/*.md,**/*.txt,**/test/**,**/tests/**,**/__pycache__/**,**/*.pyc,**/third_party/**,**/bazel-*/**,**/.git/**
+            -Dsonar.sources=tensorflow/python
+            -Dsonar.inclusions=**/*.py
+            -Dsonar.exclusions=**/*.java,**/*.js,**/*.ts,**/*.jsx,**/*.tsx,**/*.go,**/*.rs,**/*.cpp,**/*.cc,**/*.cxx,**/*.c,**/*.h,**/*.hpp,**/*.md,**/*.txt,**/test/**,**/tests/**,**/__pycache__/**,**/*.pyc,**/third_party/**,**/bazel-*/**,**/.git/**
             -Dsonar.java.binaries=
             -Dsonar.java.libraries=
             -Dsonar.java.test.binaries=
             -Dsonar.java.test.libraries=
+            -Dsonar.c.file.suffixes=-
+            -Dsonar.cpp.file.suffixes=-
+            -Dsonar.objc.file.suffixes=-
 
       # ===========================
       # Upload all reports
