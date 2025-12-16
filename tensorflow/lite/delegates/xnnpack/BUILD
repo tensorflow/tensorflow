@@ -2385,6 +2385,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":fingerprint_test_helpers",
         ":quantized_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
@@ -2400,6 +2401,7 @@ cc_test(
         "//conditions:default": [],
     }),
     deps = [
+        ":fingerprint_test_helpers",
         ":quantized_depthwise_conv_2d_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
