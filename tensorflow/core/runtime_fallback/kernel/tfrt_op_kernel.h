@@ -100,8 +100,8 @@ absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
                                                Padding* value) const;
 
 template <>
-absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
-                                               std::vector<int32>* value) const;
+absl::Status TFRTOpKernelConstruction::GetAttr(
+    absl::string_view attr_name, std::vector<int32_t>* value) const;
 
 absl::Status MissingAttributeError(absl::string_view attr_name);
 
@@ -207,11 +207,11 @@ class TFRTOpMetaBuilder {
   TFRTOpMetaBuilder& Input(absl::string_view input_spec);
   TFRTOpMetaBuilder& Attr(absl::string_view attr_spec);
 
-  const string& op_name() const;
+  const std::string& op_name() const;
   TFRTOpMeta BuildMeta() const;
 
  private:
-  string op_name_;
+  std::string op_name_;
   std::vector<DataType> output_types_;
 };
 
