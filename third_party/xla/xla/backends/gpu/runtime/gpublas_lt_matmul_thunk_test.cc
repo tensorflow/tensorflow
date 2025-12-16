@@ -159,9 +159,9 @@ class GpuBlasLtThunkBuilder {
     return std::make_unique<CublasLtMatmulThunk>(
         std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
         epilogue,
-        /*algorithm_idx*/ 0, slices[0], slices[1],
-        has_matrix_bias ? slices[2] : slices.back(), slices.back(), bias,
-        BufferAllocation::Slice{} /* aux */,
+        /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
+        slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
+        slices.back(), bias, BufferAllocation::Slice{} /* aux */,
         BufferAllocation::Slice{} /* a_scale */,
         BufferAllocation::Slice{} /* b_scale */,
         BufferAllocation::Slice{} /* c_scale */,
