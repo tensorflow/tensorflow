@@ -180,7 +180,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
             /*byte_strides=*/std::nullopt, host_buffer_semantics,
             /*on_done_with_host_buffer=*/nullptr,
             *device_->default_memory_space(), /*device_layout=*/nullptr));
-    return buffer->ToLiteralSync();
+    return buffer->ToLiteral().Await();
   }
 
   absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileProgram(
@@ -220,7 +220,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     TF_ASSIGN_OR_RETURN(auto result,
                         executable->Execute({buffer_ptrs}, /*options=*/{}));
     CHECK(result.size() == 1 && result[0].size() == 1);
-    return result[0][0]->ToLiteralSync();
+    return result[0][0]->ToLiteral().Await();
   }
 
   void ExecuteAndCompareResultsWithTfKernel(
