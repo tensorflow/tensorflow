@@ -156,7 +156,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
       }
 
       // TODO(b/433244129) - remove after 6 months bwd compatibility window.
-      if (sdy_meshes_round_trip_attr && call_op->hasAttr(kIsSdyPartitioned)) {
+      if (sdy_meshes_round_trip_attr) {
         // Add the meshes roundtrip attribute to the callee module if the
         // atom program was partitioned with sdy.
         xla::sdy::setFrontendAttribute(callee_module,
