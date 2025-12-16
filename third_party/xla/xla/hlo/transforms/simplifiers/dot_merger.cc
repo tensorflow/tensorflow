@@ -415,10 +415,9 @@ absl::StatusOr<HloInstruction*> TryMergeOperand(HloInstruction* a,
   return TryMergeLHSWithRHSOperand(b, a);
 }
 
-absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
-                               std::function<bool(const HloInstruction* dot_a,
-                                                  const HloInstruction* dot_b)>
-                                   can_merge) {
+absl::StatusOr<bool> MergeDots(
+    HloComputation* comp, int64_t max_size_to_merge,
+    std::function<int64_t(const HloInstruction* dot)> queue_id) {
   auto is_merge_candidate = [&](HloInstruction* instr) {
     int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
     for (const HloInstruction* operand : instr->operands()) {
@@ -429,13 +428,17 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
 
   // Collect equivalence classes.  Specifically, create the map
   //
-  //   instruction -> [canonical dots that use the instruction].
+  //   instruction, queue_id -> [canonical dots that use the instruction].
+  //
+  // queue_id is backend-specific. Dots with different queue_ids may run
+  // concurrently on different streams and will not be merged.
   //
   // We'll then try to merge dots within each equivalence class.  A dot will be
   // a member of two equivalence classes (because it has two operands), but if
   // it's merged with a dot from one equivalence class, it won't also be merged
   // in another class.
-  absl::flat_hash_map<HloInstruction*, absl::flat_hash_set<HloInstruction*>>
+  absl::flat_hash_map<std::pair<HloInstruction*, int64_t>,
+                      absl::flat_hash_set<HloInstruction*>>
       equivalence_classes;
   for (HloInstruction* instr : comp->instructions()) {
     // Cowardly skip instructions with control dependencies.
@@ -445,11 +448,12 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
       continue;
     }
     for (HloInstruction* operand : instr->operands()) {
-      equivalence_classes[operand].insert(instr);
+      equivalence_classes[{operand, queue_id(instr)}].insert(instr);
       // DotDecomposer inserts transposes to establish a normal form. Transposed
       // operands still count as equivalent.
       if (operand->opcode() == HloOpcode::kTranspose) {
-        equivalence_classes[operand->mutable_operand(0)].insert(instr);
+        equivalence_classes[{operand->mutable_operand(0), queue_id(instr)}]
+            .insert(instr);
       }
     }
   }
@@ -462,7 +466,7 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
   //    us to merge.)
   absl::erase_if(
       equivalence_classes,
-      [&](const std::pair<const HloInstruction*,
+      [&](const std::pair<std::pair<const HloInstruction*, int64_t>,
                           absl::flat_hash_set<HloInstruction*>>& kv) {
         const auto& v = kv.second;
         return v.size() < 2 || absl::c_none_of(v, is_merge_candidate);
@@ -508,13 +512,14 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
   // them earlier because removing an instruction deletes it; we'd then have
   // dangling pointers in our hashtable!)
   absl::flat_hash_set<HloInstruction*> dead_instrs;
-  std::vector<HloInstruction*> keys;
+  std::vector<std::pair<HloInstruction*, int64_t>> keys;
   keys.reserve(equivalence_classes.size());
   for (auto& kv : equivalence_classes) {
     keys.push_back(kv.first);
   }
-  absl::c_sort(keys, [](const HloInstruction* a, const HloInstruction* b) {
-    return a->unique_id() < b->unique_id();
+  absl::c_sort(keys, [](std::pair<const HloInstruction*, int64_t> a,
+                        std::pair<const HloInstruction*, int64_t> b) {
+    return a.first->unique_id() < b.first->unique_id();
   });
   for (auto key : keys) {
     const auto& values = equivalence_classes[key];
@@ -540,7 +545,6 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
 
         if (dead_instrs.contains(a) || dead_instrs.contains(b) ||
             (!is_merge_candidate(a) && !is_merge_candidate(b)) ||
-            !can_merge(a, b) ||
             // Perform reachability checks last since they can be expensive.
             graph.IsReachableNonConst(a_id, b_id) ||
             graph.IsReachableNonConst(b_id, a_id)) {
@@ -599,7 +603,7 @@ absl::StatusOr<bool> DotMerger::RunImpl(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool changed_computation,
-                        MergeDots(comp, max_size_to_merge_, can_merge_));
+                        MergeDots(comp, max_size_to_merge_, queue_id_));
     changed |= changed_computation;
   }
   return changed;
