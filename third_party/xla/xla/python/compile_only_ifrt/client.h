@@ -167,9 +167,7 @@ class CompileOnlyIfrtCompiler final
 
   absl::StatusOr<ifrt::ExecutableRef> Compile(
       std::unique_ptr<ifrt::Program> program, const ifrt::Topology& topology,
-      std::unique_ptr<ifrt::CompileOptions> options) override {
-    return Unimplemented("Compile not implemented.");
-  }
+      std::unique_ptr<ifrt::CompileOptions> options) override;
 
   absl::Status IsExecutableVersionCompatible(
       const xla::ifrt::ExecutableVersion& executable_version,

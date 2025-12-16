@@ -419,11 +419,6 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
-    std::shared_ptr<xla::PjRtExecutable> pjrt_executable) {
-  return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
-}
-
-absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     mlir::ModuleOp module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology) {
   TF_ASSIGN_OR_RETURN(auto pjrt_executable,

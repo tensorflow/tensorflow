@@ -90,13 +90,6 @@ class PjRtCompatibleLoadedExecutable
 class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
-  // Creates PjRtExecutable from xla::PjRtExecutable.
-  ABSL_DEPRECATED(
-      "Use the `Create()` that takes an MLIR module and compiles it "
-      "internally.")
-  static absl::StatusOr<ExecutableRef> Create(
-      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
-
   // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
   // provided MLIR module into an `xla::PjRtExecutable`.
   static absl::StatusOr<ExecutableRef> Create(
