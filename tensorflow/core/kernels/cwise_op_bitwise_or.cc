@@ -19,8 +19,8 @@ namespace tensorflow {
 
 #if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
     !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
-REGISTER8(BinaryOp, CPU, "BitwiseOr", functor::bitwise_or, int8, int16, int32,
-          int64_t, uint8, uint16, uint32, uint64);
+REGISTER8(BinaryOp, CPU, "BitwiseOr", functor::bitwise_or, int8_t, int16_t,
+          int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t);
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

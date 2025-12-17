@@ -53,10 +53,10 @@ namespace {
 absl::Status ConvBackpropExtractAndVerifyDimension(
     absl::string_view label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
-    const absl::Span<const int32> dilations, const std::vector<int32>& strides,
-    Padding padding, int64_t padding_before, int64_t padding_after,
-    int spatial_dim, int filter_spatial_dim,
-    ConvBackpropSpatialDimension* dim) {
+    const absl::Span<const int32_t> dilations,
+    const std::vector<int32_t>& strides, Padding padding,
+    int64_t padding_before, int64_t padding_after, int spatial_dim,
+    int filter_spatial_dim, ConvBackpropSpatialDimension* dim) {
   dim->input_size = input_shape.dim_size(spatial_dim);
   dim->filter_size = filter_shape.dim_size(filter_spatial_dim);
   dim->output_size = output_shape.dim_size(spatial_dim);
@@ -96,9 +96,10 @@ absl::Status ConvBackpropComputeDimensionsV2(
     absl::string_view label, int num_spatial_dims,
     const TensorShape& input_shape, const TensorShape& filter_shape,
     const TensorShape& out_backprop_shape,
-    const absl::Span<const int32> dilations, const std::vector<int32>& strides,
-    Padding padding, absl::Span<const int64_t> explicit_paddings,
-    TensorFormat data_format, ConvBackpropDimensions* dims) {
+    const absl::Span<const int32_t> dilations,
+    const std::vector<int32_t>& strides, Padding padding,
+    absl::Span<const int64_t> explicit_paddings, TensorFormat data_format,
+    ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.
   const int num_dims = num_spatial_dims + 2;
   if (input_shape.dims() != num_dims) {
@@ -161,9 +162,9 @@ absl::Status ConvBackpropComputeDimensionsV2(
 absl::Status ConvBackpropComputeDimensions(
     absl::string_view label, int num_spatial_dims,
     const TensorShape& input_shape, const TensorShape& filter_shape,
-    const TensorShape& out_backprop_shape, const std::vector<int32>& strides,
+    const TensorShape& out_backprop_shape, const std::vector<int32_t>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims) {
-  static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
+  static constexpr std::array<int32_t, 5> one_dilations = {{1, 1, 1, 1, 1}};
   return ConvBackpropComputeDimensionsV2(
       label, num_spatial_dims, input_shape, filter_shape, out_backprop_shape,
       one_dilations, strides, padding, /*explicit_paddings=*/{}, data_format,
@@ -181,13 +182,13 @@ absl::Status Conv2DBackpropComputeInputShape(
   }
 
   if (input_sizes.dim_size(0) == 4) {
-    return TensorShapeUtils::MakeShape(input_sizes.vec<int32>(), input_shape);
+    return TensorShapeUtils::MakeShape(input_sizes.vec<int32_t>(), input_shape);
   }
 
   if (input_sizes.dim_size(0) == 2) {
     const int batch_size = GetTensorDim(out_backprop_shape, data_format, 'N');
-    const int output_height = input_sizes.vec<int32>()(0);
-    const int output_width = input_sizes.vec<int32>()(1);
+    const int output_height = input_sizes.vec<int32_t>()(0);
+    const int output_width = input_sizes.vec<int32_t>()(1);
     const int output_depth = filter_shape.dim_size(2);
     if (output_height < 0 || output_width < 0) {
       return errors::InvalidArgument(

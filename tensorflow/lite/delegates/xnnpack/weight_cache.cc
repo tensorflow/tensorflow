@@ -120,12 +120,17 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
   XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
   header.buffer_list_offset = sizeof(header);
 
-  XNNPACK_RETURN_CHECK(fd_.Truncate(0), "could not truncate weight cache");
+  XNNPACK_RETURN_CHECK(fd_.Truncate(0), "could not truncate weight cache.");
+  XNNPACK_RETURN_CHECK(fd_.SetPos(0) == 0, "couldn't move to file start.");
   XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
                        "could not write initial cache header in %s: %s.",
                        file_path_.c_str(), strerror(errno));
 
   schema_.base_offset = Align(sizeof(header), kMinAlignment);
+
+  XNNPACK_RETURN_CHECK(StartBuildStep(), "failed to start initial write step.");
+  XNNPACK_RETURN_CHECK(StopBuildStep(), "failed to write initial step.");
+
   return true;
 }
 
@@ -325,7 +330,7 @@ bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path,
   }
   const char* const safe_path = Sanitize(path);
   FileDescriptor build_fd = fd.Duplicate();
-  if (!IsInMemoryCachePath(safe_path) && fd.Size() &&
+  if (!IsInMemoryCachePath(safe_path) && fd.IsValid() && fd.Size() &&
       Load(safe_path, std::move(fd))) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache loaded from '%s'.", safe_path);

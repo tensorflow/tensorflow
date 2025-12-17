@@ -120,15 +120,15 @@ TEST(SubgraphTest, Iteration) {
   {
     SubgraphIterator sit(&sg);
     SubgraphIterator sit2(&sg);
-    std::vector<string> links;
+    std::vector<std::string> links;
     for (; !sit.AtEnd(); sit.Next()) {
       EXPECT_TRUE(sit == sit2);
       sit2.Next();
       EXPECT_FALSE(sit == sit2);
 
-      links.push_back(absl::StrFormat("[%s,%s,%s]", string(sit.GetPort()),
+      links.push_back(absl::StrFormat("[%s,%s,%s]", std::string(sit.GetPort()),
                                       sit.GetNeighbor().node->name(),
-                                      string(sit.GetNeighbor().port)));
+                                      std::string(sit.GetNeighbor().port)));
     }
     EXPECT_TRUE(sit == sit2);
 
