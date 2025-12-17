@@ -136,46 +136,6 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
   done(service_->ResetTask(request->source_task()));
 }
 
-void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
-    const tensorflow::ReportErrorToTaskRequest* request,
-    tensorflow::ReportErrorToTaskResponse* response, tsl::StatusCallback done) {
-  absl::ReaderMutexLock l(mu_);
-  if (agent_ == nullptr) {
-    done(MakeCoordinationError(absl::InternalError(
-        "CoordinationServiceAgent is uninitialized or has already shutdown.")));
-    return;
-  }
-  const CoordinationServiceError& error_payload = request->error_payload();
-  absl::Status error(
-      static_cast<absl::StatusCode>(request->error_code()),
-      absl::StrCat(
-          "Error reported from /job:", error_payload.source_task().job_name(),
-          "/task:", error_payload.source_task().task_id(), ": ",
-          request->error_message()));
-  error = MakeCoordinationError(error, error_payload);
-  agent_->SetError(error);
-  done(absl::OkStatus());
-}
-
-void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
-    const tensorflow::ReportErrorToServiceRequest* request,
-    tensorflow::ReportErrorToServiceResponse* response,
-    tsl::StatusCallback done) {
-  absl::ReaderMutexLock l(mu_);
-  if (service_ == nullptr) {
-    done(MakeCoordinationError(
-        absl::InternalError("Coordination service is not enabled.")));
-    return;
-  }
-  done(service_->ReportTaskError(
-      request->error_origin(),
-      MakeCoordinationError(
-          absl::Status{static_cast<absl::StatusCode>(request->error_code()),
-                       request->error_message()},
-          request->error_origin(),
-          /*is_reported_error=*/true)));
-}
-
 void CoordinationServiceRpcHandler::GetTaskStateAsync(
     const tensorflow::GetTaskStateRequest* request,
     tensorflow::GetTaskStateResponse* response, tsl::StatusCallback done) {

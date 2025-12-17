@@ -238,8 +238,8 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmProtoRoundTrip) {
@@ -411,8 +411,8 @@ CreateMultipleSlicedOperandsGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}),
           ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
           std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), sizeof(int64_t),
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, S64, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemmProtoRoundTrip) {
@@ -601,7 +601,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt},
-      {sizeof(int64_t), std::nullopt});
+      {S64, std::nullopt});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -767,7 +767,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
-      {sizeof(int64_t), sizeof(int64_t)});
+      {S64, S64});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -945,8 +945,8 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrderProtoRoundTrip) {
@@ -1118,8 +1118,8 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest,
@@ -1282,8 +1282,8 @@ CreateSlicedTupledOperandGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemmProtoRoundTrip) {
@@ -1475,7 +1475,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
-      {sizeof(int64_t), sizeof(int64_t)});
+      {S64, S64});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -1658,8 +1658,8 @@ CreateSlicedOperandsSameBufferGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemmProtoRoundTrip) {
@@ -1876,8 +1876,8 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 4}), std::nullopt,
           std::nullopt, std::nullopt},
       /*offset_byte_sizes=*/
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt},
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt},
       /*offset_as_function_of_indvar_metadata=*/
       std::move(offset_as_function_of_indvar_modules_metadata));
 }
