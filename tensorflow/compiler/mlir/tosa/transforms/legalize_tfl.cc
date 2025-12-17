@@ -3009,7 +3009,7 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<APInt>()[i].getSExtValue());
 
-  auto multiples = getTosaConstShape(rewriter, op, multiples_vals);
+  auto multiples = getTosaConstShape(rewriter, op->getLoc(), multiples_vals);
 
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
                                         tfl_tile_op.getInput(), multiples);

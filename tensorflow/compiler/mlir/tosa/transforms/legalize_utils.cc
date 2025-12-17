@@ -991,15 +991,6 @@ Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
   return const_op.getResult();
 }
 
-Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
-                        llvm::ArrayRef<int64_t> values) {
-  auto attr = rewriter.getIndexTensorAttr(values);
-  auto type =
-      tosa::shapeType::get(rewriter.getContext(), /* rank = */ values.size());
-  return CreateOpAndInfer<tosa::ConstShapeOp>(rewriter, op->getLoc(), type,
-                                              attr);
-}
-
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
 // Populate a int32_t vector from a val tensor
