@@ -825,6 +825,11 @@ class HloModule {
     stack_frame_index_ = std::move(stack_frame_index);
   }
 
+  // Getter for the stack frame index.
+  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
+    return stack_frame_index_;
+  }
+
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
   // modify the module (add computations or instructions) after the call. Should
