@@ -52,7 +52,7 @@ bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
-  string match;
+  std::string match;
   bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
   return found && !match.empty();
 }
