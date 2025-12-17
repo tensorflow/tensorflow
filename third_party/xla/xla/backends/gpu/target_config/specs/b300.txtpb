@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-{
+gpu_device_info {
   threads_per_block_limit: 1024
   threads_per_warp: 32
   shared_memory_per_block: 49152

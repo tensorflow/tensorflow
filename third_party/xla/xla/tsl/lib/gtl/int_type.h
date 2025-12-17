@@ -159,6 +159,7 @@ limitations under the License.
 #include <ostream>  // NOLINT
 #include <unordered_map>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 
@@ -272,6 +273,12 @@ class IntType {
   ThisType& operator=(ValueType arg_value) {
     value_ = arg_value;
     return *this;
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink,
+                            const IntType<IntTypeName, ValueType>& i) {
+    absl::Format(&sink, "%v", i.value());
   }
 
  private:

@@ -5,10 +5,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
-load(
-    "@local_config_sycl//sycl:build_defs.bzl",
-    "if_sycl_is_configured",
-)
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
@@ -252,24 +248,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-cc_library(
-    name = "gpu_types_header",
-    hdrs = ["gpu_types.h"],
-    defines = if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]) + if_sycl_is_configured([
-        "TENSORFLOW_USE_SYCL=1",
-    ]),
-    tags = ["gpu"],
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]) + if_sycl_is_configured([
-        "@local_config_sycl//sycl:sycl_headers",
-    ]),
 )
 
 cc_library(
@@ -693,18 +671,7 @@ xla_test(
     name = "gpu_device_info_test",
     srcs = ["gpu_device_info_test.cc"],
     backends = ["gpu"],
-    data = [
-        "//xla/backends/gpu:specs/a100_pcie_80.txtpb",
-        "//xla/backends/gpu:specs/a100_sxm_40.txtpb",
-        "//xla/backends/gpu:specs/a100_sxm_80.txtpb",
-        "//xla/backends/gpu:specs/a6000.txtpb",
-        "//xla/backends/gpu:specs/b200.txtpb",
-        "//xla/backends/gpu:specs/h100_pcie.txtpb",
-        "//xla/backends/gpu:specs/h100_sxm.txtpb",
-        "//xla/backends/gpu:specs/mi200.txtpb",
-        "//xla/backends/gpu:specs/p100.txtpb",
-        "//xla/backends/gpu:specs/v100.txtpb",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     deps = [
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",

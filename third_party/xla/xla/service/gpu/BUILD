@@ -193,7 +193,7 @@ xla_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     tags = ["no-oneapi"],  # TODO(intel-tf): Remove it when macro substitutions for SYCL are available in xla/stream_executor/sycl/*.
     deps = [
         "//xla:debug_options_flags",
@@ -219,7 +219,6 @@ xla_test(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:client_library_test_runner_mixin",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
