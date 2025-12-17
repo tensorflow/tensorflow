@@ -265,7 +265,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
 #include "xla/service/gpu/transforms/topk_splitter.h"
-#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
 #include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
@@ -754,18 +753,6 @@ absl::Status RunOptimizationPasses(
         gpu_target_config.device_description.gpu_compute_capability());
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
-    // Only merge "smallish" dots.  This threshold defaults to 32MB today, with
-    // a flag to override.
-    // Do not merge dots when they are assigned different stream ids.
-    std::function<int64_t(const HloInstruction* dot)> queue_id =
-        [&](const HloInstruction* dot) -> int64_t {
-      return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
-    };
-    pipeline.AddPass<DotMerger>(
-        /*max_size_to_merge=*/int64_t{debug_options
-                                          .xla_gpu_dot_merger_threshold_mb()}
-            << 20,
-        queue_id);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();
@@ -778,10 +765,31 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<RealImagExpander>();
-    pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
+    // Do not fold transpose operands into dots yet. This can undo the normal
+    // form established by DotDecomposer, which the DotMerger pass requires.
+    pipeline.AddPass<TransposeFolding>(
+        /*dot_can_fold_transpose_operand=*/
+        [&](const HloInstruction& dot,
+            int64_t operand) -> absl::StatusOr<bool> { return false; });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
   }();
+
+  // Do not merge dots when they are assigned different stream ids.
+  std::function<int64_t(const HloInstruction* dot)> queue_id =
+      [&](const HloInstruction* dot) -> int64_t {
+    return dot->backend_config<GpuBackendConfig>()->operation_queue_id();
+  };
+  // Only merge "smallish" dots. This threshold defaults to 32MB today, with
+  // a flag to override.
+  pipeline.AddPass<DotMerger>(
+      /*max_size_to_merge=*/int64_t{debug_options
+                                        .xla_gpu_dot_merger_threshold_mb()}
+          << 20,
+      queue_id);
+  // Folding transpose operands into dots can undo the normal form established
+  // by DotDecomposer. Subsequent passes must not rely on it from this point on.
+  pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
 
   // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
   // to move some converts down the graph, but ReshapeMover wants to move them
@@ -1742,7 +1750,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       // introduced the nested fusions. We also want to keep it close to the
       // gemm rewriter to avoid the possibility of new passes to rewrite the
       // transpose.
-      pipeline.AddPass<TransposeDimensionGrouper>();
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
     } else if (cuda_cc != nullptr &&
@@ -1770,8 +1777,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // also have unsorted update_window_dims.
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
-    // BroadcastCanonicalizer can create transposes.
-    pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();
     // Run Softmax fusion after layout normalization. We expect a default layout

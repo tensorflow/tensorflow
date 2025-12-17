@@ -125,7 +125,7 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   ASSERT_NE(alias_buffer.second, nullptr);
   TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
-                          alias_buffer.first->ToLiteralSync());
+                          alias_buffer.first->ToLiteral().Await());
 
   // Expected result: data + 1
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -370,7 +370,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
       buffer->CopyToMemorySpace(client->memory_spaces()[1]));
   buffer.reset();
   ASSERT_TRUE(result);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -526,7 +526,7 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
   auto result = executable->Execute(/*argument_handles=*/{{}}, options);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));

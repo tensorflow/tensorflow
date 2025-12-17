@@ -42,7 +42,7 @@ class SigNode;
 // To find nodes by name. Having the map ordered makes the tests easier,
 // and it isn't used in production code often enough to get any win from
 // using an unordered map.
-using SigNodeMap = std::map<string, std::unique_ptr<SigNode>>;
+using SigNodeMap = std::map<std::string, std::unique_ptr<SigNode>>;
 
 // One node in the graph, in the form convenient for generation of the signature
 // of the graph, and comparison of two (sub)graphs for equivalence. It refers to
@@ -61,8 +61,8 @@ class SigNode {
   explicit SigNode(const NodeDef* node);
 
   // Access wrappers.
-  const string& name() const { return node_->name(); }
-  const string& opcode() const { return node_->op(); }
+  const std::string& name() const { return node_->name(); }
+  const std::string& opcode() const { return node_->op(); }
   const NodeDef* node_def() const { return node_; }
 
   // For extraction of subgraphs into a separate SigNodeMap, copies the links
@@ -261,7 +261,7 @@ struct Signature {
   absl::Status Compute();
 
   // Convert the computed signature to a string representation.
-  string ToString() const;
+  std::string ToString() const;
 
   SigNodeMap map;        // The nodes in the graph, accessible by name.
   size_t sig_short = 0;  // Hash of the signature, for the quick equality check.

@@ -127,7 +127,7 @@ class CTCLossOp : public OpKernel {
         errors::InvalidArgument("len(sequence_length) != batch_size.  ",
                                 "len(sequence_length):  ", seq_len->dim_size(0),
                                 " batch_size: ", batch_size));
-    auto seq_len_t = seq_len->vec<int32>();
+    auto seq_len_t = seq_len->vec<int32_t>();
 
     OP_REQUIRES(ctx, labels_indices->dim_size(0) == labels_values->dim_size(0),
                 errors::InvalidArgument(
@@ -166,7 +166,7 @@ class CTCLossOp : public OpKernel {
                                           0, " and ", batch_size,
                                           " but saw: ", batch_indices));
 
-      auto values = g.values<int32>();
+      auto values = g.values<int32_t>();
       std::vector<int>* b_values = &labels_t[batch_indices];
       b_values->resize(values.size());
       for (int i = 0; i < values.size(); ++i) (*b_values)[i] = values(i);

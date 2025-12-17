@@ -73,9 +73,9 @@ class CSRSparseMatrixToDenseCPUOp : public OpKernel {
     const int64_t num_rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t num_cols = dense_shape((rank == 2) ? 1 : 2);
 
-    auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
-    auto row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
-    auto col_ind = csr_sparse_matrix->col_indices().vec<int32>();
+    auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32_t>();
+    auto row_ptr = csr_sparse_matrix->row_pointers().vec<int32_t>();
+    auto col_ind = csr_sparse_matrix->col_indices().vec<int32_t>();
     auto values = csr_sparse_matrix->values().vec<T>();
 
     TensorShape dense_tensor_shape;
@@ -159,14 +159,14 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
     functor::CSRSparseMatrixToCOOSparseMatrix<Device> csr_to_coo;
     auto indices = indices_t.matrix<int64_t>();
 
-    auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32>();
-    auto coo_col_ind = csr_sparse_matrix->col_indices().vec<int32>();
-    auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32>();
+    auto csr_row_ptr = csr_sparse_matrix->row_pointers().vec<int32_t>();
+    auto coo_col_ind = csr_sparse_matrix->col_indices().vec<int32_t>();
+    auto batch_ptrs = csr_sparse_matrix->batch_pointers().vec<int32_t>();
 
     Tensor coo_row_ind_t;
     OP_REQUIRES_OK(c, c->allocate_temp(DT_INT32, TensorShape({total_nnz}),
                                        &coo_row_ind_t));
-    auto coo_row_ind = coo_row_ind_t.vec<int32>();
+    auto coo_row_ind = coo_row_ind_t.vec<int32_t>();
 
     // TODO(ebrevdo): just write a custom kernel that converts from
     // csr to dense.
@@ -176,9 +176,9 @@ class CSRSparseMatrixToDenseGPUOp : public OpKernel {
         // No copying required.  Avoid failure case below.
         continue;
       }
-      const TTypes<int32>::UnalignedConstVec csr_row_ptr_i(
+      const TTypes<int32_t>::UnalignedConstVec csr_row_ptr_i(
           &csr_row_ptr((rows + 1) * i), rows + 1);
-      const TTypes<int32>::UnalignedVec coo_row_ind_i(
+      const TTypes<int32_t>::UnalignedVec coo_row_ind_i(
           &coo_row_ind(csr_sparse_matrix->batch_offset(i)), nnz_i);
       OP_REQUIRES_OK(c, csr_to_coo(c, csr_row_ptr_i, coo_row_ind_i));
     }

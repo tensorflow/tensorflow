@@ -69,7 +69,7 @@ struct ConvBackpropDimensions {
 absl::Status ConvBackpropComputeDimensions(
     absl::string_view label, int num_spatial_dims,
     const TensorShape& input_shape, const TensorShape& filter_shape,
-    const TensorShape& out_backprop_shape, const std::vector<int32>& strides,
+    const TensorShape& out_backprop_shape, const std::vector<int32_t>& strides,
     Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 
 // The V2 version computes the same outputs with arbitrary dilation rate and
@@ -78,8 +78,8 @@ absl::Status ConvBackpropComputeDimensions(
 absl::Status ConvBackpropComputeDimensionsV2(
     absl::string_view label, int num_spatial_dims,
     const TensorShape& input_shape, const TensorShape& filter_shape,
-    const TensorShape& out_backprop_shape, absl::Span<const int32> dilations,
-    const std::vector<int32>& strides, Padding padding,
+    const TensorShape& out_backprop_shape, absl::Span<const int32_t> dilations,
+    const std::vector<int32_t>& strides, Padding padding,
     absl::Span<const int64_t> explicit_paddings, TensorFormat data_format,
     ConvBackpropDimensions* dims);
 

@@ -17,8 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER8(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
-          uint32, uint64, int8, int16, int32, int64_t);
+REGISTER8(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8_t, uint16_t,
+          uint32_t, uint64_t, int8_t, int16_t, int32_t, int64_t);
 REGISTER4(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, bfloat16, double);
 
@@ -49,7 +49,7 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_floor_div<int32_t>>);
 
 }  // namespace tensorflow
