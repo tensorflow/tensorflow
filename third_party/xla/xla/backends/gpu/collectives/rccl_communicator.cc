@@ -401,7 +401,7 @@ RcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
           XLA_RCCL_RETURN_IF_ERROR(ncclGroupStart());
           XLA_RCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
               comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
-              RCCL_WIN_COLL_SYMMETRIC));
+              NCCL_WIN_COLL_SYMMETRIC));
           XLA_RCCL_RETURN_IF_ERROR(ncclGroupEnd());
           if (group_nesting_level_ == 0) {
             TF_RETURN_IF_ERROR(PollUntilDone());
