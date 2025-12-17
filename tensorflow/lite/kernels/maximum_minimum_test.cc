@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -247,24 +248,20 @@ TEST(MaximumOpTest, Int32WithBroadcastTest5D) {
 }
 
 TEST(MaximumOpTest, Float16Test) {
-  std::initializer_list<Eigen::half> data1 = {
-      Eigen::half(1.0),  Eigen::half(0.0),  Eigen::half(-1.0),
-      Eigen::half(11.0), Eigen::half(-2.0), Eigen::half(-1.44)};
-  std::initializer_list<Eigen::half> data2 = {
-      Eigen::half(-1.0), Eigen::half(0.0),  Eigen::half(1.0),
-      Eigen::half(12.0), Eigen::half(-3.0), Eigen::half(-1.43)};
-  TestModel<Eigen::half>(
-      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 2}},
-      {TensorType_FLOAT16, {3, 1, 2}}, {TensorType_FLOAT16, {3, 1, 2}}, data1,
-      data2,
-      {Eigen::half(1.0), Eigen::half(0.0), Eigen::half(1.0), Eigen::half(12.0),
-       Eigen::half(-2.0), Eigen::half(-1.43)});
-  TestModel<Eigen::half>(
-      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 2}},
-      {TensorType_FLOAT16, {3, 1, 2}}, {TensorType_FLOAT16, {3, 1, 2}}, data1,
-      data2,
-      {Eigen::half(-1.0), Eigen::half(0.0), Eigen::half(-1.0),
-       Eigen::half(11.0), Eigen::half(-3.0), Eigen::half(-1.44)});
+  std::initializer_list<half> data1 = {half(1.0f),  half(0.0f),  half(-1.0f),
+                                       half(11.0f), half(-2.0f), half(-1.44f)};
+  std::initializer_list<half> data2 = {half(-1.0f), half(0.0f),  half(1.0f),
+                                       half(12.0f), half(-3.0f), half(-1.43f)};
+  TestModel<half>(BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 2}},
+                  {TensorType_FLOAT16, {3, 1, 2}},
+                  {TensorType_FLOAT16, {3, 1, 2}}, data1, data2,
+                  {half(1.0f), half(0.0f), half(1.0f), half(12.0f), half(-2.0f),
+                   half(-1.43f)});
+  TestModel<half>(BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 2}},
+                  {TensorType_FLOAT16, {3, 1, 2}},
+                  {TensorType_FLOAT16, {3, 1, 2}}, data1, data2,
+                  {half(-1.0f), half(0.0f), half(-1.0f), half(11.0f),
+                   half(-3.0f), half(-1.44f)});
 }
 
 TEST(MaximumOpTest, BFloat16Test) {
@@ -308,42 +305,39 @@ TEST(MaximumOpTest, BFloat16WithBroadcastTest5DScalarY) {
 }
 
 TEST(MaximumOpTest, Float16WithBroadcastTest5DScalarY) {
-  std::initializer_list<Eigen::half> data1 = {
-      Eigen::half(1.0),  Eigen::half(0.0), Eigen::half(-1.0),
-      Eigen::half(-2.0), Eigen::half(3.0), Eigen::half(11.0)};
-  std::initializer_list<Eigen::half> data2 = {Eigen::half(2.0)};
-  TestModel<Eigen::half>(
-      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
-      {TensorType_FLOAT16, {1}}, {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1,
-      data2,
-      {Eigen::half(2.0), Eigen::half(2.0), Eigen::half(2.0), Eigen::half(2.0),
-       Eigen::half(3.0), Eigen::half(11.0)});
-  TestModel<Eigen::half>(
-      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
-      {TensorType_FLOAT16, {1}}, {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1,
-      data2,
-      {Eigen::half(1.0), Eigen::half(0.0), Eigen::half(-1.0), Eigen::half(-2.0),
-       Eigen::half(2.0), Eigen::half(2.0)});
+  std::initializer_list<half> data1 = {half(1.0f),  half(0.0f), half(-1.0f),
+                                       half(-2.0f), half(3.0f), half(11.0f)};
+  std::initializer_list<half> data2 = {half(2.0f)};
+  TestModel<half>(BuiltinOperator_MAXIMUM,
+                  {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
+                  {TensorType_FLOAT16, {1}},
+                  {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1, data2,
+                  {half(2.0f), half(2.0f), half(2.0f), half(2.0f), half(3.0f),
+                   half(11.0f)});
+  TestModel<half>(BuiltinOperator_MINIMUM,
+                  {TensorType_FLOAT16, {3, 1, 2, 1, 1}},
+                  {TensorType_FLOAT16, {1}},
+                  {TensorType_FLOAT16, {3, 1, 2, 1, 1}}, data1, data2,
+                  {half(1.0f), half(0.0f), half(-1.0f), half(-2.0f), half(2.0f),
+                   half(2.0f)});
 }
 
 TEST(MaximumOpTest, Float16WithBroadcastTest5D) {
-  std::initializer_list<Eigen::half> data1 = {
-      Eigen::half(1.0),  Eigen::half(0.0),   Eigen::half(-1.0),
-      Eigen::half(-2.0), Eigen::half(-1.44), Eigen::half(11.0)};
-  std::initializer_list<Eigen::half> data2 = {Eigen::half(0.5),
-                                              Eigen::half(2.0)};
-  TestModel<Eigen::half>(
-      BuiltinOperator_MAXIMUM, {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
-      {TensorType_FLOAT16, {2}}, {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1,
-      data2,
-      {Eigen::half(1.0), Eigen::half(2.0), Eigen::half(0.5), Eigen::half(2.0),
-       Eigen::half(0.5), Eigen::half(11.0)});
-  TestModel<Eigen::half>(
-      BuiltinOperator_MINIMUM, {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
-      {TensorType_FLOAT16, {2}}, {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1,
-      data2,
-      {Eigen::half(0.5), Eigen::half(0.0), Eigen::half(-1.0), Eigen::half(-2.0),
-       Eigen::half(-1.44), Eigen::half(2.0)});
+  std::initializer_list<half> data1 = {half(1.0f),  half(0.0f),   half(-1.0f),
+                                       half(-2.0f), half(-1.44f), half(11.0f)};
+  std::initializer_list<half> data2 = {half(0.5f), half(2.0f)};
+  TestModel<half>(BuiltinOperator_MAXIMUM,
+                  {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
+                  {TensorType_FLOAT16, {2}},
+                  {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1, data2,
+                  {half(1.0f), half(2.0f), half(0.5f), half(2.0f), half(0.5f),
+                   half(11.0f)});
+  TestModel<half>(BuiltinOperator_MINIMUM,
+                  {TensorType_FLOAT16, {3, 1, 1, 1, 2}},
+                  {TensorType_FLOAT16, {2}},
+                  {TensorType_FLOAT16, {3, 1, 1, 1, 2}}, data1, data2,
+                  {half(0.5f), half(0.0f), half(-1.0f), half(-2.0f),
+                   half(-1.44f), half(2.0f)});
 }
 
 TEST(MaximumOpTest, BFloat16WithBroadcastTest5D) {
