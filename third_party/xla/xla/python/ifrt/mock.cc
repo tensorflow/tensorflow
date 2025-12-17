@@ -261,6 +261,9 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, ProcessIndex).WillByDefault([this]() {
     return delegated_->ProcessIndex();
   });
+  ON_CALL(*this, PlatformName).WillByDefault([this]() {
+    return delegated_->PlatformName();
+  });
   ON_CALL(*this, Kind).WillByDefault([this]() { return delegated_->Kind(); });
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();

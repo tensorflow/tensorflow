@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -175,10 +175,23 @@ class PjRtExecutable final
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
-      : pjrt_executable_(std::move(pjrt_executable)) {}
+  PjRtExecutable(
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+      std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+      std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
+      std::vector<absl::string_view> output_memory_kinds,
+      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          output_layouts);
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
+
+  // Output array specs.
+  std::vector<DType> output_dtypes_;
+  std::vector<Shape> output_shapes_;
+  std::optional<std::vector<xla::HloSharding>> output_hlo_shardings_;
+  std::vector<absl::string_view> output_memory_kinds_;
+  std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+      output_layouts_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
