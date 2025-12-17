@@ -152,6 +152,11 @@ class CommonPjRtClient : public PjRtClient {
     return CreateLinkedEventPromise(memory_space, "CreateLinkedEventPromise");
   }
 
+  virtual std::unique_ptr<PjRtDeviceEventSet> CreateDeviceEventSet(
+      size_t preallocated_size) const {
+    LOG(FATAL) << "Implement";
+  }
+
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
   // by a non-device-specific config instead of delegating this control
@@ -261,6 +266,108 @@ class CommonPjRtClient : public PjRtClient {
       absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
           output_leaf_buffers,
       bool is_predetermined_error);
+};
+
+// Represents the launch state for a loaded executable. This state must be
+// reconstructed each time we want to launch the executable.
+class PjRtRawLoadedExecutable {
+ public:
+  virtual ~PjRtRawLoadedExecutable() = default;
+
+  virtual PjRtDevice* device() = 0;
+
+  virtual absl::Status Load(const ExecuteOptions& options,
+                            size_t host_callback_idx) = 0;
+
+  struct RawExecuteResult {
+    std::optional<tsl::Future<>> future;
+    tsl::RCReference<PjRtDeviceEvent> primary_execute_event;
+  };
+  virtual RawExecuteResult Execute(
+      const ExecuteOptions& options,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> inputs,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+      PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
+      bool is_predetermined_error, bool fill_future) && = 0;
+};
+
+class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
+ public:
+  CommonPjRtLoadedExecutable(CommonPjRtClient* client,
+                             std::vector<Shape> parameter_device_shapes,
+                             Shape output_device_shape,
+                             std::vector<int> output_memory_space_kind_ids,
+                             std::vector<PjRtDevice*> addressable_devices)
+      : parameter_device_shapes_(std::move(parameter_device_shapes)),
+        output_device_shape_(std::move(output_device_shape)),
+        output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
+        addressable_devices_(std::move(addressable_devices)) {}
+
+  CommonPjRtClient* client() const override = 0;
+
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
+  }
+
+ protected:
+  // Execute is split into Prepare and Launch.
+  // Prepare can fail and be retried, while Launch is guaranteed to succeed.
+  struct ExecuteLaunchArgs {
+    PjRtDevice* device;
+    std::unique_ptr<PjRtRawLoadedExecutable> executable;
+    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4> input_buffers;
+    absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
+    std::unique_ptr<PjRtDeviceEventSet> extra_deps;
+    std::unique_ptr<PjRtDeviceEventSet> control_deps;
+    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+        output_leaf_buffers;
+    bool is_predetermined_error;
+    const ExecuteOptions* options;
+  };
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
+  StartRawExecutable(const ExecuteOptions& options, int replica, int partition,
+                     PjRtDevice* device) const = 0;
+
+  // Returns a sorted list of the parameters that must be donated as a
+  // side-effect of the execution. Derived classes may use custom logic.
+  absl::Span<int const> ParametersThatMustBeDonated() const;
+
+  virtual const HloInputOutputAliasConfig& input_output_alias_config()
+      const = 0;
+
+  // Checks that the input buffers passed in by the user have the correct size
+  // on device for the compiled program.
+  absl::Status CheckBufferCompatibilities(
+      const ExecuteOptions& options,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
+      absl::Span<PjRtBuffer* const> argument_handles) const;
+
+  absl::Status ExecutePrepare(ExecuteLaunchArgs& launch_args,
+                              absl::Span<PjRtBuffer* const> argument_handles,
+                              int replica, int partition,
+                              const ExecuteOptions& options,
+                              size_t host_callback_idx,
+                              PjRtDevice* device) const;
+
+  Result ExecuteLaunch(ExecuteLaunchArgs& launch_args, bool fill_future) const;
+
+  // Parameter shapes.
+  std::vector<Shape> parameter_device_shapes_;
+  // A sorted vector of parameters that have any aliased buffers and thus must
+  // be donated when executing the computation.
+  std::vector<int> parameters_that_must_be_donated_;
+  // Result layouts (device shapes).
+  Shape output_device_shape_;
+  // memory_space()->kind_id() for each output buffer.
+  std::vector<int> output_memory_space_kind_ids_;
+  // Size on device of each leaf buffer of the compiled program, cached here
+  // for performance reasons.
+  std::vector<int64_t> input_buffer_sizes_in_bytes_;
+  // addressable_devices_[i] is the Device to which
+  // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
+  // unique_ptrs to play well with the Python bindings (see xla.cc).
+  std::vector<PjRtDevice*> addressable_devices_;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

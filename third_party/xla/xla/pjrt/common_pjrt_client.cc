@@ -747,6 +747,126 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   return res;
 }
 
+absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
+    ExecuteLaunchArgs& launch_args,
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    const ExecuteOptions& options, size_t host_callback_idx,
+    PjRtDevice* device) const {
+  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      StartRawExecutable(options, replica, partition, device));
+  // Fill in device to launch_args so it will be present even if ExecutePrepare
+  // fails with OOM.
+  device = executable->device();
+  launch_args.device = device;
+
+  // Execute takes `extra_deps` and waits for those to be
+  // fulfilled before executing the program and returning an available
+  // `execute_event` signaling that the program execution is complete. To avoid
+  // clobbering inputs, we must ensure that
+  //   `extra_deps` = inputs' definition events + donated inputs' usage events.
+  // This also ensures that the returned `execute_event` dominates all inputs'
+  // events, and thus output buffer only need to contain `execute_event` as the
+  // single definition event.
+  launch_args.extra_deps =
+      client()->CreateDeviceEventSet(argument_handles.size());
+  launch_args.control_deps =
+      client()->CreateDeviceEventSet(argument_handles.size());
+
+  bool is_error = false;
+  TF_RETURN_IF_ERROR(CommonPjRtClient::PrepareArguments(
+      options, argument_handles, ParametersThatMustBeDonated(),
+      *launch_args.extra_deps, *launch_args.control_deps,
+      launch_args.input_buffers, launch_args.device_buffers, device, replica,
+      partition, parameter_device_shapes_, is_error));
+
+  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+      output_leaf_buffers;
+  if (!is_error) {
+    // Allocate output with input reuse. Any allocation errors are returned
+    // immediately. Derived classes may use custom logic for allocation.
+    TF_ASSIGN_OR_RETURN(output_leaf_buffers,
+                        client()->AllocateOutputBuffersWithInputReuse(
+                            output_device_shape_, launch_args.device_buffers,
+                            input_output_alias_config(), device,
+                            output_memory_space_kind_ids_));
+    VLOG(3) << "Created output buffer: " << output_device_shape_.ToString();
+
+    TF_RETURN_IF_ERROR(CheckBufferCompatibilities(
+        options, launch_args.input_buffers, argument_handles));
+  }
+
+  TF_RETURN_IF_ERROR(executable->Load(options, host_callback_idx));
+
+  launch_args.executable = std::move(executable);
+  launch_args.options = &options;
+  launch_args.is_predetermined_error = is_error;
+  launch_args.output_leaf_buffers = std::move(output_leaf_buffers);
+  return absl::OkStatus();
+}
+
+absl::Span<int const> CommonPjRtLoadedExecutable::ParametersThatMustBeDonated()
+    const {
+  return parameters_that_must_be_donated_;
+}
+
+absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
+    const ExecuteOptions& options,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
+    absl::Span<PjRtBuffer* const> argument_handles) const {
+  if (input_buffers.size() != input_buffer_sizes_in_bytes_.size()) {
+    return InvalidArgument(
+        "Execution supplied %lld buffers but compiled program expected %lld "
+        "buffers",
+        input_buffers.size(), input_buffer_sizes_in_bytes_.size());
+  }
+  for (int i = 0; i < input_buffers.size(); ++i) {
+    size_t buffer_size = input_buffers[i]->GetOnDeviceSizeInBytes();
+    if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
+      const auto& expected_shape = parameter_device_shapes_[i];
+      const auto& actual_shape = argument_handles[i]->on_device_shape();
+      return InvalidArgument(
+          "Executable(%s) expected parameter %d of size %lld (%s) but got "
+          "buffer with incompatible size %lld (%s)",
+          name(), i, input_buffer_sizes_in_bytes_[i],
+          expected_shape.ToString(true), buffer_size,
+          actual_shape.ToString(true));
+    }
+  }
+  return absl::OkStatus();
+}
+
+PjRtLoadedExecutable::Result CommonPjRtLoadedExecutable::ExecuteLaunch(
+    ExecuteLaunchArgs& launch_args, bool fill_future) const {
+  CHECK(launch_args.extra_deps.get()) << "extra_deps is nullptr";
+  CHECK(launch_args.control_deps.get()) << "control_deps is nullptr";
+  auto results =
+      std::move(*launch_args.executable)
+          .Execute(*launch_args.options, launch_args.input_buffers,
+                   launch_args.output_leaf_buffers, *launch_args.extra_deps,
+                   *launch_args.control_deps,
+                   launch_args.is_predetermined_error, fill_future);
+  {
+    tsl::profiler::TraceMe t3("Handle input event recording");
+    // Handle input event recording.
+    for (CommonPjRtBuffer::ScopedHold& b : launch_args.device_buffers) {
+      if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
+        b.ConvertUsageHold(results.primary_execute_event);
+      } else {
+        CHECK(b.type() == CommonPjRtBuffer::ScopedHold::kDonation);
+        b.ConfirmDonation();
+      }
+    }
+  }
+  return PjRtLoadedExecutable::Result(
+      {/*future=*/std::move(results.future),
+       /*buffers=*/client()->CreateOutputs(
+           output_device_shape_, results.primary_execute_event,
+           launch_args.device, output_memory_space_kind_ids_,
+           std::move(launch_args.output_leaf_buffers),
+           launch_args.is_predetermined_error)});
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
                                            PjRtMemorySpace* dst_memory_space) {
