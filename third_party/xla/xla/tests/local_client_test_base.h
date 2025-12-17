@@ -47,10 +47,10 @@ limitations under the License.
 
 namespace xla {
 
-class TestAllocator : public se::StreamExecutorMemoryAllocator {
+class TestAllocator : public stream_executor::StreamExecutorAddressAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
-      : se::StreamExecutorMemoryAllocator(
+      : stream_executor::StreamExecutorAddressAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
   absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
