@@ -498,6 +498,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
       }
     }
 
+    std::string platform_name(pjrt_client->platform_name());
     const bool node_is_me = process_index == global_topology.my_process_index;
     for (const DeviceProto& device_proto : node.devices()) {
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
@@ -536,7 +537,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
         }
       }
       auto ifrt_device = std::make_unique<PjRtDevice>(
-          client, ifrt_device_id, device_proto.device_kind(),
+          client, ifrt_device_id, platform_name, device_proto.device_kind(),
           std::move(to_string), std::move(debug_string), process_index,
           std::move(attributes), pjrt_device);
       devices.push_back(std::move(ifrt_device));
