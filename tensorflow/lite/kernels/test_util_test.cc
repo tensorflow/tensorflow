@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -195,6 +196,14 @@ TEST(TestUtilTest, QuantizeVectorScalingUp) {
   auto q_data = Quantize<uint8_t>(data, /*scale=*/0.1, /*zero_point=*/0);
   std::vector<uint8_t> expected = {0, 0, 0, 5, 10, 255};
   EXPECT_THAT(q_data, ElementsAreArray(expected));
+}
+
+TEST(TestUtilTest, DequantizeVectorFp16) {
+  std::vector<half> data = {half(-1.0f), half(-0.5f), half(0.0f), half(0.5f),
+                            half(1.0f)};
+  auto f_data = Dequantize<half>(data, /*scale=*/0.1f, /*zero_point=*/0);
+  std::vector<float> expected = {-0.1f, -0.05f, 0.0f, 0.05f, 0.1f};
+  EXPECT_THAT(f_data, ElementsAreArray(tflite::ArrayFloatNear(expected, 1e-7)));
 }
 
 TEST(DimsAreMatcherTestTensor, ValidOneD) {

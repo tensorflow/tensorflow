@@ -62,6 +62,9 @@ class CommonPjRtClient : public PjRtClient {
   // callbacks. Those clients should return false here.
   virtual bool allows_recursion() const { return true; }
 
+  // Backend specific handlers for when an oom is detected during execute.
+  virtual void CallOomHandlers() const {}
+
   // Computes the memory requirements for storing shape on memory_space.
   // TODO(parkers): make pure virtual and update all clients.
   virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
@@ -266,6 +269,11 @@ class CommonPjRtClient : public PjRtClient {
       absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
           output_leaf_buffers,
       bool is_predetermined_error);
+
+  absl::Mutex& gang_scheduler() const { return gang_scheduler_mu_; }
+
+ private:
+  mutable absl::Mutex gang_scheduler_mu_;
 };
 
 // Represents the launch state for a loaded executable. This state must be
@@ -293,21 +301,44 @@ class PjRtRawLoadedExecutable {
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
-  CommonPjRtLoadedExecutable(CommonPjRtClient* client,
-                             std::vector<Shape> parameter_device_shapes,
-                             Shape output_device_shape,
-                             std::vector<int> output_memory_space_kind_ids,
-                             std::vector<PjRtDevice*> addressable_devices)
+  CommonPjRtLoadedExecutable(
+      CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
+      Shape output_device_shape, std::vector<int> output_memory_space_kind_ids,
+      std::vector<PjRtDevice*> addressable_devices,
+      std::vector<LogicalDeviceIds> addressable_device_logical_ids)
       : parameter_device_shapes_(std::move(parameter_device_shapes)),
         output_device_shape_(std::move(output_device_shape)),
         output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
-        addressable_devices_(std::move(addressable_devices)) {}
+        addressable_devices_(std::move(addressable_devices)),
+        addressable_device_logical_ids_(
+            std::move(addressable_device_logical_ids)) {}
 
   CommonPjRtClient* client() const override = 0;
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
   }
+
+  using PjRtLoadedExecutable::Execute;
+  absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options,
+      std::optional<std::vector<tsl::Future<void>>>& returned_futures)
+      const override;
+
+  using PjRtLoadedExecutable::ExecuteSharded;
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future,
+      bool fill_future) const override;
+
+  using PjRtLoadedExecutable::ExecutePortable;
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options,
+      std::optional<tsl::Future<void>>& returned_future,
+      bool fill_future) const override;
 
  protected:
   // Execute is split into Prepare and Launch.
@@ -350,6 +381,26 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
                               size_t host_callback_idx,
                               PjRtDevice* device) const;
 
+  // Run Prepare and Launch phases on a single device.
+  absl::StatusOr<Result> ExecuteHelperOnSingleDevice(
+      absl::Span<PjRtBuffer* const> argument_handles, int replica,
+      int partition, const ExecuteOptions& options, bool fill_future,
+      PjRtDevice* device = nullptr) const;
+
+  absl::Status ExecutePrepareWithOomRetries(
+      std::optional<ExecuteLaunchArgs>& launch_args,
+      absl::Span<PjRtBuffer* const> argument_handles, int replica,
+      int partition, const ExecuteOptions& options, size_t host_callback_idx,
+      PjRtDevice* device = nullptr) const;
+
+  virtual void LaunchOnDevice(PjRtDevice* device,
+                              absl::AnyInvocable<void()> execute_fn) const = 0;
+
+  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                                absl::Status perpare_status) const {
+    return false;
+  }
+
   Result ExecuteLaunch(ExecuteLaunchArgs& launch_args, bool fill_future) const;
 
   // Parameter shapes.
@@ -368,6 +419,13 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
+  // The replica and partition indices of device_assignment_ to be run by this
+  // client. On single-host platforms without partitioning, this is all
+  // replicas (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may
+  // not be the case on multi-host platforms. If there are 4 replicas and 2
+  // partitions on a single host platform, size of
+  // addressable_device_logical_ids_ is 4*2 = 8.
+  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

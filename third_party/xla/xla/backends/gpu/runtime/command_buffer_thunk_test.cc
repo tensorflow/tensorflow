@@ -1013,13 +1013,13 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   std::vector<std::optional<Shape>> sliced_shapes = {
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
       std::nullopt, std::nullopt};
-  std::vector<std::optional<uint64_t>> offset_byte_sizes = {
-      sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt};
+  std::vector<std::optional<PrimitiveType>> offset_primitive_types = {
+      S64, std::nullopt, std::nullopt, std::nullopt};
 
   CommandBufferCmdSequence commands;
   commands.Emplace<DynamicSliceFusionCmd>(
       std::move(embed_executor), arguments, std::move(fake_allocations),
-      offsets, orig_shapes, sliced_shapes, offset_byte_sizes);
+      offsets, orig_shapes, sliced_shapes, offset_primitive_types);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
