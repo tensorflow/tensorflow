@@ -19,7 +19,6 @@ limitations under the License.
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
-#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
@@ -33,7 +32,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
