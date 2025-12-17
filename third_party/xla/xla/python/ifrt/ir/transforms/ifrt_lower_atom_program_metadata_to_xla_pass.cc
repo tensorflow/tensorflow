@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -94,7 +95,7 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
   // after 6 month bwd compatibility window.
   bool is_sdy = module_op->hasAttr(kIsSdyPartitioned);
   if (is_sdy) {
-    module_op.emitWarning()
+    mlir::emitWarning(module_op->getLoc())
         << "`" << kIsSdyPartitioned
         << "` attribute is deprecated and will be removed. See b/433244129."
            " Please use `compile_options_override` to specify sharding.";
