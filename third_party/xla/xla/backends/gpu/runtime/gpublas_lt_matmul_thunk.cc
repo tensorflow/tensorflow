@@ -44,6 +44,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs)
       gemm_config_(rhs.gemm_config_),
       epilogue_(rhs.epilogue_),
       algorithm_idx_(rhs.algorithm_idx_),
+      autotune_workspace_size_(rhs.autotune_workspace_size_),
       canonical_hlo_(rhs.canonical_hlo_),
       a_(rhs.a_),
       b_(rhs.b_),
@@ -61,7 +62,8 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs)
 CublasLtMatmulThunk::CublasLtMatmulThunk(
     Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
     GemmConfig gemm_config, se::gpu::BlasLt::Epilogue epilogue,
-    int64_t algorithm_idx, BufferAllocation::Slice a, BufferAllocation::Slice b,
+    int64_t algorithm_idx, int64_t autotune_workspace_size,
+    BufferAllocation::Slice a, BufferAllocation::Slice b,
     BufferAllocation::Slice c, BufferAllocation::Slice d,
     BufferAllocation::Slice bias, BufferAllocation::Slice aux,
     BufferAllocation::Slice a_scale, BufferAllocation::Slice b_scale,
@@ -72,6 +74,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
       algorithm_idx_(algorithm_idx),
+      autotune_workspace_size_(autotune_workspace_size),
       canonical_hlo_(std::move(canonical_hlo)),
       a_(a),
       b_(b),
@@ -135,10 +138,11 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
 
     TF_ASSIGN_OR_RETURN(auto plan,
                         blas_lt->GetMatmulPlan(gemm_config_, epilogue_));
-    // if workspace buffer is not provided, consider only the algorithms which
-    // do not require a scratch space
-    int64_t max_workspace =
-        workspace_.has_value() ? workspace_.value().size() : 0;
+
+    // Set the workspace size to the size that was used for autotuning, so
+    // algorithm index will be the same as returned by GetAlgorithms called
+    // during autotuning.
+    int64_t max_workspace = autotune_workspace_size_;
 
     // If autotuning is disabled, there is no point on retrieving all
     // algorithms, it's enough to get the default one only.
@@ -182,6 +186,7 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
   cublas_lt_matmul_thunk->set_epilogue(
       stream_executor::gpu::BlasLt::EpilogueToProto(epilogue_));
   cublas_lt_matmul_thunk->set_algorithm_idx(algorithm_idx_);
+  cublas_lt_matmul_thunk->set_autotune_workspace_size(autotune_workspace_size_);
   cublas_lt_matmul_thunk->set_canonical_hlo(canonical_hlo_);
   TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_a(), a_.ToProto());
   TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_b(), b_.ToProto());
@@ -286,10 +291,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> CublasLtMatmulThunk::FromProto(
   return std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(proto.canonical_hlo()),
       xla::gpu::GemmConfig(std::move(gemm_config)), std::move(epilogue),
-      proto.algorithm_idx(), std::move(a), std::move(b), std::move(c),
-      std::move(d), std::move(bias), std::move(aux), std::move(a_scale),
-      std::move(b_scale), std::move(c_scale), std::move(d_scale),
-      std::move(d_amax), std::move(workspace));
+      proto.algorithm_idx(), proto.autotune_workspace_size(), std::move(a),
+      std::move(b), std::move(c), std::move(d), std::move(bias), std::move(aux),
+      std::move(a_scale), std::move(b_scale), std::move(c_scale),
+      std::move(d_scale), std::move(d_amax), std::move(workspace));
 }
 
 }  // namespace gpu
