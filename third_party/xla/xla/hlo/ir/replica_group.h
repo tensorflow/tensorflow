@@ -41,7 +41,57 @@ namespace xla {
 class IotaReplicaGroupList;
 class CollectiveDeviceList;
 
-class MeshAxesReplicaGroupList {
+enum class CollectiveDeviceListVersion { kListOfLists, kIota, kMeshAxes };
+
+class CollectiveDeviceListBase {
+ public:
+  virtual ~CollectiveDeviceListBase() = default;
+  CollectiveDeviceListBase() = default;
+  CollectiveDeviceListBase(const CollectiveDeviceListBase&) = default;
+  CollectiveDeviceListBase& operator=(const CollectiveDeviceListBase&) =
+      default;
+  CollectiveDeviceListBase(CollectiveDeviceListBase&&) = default;
+  CollectiveDeviceListBase& operator=(CollectiveDeviceListBase&&) = default;
+
+  virtual int64_t num_replica_groups() const = 0;
+  virtual int64_t num_devices_per_group() const = 0;
+  int64_t num_total_devices() const {
+    return num_replica_groups() * num_devices_per_group();
+  }
+  virtual std::vector<std::vector<int64_t>> flattened_replica_groups()
+      const = 0;
+  virtual const std::vector<ReplicaGroup>& replica_groups() const {
+    if (replica_groups_ != nullptr) {
+      return *replica_groups_;
+    }
+    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
+    replica_groups_->reserve(num_replica_groups());
+    for (const auto& group : flattened_replica_groups()) {
+      ReplicaGroup replica_group;
+      replica_group.mutable_replica_ids()->Add(group.begin(), group.end());
+      replica_groups_->push_back(std::move(replica_group));
+    }
+    return *replica_groups_;
+  };
+  virtual void Print(Printer* printer) const = 0;
+  virtual void Print(Printer* printer,
+                     bool print_full_replica_group_list) const {
+    return Print(printer);
+  };
+  virtual std::string ToString() const = 0;
+  virtual std::string ToString(bool print_full_replica_group_list) const {
+    return ToString();
+  };
+
+  virtual std::unique_ptr<CollectiveDeviceListBase> Clone() const = 0;
+
+  virtual CollectiveDeviceListVersion version() const = 0;
+
+  // shared_ptr for fast copy.
+  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
+};
+
+class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   struct ReshapeAndAggregateAxes {
     std::vector<int64_t> reshape_dims;
     std::vector<int64_t> aggregate_axes;
@@ -59,30 +109,33 @@ class MeshAxesReplicaGroupList {
     return H::combine(std::move(h), c.mesh_, c.axes_);
   }
 
-  int64_t num_replica_groups() const;
-  int64_t num_devices_per_group() const;
-  std::vector<std::vector<int64_t>> flattened_replica_groups();
-
-  void Print(Printer* printer) const;
-
-  std::string ToString() const;
-
+  int64_t num_replica_groups() const override;
+  int64_t num_devices_per_group() const override;
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
+  void Print(Printer* printer) const override;
+  std::string ToString() const override;
   MeshAxesReplicaGroupListProto ToProto() const;
+  std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
+    return std::make_unique<MeshAxesReplicaGroupList>(*this);
+  };
+  CollectiveDeviceListVersion version() const override {
+    return CollectiveDeviceListVersion::kMeshAxes;
+  }
 
   static MeshAxesReplicaGroupList FromProto(
       const MeshAxesReplicaGroupListProto& proto);
 
   // Methods for converting to V2 and V1 representations.
-  IotaReplicaGroupList ToIotaReplicaGroupList();
-  CollectiveDeviceList ToCollectiveDeviceList();
+  IotaReplicaGroupList ToIotaReplicaGroupList() const;
+  CollectiveDeviceList ToCollectiveDeviceList() const;
 
  private:
-  void InitializeDimToReshapeAndAggregateAxes();
-  std::pair<std::vector<int64_t>, std::vector<int64_t>> ComputeReindexedAxes();
+  absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>
+  GetDimToReshapeAndAggregateAxes() const;
+  std::pair<std::vector<int64_t>, std::vector<int64_t>> ComputeReindexedAxes()
+      const;
   Mesh mesh_;
   std::vector<AxisRef> axes_;
-  std::optional<absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>>
-      dim_to_reshape_and_aggregate_axes_;
 };
 
 std::string ReplicaGroupsToString(
@@ -92,7 +145,7 @@ std::string ReplicaGroupsToString(
 // reshaping and transposing an iota array (iota tile assignment). Can be used
 // to represent certain common patterns of device lists in a compact, scalable
 // format.
-class IotaReplicaGroupList {
+class IotaReplicaGroupList : public CollectiveDeviceListBase {
  public:
   explicit IotaReplicaGroupList(int64_t num_replica_groups,
                                 int64_t num_devices_per_group)
@@ -125,8 +178,8 @@ class IotaReplicaGroupList {
                       c.transpose_perm());
   }
 
-  int64_t num_replica_groups() const;
-  int64_t num_devices_per_group() const;
+  int64_t num_replica_groups() const override;
+  int64_t num_devices_per_group() const override;
   absl::Span<const int64_t> reshape_dims() const {
     return iota_tile_assignment_.reshape_dims();
   }
@@ -134,11 +187,17 @@ class IotaReplicaGroupList {
     return iota_tile_assignment_.transpose_perm();
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
-  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
 
-  void Print(Printer* printer) const;
+  void Print(Printer* printer) const override;
 
-  std::string ToString() const;
+  std::string ToString() const override;
+  std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
+    return std::make_unique<IotaReplicaGroupList>(*this);
+  };
+  CollectiveDeviceListVersion version() const override {
+    return CollectiveDeviceListVersion::kIota;
+  }
 
   IotaReplicaGroupListProto ToProto() const;
 
@@ -153,22 +212,26 @@ class IotaReplicaGroupList {
 // Represents a series of devices participating in a collective operation
 // (all-gather, all-reduce, etc.). While this directly translates to a list of
 // replica groups, it may be used to represent these lists in compact forms.
-class CollectiveDeviceList {
+class CollectiveDeviceList : public CollectiveDeviceListBase {
  public:
-  explicit CollectiveDeviceList()
-      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>()) {};
+  explicit CollectiveDeviceList() {
+    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
+  };
 
-  explicit CollectiveDeviceList(std::vector<ReplicaGroup> replica_groups)
-      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
-            std::move(replica_groups))) {};
+  explicit CollectiveDeviceList(std::vector<ReplicaGroup> replica_groups) {
+    replica_groups_ =
+        std::make_shared<std::vector<ReplicaGroup>>(std::move(replica_groups));
+  };
 
-  explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)
-      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
-            replica_groups.begin(), replica_groups.end())) {};
+  explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups) {
+    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>(
+        replica_groups.begin(), replica_groups.end());
+  };
 
   explicit CollectiveDeviceList(
-      absl::Span<const std::vector<int64_t>> replica_groups)
-      : replica_groups_(ToReplicaGroupVector(replica_groups)) {};
+      absl::Span<const std::vector<int64_t>> replica_groups) {
+    replica_groups_ = ToReplicaGroupVector(replica_groups);
+  };
 
   // Replica groups are materialized lazily upon first access.
   explicit CollectiveDeviceList(
@@ -206,41 +269,51 @@ class CollectiveDeviceList {
   }
 
   // Lazyly explands iota if applicable.
-  const std::vector<ReplicaGroup>& replica_groups() const;
-  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
+  const std::vector<ReplicaGroup>& replica_groups() const override;
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
     return iota_replica_group_list_;
   }
 
-  int64_t num_replica_groups() const {
+  int64_t num_replica_groups() const override {
     return iota_replica_group_list_.has_value()
                ? iota_replica_group_list_->num_replica_groups()
                : replica_groups_->size();
   }
 
-  int64_t num_devices_per_group() const {
+  int64_t num_devices_per_group() const override {
     return iota_replica_group_list_.has_value()
                ? iota_replica_group_list_->num_devices_per_group()
                : replica_groups_->begin()->replica_ids_size();
   }
 
+  void Print(Printer* printer) const override;
   void Print(Printer* printer,
-             bool print_full_replica_group_list = false) const;
-
-  std::string ToString(bool print_full_replica_group_list = false) const;
+             bool print_full_replica_group_list) const override;
+  std::string ToString() const override;
+  std::string ToString(bool print_full_replica_group_list) const override;
+  CollectiveDeviceListVersion version() const override {
+    if (iota_replica_group_list_.has_value()) {
+      return CollectiveDeviceListVersion::kIota;
+    }
+    return CollectiveDeviceListVersion::kListOfLists;
+  }
 
   CollectiveDeviceListProto ToProto() const;
   static CollectiveDeviceList FromProto(const CollectiveDeviceListProto& proto);
   static CollectiveDeviceList FromProto(const HloInstructionProto& proto);
+  std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
+    return std::make_unique<CollectiveDeviceList>(*this);
+  };
 
  private:
   // Construct collective device list from protobuf replica group start and end
   // iterators.
   CollectiveDeviceList(
       tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
-      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end)
-      : replica_groups_(
-            std::make_shared<std::vector<ReplicaGroup>>(start, end)) {};
+      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
+    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>(start, end);
+  };
 
   static std::shared_ptr<std::vector<ReplicaGroup>> ToReplicaGroupVector(
       absl::Span<const std::vector<int64_t>> replica_groups) {
@@ -258,9 +331,10 @@ class CollectiveDeviceList {
   void MaybeMaterializeFullReplicaGroupList() const;
 
   std::optional<IotaReplicaGroupList> iota_replica_group_list_;
-  // shared_ptr for fast copy.
-  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
 };
+
+std::optional<CollectiveDeviceList> ConvertToV1CollectiveDeviceList(
+    const CollectiveDeviceListBase& device_list);
 
 }  // namespace xla
 
