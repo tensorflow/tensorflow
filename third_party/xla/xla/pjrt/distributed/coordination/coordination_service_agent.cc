@@ -454,50 +454,6 @@ CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
   return response;
 }
 
-absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
-  {
-    absl::MutexLock l(state_mu_);
-    if (state_ == CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
-      return MakeCoordinationError(absl::FailedPreconditionError(
-          "Coordination service agent must be initialized first before "
-          "reporting error."));
-    }
-    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
-      return MakeCoordinationError(absl::FailedPreconditionError(
-          "Coordination service agent is already in error state."));
-    }
-  }
-  SetError(MakeCoordinationError(error, task_,
-                                 /*is_reported_error=*/true));
-  LOG(INFO) << "Reporting error to coordination service: " << error;
-  ReportErrorToServiceRequest request;
-  request.set_error_code(error.raw_code());
-  request.set_error_message(std::string(error.message()));
-  *request.mutable_error_origin() = task_;
-  VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();
-  ReportErrorToServiceResponse response;
-
-  absl::Notification n;
-  leader_client_->ReportErrorToServiceAsync(
-      &request, &response, [&](const absl::Status& s) {
-        VLOG(5) << "ReportErrorToServiceResponse: " << s;
-        if (!s.ok()) {
-          LOG(ERROR)
-              << "Encountered another error when reporting error to "
-                 "coordination service: "
-              << s
-              << "\nThis is usually caused by an earlier error during "
-                 "execution. Check the logs of (a) this task, (b) the "
-                 "leader (usually slice 0 task 0) and (c) the scheduler "
-                 "(e.g. preemption, eviction) for an earlier error to debug "
-                 "further.";
-        }
-        n.Notify();
-      });
-  n.WaitForNotification();
-  return absl::OkStatus();
-}
-
 absl::Status CoordinationServiceAgent::Shutdown() { return ShutdownInternal(); }
 
 absl::Status CoordinationServiceAgent::ShutdownInternal() {

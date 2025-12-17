@@ -4491,6 +4491,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
@@ -4531,6 +4532,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
@@ -5817,34 +5819,34 @@ xla_aot_compile_cpu(
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "//xla/backends/gpu:specs/h100_sxm.txtpb",
+    gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_hlo",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "//xla/backends/gpu:specs/h100_sxm.txtpb",
+    gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test.hlo",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_constant",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "//xla/backends/gpu:specs/h100_sxm.txtpb",
+    gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_constant.mlir",
 )
 
 xla_aot_compile_gpu(
     name = "xla_aot_compile_test_gpu_executable_convolution",
     autotune_results = "xla_aot_compile_test_autotune_results.txtpb",
-    gpu_target_config = "//xla/backends/gpu:specs/h100_sxm.txtpb",
+    gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_convolution.mlir",
 )
 
 xla_aot_compile_gpu_runtime_autotuning(
     name = "xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
-    gpu_target_config = "//xla/backends/gpu:specs/h100_sxm.txtpb",
+    gpu_target_config = "//xla/backends/gpu/target_config:specs/h100_sxm.txtpb",
     module = "xla_aot_compile_test_convolution.mlir",
 )
 

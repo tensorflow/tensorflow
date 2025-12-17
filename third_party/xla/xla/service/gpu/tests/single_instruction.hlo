@@ -1,6 +1,6 @@
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/%{GPU}.txtpb --split-input-file | FileCheck %s
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM80
-// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/h100_sxm.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM90
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM80
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/h100_sxm.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM90
 
 // CHECK-DAG: sqrt.approx.f32
 
