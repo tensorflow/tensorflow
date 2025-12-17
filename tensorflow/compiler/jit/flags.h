@@ -65,6 +65,9 @@ struct MarkForCompilationPassFlags {
   // Enable operator name to influence clustering decision
   bool tf_xla_annotate_cluster_id;
 
+  // Split parallel compute subgraph info different clusters
+  bool tf_xla_cluster_parallel;
+
   // If non-empty, limit XLA clustering to the following TF operations.
   string tf_xla_ops_to_cluster;
 

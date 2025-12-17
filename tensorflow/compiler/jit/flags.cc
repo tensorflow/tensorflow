@@ -114,6 +114,9 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "Operators whose name starting with .cluster.{id} will likely"
            "to be clustered together if the ids are the same number. "
            ".cluster.none will not be clustered with those having numbered id"),
+      Flag("tf_xla_cluster_parallel",
+           &mark_for_compilation_flags->tf_xla_cluster_parallel,
+           "Split parallel compute subgraph info different clusters"),
       Flag(
           "tf_xla_ops_to_cluster",
           &mark_for_compilation_flags->tf_xla_ops_to_cluster,
@@ -242,6 +245,7 @@ void AllocateAndParseFlags() {
   mark_for_compilation_flags->tf_xla_max_cluster_size =
       std::numeric_limits<int32>::max();
   mark_for_compilation_flags->tf_xla_annotate_cluster_id = false;
+  mark_for_compilation_flags->tf_xla_cluster_parallel = false;
   mark_for_compilation_flags->tf_xla_clustering_debug = false;
   mark_for_compilation_flags->tf_xla_cpu_global_jit = false;
   mark_for_compilation_flags->tf_xla_clustering_fuel =

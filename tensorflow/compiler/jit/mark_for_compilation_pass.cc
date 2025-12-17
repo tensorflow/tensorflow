@@ -30,6 +30,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <queue>
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
@@ -129,6 +130,8 @@ class MarkForCompilationPassImpl {
 
     // Enable models to influcence clustering with operator names
     int annotate_cluster_id;
+
+    bool enable_cluster_parallel;
   };
 
   MarkForCompilationPassImpl(DebugOptions debug_options, Graph* graph,
@@ -253,9 +256,12 @@ class MarkForCompilationPassImpl {
 
     int annotated_id() const { return annotated_id_; }
     void set_annotated_id(int id) { annotated_id_ = id; }
+    int chain_id() const {return chain_id_;}
+    void set_chain_id(int id) {chain_id_ = id;}
 
    private:
     int annotated_id_ = -1;
+    int chain_id_ = -1;
     int cluster_size_ = 1;
     int cycles_graph_node_id_;
     int effective_cluster_size_;
@@ -328,6 +334,14 @@ class MarkForCompilationPassImpl {
   }
 
   absl::Status AssignAnnotatedClusterIDs();
+  void collectInputNodes(std::set<Node*> &path_nodes);
+  void collectMergeNodes(const std::vector<Node*>& nodeSet,
+                         std::set<Node*> &merger_nodes);
+  void collectPathNodes(Node* start, std::set<Node*> &path_nodes,
+                        std::set<Node*>& merger_nodes);
+  std::map<Node*, std::vector<Node*>> collectParallelNode(
+      const std::vector<Node*>& nodeSet);
+  absl::Status AssignParallelChains();
 
   // Tries to contract the edge from cluster `from` to cluster `to`.  Returns
   // true if successful.
@@ -704,6 +718,9 @@ absl::StatusOr<bool> MarkForCompilationPassImpl::Initialize() {
   if (debug_options_.annotate_cluster_id) {
     TF_RETURN_IF_ERROR(AssignAnnotatedClusterIDs());
   }
+  if (debug_options_.enable_cluster_parallel) {
+    TF_RETURN_IF_ERROR(AssignParallelChains());
+  }
   return true;
 }
 
@@ -1046,6 +1063,7 @@ absl::Status MarkForCompilationPassImpl::CreateClusters() {
     // trouble.
 
     if (cluster->effective_cluster_size() >= debug_options_.min_cluster_size ||
+        cluster->chain_id() != -1 ||
         cluster->has_functional_control_flow() ||
         cluster->is_xla_compile_attr_true()) {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
@@ -1611,8 +1629,208 @@ bool MarkForCompilationPassImpl::LogNotContractableAndReturnFalse(
   return false;
 }
 
+void MarkForCompilationPassImpl::collectInputNodes(std::set<Node*> &path_nodes) {
+  std::unordered_map<Node*, int> out_degree_count;
+
+  // 4. Initialize the queue and add nodes from path_nodes
+  std::queue<Node*> queue;
+  for (auto node : path_nodes) {
+    queue.push(node);
+  }
+
+  // 5. BFS search
+  while (!queue.empty()) {
+    auto u = queue.front();
+    queue.pop();
+
+    // Traverse all predecessor nodes
+    for (const Edge* e : u->in_edges()) {
+      Node* p = e->src();
+      if (path_nodes.find(p) != path_nodes.end() ||
+          !IsCompilationCandidate(p)) {
+        continue;
+      }
+      if (out_degree_count.count(p) == 0) {
+        // Initialize the out-degree count for the node
+        out_degree_count[p] = p->out_edges().size();
+      }
+      // Decrease the out-degree count for the predecessor node
+      out_degree_count[p] -= 1;
+
+      // If the predecessor node's out-degree count is 0 and not in path_nodes,
+      // add it to path_nodes and queue
+      if (out_degree_count[p] == 0) {
+        path_nodes.insert(p);
+        queue.push(p);
+        VLOG(3) << p->DebugString();
+      }
+    }
+  }
+}
+
+void MarkForCompilationPassImpl::collectMergeNodes(
+    const std::vector<Node*>& nodeSet, std::set<Node*> &merger_nodes) {
+  // 1. Collect the number of nodeSet that can reach each node
+  std::map<Node*, std::set<Node*>> reach_map;
+  for (Node* start : nodeSet) {
+    std::set<Node*> visited;
+    std::vector<Node*> stack = {start};
+    while (!stack.empty()) {
+      Node* cur = stack.back();
+      stack.pop_back();
+      if (visited.count(cur)) continue;
+      visited.insert(cur);
+      for (const Edge* e : cur->out_edges()) {
+        Node* next = e->dst();
+        if (!visited.count(next))
+          stack.push_back(next);
+      }
+    }
+    reach_map[start] = std::move(visited);
+  }
+
+  // 2. Determine the merger node
+  std::map<Node*, int> node_reach_count;
+  std::set<Node*> all_nodes;
+  for (const auto& kv : reach_map) {
+    for (Node* n : kv.second) {
+      node_reach_count[n]++;
+      all_nodes.insert(n);
+    }
+  }
+  for (Node* n : all_nodes) {
+    // Condition 1: Reached by multiple sources
+    if (node_reach_count[n] >= 2) merger_nodes.insert(n);
+    // Condition 2: No output edges
+    if (n->out_edges().empty()) merger_nodes.insert(n);
+  }
+}
+
+void MarkForCompilationPassImpl::collectPathNodes(
+    Node* start, std::set<Node*> &path_nodes, std::set<Node*>& merger_nodes) {
+  std::vector<Node*> stack = {start};
+  std::set<Node*> visited;
+
+  while (!stack.empty()) {
+    Node* cur = stack.back();
+    stack.pop_back();
+    if (visited.count(cur) || !IsCompilationCandidate(cur)) {
+      continue;
+    }
+    visited.insert(cur);
+
+    // Stop search met the merger node
+    if (merger_nodes.count(cur)) {
+      if (cur->out_edges().empty()) path_nodes.insert(cur);
+      continue;
+    }
+    path_nodes.insert(cur);
+
+    for (const Edge* e : cur->out_edges()) {
+      Node* next = e->dst();
+      if (!visited.count(next)) {
+        stack.push_back(next);
+      }
+    }
+  }
+}
+
+// collectParallelNode
+// Search the serial merger nodes based on the parallel matmul starting points
+// Search along the output edge to get the boundary from start to all merger points
+// Search along the input edge to get the entire parallel computation graph
+std::map<Node*, std::vector<Node*>>
+MarkForCompilationPassImpl::collectParallelNode(
+    const std::vector<Node*>& nodeSet) {
+  std::set<Node*> merger_nodes;
+  collectMergeNodes(nodeSet, merger_nodes);
+
+  // Collect path nodes
+  std::map<Node*, std::vector<Node*>> result;
+  for (Node* start : nodeSet) {
+    VLOG(4) << "Search parallel graph form node: " << start->DebugString();
+    std::set<Node*> path_nodes;
+
+    // Search along output edge form start to merger nodes
+    collectPathNodes(start, path_nodes, merger_nodes);
+
+    VLOG(4) << "Collect path nodes:";
+    for (auto node : path_nodes) {
+      VLOG(4) << node->type_string();
+    }
+
+    VLOG(4) << "Collect input nodes:";
+    // search along input edge
+    collectInputNodes(path_nodes);
+
+    result[start] = std::vector<Node*>(path_nodes.begin(), path_nodes.end());
+  }
+  return result;
+}
+
+// Collect parallel matmuls as input nodes into nodeSet
+// Use collectParallelNode to get the parallel subgraph
+// Mark parallel nodes change ID
+absl::Status MarkForCompilationPassImpl::AssignParallelChains() {
+  VLOG(4) << "Run AssignParallelChains";
+  // Record the matmuls that can be paralleled
+  std::vector<std::vector<Node*>> parallel_matmuls;
+  int minParallelMatmulNum = 2;
+  int next_chain_id = 0;
+  // Collect matmul nodes with shared input to parallel_matmuls
+  for (Node* node : graph_->nodes()) {
+    if (node->out_edges().size() < 2) continue;
+    std::vector<Node*> matmul_nodes;
+    for (const Edge* e : node->out_edges()) {
+      if (e->IsControlEdge()) continue;
+      Node* succ = e->dst();
+      VLOG(4) << "Find matmul node: " << succ->type_string() << " : " << succ->DebugString();
+      if (succ->type_string() == "MatMul")
+        matmul_nodes.push_back(succ);
+    }
+    if (matmul_nodes.size() >= minParallelMatmulNum)
+      parallel_matmuls.push_back(matmul_nodes);
+  }
+
+  for (auto matmul_nodes : parallel_matmuls) {
+    VLOG(4) << "Process matmul nodes: Total " << matmul_nodes.size()
+            << " sub matmuls";
+    bool visited = false;
+    for (auto matmul : matmul_nodes) {
+      VLOG(4) << matmul->name();
+      Cluster* cluster = GetClusterForNode(matmul);
+      if (!cluster || cluster->chain_id() != -1) {
+        visited = true;
+        break;
+      }
+    }
+    if (visited) {
+      VLOG(4) << "stop collect: has visited matmul";
+      continue;
+    }
+
+    std::map<Node*, std::vector<Node*>> subgraphMap =
+        collectParallelNode(matmul_nodes);
+    for (auto it : subgraphMap) {
+      auto nodeSet = it.second;
+      VLOG(4) << "One of Parallel sub-graph is: ";
+      for (auto node : nodeSet) {
+        VLOG(4) << node->DebugString();
+        Cluster* cluster = GetClusterForNode(node);
+        cluster->set_chain_id(next_chain_id);
+      }
+      next_chain_id++;
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> MarkForCompilationPassImpl::TryToContractEdge(
     Cluster* from, Cluster* to) {
+  if (from->chain_id() != to->chain_id()) {
+    return LogNotContractableAndReturnFalse(
+        from, to, "nodes are in different parallel chains");
+  }
   DCHECK(from->deadness_predicate().has_value() ==
          to->deadness_predicate().has_value());
   if (from->deadness_predicate() != to->deadness_predicate()) {
@@ -2027,6 +2245,7 @@ absl::Status MarkForCompilationPass::Run(
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
   debug_options.dump_graphs = flags->tf_xla_clustering_debug;
   debug_options.annotate_cluster_id = flags->tf_xla_annotate_cluster_id;
+  debug_options.enable_cluster_parallel = flags->tf_xla_cluster_parallel;
 
   return MarkForCompilation(options, debug_options);
 }
