@@ -196,6 +196,7 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = ["no-oneapi"],  # TODO(intel-tf): Remove it when macro substitutions for SYCL are available in xla/stream_executor/sycl/*.
     deps = [
+        "//xla:array",
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",

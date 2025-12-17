@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
+#include "xla/array.h"
 #include "xla/literal_util.h"
 
 #if GOOGLE_CUDA
@@ -72,6 +73,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
 #define gpuMemcpyAsync cudaMemcpyAsync
+#define gpuSync cudaStreamSynchronize
 #define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
 #define gpuMemcpy cudaMemcpy
 #define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
@@ -984,6 +986,160 @@ TEST_F(CustomCallHloTest, HloBufferRotated) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(7));
+}
+
+// Adds 1 to 2 elements with the given offset in the input buffer.
+void UpadteBufferImpl(se::gpu::GpuStreamHandle stream, void** buffers,
+                      int offset) {
+  // Expect that the input and output buffers are the same.
+  if (buffers[0] != buffers[1]) {
+    return;
+  }
+  int32_t dst[4];
+  auto err = gpuMemcpyAsync(dst, buffers[0], /*count=*/sizeof(int32_t) * 4,
+                            gpuMemcpyDeviceToHost, stream);
+  ASSERT_EQ(err, gpuSuccess);
+  err = gpuSync(stream);
+  ASSERT_EQ(err, gpuSuccess);
+
+  ASSERT_TRUE(offset >= 0 && offset <= 2);
+  dst[offset] += 1;
+  dst[offset + 1] += 1;
+  err = gpuMemcpyAsync(buffers[1], dst, /*count=*/sizeof(int32_t) * 4,
+                       gpuMemcpyHostToDevice, stream);
+}
+
+// Adds 1 to the first 2 elements of the input buffer.
+void UpdateBuffer1(se::gpu::GpuStreamHandle stream, void** buffers,
+                   const char* /*opaque*/, size_t /*opaque_len*/) {
+  return UpadteBufferImpl(stream, buffers, /*offset=*/0);
+}
+// Adds 1 to the last 2 elements of the input buffer.
+void UpdateBuffer2(se::gpu::GpuStreamHandle stream, void** buffers,
+                   const char* /*opaque*/, size_t /*opaque_len*/) {
+  return UpadteBufferImpl(stream, buffers, /*offset=*/2);
+}
+
+XLA_REGISTER_CUSTOM_CALL_TARGET(UpdateBuffer1, PLATFORM);
+XLA_REGISTER_CUSTOM_CALL_TARGET(UpdateBuffer2, PLATFORM);
+
+TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+
+  async_comp1 {
+   pa1 = b(s32[4]) parameter(0)
+   ROOT va1 = b(s32[4]) custom-call(pa1), custom_call_target="UpdateBuffer1", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_STATUS_RETURNING
+  }
+
+  async_comp2 {
+   pa2 = b(s32[4]) parameter(0)
+   ROOT va2 = b(s32[4]) custom-call(pa2), custom_call_target="UpdateBuffer2", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_STATUS_RETURNING
+  }
+
+  ENTRY test_computation {
+    p0 = s32[4] parameter(0)
+    p1 = s32[4] parameter(1)
+
+    b1_0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b2_0 = b(s32[4]) custom-call(p1), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+
+    b1_1 = b(s32[4]) call(b1_0), to_apply=async_comp1, frontend_attributes={_xla_stream_annotation="1", inlineable="false"}
+    b2_1 = b(s32[4]) call(b2_0), to_apply=async_comp2, frontend_attributes={_xla_stream_annotation="2", inlineable="false"}
+
+    v_1 = s32[4] custom-call(b1_1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+    v_2 = s32[4] custom-call(b2_1), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+    ROOT or = s32[4] or(v_1, v_2)
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options().set_xla_gpu_experimental_stream_annotation(
+      true);
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  Array<int32_t> input1({4}), input2({4});
+  input1.Fill(0);
+  input2.Fill(0);
+  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
+  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()),
+                        {{&input_literal1, &input_literal2}}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
+}
+
+// TODO: Enable this test once the GPU pipeline support stream notation for
+//       async-start and async-done.
+TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
+  const char* const kModuleStr = R"(
+
+  HloModule test
+
+  async_comp1 {
+   pa1 = b(s32[4]) parameter(0)
+   ROOT va1 = b(s32[4]) custom-call(pa1), custom_call_target="UpdateBuffer1", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_STATUS_RETURNING
+  }
+
+  async_comp2 {
+   pa2 = b(s32[4]) parameter(0)
+   ROOT va2 = b(s32[4]) custom-call(pa2), custom_call_target="UpdateBuffer2", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_STATUS_RETURNING
+  }
+
+  ENTRY test_computation {
+    p0 = s32[4] parameter(0)
+    p1 = s32[4] parameter(1)
+
+    b1_0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b2_0 = b(s32[4]) custom-call(p1), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+
+    b1_1_start = ((b(s32[4])), b(s32[4])) async-start(b1_0), calls=async_comp1, frontend_attributes={_xla_stream_annotation="1"}
+    b1_1 = b(s32[4]) async-done(b1_1_start), frontend_attributes={_xla_stream_annotation="1"},
+      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+    b2_1_start = ((b(s32[4])), b(s32[4])) async-start(b2_0), calls=async_comp2, frontend_attributes={_xla_stream_annotation="2"}
+    b2_1 = b(s32[4]) async-done(b2_1_start), frontend_attributes={_xla_stream_annotation="2"},
+      backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+
+    v_1 = s32[4] custom-call(b1_1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+    v_2 = s32[4] custom-call(b2_1), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+    ROOT or = s32[4] or(v_1, v_2)
+  })";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options().set_xla_gpu_experimental_stream_annotation(
+      true);
+  config.mutable_debug_options().clear_xla_gpu_enable_command_buffer();
+  auto module = ParseAndReturnUnverifiedModule(kModuleStr, config);
+  EXPECT_TRUE(module.ok());
+  Array<int32_t> input1({4}), input2({4});
+  input1.Fill(0);
+  input2.Fill(0);
+  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
+  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module.value()),
+                        {{&input_literal1, &input_literal2}}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
 }
 
 }  // anonymous namespace
