@@ -79,8 +79,8 @@ void Permuter::Run(StatusCallback done) {
 
 void Permuter::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
                             const StatusCallback& done) {
-  string send_buf_key =
-      strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  std::string send_buf_key =
+      absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   VLOG(1) << "DispatchSend " << send_buf_key << " from_device "
           << col_ctx_->device_name << " to_device "
           << col_params_->instance.devices[target_rank]
@@ -95,8 +95,8 @@ void Permuter::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
 
 void Permuter::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
                             const StatusCallback& done) {
-  string recv_buf_key =
-      strings::StrCat(col_ctx_->exec_key, src_rank, target_rank);
+  std::string recv_buf_key =
+      absl::StrCat(col_ctx_->exec_key, src_rank, target_rank);
   VLOG(1) << "DispatchRecv " << recv_buf_key << " to_device "
           << col_ctx_->device_name << " from_device "
           << col_params_->instance.devices[src_rank]
