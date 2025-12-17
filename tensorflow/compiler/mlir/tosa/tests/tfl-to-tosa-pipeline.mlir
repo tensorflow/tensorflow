@@ -1267,6 +1267,15 @@ func.func @test_greater(%arg0: tensor<13x21x1xf32>, %arg1: tensor<13x21x3xf32>) 
 
 // -----
 
+// CHECK-LABEL: @test_greater_integer_widen
+func.func @test_greater_integer_widen(%arg0: tensor<1x1x1x1xi64>, %arg1: tensor<1x1x128x128xi64>) -> tensor<1x1x128x128xi1> {
+  // CHECK: %[[GREATER:.*]] = tosa.greater %arg0, %arg1 : (tensor<1x1x1x1xi64>, tensor<1x1x128x128xi64>) -> tensor<1x1x128x128xi1>
+  %0 = "tfl.greater"(%arg0, %arg1) : (tensor<1x1x1x1xi64>, tensor<1x1x128x128xi64>) -> tensor<1x1x128x128xi1>
+  func.return %0 : tensor<1x1x128x128xi1>
+}
+
+// -----
+
 // CHECK-LABEL: test_less
 // CHECK: %[[VAR0:.*]] = tosa.greater %arg1, %arg0
 func.func @test_less(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<*xi1> {
