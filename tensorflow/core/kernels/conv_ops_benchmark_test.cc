@@ -189,7 +189,7 @@ static int64_t Conv2DWithPostOpsFlops(int batch, int height, int width,
 template <typename T>
 static Conv2DWithBiasAndActivationGraph Conv2DWithBiasAndActivation(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const string& activation_type,
+    int out_depth, const std::string& activation_type,
     TensorFormat data_format = FORMAT_NHWC) {
   Conv2DWithBiasGraph conv_graph =
       Conv2DWithBias<T>(batch, height, width, in_depth, filter_w, filter_h,
@@ -249,7 +249,7 @@ static Conv2DWithBatchNormGraph Conv2DWithBatchNorm(
 template <typename T>
 static Conv2DWithBatchNormAndActivationGraph Conv2DWithBatchNormAndActivation(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const string& activation_type,
+    int out_depth, const std::string& activation_type,
     TensorFormat data_format = FORMAT_NHWC) {
   Conv2DWithBatchNormGraph conv_graph =
       Conv2DWithBatchNorm<T>(batch, height, width, in_depth, filter_w, filter_h,
@@ -271,11 +271,10 @@ static Conv2DWithBatchNormAndActivationGraph Conv2DWithBatchNormAndActivation(
 // Creates a tensorflow graph with a single FusedConv2D (with BiasAdd) node and
 // fuses into it additional computations (e.g. Relu).
 template <typename T>
-static Graph* FusedConv2DWithBias(int batch, int height, int width,
-                                  int in_depth, int filter_w, int filter_h,
-                                  int out_depth,
-                                  const std::vector<string>& fused_ops = {},
-                                  TensorFormat data_format = FORMAT_NHWC) {
+static Graph* FusedConv2DWithBias(
+    int batch, int height, int width, int in_depth, int filter_w, int filter_h,
+    int out_depth, const std::vector<std::string>& fused_ops = {},
+    TensorFormat data_format = FORMAT_NHWC) {
   Graph* graph = new Graph(OpRegistry::Global());
 
   Tensor images_t = data_format == FORMAT_NHWC
@@ -341,7 +340,7 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
 template <typename T>
 static Graph* FusedConv2DWithBatchNorm(
     int batch, int height, int width, int in_depth, int filter_w, int filter_h,
-    int out_depth, const std::vector<string>& fused_ops = {},
+    int out_depth, const std::vector<std::string>& fused_ops = {},
     TensorFormat data_format = FORMAT_NHWC) {
   Graph* graph = new Graph(OpRegistry::Global());
 

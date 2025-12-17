@@ -81,6 +81,21 @@ StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   return platform->ExecutorForDevice(device_ordinal).value();
 }
 
+TEST(CudaExecutorMultiGpuTest, PeerAccess) {
+  std::vector<CudaExecutor*> executors = {
+      static_cast<CudaExecutor*>(GetGpuExecutor(0)),
+      static_cast<CudaExecutor*>(GetGpuExecutor(1))};
+
+  if (!executors[0]->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires multicast support.";
+  }
+  EXPECT_TRUE(executors[0]->CanEnablePeerAccessTo(0));
+  EXPECT_TRUE(executors[0]->CanEnablePeerAccessTo(1));
+  EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(0));
+  EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(1));
+  EXPECT_FALSE(executors[0]->CanEnablePeerAccessTo(3));
+}
+
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryResubscriptionFails) {
   std::vector<CudaExecutor*> executors = {
       static_cast<CudaExecutor*>(GetGpuExecutor(0)),
@@ -130,7 +145,6 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemorySubscribeMoreDevices) {
   EXPECT_THAT(multicast_memory->SubscribeDevice(2),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "All devices are already subscribed."));
-  ;
 }
 
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {
