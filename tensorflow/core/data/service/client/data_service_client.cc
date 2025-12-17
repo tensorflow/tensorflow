@@ -226,16 +226,16 @@ TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
       "num_tasks",
       num_tasks == -1
           ? kTraceInfoUnavailable
-          : strings::Printf("%lld", static_cast<long long>(num_tasks))));
+          : absl::StrFormat("%lld", static_cast<long long>(num_tasks))));
   result.push_back(std::make_pair("job_name", params_.job_name));
   result.push_back(std::make_pair(
       "max_outstanding_requests",
-      strings::Printf(
+      absl::StrFormat(
           "%lld", static_cast<long long>(params_.max_outstanding_requests))));
   if (params_.max_outstanding_requests == model::kAutotune) {
     result.push_back(std::make_pair(
         "autotuned_max_outstanding_requests",
-        strings::Printf("%lld", static_cast<long long>(
+        absl::StrFormat("%lld", static_cast<long long>(
                                     autotuned_max_outstanding_requests))));
   }
   return result;
@@ -295,7 +295,7 @@ void DataServiceClient::TaskThreadManager() TF_LOCKS_EXCLUDED(mu_) {
   auto cleanup =
       gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
   VLOG(1) << "Starting task thread manager";
-  uint64 next_check = Env::Default()->NowMicros();
+  uint64_t next_check = Env::Default()->NowMicros();
   while (true) {
     {
       mutex_lock l(mu_);
