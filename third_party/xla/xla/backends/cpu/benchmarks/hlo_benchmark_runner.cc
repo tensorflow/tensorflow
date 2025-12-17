@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -152,10 +153,10 @@ absl::Status RunHloBenchmark(benchmark::State& state,
 }
 
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-absl::Status RunHloBenchmark(benchmark::State& state,
-                             std::unique_ptr<HloModule> module,
-                             absl::Span<const Literal* const> args,
-                             const HloBenchmarkOptions& benchmark_options) {
+absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
+                                 std::unique_ptr<HloModule> module,
+                                 absl::Span<const Literal* const> args,
+                                 const HloBenchmarkOptions& benchmark_options) {
   xla::CpuClientOptions client_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
@@ -290,15 +291,33 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     return absl::OkStatus();
   };
 
-  // Warm up executable.
+  // Run once. For a regular benchmark this will serve as a warm-up;
+  // for RunHloBenchmarkOnce this will be the only run.
   TF_RETURN_IF_ERROR(run_benchmark_once());
 
   // Benchmark executable.
-  for (auto _ : state) {
-    TF_RETURN_IF_ERROR(run_benchmark_once());
+  if (state) {
+    for (auto _ : *state) {
+      TF_RETURN_IF_ERROR(run_benchmark_once());
+    }
   }
 
   return absl::OkStatus();
+}
+
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloModule> module,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options) {
+  return RunHloBenchmarkImpl(&state, std::move(module), args,
+                             benchmark_options);
+}
+
+absl::Status RunHloBenchmarkOnce(std::unique_ptr<HloModule> module,
+                                 absl::Span<const Literal* const> args,
+                                 const HloBenchmarkOptions& benchmark_options) {
+  return RunHloBenchmarkImpl(nullptr, std::move(module), args,
+                             benchmark_options);
 }
 
 absl::Status CompileHloBenchmark(benchmark::State& state,
