@@ -89,8 +89,6 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   HANDLER(ShutdownTask);
   HANDLER(ResetTask);
   HANDLER(Heartbeat);
-  HANDLER(ReportErrorToTask);
-  HANDLER(ReportErrorToService);
   HANDLER(GetTaskState);
   HANDLER(WatchJobState);
   HANDLER(InsertKeyValue);

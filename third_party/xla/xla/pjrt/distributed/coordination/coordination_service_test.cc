@@ -103,16 +103,6 @@ class TestCoordinationClient : public CoordinationClient {
     done(absl::OkStatus());
   }
 
-  void ReportErrorToTaskAsync(tsl::CallOptions* call_opts,
-                              const ReportErrorToTaskRequest* request,
-                              ReportErrorToTaskResponse* response,
-                              tsl::StatusCallback done) override {
-    absl::MutexLock l(mu_);
-    status_ = absl::Status(static_cast<absl::StatusCode>(request->error_code()),
-                           request->error_message());
-    done(absl::OkStatus());
-  }
-
 #define UNIMPLEMENTED(method)                                              \
   void method##Async(const method##Request* request,                       \
                      method##Response* response, tsl::StatusCallback done) \
@@ -122,7 +112,6 @@ class TestCoordinationClient : public CoordinationClient {
 
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
-  UNIMPLEMENTED(ReportErrorToService);
   UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);

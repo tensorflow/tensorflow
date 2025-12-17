@@ -52,16 +52,6 @@ class CoordinationServiceRpcHandler {
                       tensorflow::ResetTaskResponse* response,
                       tsl::StatusCallback done);
 
-  void ReportErrorToTaskAsync(
-      const tensorflow::ReportErrorToTaskRequest* request,
-      tensorflow::ReportErrorToTaskResponse* response,
-      tsl::StatusCallback done);
-
-  void ReportErrorToServiceAsync(
-      const tensorflow::ReportErrorToServiceRequest* request,
-      tensorflow::ReportErrorToServiceResponse* response,
-      tsl::StatusCallback done);
-
   void GetTaskStateAsync(const tensorflow::GetTaskStateRequest* request,
                          tensorflow::GetTaskStateResponse* response,
                          tsl::StatusCallback done);

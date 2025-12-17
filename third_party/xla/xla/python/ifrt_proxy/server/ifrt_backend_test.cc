@@ -471,6 +471,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
 
     MockDevice& mock_device = *mock_devices_[i];
     // TODO(b/314368788): Clean up PJRT device ID APIs.
+    EXPECT_CALL(mock_device, PlatformName()).WillRepeatedly(Return("mock"));
     EXPECT_CALL(mock_device, Kind()).WillRepeatedly(Return("mock"));
     EXPECT_CALL(mock_device, Memories())
         .WillRepeatedly(Return(device_memories[i]));
@@ -500,6 +501,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
   EXPECT_EQ(init_response.all_devices().size(), 2);
   for (auto device : init_response.all_devices()) {
     int device_canonical_num = device.id();
+    EXPECT_EQ(device.platform_name(), "mock");
     EXPECT_EQ(device.device_kind(), "mock");
     EXPECT_EQ(device.default_memory_id(), device_canonical_num);
     EXPECT_EQ(device.memory_ids().size(), 1);

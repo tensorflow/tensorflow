@@ -101,8 +101,10 @@ class CompileOnlyMemory
 class CompileOnlyDevice
     : public llvm::RTTIExtends<CompileOnlyDevice, ifrt::Device> {
  public:
-  explicit CompileOnlyDevice(const PjRtDeviceDescription* description)
+  explicit CompileOnlyDevice(const PjRtDeviceDescription* description,
+                             absl::string_view platform_name)
       : description_(std::move(description)),
+        platform_name_(platform_name),
         attributes_(ifrt::FromPjRtAttributeMap(description_->Attributes())) {}
 
   const PjRtDeviceDescription& description() const { return *description_; }
@@ -114,6 +116,8 @@ class CompileOnlyDevice
   }
 
   int ProcessIndex() const override { return description_->process_index(); }
+
+  absl::string_view PlatformName() const override { return platform_name_; }
 
   absl::string_view Kind() const override {
     return description_->device_kind();
@@ -150,6 +154,7 @@ class CompileOnlyDevice
 
  private:
   const PjRtDeviceDescription* description_;
+  const std::string platform_name_;
   ifrt::AttributeMap attributes_;
   ifrt::Memory* default_memory_ = nullptr;
   std::vector<ifrt::Memory*> unowned_memories_;
@@ -193,8 +198,8 @@ class CompileOnlyIfRtClient final
         attributes_(ifrt::AttributeMap::Map()) {
     int offset = 0;
     for (auto& description : descriptions_) {
-      owned_devices_.push_back(
-          std::make_unique<CompileOnlyDevice>(description.get()));
+      owned_devices_.push_back(std::make_unique<CompileOnlyDevice>(
+          description.get(), topology_->platform_name()));
       auto* device = owned_devices_.back().get();
       devices_.push_back(device);
       if (description->process_index() == process_index()) {

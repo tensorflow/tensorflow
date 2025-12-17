@@ -699,6 +699,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   std::vector<PjRtDevice*> replica_devices(options.num_devices, nullptr);
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> argument_buffer_slices;
   argument_buffer_slices.reserve(options.num_devices);
+  std::vector<bool> is_tuple_result(options.num_devices, false);
   for (int64_t i = 0; i < options.num_devices; ++i) {
     // Amortize device lookup.
     TF_ASSIGN_OR_RETURN(PjRtDevice* const device_ptr,
@@ -711,6 +712,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     TF_ASSIGN_OR_RETURN(const HloModule* const module,
                         HloModuleFromWrapped(wrapped_executable));
     const ComputationLayout& ecl = module->entry_computation_layout();
+    is_tuple_result[i] = ecl.result_shape().IsTuple();
 
     // Transfer literals to device.
     const int64_t argument_count = argument_count_provider(i);
@@ -807,9 +809,9 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   std::vector<Literal> result_literals;
   result_literals.reserve(options.num_devices);
   for (int64_t i = 0; i < options.num_devices; ++i) {
-    TF_ASSIGN_OR_RETURN(Literal literal,
-                        TransferLiteralsFromDevice(
-                            result_buffers[i], result_buffers[i].size() != 1));
+    TF_ASSIGN_OR_RETURN(
+        Literal literal,
+        TransferLiteralsFromDevice(result_buffers[i], is_tuple_result[i]));
     result_literals.push_back(std::move(literal));
   }
 

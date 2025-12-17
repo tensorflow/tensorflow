@@ -33,6 +33,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Types.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/future.h"
@@ -345,6 +347,23 @@ absl::StatusOr<std::vector<xla::LayoutMode>> GetOutputLayoutModesFromHloModules(
                         output_dtypes.size());
 }
 
+// Returns a list of result shapes from the given MLIR module.
+absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main = module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main) {
+    return InvalidArgument("MLIR module has no main function");
+  }
+  mlir::FunctionType type = main.getFunctionType();
+  std::vector<xla::Shape> result_shapes;
+  result_shapes.reserve(type.getNumResults());
+  for (unsigned i = 0; i < type.getNumResults(); ++i) {
+    mlir::Type result_type = type.getResult(i);
+    result_shapes.push_back(xla::TypeToShape(result_type));
+  }
+  return result_shapes;
+}
+
 // Returns a new `DeviceListRef` that contains the addressable devices of the
 // PjRt executable if the supplied `executable_devices` has an incomplete set of
 // devices.
@@ -421,11 +440,55 @@ char PjRtLoadedExecutable::ID = 0;
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     mlir::ModuleOp module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology) {
+  // We have to do process the MLIR before the compile call, since the latter
+  // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<xla::Shape> mlir_module_output_xla_shapes,
+      ResultShapesOfModule(module));
+  TF_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
+                      GetOutputLayoutModes(module));
+
   TF_ASSIGN_OR_RETURN(auto pjrt_executable,
                       PjRtCompile(std::move(compile_options), std::move(module),
                                   topology, /*client=*/nullptr));
-  return ExecutableRef(new PjRtExecutable(std::move(pjrt_executable)));
+
+  TF_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
+                      GetDTypesAndShapes(mlir_module_output_xla_shapes));
+  std::vector<DType> output_dtypes = std::move(output_dtypes_and_shapes.first);
+  std::vector<Shape> output_shapes = std::move(output_dtypes_and_shapes.second);
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
+      GetHloShardings(pjrt_executable->GetOutputShardings(), output_dtypes,
+                      /*is_output=*/true));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<absl::string_view> output_memory_kinds,
+      GetMemoryKinds(pjrt_executable->GetOutputMemoryKinds(), output_dtypes));
+
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          output_layouts,
+      GetLayouts(pjrt_executable->GetOutputLayouts(), output_layout_modes));
+
+  return ExecutableRef(new PjRtExecutable(
+      std::move(pjrt_executable), std::move(output_dtypes),
+      std::move(output_shapes), std::move(output_hlo_shardings),
+      std::move(output_memory_kinds), std::move(output_layouts)));
 }
+
+PjRtExecutable::PjRtExecutable(
+    std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+    std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+    std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
+    std::vector<absl::string_view> output_memory_kinds,
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        output_layouts)
+    : pjrt_executable_(std::move(pjrt_executable)),
+      output_dtypes_(std::move(output_dtypes)),
+      output_shapes_(std::move(output_shapes)),
+      output_hlo_shardings_(std::move(output_hlo_shardings)),
+      output_memory_kinds_(std::move(output_memory_kinds)),
+      output_layouts_(std::move(output_layouts)) {}
 
 absl::StatusOr<std::optional<std::string>> PjRtExecutable::Fingerprint() const {
   DCHECK(this);
@@ -505,22 +568,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::move(loaded_host_callbacks), std::move(output_dtypes),
       std::move(output_shapes), std::move(output_shardings),
       std::move(output_layouts)));
-}
-
-static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
-    mlir::ModuleOp module) {
-  auto main = module.lookupSymbol<mlir::func::FuncOp>("main");
-  if (!main) {
-    return InvalidArgument("MLIR module has no main function");
-  }
-  auto type = main.getFunctionType();
-  std::vector<xla::Shape> result_shapes;
-  result_shapes.reserve(type.getNumResults());
-  for (unsigned i = 0; i < type.getNumResults(); ++i) {
-    auto result_type = type.getResult(i);
-    result_shapes.push_back(xla::TypeToShape(result_type));
-  }
-  return result_shapes;
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(

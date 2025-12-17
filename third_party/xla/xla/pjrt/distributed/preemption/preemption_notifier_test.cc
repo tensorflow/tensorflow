@@ -27,11 +27,30 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#if defined(PLATFORM_GOOGLE)
+#include "thread/executor.h"
+#include "thread/signal.h"
+#endif
 
 namespace xla {
 namespace {
 
-TEST(PreemptNotifierTest, WillBePreemptedAt) {
+class PreemptNotifierTest : public ::testing::Test {
+ public:
+  PreemptNotifierTest() {
+#if defined(PLATFORM_GOOGLE)
+    // Override default test SIGTERM handler so that test does not exit
+    // prematurely.
+    thread::signal::Token unused_token;
+
+    thread::signal::AddHandler(
+        SIGTERM, thread::Executor::DefaultExecutor(), []() {},
+        thread::signal::kOverrideDefault, &unused_token);
+#endif
+  }
+};
+
+TEST_F(PreemptNotifierTest, WillBePreemptedAt) {
   auto env = tsl::Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
@@ -52,8 +71,8 @@ TEST(PreemptNotifierTest, WillBePreemptedAt) {
   EXPECT_LT(time_diff, absl::Seconds(3));
 }
 
-TEST(PreemptNotifierTest,
-     WillBePreemptedAt_AlreadyPreempted_ReturnsImmediately) {
+TEST_F(PreemptNotifierTest,
+       WillBePreemptedAt_AlreadyPreempted_ReturnsImmediately) {
   auto env = tsl::Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
@@ -78,7 +97,7 @@ TEST(PreemptNotifierTest,
   EXPECT_LT(time_diff, absl::Seconds(2));
 }
 
-TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
+TEST_F(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   auto env = tsl::Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
@@ -109,7 +128,7 @@ TEST(PreemptNotifierTest, WillBePreemptedAtAsync_SameResultForAllCallbacks) {
   EXPECT_EQ(preempt_time.value(), preempt_time_2.value());
 }
 
-TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
+TEST_F(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   auto env = tsl::Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);
@@ -131,7 +150,7 @@ TEST(PreemptNotifierTest, Reset_TwoDifferentPreemptTimesRecorded) {
   EXPECT_NE(preempt_time, preempt_time_2);
 }
 
-TEST(PreemptNotifierTest, DestructorCancelsPendingCalls) {
+TEST_F(PreemptNotifierTest, DestructorCancelsPendingCalls) {
   auto env = tsl::Env::Default();
   std::unique_ptr<PreemptionNotifier> preempt_notifier =
       PreemptionNotifier::CreatePreemptionNotifier("sigterm", env);

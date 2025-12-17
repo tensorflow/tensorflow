@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/result_expectations.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/types/half.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -405,11 +406,11 @@ void TfLiteDriver::SetInput(const std::string& name,
       break;
     }
     case kTfLiteFloat16: {
-      const auto& values = testing::Split<Eigen::half>(csv_values, ",");
+      const auto& values = testing::Split<half>(csv_values, ",");
       for (auto k : values) {
         TFLITE_LOG(INFO) << "input" << k;
       }
-      if (!CheckSizes<Eigen::half>(tensor->bytes, values.size())) return;
+      if (!CheckSizes<half>(tensor->bytes, values.size())) return;
       SetTensorData(values, tensor->data.raw);
       break;
     }
@@ -500,7 +501,7 @@ void TfLiteDriver::SetExpectation(const std::string& name,
       expected_output_[id]->SetData<std::complex<double>>(csv_values);
       break;
     case kTfLiteFloat16:
-      expected_output_[id]->SetData<Eigen::half>(csv_values);
+      expected_output_[id]->SetData<half>(csv_values);
       break;
     case kTfLiteBFloat16:
       expected_output_[id]->SetData<Eigen::bfloat16>(csv_values);

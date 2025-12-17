@@ -48,10 +48,6 @@ using tensorflow::PollForErrorRequest;
 using tensorflow::PollForErrorResponse;
 using tensorflow::RegisterTaskRequest;
 using tensorflow::RegisterTaskResponse;
-using tensorflow::ReportErrorToServiceRequest;
-using tensorflow::ReportErrorToServiceResponse;
-using tensorflow::ReportErrorToTaskRequest;
-using tensorflow::ReportErrorToTaskResponse;
 using tensorflow::ResetTaskRequest;
 using tensorflow::ResetTaskResponse;
 using tensorflow::ShutdownTaskRequest;
@@ -91,15 +87,6 @@ class CoordinationClient {
   virtual void ResetTaskAsync(const ResetTaskRequest* request,
                               ResetTaskResponse* response,
                               tsl::StatusCallback done) = 0;
-
-  virtual void ReportErrorToTaskAsync(tsl::CallOptions* call_opts,
-                                      const ReportErrorToTaskRequest* request,
-                                      ReportErrorToTaskResponse* response,
-                                      tsl::StatusCallback done) = 0;
-
-  virtual void ReportErrorToServiceAsync(
-      const ReportErrorToServiceRequest* request,
-      ReportErrorToServiceResponse* response, tsl::StatusCallback done) = 0;
 
   virtual void GetTaskStateAsync(const GetTaskStateRequest* request,
                                  GetTaskStateResponse* response,

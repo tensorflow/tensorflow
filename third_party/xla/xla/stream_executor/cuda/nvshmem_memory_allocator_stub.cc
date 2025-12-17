@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_VERSION_H_
-#define XLA_PYTHON_VERSION_H_
+#include <cstdint>
+#include <memory>
 
-// An increasing version number to protect jax code against breaking changes.
-// In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER \
-  44  // xla::ifrt::Device has a new PlatformName() API.
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/cuda/nvshmem_memory_allocator.h"
+#include "xla/stream_executor/memory_allocation.h"
 
-#endif  // XLA_PYTHON_VERSION_H_
+namespace stream_executor::gpu {
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+NvshmemMemoryAllocator::Allocate(uint64_t size) {
+  return absl::UnimplementedError("NVSHMEM is not supported on this platform.");
+}
+}  // namespace stream_executor::gpu
