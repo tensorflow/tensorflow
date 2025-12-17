@@ -793,7 +793,12 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
     for (PreparedSend& prepared_send : prepared_sends) {
       // Wait until the buffer we want to send is fully materialized.
       for (const auto& event : prepared_send.definition_events_) {
-        tsl::BlockUntilReady(event.get());
+        if (event->IsType<BufferSequencingEvent>()) {
+          tsl::AsyncValueRef<BufferSequencingEvent> event_ref(event);
+          event_ref->WaitForEventOnStream(stream);
+        } else {
+          tsl::BlockUntilReady(event.get());
+        }
         if (auto* status = event->GetErrorIfPresent(); status != nullptr) {
           return *status;
         }
