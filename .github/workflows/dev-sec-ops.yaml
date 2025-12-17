@@ -2,9 +2,9 @@ name: TensorFlow SAST CI Pipeline
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
   pull_request:
-    branches: [main, master]
+    branches: [master]
 
 jobs:
   sast-analysis:
