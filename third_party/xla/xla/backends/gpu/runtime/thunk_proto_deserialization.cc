@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
@@ -242,6 +243,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CollectiveDoneThunk::FromProto(std::move(thunk_info),
                                             thunk_proto.collective_done_thunk(),
                                             collective_async_events_map);
+    case ThunkProto::kAllGatherStartThunk:
+      return AllGatherStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.all_gather_start_thunk(),
+          buffer_allocations, collective_async_events_map);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);

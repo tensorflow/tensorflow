@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -148,6 +151,41 @@ bool CollectiveConfig::IsDegenerate(int64_t replica_count,
   }
 }
 
+CollectiveConfigProto CollectiveConfig::ToProto() const {
+  CollectiveConfigProto proto;
+
+  proto.mutable_operand_element_type()->Assign(operand_element_type.begin(),
+                                               operand_element_type.end());
+  proto.mutable_replica_groups()->Assign(replica_groups.begin(),
+                                         replica_groups.end());
+
+  proto.set_group_mode(group_mode);
+  proto.set_use_symmetric_buffer(use_symmetric_buffer);
+
+  return proto;
+}
+
+CollectiveConfig CollectiveConfig::FromProto(
+    const CollectiveConfigProto& proto) {
+  CollectiveConfig config;
+
+  config.operand_element_type.reserve(proto.operand_element_type_size());
+  for (int element_type : proto.operand_element_type()) {
+    config.operand_element_type.push_back(
+        static_cast<PrimitiveType>(element_type));
+  }
+
+  config.replica_groups.assign(proto.replica_groups().begin(),
+                               proto.replica_groups().end());
+
+  absl::c_copy(proto.replica_groups(),
+               std::back_inserter(config.replica_groups));
+
+  config.group_mode = proto.group_mode();
+  config.use_symmetric_buffer = proto.use_symmetric_buffer();
+  return config;
+}
+
 CollectiveConfig GetCollectiveConfig(
     const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
   CollectiveConfig config;
@@ -175,6 +213,13 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
     : Thunk(kind, thunk_info),
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
+
+CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                                 std::shared_ptr<AsyncEvents> async_events,
+                                 AsyncStreamKind stream_kind)
+    : Thunk(kind, thunk_info),
+      stream_kind_(stream_kind),
+      async_events_(async_events) {}
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
@@ -217,7 +262,7 @@ absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
                                  const se::DeviceAddressBase& buffer,
                                  Communicator* comm,
                                  bool use_symmetric_buffer) {
-  TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
+  ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
   XLA_VLOG_DEVICE(1, executor->device_ordinal())
       << "Registering range: " << range.opaque()
       << " with size: " << range.size() << " for buffer: " << buffer.opaque()
@@ -235,15 +280,42 @@ absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   bool use_symmetric_buffer) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(executor, buffers[i].source_buffer,
-                                             comm, use_symmetric_buffer));
+      RETURN_IF_ERROR(MaybeRegisterBuffer(executor, buffers[i].source_buffer,
+                                          comm, use_symmetric_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(
+      RETURN_IF_ERROR(MaybeRegisterBuffer(
           executor, buffers[i].destination_buffer, comm, use_symmetric_buffer));
     }
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<CollectiveBufferProto> CollectiveThunk::Buffer::ToProto() const {
+  CollectiveBufferProto proto;
+  proto.set_element_count(element_count);
+  ASSIGN_OR_RETURN(*proto.mutable_source_buffer(), source_buffer.ToProto());
+  ASSIGN_OR_RETURN(*proto.mutable_destination_buffer(),
+                   destination_buffer.ToProto());
+  proto.set_source_memory_space(source_memory_space);
+  proto.set_destination_memory_space(destination_memory_space);
+  return proto;
+}
+
+absl::StatusOr<CollectiveThunk::Buffer> CollectiveThunk::Buffer::FromProto(
+    const CollectiveBufferProto& buffer_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  CollectiveThunk::Buffer res;
+  res.element_count = buffer_proto.element_count();
+  ASSIGN_OR_RETURN(res.source_buffer,
+                   BufferAllocation::Slice::FromProto(
+                       buffer_proto.source_buffer(), buffer_allocations));
+  ASSIGN_OR_RETURN(res.destination_buffer,
+                   BufferAllocation::Slice::FromProto(
+                       buffer_proto.destination_buffer(), buffer_allocations));
+  res.source_memory_space = buffer_proto.source_memory_space();
+  res.destination_memory_space = buffer_proto.destination_memory_space();
+  return res;
 }
 
 absl::Status CollectiveThunk::AsyncEvents::Initialize(
@@ -253,7 +325,7 @@ absl::Status CollectiveThunk::AsyncEvents::Initialize(
     return absl::OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
+  ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
 
   events_.try_emplace(executor, std::move(event));
   return absl::OkStatus();
@@ -274,7 +346,7 @@ absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
 
 absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   TF_RET_CHECK(params.collective_params != nullptr);
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, GetAsyncStreamKind()));
@@ -283,7 +355,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
   if (async_events_) {
-    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
+    RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
   return absl::OkStatus();
 }
@@ -294,15 +366,14 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
       IsAsync() ? "async" : "sync", Thunk::KindToString(kind()));
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, stream_kind));
 
-  TF_ASSIGN_OR_RETURN(
-      Communicator * comm,
-      params.collective_cliques->GetComm(
-          clique_key, params.collective_params->global_device_id));
+  ASSIGN_OR_RETURN(Communicator * comm,
+                   params.collective_cliques->GetComm(
+                       clique_key, params.collective_params->global_device_id));
   DCHECK(comm) << "Failed to get communicator for collective operation";
 
   se::StreamExecutor* executor = params.stream->parent();
@@ -315,20 +386,18 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
         *params.collective_params->async_streams.at(async_stream_idx);
 
     // Wait for main compute stream to make sure all buffers are ready.
-    TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
+    RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
 
-    TF_ASSIGN_OR_RETURN(is_first_rendezvous_needed,
-                        RunCollective(params, clique_key, async_stream, *comm));
+    ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                     RunCollective(params, clique_key, async_stream, *comm));
 
     // Record collective operation completion.
-    TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-    TF_RETURN_IF_ERROR(async_stream.RecordEvent(event));
-
+    ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+    RETURN_IF_ERROR(async_stream.RecordEvent(event));
   } else {
     // Launch collective operation on a main stream.
-    TF_ASSIGN_OR_RETURN(
-        is_first_rendezvous_needed,
-        RunCollective(params, clique_key, *params.stream, *comm));
+    ASSIGN_OR_RETURN(is_first_rendezvous_needed,
+                     RunCollective(params, clique_key, *params.stream, *comm));
   }
 
   // After a first execution of this instance of collective operation do a
@@ -356,7 +425,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     const xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
-    TF_RETURN_IF_ERROR(Rendezvous(
+    RETURN_IF_ERROR(Rendezvous(
         first_call_rendezvous_flag_, rendezvous_name, rendezvous_key,
         num_local_participants,
         /*warn_stuck_timeout=*/
@@ -378,14 +447,13 @@ absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
     const ExecuteParams& params) const {
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, stream_kind));
-  TF_ASSIGN_OR_RETURN(
-      Communicator * comm,
-      params.collective_cliques->GetComm(
-          clique_key, params.collective_params->global_device_id));
+  ASSIGN_OR_RETURN(Communicator * comm,
+                   params.collective_cliques->GetComm(
+                       clique_key, params.collective_params->global_device_id));
   return std::vector<Communicator*>{comm};
 }
 
@@ -436,7 +504,7 @@ CollectiveDoneThunk::CollectiveDoneThunk(
 
 absl::Status CollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
+  ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
   return params.stream->WaitFor(event);
 }
 
@@ -490,8 +558,8 @@ CollectiveDoneThunk::FromProto(
     async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
   }
 
-  TF_ASSIGN_OR_RETURN(Thunk::Kind kind,
-                      Thunk::KindFromProto(thunk_proto.thunk_kind()));
+  ASSIGN_OR_RETURN(Thunk::Kind kind,
+                   Thunk::KindFromProto(thunk_proto.thunk_kind()));
   return std::make_unique<CollectiveDoneThunk>(kind, std::move(thunk_info),
                                                async_events,
                                                thunk_proto.async_stream_kind());

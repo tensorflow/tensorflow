@@ -57,6 +57,9 @@ struct CollectiveConfig {
   std::vector<ReplicaGroup> replica_groups;
   CollectiveOpGroupMode group_mode;
   bool use_symmetric_buffer;
+
+  CollectiveConfigProto ToProto() const;
+  static CollectiveConfig FromProto(const CollectiveConfigProto& proto);
 };
 
 CollectiveConfig GetCollectiveConfig(const HloInstruction* hlo,
@@ -96,6 +99,11 @@ class CollectiveThunk : public Thunk {
     BufferAllocation::Slice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
+
+    absl::StatusOr<CollectiveBufferProto> ToProto() const;
+    static absl::StatusOr<Buffer> FromProto(
+        const CollectiveBufferProto& buffer_proto,
+        absl::Span<const BufferAllocation> buffer_allocations);
   };
 
   // Completion events for asynchronous collective operations (operations
@@ -119,6 +127,10 @@ class CollectiveThunk : public Thunk {
   };
   using AsyncEventsMap =
       absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
+
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                  std::shared_ptr<AsyncEvents> async_events,
+                  AsyncStreamKind stream_kind);
 
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);

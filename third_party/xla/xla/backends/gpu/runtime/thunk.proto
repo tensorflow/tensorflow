@@ -377,10 +377,31 @@ message CustomKernelThunkProto {
   CustomKernelProto custom_kernel = 3;
 }
 
+message CollectiveBufferProto {
+  int64 element_count = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 3;
+  int64 source_memory_space = 4;
+  int64 destination_memory_space = 5;
+}
+
+message CollectiveConfigProto {
+  repeated PrimitiveType operand_element_type = 1;
+  repeated ReplicaGroup replica_groups = 2;
+  CollectiveOpGroupMode group_mode = 3;
+  bool use_symmetric_buffer = 4;
+}
+
 message CollectiveThunkProto {
   ThunkKindProto thunk_kind = 1;
   AsyncStreamKind async_stream_kind = 2;
   uint64 async_events_unique_id = 3;
+}
+
+message AllGatherStartThunkProto {
+  uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
 }
 
 message CollectiveDoneThunkProto {
@@ -428,6 +449,7 @@ message ThunkProto {
     HostRecvDoneThunkProto host_recv_done_thunk = 35;
     CustomKernelThunkProto custom_kernel_thunk = 36;
     CollectiveDoneThunkProto collective_done_thunk = 37;
+    AllGatherStartThunkProto all_gather_start_thunk = 38;
   }
 }
 
