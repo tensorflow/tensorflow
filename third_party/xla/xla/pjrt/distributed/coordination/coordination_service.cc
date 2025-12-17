@@ -98,7 +98,9 @@ absl::Status MakeShutdownBarrierError(const absl::Status& error) {
 
 void CoordinationService::ErrorPollingState::SetError(
     const absl::Status& error) {
-  if (responded_) return;
+  if (responded_) {
+    return;
+  }
   responded_ = true;
   error_ = error;
   for (auto& [_, done_cb] : done_callbacks_) {
@@ -119,7 +121,9 @@ void CoordinationService::ErrorPollingState::RemoveTask(
 void CoordinationService::ErrorPollingState::AddTask(
     const CoordinatedTask& task, tsl::StatusCallback&& done) {
   // Do not allow to insert a task if the service has already responded.
-  if (Responded()) return;
+  if (Responded()) {
+    return;
+  }
   polling_task_names_.insert(GetTaskName(task));
   RemoveTask(task, "new request from the same task");
   done_callbacks_[task] = done;
@@ -143,7 +147,9 @@ void CoordinationService::TaskState::Disconnect(
 }
 
 bool CoordinationService::TaskState::SetError(const absl::Status& status) {
-  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return false;
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+    return false;
+  }
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = status;
   return true;
@@ -151,7 +157,9 @@ bool CoordinationService::TaskState::SetError(const absl::Status& status) {
 
 absl::Status CoordinationService::TaskState::RecordHeartbeat(
     IncarnationId task_incarnation) {
-  if (!status_.ok()) return status_;
+  if (!status_.ok()) {
+    return status_;
+  }
   // Record heartbeat.
   if (task_incarnation_ == task_incarnation) {
     absl::MutexLock l(last_heartbeat_mu_);
@@ -161,14 +169,13 @@ absl::Status CoordinationService::TaskState::RecordHeartbeat(
   // Task incarnation mismatch!
   if (IsRecoverable()) {
     return absl::OkStatus();  // Ignore, but don't record new heartbeat.
-  } else {
-    return MakeCoordinationError(absl::AbortedError(absl::StrCat(
-        task_name_, " Heartbeat: Incarnation ID mismatch: expecting ",
-        task_incarnation_.value(), " but got ", task_incarnation.value(),
-        ". The task has restarted and likely crashed earlier - check for any "
-        "earlier errors or any scheduler events (e.g. preemption, eviction) to "
-        "debug further.")));
   }
+  return MakeCoordinationError(absl::AbortedError(absl::StrCat(
+      task_name_, " Heartbeat: Incarnation ID mismatch: expecting ",
+      task_incarnation_.value(), " but got ", task_incarnation.value(),
+      ". The task has restarted and likely crashed earlier - check for any "
+      "earlier errors or any scheduler events (e.g. preemption, eviction) to "
+      "debug further.")));
 }
 
 int64_t CoordinationService::TaskState::TimeSinceLastHeartbeatMs() {
@@ -625,7 +632,8 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
     done(absl::OkStatus());
     ClusterStateUpdated();
     return;
-  } else if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
+  }
+  if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
     // This may happen if the service processes the initial RegisterTask(),
     // but the agent did not receive the response so the agent retries again.
     if (task_cluster_state->GetTaskIncarnation() == incarnation ||
@@ -639,12 +647,11 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
       done(absl::OkStatus());
       ClusterStateUpdated();
       return;
-    } else {
-      error_message =
-          absl::StrCat(task_name,
-                       " unexpectedly tried to connect with a different "
-                       "incarnation. It has likely restarted.");
     }
+    error_message =
+        absl::StrCat(task_name,
+                     " unexpectedly tried to connect with a different "
+                     "incarnation. It has likely restarted.");
   } else {
     // This task is already in error, which implies it has registered
     // previously.
@@ -744,7 +751,8 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
         absl::StrCat("Coordination service has stopped. DisconnectTask() "
                      "failed for task_name=",
                      task_name)));
-  } else if (!cluster_state_.contains(task_name)) {
+  }
+  if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(absl::InvalidArgumentError(absl::StrCat(
         "Unexpected disconnect request with task_name=", task_name)));
   }
@@ -782,11 +790,13 @@ absl::Status CoordinationService::ReportTaskError(const CoordinatedTask& task,
   if (ServiceHasStopped()) {
     return MakeCoordinationError(absl::InternalError(
         "Coordination service has stopped. ReportTaskError() failed."));
-  } else if (!cluster_state_.contains(task_name)) {
+  }
+  if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(absl::InvalidArgumentError(
         absl::StrCat("Unexpected request from task ", task_name)));
-  } else if (cluster_state_[task_name]->GetState() !=
-             CoordinatedTaskState::TASKSTATE_CONNECTED) {
+  }
+  if (cluster_state_[task_name]->GetState() !=
+      CoordinatedTaskState::TASKSTATE_CONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "The task is not connected or already has an error."));
   }
@@ -878,7 +888,8 @@ absl::Status CoordinationService::RecordHeartbeat(const CoordinatedTask& task,
         "gracefully. Check the task leader's logs for an earlier error or "
         "scheduler events (e.g. preemption, eviction) to debug the root "
         "cause.")));
-  } else if (!cluster_state_.contains(task_name)) {
+  }
+  if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(absl::InvalidArgumentError(
         absl::StrCat("Unexpected heartbeat request from task: ", task_name,
                      ". This usually implies a configuration error.")));
@@ -889,7 +900,8 @@ absl::Status CoordinationService::RecordHeartbeat(const CoordinatedTask& task,
         "Unexpected heartbeat request from an already-in-error task: ",
         task_name,
         " with existing error: ", task_state->GetStatus().ToString())));
-  } else if (task_state->IsDisconnectedBeyondGracePeriod()) {
+  }
+  if (task_state->IsDisconnectedBeyondGracePeriod()) {
     // We accept heartbeats for a short grace period to account for the lag
     // time between the service recording the state change and the agent
     // stopping heartbeats.
@@ -960,7 +972,9 @@ std::string NormalizeKey(absl::string_view orig_key) {
   // Parse all characters
   while (*src) {
     // Skip leading slashes
-    while (*src == '/') src++;
+    while (*src == '/') {
+      src++;
+    }
     // Copy over all non-slash characters
     while (*src && *src != '/') {
       *dst++ = *src++;
@@ -971,7 +985,9 @@ std::string NormalizeKey(absl::string_view orig_key) {
     }
   }
   // If ending with slash, remove the trailing slash
-  if (dst > norm_key.begin() && *(dst - 1) == '/') dst--;
+  if (dst > norm_key.begin() && *(dst - 1) == '/') {
+    dst--;
+  }
   norm_key.resize(dst - norm_key.begin());
   return norm_key;
 }

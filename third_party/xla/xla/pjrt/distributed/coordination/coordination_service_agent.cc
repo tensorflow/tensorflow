@@ -461,7 +461,8 @@ absl::Status CoordinationServiceAgent::ReportError(const absl::Status& error) {
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Coordination service agent must be initialized first before "
           "reporting error."));
-    } else if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+    }
+    if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Coordination service agent is already in error state."));
     }
@@ -837,7 +838,9 @@ absl::Status CoordinationServiceAgent::StopWatchKey(absl::string_view key) {
 void CoordinationServiceAgent::SetError(const absl::Status& error) {
   assert(!error.ok());
   absl::MutexLock l(state_mu_);
-  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+    return;
+  }
   absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
@@ -1042,7 +1045,9 @@ absl::Status CoordinationServiceAgent::ValidateRunningAgent(
           "Agent must be in CONNECTED state. It is currently UNINITIALIZED."));
 
     case CoordinatedTaskState::TASKSTATE_DISCONNECTED:
-      if (allow_disconnected) return absl::OkStatus();
+      if (allow_disconnected) {
+        return absl::OkStatus();
+      }
       return MakeCoordinationError(absl::FailedPreconditionError(
           "Agent must be in CONNECTED state. It is currently DISCONNECTED."));
 
