@@ -136,7 +136,8 @@ class RedzoneAllocator : public ScratchAllocator {
   //
   // ScratchAllocators need to free all allocated memory on destruction so we
   // use `OwningDeviceAddress` here.
-  std::vector<std::pair<OwningDeviceAddress, int64_t>> allocated_buffers_;
+  std::vector<std::pair<ScopedDeviceAddress<uint8_t>, int64_t>>
+      allocated_buffers_;
 
   int64_t allocated_bytes_excluding_redzones_ = 0;
 };
