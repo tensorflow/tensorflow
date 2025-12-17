@@ -58,6 +58,8 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtGlobalDeviceId, int32_t);
 TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalDeviceId, int32_t);
 TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalHardwareId, int32_t);
 
+using PjRtPlatformId = uint64_t;
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_PJRT_COMMON_H_
