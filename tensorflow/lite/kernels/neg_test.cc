@@ -22,6 +22,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -67,14 +68,12 @@ TEST(NegOpModel, NegFloat32) {
 
 TEST(NegOpModel, NegFloat16) {
   NegOpModel m({TensorType_FLOAT16, {6}}, {TensorType_FLOAT16, {6}});
-  m.SetInput<Eigen::half>({Eigen::half(-2.0f), Eigen::half(-1.0f),
-                           Eigen::half(0.f), Eigen::half(1.0f),
-                           Eigen::half(2.0f), Eigen::half(3.0f)});
+  m.SetInput<half>({half(-2.0f), half(-1.0f), half(0.f), half(1.0f), half(2.0f),
+                    half(3.0f)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<Eigen::half>(),
-              ElementsAreArray({Eigen::half(2.0f), Eigen::half(1.0f),
-                                Eigen::half(0.f), Eigen::half(-1.0f),
-                                Eigen::half(-2.0f), Eigen::half(-3.0f)}));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray({half(2.0f), half(1.0f), half(0.f), half(-1.0f),
+                                half(-2.0f), half(-3.0f)}));
 }
 
 TEST(NegOpModel, NegBfloat16) {
