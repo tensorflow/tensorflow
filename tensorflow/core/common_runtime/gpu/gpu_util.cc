@@ -548,34 +548,35 @@ absl::Status GPUUtil::SyncAll(Device* gpu_device) {
   return absl::OkStatus();
 }
 
-string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
-  string ret;
+std::string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
+  std::string ret;
   CHECK(tensor);
   const int64_t num_bytes = std::min<int64_t>(
       FLAGS_brain_gpu_util_debug_string_maxlen, tensor->TotalBytes());
   void* ptr = (num_bytes > 0) ? GetBase(tensor) : nullptr;
-  strings::Appendf(&ret, "%p:", ptr);
+  void* arg1 = ptr;
+  absl::StrAppendFormat(&ret, "%p:", arg1);
   if (num_bytes > 0) {
     auto* dev_info = device->tensorflow_accelerator_device_info();
     if (!dev_info) {
-      strings::StrAppend(
+      absl::StrAppend(
           &ret, PrintMemory(reinterpret_cast<const char*>(ptr), num_bytes));
     } else {
-      string buf;
+      std::string buf;
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
       auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
           gpu_ptr, num_bytes, &*buf.begin());
-      strings::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
+      absl::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
     }
   }
   return ret;
 }
 
 // TODO(pbar) Checksum is called from places without a valid device context.
-uint64 GPUUtil::Checksum(Device* gpu_device,
-                         const DeviceContext* device_context,
-                         const Tensor& tensor) {
+uint64_t GPUUtil::Checksum(Device* gpu_device,
+                           const DeviceContext* device_context,
+                           const Tensor& tensor) {
   Tensor copy(tensor.dtype(), tensor.shape());
   absl::Status s;
   absl::Notification n;
@@ -589,7 +590,7 @@ uint64 GPUUtil::Checksum(Device* gpu_device,
   return Checksum(copy);
 }
 
-uint64 GPUUtil::Checksum(const Tensor& tensor) {
+uint64_t GPUUtil::Checksum(const Tensor& tensor) {
   const float* fptr = reinterpret_cast<const float*>(GetBase(&tensor));
   size_t num_bytes = tensor.TotalBytes();
   size_t num_floats = num_bytes / sizeof(float);
