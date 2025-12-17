@@ -921,7 +921,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     const CollectiveDeviceList& device_list, bool constrain_layout,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      device_list_(device_list),
+      device_list_(std::make_shared<CollectiveDeviceList>(device_list)),
       constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -930,7 +930,23 @@ HloCollectiveInstruction::HloCollectiveInstruction(
 
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
-  *proto.mutable_collective_device_list() = device_list_.ToProto();
+
+  if (const CollectiveDeviceList* device_list_v1 =
+          dynamic_cast<const CollectiveDeviceList*>(device_list_.get())) {
+    *proto.mutable_collective_device_list() = device_list_v1->ToProto();
+  } else if (const IotaReplicaGroupList* device_list_v2 =
+                 dynamic_cast<const IotaReplicaGroupList*>(
+                     device_list_.get())) {
+    *proto.mutable_iota_collective_device_list() = device_list_v2->ToProto();
+  } else if (const MeshAxesReplicaGroupList* device_list_v3 =
+                 dynamic_cast<const MeshAxesReplicaGroupList*>(
+                     device_list_.get())) {
+    *proto.mutable_mesh_axes_replica_group_list() = device_list_v3->ToProto();
+  } else {
+    LOG(FATAL) << "Unknown or missing CollectiveDeviceList type in "
+                  "HloCollectiveInstruction";
+  }
+
   proto.set_constrain_layout(constrain_layout_);
   return proto;
 }
@@ -940,10 +956,10 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this, &options](Printer* printer) {
     VLOG(4) << name() << " replica_groups="
-            << device_list_.ToString(options.print_full_replica_group_list());
+            << device_list_->ToString(options.print_full_replica_group_list());
 
     printer->Append("replica_groups=");
-    device_list_.Print(printer, options.print_full_replica_group_list());
+    device_list_->Print(printer, options.print_full_replica_group_list());
   });
   if (constrain_layout_) {
     printer.Next(
