@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 
+#include <functional>
+#include <memory>
+#include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
