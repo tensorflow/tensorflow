@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER4(UnaryOp, CPU, "Neg", functor::neg, int8, int16, int32, int64_t);
+REGISTER4(UnaryOp, CPU, "Neg", functor::neg, int8_t, int16_t, int32_t, int64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -37,6 +37,6 @@ REGISTER_KERNEL_BUILDER(Name("Neg")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::neg<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnaryOp<CPUDevice, functor::neg<int32_t>>);
 }  // namespace tensorflow
