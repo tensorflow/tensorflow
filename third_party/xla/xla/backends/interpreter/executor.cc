@@ -37,23 +37,23 @@ host::HostStream *AsExecutorStream(Stream *stream) {
   return dynamic_cast<host::HostStream *>(stream);
 }
 
-DeviceMemoryBase XlaInterpreterExecutor::Allocate(uint64_t size,
-                                                  int64_t memory_space) {
-  return DeviceMemoryBase(new char[size], size);
+DeviceAddressBase XlaInterpreterExecutor::Allocate(uint64_t size,
+                                                   int64_t memory_space) {
+  return DeviceAddressBase(new char[size], size);
 }
 
-void XlaInterpreterExecutor::Deallocate(DeviceMemoryBase *mem) {
+void XlaInterpreterExecutor::Deallocate(DeviceAddressBase* mem) {
   delete[] static_cast<char *>(mem->opaque());
 }
 
 absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
-    DeviceMemoryBase *dev_dst, const void *host_src, uint64_t size) {
+    DeviceAddressBase* dev_dst, const void* host_src, uint64_t size) {
   memcpy(dev_dst->opaque(), host_src, size);
   return absl::OkStatus();
 }
 
 absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
-    void *host_dst, const DeviceMemoryBase &dev_src, uint64_t size) {
+    void* host_dst, const DeviceAddressBase& dev_src, uint64_t size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return absl::OkStatus();
 }
