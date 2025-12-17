@@ -774,6 +774,21 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Device_PoisonExecution(
+    PJRT_Device_PoisonExecution_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Device_PoisonExecution_Args",
+      PJRT_Device_PoisonExecution_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Status error = absl::Status(
+      pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+      absl::string_view(args->error_message, args->error_message_size));
+
+  PJRT_ASSIGN_OR_RETURN(args->poisoned, args->device->device->PoisonExecution(
+                                            args->launch_id, error));
+  return nullptr;
+}
+
 PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(
     PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3227,6 +3242,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_AsyncHostToDeviceTransferManager_TransferLiteral,
       /*PJRT_Buffer_CopyRawToHostFuture=*/
       pjrt::PJRT_Buffer_CopyRawToHostFuture,
+      /*PJRT_Device_PoisonExecution=*/pjrt::PJRT_Device_PoisonExecution,
   };
 }
 
