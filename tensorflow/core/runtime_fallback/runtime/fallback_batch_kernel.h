@@ -67,7 +67,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
-  static int32 NumBatchThreadsFromEnvironmentWithDefault(
+  static int32_t NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();
   static constexpr int64_t kBatchThreadPoolSize = 128;
@@ -80,10 +80,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32_t batch_timeout_micros_;
   int32_t max_enqueued_batches_;
   std::vector<int32_t> allowed_batch_sizes_;
-  int32 low_priority_max_batch_size_;
-  int32 low_priority_batch_timeout_micros_;
-  int32 low_priority_max_enqueued_batches_;
-  std::vector<int32> low_priority_allowed_batch_sizes_;
+  int32_t low_priority_max_batch_size_;
+  int32_t low_priority_batch_timeout_micros_;
+  int32_t low_priority_max_enqueued_batches_;
+  std::vector<int32_t> low_priority_allowed_batch_sizes_;
   std::string mixed_priority_policy_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
@@ -100,10 +100,10 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   static constexpr int64_t kMaxInflightBatches = 64;
   bool enable_adaptive_batch_threads_ = false;
   struct AdaptiveBatchSchedulerOptions {
-    int32 min_in_flight_batches_limit = kMinInflightBatches;
-    int32 initial_in_flight_batches_limit = kInitialInflightBatches;
-    int32 max_in_flight_batches_limit = kMaxInflightBatches;
-    int32 batches_to_average_over = kBatchesToAverageOver;
+    int32_t min_in_flight_batches_limit = kMinInflightBatches;
+    int32_t initial_in_flight_batches_limit = kInitialInflightBatches;
+    int32_t max_in_flight_batches_limit = kMaxInflightBatches;
+    int32_t batches_to_average_over = kBatchesToAverageOver;
   };
   std::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = std::nullopt;
