@@ -65,7 +65,8 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
     auto allocation = memory_allocator_->Allocate(num_bytes);
     if (!allocation.ok()) {
       LOG(WARNING) << "could not allocate " << MemorySpaceToString(memory_type_)
-                   << " of size: " << num_bytes;
+                   << " of size: " << num_bytes << " (" << allocation.status()
+                   << ')';
       *bytes_received = 0;
       return nullptr;
     }

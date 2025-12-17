@@ -258,7 +258,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//xla/backends/gpu:all_gpu_specs",
+        "//xla/backends/gpu/target_config:all_gpu_specs",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
