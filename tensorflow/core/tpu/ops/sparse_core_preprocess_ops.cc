@@ -73,14 +73,14 @@ REGISTER_OP("GetMinibatchesInCsrWithPhysicalReplica")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &rank));
       }
-      int32 max_minibatches_per_sc;
+      int32_t max_minibatches_per_sc;
       TF_RETURN_IF_ERROR(
           c->GetAttr("max_minibatches_per_sc", &max_minibatches_per_sc));
-      int32 num_replica;
+      int32_t num_replica;
       TF_RETURN_IF_ERROR(c->GetAttr("num_replica", &num_replica));
-      int32 sample_count;
+      int32_t sample_count;
       TF_RETURN_IF_ERROR(c->GetAttr("sample_count", &sample_count));
-      int32 max_ids_per_chip_per_sample;
+      int32_t max_ids_per_chip_per_sample;
       TF_RETURN_IF_ERROR(c->GetAttr("max_ids_per_chip_per_sample",
                                     &max_ids_per_chip_per_sample));
 
@@ -88,7 +88,7 @@ REGISTER_OP("GetMinibatchesInCsrWithPhysicalReplica")
       // will be run as part of the graph generation which might not have the
       // tpu system available.
       const int xla_pad_size = 8;
-      int32 num_sc_per_chip;
+      int32_t num_sc_per_chip;
       TF_RETURN_IF_ERROR(c->GetAttr("num_sc_per_chip", &num_sc_per_chip));
 
       const int num_physical_replica = num_replica * num_sc_per_chip;
@@ -253,22 +253,22 @@ REGISTER_OP("ConvertToSparseCoreCsrWrappedCooTensor")
     .Attr("table_name: string")
     .Attr("allow_id_dropping: bool")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      int32 max_minibatches_per_sc;
+      int32_t max_minibatches_per_sc;
       TF_RETURN_IF_ERROR(
           c->GetAttr("max_minibatches_per_sc", &max_minibatches_per_sc));
-      int32 num_replica;
+      int32_t num_replica;
       TF_RETURN_IF_ERROR(c->GetAttr("num_replica", &num_replica));
-      int32 sample_count_per_sc;
+      int32_t sample_count_per_sc;
       TF_RETURN_IF_ERROR(
           c->GetAttr("sample_count_per_sc", &sample_count_per_sc));
-      int32 max_ids_per_chip_per_sample;
+      int32_t max_ids_per_chip_per_sample;
       TF_RETURN_IF_ERROR(c->GetAttr("max_ids_per_chip_per_sample",
                                     &max_ids_per_chip_per_sample));
       // We can't get this number programmatically since the shape inference
       // will be run as part of the graph generation which might not have the
       // tpu system available.
       const int xla_pad_size = 8;
-      int32 num_sc_per_chip;
+      int32_t num_sc_per_chip;
       TF_RETURN_IF_ERROR(c->GetAttr("num_sc_per_chip", &num_sc_per_chip));
 
       const int num_physical_replica = num_replica * num_sc_per_chip;
