@@ -105,6 +105,7 @@ cc_library(
         ":hip",
         ":hipblas",
         ":hipblaslt",
+        ":hipfft",
         ":hiprand",
         ":hipsolver",
         ":hipsparse",
@@ -116,7 +117,6 @@ cc_library(
         ":rocsolver",
         ":rocsparse",
         ":roctracer",
-        ":hipfft",
     ],
 )
 
@@ -408,11 +408,15 @@ cc_library(
 cc_library(
     name = "rocsolver",
     hdrs = glob(["%{rocm_root}/include/rocsolver/**"]),
-    data = glob(["%{rocm_root}/lib/librocsolver*.so*"]),
+    data = glob([
+        "%{rocm_root}/lib/librocsolver*.so*",
+        "%{rocm_root}/lib/host-math/lib/*.so*",
+    ]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lrocsolver"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
@@ -423,14 +427,18 @@ cc_library(
 
 cc_library(
     name = "rocsparse",
-    srcs = glob(["%{rocm_root}/lib/librocsparse*.so*"]),
+    data = glob(["%{rocm_root}/lib/librocsparse*.so*"]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lrocsparse"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+    ],
 )
 
 cc_library(
@@ -441,9 +449,14 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lhipsolver"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+        ":rocsparse",
+    ],
 )
 
 cc_library(
@@ -454,6 +467,7 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lhipblas"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
@@ -532,8 +546,8 @@ cc_library(
 
 cc_library(
     name = "amd_comgr_dynamic",
-    hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
     srcs = ["%{rocm_root}/lib/libamd_comgr_stub.a"],
+    hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
     data = glob([
         "%{rocm_root}/lib/libamd_comgr_loader.so*",
         "%{rocm_root}/lib/libamd_comgr.so*",
