@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 
 namespace xla::gpu {

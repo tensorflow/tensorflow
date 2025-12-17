@@ -32,12 +32,3 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
     ],
 )
-
-filegroup(
-    name = "all_gpu_specs",
-    data = glob(["specs/*.txtpb"]),
-)
-
-exports_files(glob([
-    "specs/*.txtpb",
-]))
