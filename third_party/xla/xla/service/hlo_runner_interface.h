@@ -290,6 +290,16 @@ class HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
 
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) = 0;
+
+  // Same as above, but with specified device assignment.
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) = 0;
+
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
