@@ -54,7 +54,7 @@ void StripDefaultAttributesInRegisterFunctionOp(
 }  // namespace
 
 void EagerClusterFunctionLibraryRuntime::Instantiate(
-    const string& function_name, const FunctionLibraryDefinition& lib_def,
+    const std::string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
@@ -281,7 +281,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
 }
 
 void EagerClusterFunctionLibraryRuntime::CleanUp(
-    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -312,7 +312,8 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(
-    const uint64 context_id, EagerContext* ctx, WorkerSession* worker_session) {
+    const uint64_t context_id, EagerContext* ctx,
+    WorkerSession* worker_session) {
   return new EagerClusterFunctionLibraryRuntime(
       context_id, ctx, worker_session->remote_device_mgr());
 }

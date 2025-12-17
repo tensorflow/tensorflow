@@ -489,7 +489,7 @@ class StagingMap : public ResourceBase {
     return map_.size();
   }
 
-  string DebugString() const override { return "StagingMap"; }
+  std::string DebugString() const override { return "StagingMap"; }
 };
 
 template <bool Ordered>
@@ -736,7 +736,7 @@ class MapSizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &size));
 
     // Set it to the actual size
-    size->scalar<int32>().setConstant(map->size());
+    size->scalar<int32_t>().setConstant(map->size());
   }
 };
 
@@ -766,7 +766,7 @@ class MapIncompleteSizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &size));
 
     // Set it to the actual size
-    size->scalar<int32>().setConstant(map->incomplete_size());
+    size->scalar<int32_t>().setConstant(map->incomplete_size());
   }
 };
 

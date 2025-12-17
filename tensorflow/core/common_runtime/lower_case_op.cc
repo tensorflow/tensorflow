@@ -38,7 +38,7 @@ class CaseBuilder {
  public:
   // Create a CaseBuilder to create the lowered form of `case` with branch
   // functions identified by `branch_fn_names` in the `graph`.
-  CaseBuilder(Node* case_op, const std::vector<string>& branch_fn_names,
+  CaseBuilder(Node* case_op, const std::vector<std::string>& branch_fn_names,
               bool keep_node_fetchable, Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
@@ -58,7 +58,7 @@ class CaseBuilder {
  private:
   // Returns unique name containing the name of the Case op being rewritten
   // (name_), infix and a suffix to ensure it is unique within the graph.
-  string NewName(const string& infix);
+  std::string NewName(const std::string& infix);
 
   // Adds input to both the then and else nodes from src:src_output.
   absl::Status AddInput(Node* src, int src_output);
@@ -88,7 +88,7 @@ class CaseBuilder {
   // for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
-  string name_;
+  std::string name_;
   bool keep_node_fetchable_;
 
   NodeDebugInfo debug_info_;
@@ -96,7 +96,7 @@ class CaseBuilder {
 };
 
 CaseBuilder::CaseBuilder(Node* case_op,
-                         const std::vector<string>& branch_fn_names,
+                         const std::vector<std::string>& branch_fn_names,
                          bool keep_node_fetchable, Graph* graph)
     : case_op_(case_op),
       num_branches_(branch_fn_names.size()),
@@ -106,7 +106,7 @@ CaseBuilder::CaseBuilder(Node* case_op,
       debug_info_(*case_op_) {
   branch_call_builders_.reserve(num_branches_);
   for (int b = 0; b < num_branches_; b++) {
-    branch_call_builders_.emplace_back(NewName(strings::StrCat("branch", b)),
+    branch_call_builders_.emplace_back(NewName(absl::StrCat("branch", b)),
                                        branch_fn_names[b], graph->op_registry(),
                                        &debug_info_);
     branch_call_builders_[b].Device(case_op_->requested_device());
@@ -129,7 +129,7 @@ absl::Status CaseBuilder::CreatePivotNodes() {
   control_predecessor_ = branch_index;
   pivots_.resize(num_branches_, nullptr);
   for (int b = 0; b < num_branches_; b++) {
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName(strings::StrCat("pivot_", b)),
+    TF_RETURN_IF_ERROR(NodeBuilder(NewName(absl::StrCat("pivot_", b)),
                                    "Identity", graph_->op_registry(),
                                    &debug_info_)
                            .Input(branch_index, b)
@@ -139,8 +139,8 @@ absl::Status CaseBuilder::CreatePivotNodes() {
   return absl::OkStatus();
 }
 
-string CaseBuilder::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+std::string CaseBuilder::NewName(const std::string& infix) {
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 absl::Status CaseBuilder::AddInput(Node* src, int src_output) {
@@ -276,7 +276,7 @@ absl::Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable) {
   }
 
   int num_branches = branches_attr->list().func_size();
-  std::vector<string> branch_fn_names;
+  std::vector<std::string> branch_fn_names;
   branch_fn_names.reserve(num_branches);
   for (int b = 0; b < num_branches; b++) {
     branch_fn_names.emplace_back(branches_attr->list().func(b).name());

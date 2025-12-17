@@ -72,7 +72,7 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   absl::StatusOr<DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
-    TF_ASSIGN_OR_RETURN(OwningDeviceAddress buffer,
+    TF_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
                                              /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));
@@ -82,7 +82,7 @@ class OwningScratchAllocator : public ScratchAllocator {
  private:
   int device_ordinal_;
   DeviceAddressAllocator* allocator_;
-  absl::InlinedVector<OwningDeviceAddress, N> buffers_;
+  absl::InlinedVector<ScopedDeviceAddress<uint8_t>, N> buffers_;
 };
 
 }  // namespace stream_executor
