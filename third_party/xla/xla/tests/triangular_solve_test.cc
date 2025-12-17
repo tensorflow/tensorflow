@@ -34,7 +34,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -45,9 +46,10 @@ namespace {
 constexpr float kNan = std::numeric_limits<float>::quiet_NaN();
 constexpr complex64 kNanC64 = complex64(kNan, kNan);
 
-using TriangularSolveTest = ClientLibraryTestRunnerMixin<HloTestBase>;
-using TriangularSolveLeftLookingTest =
-    ClientLibraryTestRunnerMixin<HloTestBase>;
+using TriangularSolveTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using TriangularSolveLeftLookingTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 Array2D<float> AValsLower() {
   return {{2, kNan, kNan, kNan},
@@ -448,23 +450,12 @@ struct TriangularSolveTestSpec {
 };
 
 class TriangularSolveParametricTest
-    : public ClientLibraryTestRunnerMixin<HloTestBase>,
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<TriangularSolveTestSpec> {};
 
 TEST_P(TriangularSolveParametricTest, Random) {
   TriangularSolveTestSpec spec = GetParam();
-
-  if (backend()
-          .default_stream_executor()
-          ->GetDeviceDescription()
-          .cuda_compute_capability()
-          .major == 6) {
-    if (spec.dims.size() == 3 && spec.dims[0] > 1 && spec.dims[1] == 150 &&
-        (spec.dims[2] == 150 || spec.dims[2] == 5) &&
-        (!spec.left_side || spec.dims[2] == 150)) {
-      GTEST_SKIP() << "triggers a bug in cuda 12. b/287345077";
-    }
-  }
 
   XlaBuilder builder(TestName());
 

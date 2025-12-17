@@ -3856,13 +3856,15 @@ xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
     real_hardware_only = True,
-    shard_count = 3,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array",
         "//xla:array2d",
