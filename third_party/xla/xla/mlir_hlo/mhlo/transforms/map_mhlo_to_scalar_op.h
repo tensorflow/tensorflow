@@ -1066,11 +1066,14 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
 
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
-  Value negOne =
-      lb.create<arith::ConstantOp>(lb.getIntegerAttr(resultType, -1));
-  Value zero = lb.create<arith::ConstantOp>(lb.getIntegerAttr(resultType, 0));
-  Value one = lb.create<arith::ConstantOp>(lb.getIntegerAttr(resultType, 1));
-  Value two = lb.create<arith::ConstantOp>(lb.getIntegerAttr(resultType, 2));
+  Value negOne = getConstantOrSplat(b, loc, resultTypes.front(),
+                                    lb.getIntegerAttr(resultType, -1));
+  Value zero = getConstantOrSplat(b, loc, resultTypes.front(),
+                                  lb.getIntegerAttr(resultType, 0));
+  Value one = getConstantOrSplat(b, loc, resultTypes.front(),
+                                 lb.getIntegerAttr(resultType, 1));
+  Value two = getConstantOrSplat(b, loc, resultTypes.front(),
+                                 lb.getIntegerAttr(resultType, 2));
   Value step = lb.create<arith::ConstantIndexOp>(1);
   Value lowerBound = lb.create<arith::ConstantIndexOp>(0);
   // Everything else would overflow for any exponent > 1, as 2^64
