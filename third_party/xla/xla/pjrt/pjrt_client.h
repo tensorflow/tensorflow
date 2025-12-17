@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -444,6 +445,20 @@ struct PjRtPluginAttributes {
   absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
+class PjRtAbiVersion {
+ public:
+  PjRtAbiVersion() = default;
+  virtual ~PjRtAbiVersion() = default;
+
+  virtual absl::StatusOr<PjRtAbiVersionProto> ToProto() const {
+    return absl::UnimplementedError(
+        "PjRtAbiVersion::ToProto is not implemented.");
+  }
+
+  // Comparator
+  virtual bool IsCompatible(const PjRtAbiVersion* other) const { return false; }
+};
+
 // Each cross-host transfer in the second transfers API is associated with a
 // unique CrossHostTransferKey.
 TSL_LIB_GTL_DEFINE_INT_TYPE(CrossHostTransferKey, int64_t);
@@ -570,6 +585,12 @@ class PjRtClient {
   // Returns a string containing human-readable, platform-specific version info
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // Returns an opaque string containing the ABI version of the runtime.
+  virtual absl::StatusOr<std::unique_ptr<PjRtAbiVersion>> RuntimeAbiVersion()
+      const {
+    return absl::UnimplementedError("RuntimeAbiVersion is not supported.");
+  }
 
   // Returns the key value store used by the client.
   virtual std::optional<std::shared_ptr<KeyValueStoreInterface>>

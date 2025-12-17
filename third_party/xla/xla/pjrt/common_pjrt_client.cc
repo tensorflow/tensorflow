@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -865,6 +866,263 @@ PjRtLoadedExecutable::Result CommonPjRtLoadedExecutable::ExecuteLaunch(
            launch_args.device, output_memory_space_kind_ids_,
            std::move(launch_args.output_leaf_buffers),
            launch_args.is_predetermined_error)});
+}
+
+absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
+    std::optional<ExecuteLaunchArgs>& launch_args,
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    const ExecuteOptions& options, size_t host_callback_idx,
+    PjRtDevice* device) const {
+  absl::Status prepare_status;
+  int attempts = 0;
+  while (true) {
+    launch_args.emplace();
+    prepare_status =
+        ExecutePrepare(*launch_args, argument_handles, replica, partition,
+                       options, host_callback_idx, device);
+    ++attempts;
+    if (!absl::IsResourceExhausted(prepare_status)) {
+      break;
+    }
+    if (!ShouldRetryOnOom(attempts, launch_args->device, prepare_status)) {
+      break;
+    }
+  }
+  return prepare_status;
+}
+
+static absl::Status ValidateHostTransferCallbacks(
+    absl::Span<const std::vector<SendCallback>> send_callbacks,
+    absl::Span<const std::vector<RecvCallback>> recv_callbacks,
+    size_t num_devices) {
+  if (!send_callbacks.empty() && send_callbacks.size() != num_devices) {
+    return InvalidArgument(
+        "The number of send callback vectors does not match the number of "
+        "devices");
+  }
+  if (!recv_callbacks.empty() && recv_callbacks.size() != num_devices) {
+    return InvalidArgument(
+        "The number of recv callback vectors does not match the number of "
+        "devices");
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<PjRtLoadedExecutable::Result>
+CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice(
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    const ExecuteOptions& options, bool fill_future, PjRtDevice* device) const {
+  tsl::profiler::TraceMe traceme(
+      "CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice");
+  std::optional<ExecuteLaunchArgs> launch_args;
+  TF_RETURN_IF_ERROR(ExecutePrepareWithOomRetries(
+      launch_args, argument_handles, replica, partition, options,
+      /*host_callback_idx=*/0, device));
+  return ExecuteLaunch(*launch_args, fill_future);
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+CommonPjRtLoadedExecutable::ExecuteSharded(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options,
+    std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
+  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecuteSharded");
+  for (int i = 0; i < addressable_devices_.size(); ++i) {
+    if (addressable_devices_[i] == device) {
+      TF_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
+          options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
+      TF_ASSIGN_OR_RETURN(
+          auto result,
+          ExecuteHelperOnSingleDevice(
+              argument_handles, addressable_device_logical_ids_[i].replica,
+              addressable_device_logical_ids_[i].partition, options,
+              fill_future));
+      returned_future = std::move(result.future);
+      return std::move(result.buffers);
+    }
+  }
+  return InvalidArgument(
+      "ExecuteShard attempted to execute on device id %d which is not "
+      "addressable by this client",
+      device->global_device_id().value());
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+CommonPjRtLoadedExecutable::ExecutePortable(
+    absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+    const ExecuteOptions& options,
+    std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
+  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePortable");
+  if (num_replicas() != 1 || num_partitions() != 1) {
+    return InvalidArgument(
+        "ExecutePortable expects a single-core executable but gets "
+        "one with %d replica %d partition",
+        num_replicas(), num_partitions());
+  }
+  if (device == nullptr) {
+    return InvalidArgument("ExecutePortable expects a device to be specified");
+  }
+
+  TF_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
+      options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
+  VLOG(1) << "ExecutePortable executes single-core portable executable "
+          << name();
+  TF_ASSIGN_OR_RETURN(
+      auto result, ExecuteHelperOnSingleDevice(argument_handles, /*replica=*/0,
+                                               /*partition=*/0, options,
+                                               fill_future, device));
+  returned_future = std::move(result.future);
+  return std::move(result.buffers);
+}
+
+absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+CommonPjRtLoadedExecutable::Execute(
+    absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+    const ExecuteOptions& options,
+    std::optional<std::vector<tsl::Future<void>>>& returned_futures) const {
+  tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::Execute");
+  VLOG(1) << "CommonPjRtLoadedExecutable::Execute";
+  if (!client()->allows_recursion() && ThisThreadIsInsideHostCallback()) {
+    // Because TPU is single threaded, and the host callback currently blocking
+    // the TPU, we should not initiate any outstanding computations because that
+    // risks deadlocking the TPU.
+    return InvalidArgument("Execute() called from inside host callback.");
+  }
+
+  tsl::profiler::TraceMeProducer producer("CommonPjRtLoadedExecutable::Execute",
+                                          tsl::profiler::ContextType::kPjRt);
+
+  const int num_addressable_devices = addressable_devices_.size();
+
+  if (argument_handles.size() != num_addressable_devices) {
+    return InvalidArgument(
+        "Attempted to execute with %d argument lists when local device "
+        "count is %d (total replica count: %d, partition count: %d)",
+        argument_handles.size(), num_addressable_devices, num_replicas(),
+        num_partitions());
+  }
+
+  VLOG(1) << "Executing computation " << name()
+          << "; num_replicas=" << num_replicas()
+          << " num_partitions=" << num_partitions()
+          << " num_addressable_devices=" << num_addressable_devices;
+
+  TF_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
+      options.send_callbacks, options.recv_callbacks,
+      addressable_devices_.size()));
+
+  std::vector<absl::StatusOr<Result>> results(num_addressable_devices);
+  if (num_addressable_devices == 1) {
+    // Fast-path if there is only one device — run the computation on the
+    // current thread.
+    const int replica = addressable_device_logical_ids_[0].replica;
+    const int partition = addressable_device_logical_ids_[0].partition;
+    results[0] =
+        ExecuteHelperOnSingleDevice(argument_handles[0], replica, partition,
+                                    options, returned_futures.has_value());
+  } else {
+    absl::Mutex mu;
+    int preparing = num_addressable_devices;
+    int launching = num_addressable_devices;
+    int failed = 0;
+    absl::Status first_failure_status;
+
+    {
+      // The gang_schedule mutex ensures that all calls to Schedule() happen
+      // atomically and cannot interleave with calls to Execute on other
+      // threads. If calls to Schedule are not atomic, then the threads can get
+      // stuck waiting for done_preparing to become true.
+      absl::MutexLock gang_schedule(client()->gang_scheduler());
+      auto context_id = producer.GetContextId();
+      for (int i = 0; i < num_addressable_devices; ++i) {
+        const int replica = addressable_device_logical_ids_[i].replica;
+        const int partition = addressable_device_logical_ids_[i].partition;
+        PjRtDevice* device = addressable_devices_[i];
+        LaunchOnDevice(device, [&, replica, partition, i, context_id] {
+          tsl::profiler::TraceMeConsumer consumer(
+              "Scheduled CommonPjRtLoadedExecutable::Execute",
+              tsl::profiler::ContextType::kPjRt, context_id);
+
+          // Two phase launch. Phase 1: Prepare on all cores. Abort
+          // launch on prepare failure.
+          std::optional<ExecuteLaunchArgs> launch_args;
+          absl::Status launch_status = ExecutePrepareWithOomRetries(
+              launch_args, argument_handles[i], replica, partition, options,
+              /*host_callback_idx=*/i);
+          // Wait for prepare to finish on all cores.
+          {
+            absl::MutexLock lock(mu);
+            preparing--;
+            auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+              return preparing == 0;
+            };
+            mu.Await(absl::Condition(&done_preparing));
+            if (!launch_status.ok()) {
+              if (failed == 0) {
+                first_failure_status = launch_status;
+              }
+              failed++;
+            }
+            if (failed > 0) {
+              // Poison results for all cores.
+              results[i] = first_failure_status;
+              // Abort phase 2 if Prepare fails for any core.
+              --launching;
+              return;
+            }
+          }
+
+          // Phase 2: Launch. It cannot fail.
+          results[i] =
+              ExecuteLaunch(*launch_args, returned_futures.has_value());
+
+          absl::MutexLock lock(mu);
+          --launching;
+        });
+      }
+    }
+
+    // Wait until we either fail Phase 1 or completes two phases.
+    auto done = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+      return launching == 0;
+    };
+    absl::MutexLock lock(mu);
+    mu.Await(absl::Condition(&done));
+  }
+  VLOG(3) << "Replicated execution complete.";
+
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
+      num_addressable_devices);
+  if (returned_futures.has_value()) {
+    returned_futures->reserve(num_addressable_devices);
+  }
+  for (int i = 0; i < num_addressable_devices; ++i) {
+    const int replica = addressable_device_logical_ids_[i].replica;
+    const int partition = addressable_device_logical_ids_[i].partition;
+    auto& statusor = results[i];
+    if (!statusor.ok()) {
+      if (absl::IsResourceExhausted(statusor.status())) {
+        client()->CallOomHandlers();
+      }
+      if (returned_futures.has_value()) {
+        returned_futures->clear();
+      }
+      if (num_addressable_devices == 1) {
+        return statusor.status();
+      }
+      return AppendStatus(
+          statusor.status(),
+          absl::StrFormat("while running replica %d and partition %d of a "
+                          "replicated computation (other "
+                          "replicas may have failed as well).",
+                          replica, partition));
+    }
+    wrapped_results[i] = std::move(statusor->buffers);
+    if (returned_futures.has_value()) {
+      returned_futures->push_back(*std::move(statusor->future));
+    }
+  }
+  return wrapped_results;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

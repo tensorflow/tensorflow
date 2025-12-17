@@ -1284,7 +1284,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
           offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
-      std::vector<std::optional<uint64_t>> offset_byte_sizes,
+      std::vector<std::optional<PrimitiveType>> offset_primitive_types,
       std::optional<
           const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
           offset_as_function_of_indvar_metadata = std::nullopt);
