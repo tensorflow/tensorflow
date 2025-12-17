@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --passes=dot-algorithm-rewriter --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/%{GPU}.txtpb | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --passes=dot-algorithm-rewriter --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb | FileCheck %s
 
 HloModule Algorithm3xBF16
 // CHECK-LABEL: HloModule Algorithm3xBF16, entry_computation_layout={(f32[128,128]{1,0}, f32[128,128]{1,0})->f32[128,128]{1,0}}

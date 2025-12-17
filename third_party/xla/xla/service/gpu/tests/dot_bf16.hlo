@@ -1,6 +1,6 @@
-// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/v100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM70 %}
-// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/a100_pcie_80.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
-// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/mi200.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/v100.txtpb --split-input-file | FileCheck %s --check-prefixes=CHECK-SM70 %}
+// RUN: %if !IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/a100_pcie_80.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
+// RUN: %if IS_ROCM %{ hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/mi200.txtpb --split-input-file --xla_gpu_autotune_level=0 --xla_gpu_enable_triton_gemm=false | FileCheck %s --check-prefixes=CHECK-SM80 %}
 
 
 // CHECK-SM70: %[[convert1:.+]] = f32[1536,6144]{1,0} fusion(%{{.+}})

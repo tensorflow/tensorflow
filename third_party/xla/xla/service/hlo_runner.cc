@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -474,7 +475,15 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
-  return ExecuteReplicated(executable.get(), options, device_assignment,
+  return ExecuteReplicatedWithExecutable(executable.get(), options,
+                                         device_assignment);
+}
+
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
+    OpaqueExecutable* const absl_nonnull executable,
+    const ReplicatedExecuteOptions& options,
+    DeviceAssignment* device_assignment) {
+  return ExecuteReplicated(executable, options, device_assignment,
                            /*profile=*/nullptr);
 }
 
@@ -620,6 +629,14 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
 absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
+  DeviceAssignment computation_device_assignment;
+  if (device_assignment == nullptr) {
+    ASSIGN_OR_RETURN(
+        computation_device_assignment,
+        backend().computation_placer()->AssignDevices(options.num_devices, 1));
+    device_assignment = &computation_device_assignment;
+  }
+  CHECK_NE(device_assignment, nullptr);
   TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
   return ExecuteReplicatedImpl(
@@ -734,6 +751,16 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       DeviceAssignment device_assignment,
       backend().computation_placer()->AssignDevices(options.num_devices, 1));
   return ExecuteReplicated(std::move(module), options, &device_assignment);
+}
+
+absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
+    OpaqueExecutable* const absl_nonnull executable,
+    const ReplicatedExecuteOptions& options) {
+  ASSIGN_OR_RETURN(
+      DeviceAssignment device_assignment,
+      backend().computation_placer()->AssignDevices(options.num_devices, 1));
+  return ExecuteReplicatedWithExecutable(executable, options,
+                                         &device_assignment);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>> HloRunner::CreateExecutable(
