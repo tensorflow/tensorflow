@@ -1747,18 +1747,27 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
     if constexpr (!std::is_same_v<NativeDestT, bool> &&
                   !std::numeric_limits<NativeSrcT>::is_integer &&
                   std::numeric_limits<NativeDestT>::is_integer) {
+      // NaN check.
       if (src != src) {
         return NativeDestT{0};
       }
-      if (src >=
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max())) {
+
+      // Clamp values that cannot fit in the destination type to avoid undefined
+      // behavior.
+      // An N-bit integer has a max of 2^N - 1 so max() + 1 is 2^N. Ensure
+      // double can losslessly hold.
+      static_assert((std::numeric_limits<double>::max_exponent - 1) >=
+                    std::numeric_limits<NativeDestT>::digits);
+      if (static_cast<double>(src) >=
+          static_cast<double>(std::numeric_limits<NativeDestT>::max())) {
         return std::numeric_limits<NativeDestT>::max();
       }
-      if (src <=
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest())) {
+      if (static_cast<double>(src) <=
+          static_cast<double>(std::numeric_limits<NativeDestT>::lowest())) {
         return std::numeric_limits<NativeDestT>::lowest();
       }
     }
+
     // TODO(b/370786669): Once ml_dtypes is updated to include
     // https://github.com/jax-ml/ml_dtypes/pull/205, do not special-case e3m4 by
     // casting to half first.

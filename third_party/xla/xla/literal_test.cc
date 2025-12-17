@@ -1912,6 +1912,66 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   EXPECT_EQ(c128.Convert(S32).status().code(), tsl::error::UNIMPLEMENTED);
 }
 
+TEST_F(LiteralUtilTest, ConvertFromF4E2M1FN) {
+  // Raw F4 inputs.
+  Literal f4 = LiteralUtil::CreateR1<tsl::float4_e2m1fn>({
+      static_cast<tsl::float4_e2m1fn>(0.0f),
+      static_cast<tsl::float4_e2m1fn>(0.5f),
+      static_cast<tsl::float4_e2m1fn>(1.0f),
+      static_cast<tsl::float4_e2m1fn>(1.5f),
+      static_cast<tsl::float4_e2m1fn>(2.0f),
+      static_cast<tsl::float4_e2m1fn>(3.0f),
+      static_cast<tsl::float4_e2m1fn>(4.0f),
+      static_cast<tsl::float4_e2m1fn>(6.0f),
+      static_cast<tsl::float4_e2m1fn>(-0.0f),
+      static_cast<tsl::float4_e2m1fn>(-0.5f),
+      static_cast<tsl::float4_e2m1fn>(-1.0f),
+      static_cast<tsl::float4_e2m1fn>(-1.5f),
+      static_cast<tsl::float4_e2m1fn>(-2.0f),
+      static_cast<tsl::float4_e2m1fn>(-3.0f),
+      static_cast<tsl::float4_e2m1fn>(-4.0f),
+      static_cast<tsl::float4_e2m1fn>(-6.0f),
+  });
+  // We assert these are our expectations.
+  Literal f32 = LiteralUtil::CreateR1<float>({
+      0.0f,
+      0.5f,
+      1.0f,
+      1.5f,
+      2.0f,
+      3.0f,
+      4.0f,
+      6.0f,
+      -0.0f,
+      -0.5f,
+      -1.0f,
+      -1.5f,
+      -2.0f,
+      -3.0f,
+      -4.0f,
+      -6.0f,
+  });
+
+  // From F4E2M1FN.
+  EXPECT_EQ(f4.Convert(U2), f32.Convert(U2));
+  EXPECT_EQ(f4.Convert(S2), f32.Convert(S2));
+  EXPECT_EQ(f4.Convert(U4), f32.Convert(U4));
+  EXPECT_EQ(f4.Convert(S4), f32.Convert(S4));
+  EXPECT_EQ(f4.Convert(F4E2M1FN), f32.Convert(F4E2M1FN));
+  EXPECT_EQ(f4.Convert(U8), f32.Convert(U8));
+  EXPECT_EQ(f4.Convert(S8), f32.Convert(S8));
+  EXPECT_EQ(f4.Convert(F8E4M3FN), f32.Convert(F8E4M3FN));
+  EXPECT_EQ(f4.Convert(F8E4M3B11FNUZ), f32.Convert(F8E4M3B11FNUZ));
+  EXPECT_EQ(f4.Convert(F8E5M2), f32.Convert(F8E5M2));
+  EXPECT_EQ(f4.Convert(U16), f32.Convert(U16));
+  EXPECT_EQ(f4.Convert(S16), f32.Convert(S16));
+  EXPECT_EQ(f4.Convert(F16), f32.Convert(F16));
+  EXPECT_EQ(f4.Convert(BF16), f32.Convert(BF16));
+  EXPECT_EQ(f4.Convert(U32), f32.Convert(U32));
+  EXPECT_EQ(f4.Convert(S32), f32.Convert(S32));
+  EXPECT_EQ(f4.Convert(F32).value(), f32);
+}
+
 TYPED_TEST(LiteralUtilFloatTest, ConvertIfTypesMatchF8) {
   constexpr auto ptype = primitive_util::NativeToPrimitiveType<TypeParam>();
   if (!primitive_util::IsF8Type(ptype)) {
