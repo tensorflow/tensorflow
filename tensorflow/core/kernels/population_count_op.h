@@ -28,7 +28,7 @@ namespace functor {
 template <typename Device, typename T>
 struct PopulationCount {
   void operator()(OpKernelContext* c, typename TTypes<T>::ConstFlat input,
-                  TTypes<uint8>::Flat output);
+                  TTypes<uint8_t>::Flat output);
 };
 
 }  // namespace functor
