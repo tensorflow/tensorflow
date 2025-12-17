@@ -33,8 +33,8 @@ message OptionalShapeProto {
   optional xla.ShapeProto shape = 1;
 }
 
-message OptionalInt64Proto {
-  optional int64 value = 1;
+message OptionalPrimitiveType {
+  optional PrimitiveType value = 1;
 }
 
 // Reflects std::optional<std::vector<Offset>>
