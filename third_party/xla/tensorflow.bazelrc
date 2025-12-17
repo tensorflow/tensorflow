@@ -262,13 +262,22 @@ common:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 common:dbg --copt -DDEBUG_BUILD
 
+# ASan works only for Linux x86_64
+common:asan --platforms=@rules_ml_toolchain//common:linux_x86_64_with_sanitizers
+common:asan --@rules_ml_toolchain//common:sanitize=address
 common:asan --strip=never
-common:asan --copt -fsanitize=address
 common:asan --copt -DADDRESS_SANITIZER
 common:asan --copt -O1
 common:asan --copt -g
-common:asan --copt -fno-omit-frame-pointer
-common:asan --linkopt -fsanitize=address
+
+# ASan legacy configuration for non-hermetic builds
+common:asan_clang_local --strip=never
+common:asan_clang_local --copt -fsanitize=address
+common:asan_clang_local --copt -DADDRESS_SANITIZER
+common:asan_clang_local --copt -O1
+common:asan_clang_local --copt -g
+common:asan_clang_local --copt -fno-omit-frame-pointer
+common:asan_clang_local --linkopt -fsanitize=address
 
 common:rocm_base --config=clang_local
 common:rocm_base --copt=-Wno-gnu-offsetof-extensions
