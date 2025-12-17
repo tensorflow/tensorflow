@@ -128,7 +128,8 @@ stream_executor::DeviceAddressAllocator* FromC(
     const SE_DeviceAddressAllocator& c_allocator);
 
 // OwningDeviceAddress
-SE_MaybeOwningDeviceAddress ToC(stream_executor::OwningDeviceAddress* mem);
+SE_MaybeOwningDeviceAddress ToC(
+    stream_executor::ScopedDeviceAddress<uint8_t>* mem);
 // mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
 // released. 'aliased' should be true in this case. 'aliased' has no effect if
 // 'mem' is unowned.

@@ -207,7 +207,7 @@ jobs:
           gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@v5.0.0
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: cpu-xla-benchmarks-xspace-${{ matrix.job_info.pool }}
           path: ${{ github.workspace }}/${{ matrix.job_info.output_dir }}/*_xspace.pb
