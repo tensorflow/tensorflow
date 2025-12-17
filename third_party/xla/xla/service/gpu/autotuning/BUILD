@@ -410,11 +410,7 @@ cc_library(
 xla_cc_test(
     name = "autotune_cache_key_test",
     srcs = ["autotune_cache_key_test.cc"],
-    data = [
-        "//xla/backends/gpu:specs/a100_sxm_40.txtpb",
-        "//xla/backends/gpu:specs/a100_sxm_80.txtpb",
-        "//xla/backends/gpu:specs/mi200.txtpb",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     deps = [
         ":autotune_cache_key",
         "//xla/hlo/ir:hlo",
@@ -677,14 +673,8 @@ tf_proto_library(
 xla_cc_test(
     name = "autotuner_util_test",
     srcs = ["autotuner_util_test.cc"],
-    data = [
-        "//xla/backends/gpu:specs/a100_sxm_40.txtpb",
-        "//xla/backends/gpu:specs/a100_sxm_80.txtpb",
-        "//xla/backends/gpu:specs/mi200.txtpb",
-    ],
-    tags = [
-        "gpu",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
+    tags = ["gpu"],
     deps = [
         ":autotune_cache_key",
         ":autotuner_status_key",
