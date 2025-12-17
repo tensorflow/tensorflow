@@ -1035,7 +1035,28 @@ CudaExecutor::CreateMemoryAllocator(MemorySpace type) {
   }
 
   if (type == MemorySpace::kCollective) {
-    return CreateCollectiveMemoryAllocator(this, collective_allocator_type_);
+    // TODO(469289220): Use NCCL/NVSHMEM memory allocator here instead.
+    return std::make_unique<GenericMemoryAllocator>(
+        [this](uint64_t size)
+            -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+          TF_ASSIGN_OR_RETURN(void* ptr, CollectiveMemoryAllocate(this, size));
+          XLA_VLOG_DEVICE(2, device_ordinal())
+              << "allocated " << ptr << " for context " << cuda_context_
+              << " of " << size << " bytes of collective memory";
+          return std::make_unique<GenericMemoryAllocation>(
+              ptr, size, [this](void* location, uint64_t size) {
+                auto status = CollectiveMemoryDeallocate(this, location);
+                if (!status.ok()) {
+                  XLA_LOG_DEVICE(ERROR, device_ordinal())
+                      << "failed to free collective memory at " << location
+                      << "; result: " << status;
+                } else {
+                  XLA_VLOG_DEVICE(2, device_ordinal())
+                      << "deallocated collective memory at " << location
+                      << " for context " << cuda_context_;
+                }
+              });
+        });
   }
 
   if (type == MemorySpace::kHost) {
