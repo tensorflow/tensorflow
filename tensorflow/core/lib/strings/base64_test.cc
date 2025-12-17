@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(Base64, EncodeDecode) {
-  const string original = "a simple test message!";
+  const std::string original = "a simple test message!";
   tstring encoded;
   TF_EXPECT_OK(Base64Encode(original, &encoded));
   EXPECT_EQ("YSBzaW1wbGUgdGVzdCBtZXNzYWdlIQ", encoded);
