@@ -4361,7 +4361,9 @@ constexpr std::array kMultiDotAlgorithms = {
     PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3,
     PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6,
     PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3,
-    PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9,
+    // TODO(basioli): re-enable this algorithm testing once the attribute
+    // importer supports the conversion.
+    // PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9,
 };
 
 TEST_P(MultiDotAlgorithmEmitterTest, MultiDotAlgorithmIsEmittedCorrectly) {

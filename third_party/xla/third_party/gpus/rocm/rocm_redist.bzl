@@ -39,3 +39,22 @@ rocm_redist = {
         rocm_root = "_rocm_sdk_devel",
     ),
 }
+
+def _parse_rocm_distro_links(distro_links):
+    result = []
+    for pair in distro_links.split(","):
+        link = pair.split(":")
+        result.append(struct(target = link[0], link = link[1]))
+    return result
+
+def create_rocm_distro(distro_url, distro_hash, symlinks):
+    return struct(
+        packages = [
+            {
+                "url": distro_url,
+                "sha256": distro_hash,
+            },
+        ],
+        required_softlinks = _parse_rocm_distro_links(symlinks),
+        rocm_root = "",
+    )

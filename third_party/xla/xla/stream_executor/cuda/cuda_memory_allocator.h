@@ -29,14 +29,14 @@ namespace stream_executor::gpu {
 // A type of memory allocator for kCollective memory space.
 enum class CollectiveAllocatorType { kNccl, kNvshmem };
 
-template <typename T>
-void AbslStringify(std::string* str, CollectiveAllocatorType allocator_type) {
+template <typename Sink>
+void AbslStringify(Sink& sink, CollectiveAllocatorType allocator_type) {
   switch (allocator_type) {
     case CollectiveAllocatorType::kNccl:
-      *str = "NCCL";
+      sink.Append("NCCL");
       break;
     case CollectiveAllocatorType::kNvshmem:
-      *str = "NVSHMEM";
+      sink.Append("NVSHMEM");
       break;
   }
 }
