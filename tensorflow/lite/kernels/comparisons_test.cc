@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -396,12 +397,10 @@ TEST(ComparisonsTest, LessFloat) {
 TEST(ComparisonsTest, LessFloat16) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
                           BuiltinOperator_LESS);
-  model.PopulateTensor<Eigen::half>(
-      model.input1(),
-      {Eigen::half(0.1), Eigen::half(0.9), Eigen::half(0.7), Eigen::half(0.3)});
-  model.PopulateTensor<Eigen::half>(
-      model.input2(),
-      {Eigen::half(0.1), Eigen::half(0.2), Eigen::half(0.6), Eigen::half(0.5)});
+  model.PopulateTensor<half>(model.input1(),
+                             {half(0.1f), half(0.9f), half(0.7f), half(0.3f)});
+  model.PopulateTensor<half>(model.input2(),
+                             {half(0.1f), half(0.2f), half(0.6f), half(0.5f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));

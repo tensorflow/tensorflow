@@ -177,6 +177,8 @@ class CoordinationService {
                                IncarnationId incarnation);
 
   // Set a task in error state permanently.
+  //
+  // TODO: mwhittaker - Remove this. It's only used for testing.
   absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
                                const absl::Status& error);
 

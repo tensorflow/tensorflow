@@ -248,6 +248,7 @@ message InitResponse {
     int32 id = 1;
     int32 local_device_id = 9;
     int32 local_hardware_id = 2;
+    string platform_name = 11;
     string device_kind = 3;
     optional int32 default_memory_id = 7;
     repeated int32 memory_ids = 8;

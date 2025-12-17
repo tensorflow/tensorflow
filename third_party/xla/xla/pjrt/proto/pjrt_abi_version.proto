@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package xla;
+
+message PjRtAbiVersionProto {
+  bytes version = 1;
+}

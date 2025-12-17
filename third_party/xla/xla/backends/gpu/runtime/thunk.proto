@@ -261,7 +261,7 @@ message DynamicSliceThunkProto {
   repeated OptionalDynamicSliceOffsetsProto offsets = 3;
   repeated OptionalShapeProto orig_shapes = 4;
   repeated OptionalShapeProto sliced_shapes = 5;
-  repeated OptionalInt64Proto offset_byte_sizes = 6;
+  repeated OptionalPrimitiveType offset_primitive_types = 6;
   optional OffsetAsFunctionOfIndvarModulesMetadataProto
       offset_as_function_of_indvar_modules_metadata = 7;
   repeated BufferAllocationProto fake_allocations = 8;

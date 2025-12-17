@@ -237,6 +237,7 @@ class MockDevice : public Device {
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
   MOCK_METHOD(int, ProcessIndex, (), (const, final));
   MOCK_METHOD(DeviceId, Id, (), (const, final));
+  MOCK_METHOD(absl::string_view, PlatformName, (), (const, final));
   MOCK_METHOD(absl::string_view, Kind, (), (const, final));
   MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<Memory*>, DefaultMemory, (), (const, final));

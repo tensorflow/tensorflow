@@ -173,6 +173,16 @@ class HloRunner : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) override;
+
+  // Same as above, but with specified device assignment.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) override;
+
   // Same as above, but with a reusable Executable.  This may update the profile
   // information in *executable.
   //

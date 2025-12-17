@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/path.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -551,13 +552,35 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
-  return ExecuteReplicated(executable.get(), options, device_assignment);
+  return ExecuteReplicatedWithExecutable(executable.get(), options,
+                                         device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
-    OpaqueExecutable* executable,
+absl::StatusOr<std::vector<Literal>>
+HloRunnerPjRt::ExecuteReplicatedWithExecutable(
+    OpaqueExecutable* const absl_nonnull executable,
+    const ReplicatedExecuteOptions& options) {
+  ASSIGN_OR_RETURN(const HloModule* const module,
+                   HloModuleFromWrapped(executable));
+  ASSIGN_OR_RETURN(
+      DeviceAssignment device_assignment,
+      GetStaticDeviceAssignmentOrComputeDefault(*module, *pjrt_client_));
+  return ExecuteReplicatedWithExecutable(executable, options,
+                                         &device_assignment);
+}
+
+absl::StatusOr<std::vector<Literal>>
+HloRunnerPjRt::ExecuteReplicatedWithExecutable(
+    OpaqueExecutable* const absl_nonnull executable,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
+  std::optional<DeviceAssignment> default_device_assignment = std::nullopt;
+  if (device_assignment == nullptr) {
+    ASSIGN_OR_RETURN(default_device_assignment,
+                     GetDefaultDeviceAssignment(options.num_devices, 1));
+    device_assignment = &*default_device_assignment;
+  }
+  CHECK_NE(device_assignment, nullptr);
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
 

@@ -953,6 +953,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 84) {
       add_field("PJRT_Buffer_CopyRawToHostFuture", kFnPtrSize);
     }
+    if (minor_version >= 85) {
+      add_field("PJRT_Device_PoisonExecution", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1355,6 +1358,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Buffer_CopyRawToHostFuture",
            {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHostFuture),
             sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHostFuture)}},
+          {"PJRT_Device_PoisonExecution",
+           {offsetof(PJRT_Api, PJRT_Device_PoisonExecution),
+            sizeof(PJRT_Api::PJRT_Device_PoisonExecution)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

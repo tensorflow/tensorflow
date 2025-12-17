@@ -169,11 +169,11 @@ class TransposePlan {
   // Performs plan initialization that cannot fail.
   void Initialize();
 
-  void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation,
-                      int thread_id, std::vector<Node>& output_nodes);
+  void BuildPlanNodes(int thread_id, std::vector<Node>& output_nodes);
 
-  std::vector<int> ChooseParallelizationStrategy(
-      absl::Span<int64_t const> inverse_permutation);
+  // Chooses a parallelism for each loop. Returns the total number of parallel
+  // work units.
+  int ChooseParallelizationStrategy();
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -222,13 +222,34 @@ class TransposePlan {
 
   // Order to traverse dimensions, from slowest-varying to fastest-varying.
   struct Loop {
-    // The integers are dimension numbers in A.
+    // Dimension number in A from which this loop originated. This is mostly
+    // for debugging the plan.
     int dim_in_a;
+
     // If true, the loop iterates over the interior of a tile.
+    // For an untiled dimension, this is always false. For a tiled dimension,
+    // we will have two loops: one over the tile exteriors and one over the tile
+    // interiors.
     bool tile_interior;
+
+    // Size of the iteration space.
+    int64_t dim_size;
+
+    // Size of the tiles, if this a tiled dimension.
+    int64_t tile_size;
+
+    int64_t lda;  // Stride in A for this loop.
+    int64_t ldb;  // Stride in B for this loop.
+
+    // Is this the innermost (stride 1) dimension in A or B? These dimensions
+    // are special for the kernels.
+    bool is_inner_dim_in_a;
+    bool is_inner_dim_in_b;
+
+    // Number of parallel threads to use for this loop.
+    int64_t parallelism;
   };
   std::vector<Loop> loop_order_;
-  std::vector<int> loop_parallelism_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.
@@ -245,6 +266,10 @@ class TransposePlan {
   // cache blocking and need not be equal between input and output.
   int outer_block_elems_a_ = 4;
   int outer_block_elems_b_ = 4;
+
+  // Strides used by an inner transpose kernel. Unused for memcpy kernels.
+  int64_t sentinel_lda_ = -1;
+  int64_t sentinel_ldb_ = -1;
 
   // Transformations to apply to the input before transposition.
   // Currently the only supported transformation is EF57 conversion, which is

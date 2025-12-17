@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.85
+
+* Add `PJRT_Device_PoisonExecution`.
+
 ## 0.84
 
 * Add `PJRT_Buffer_CopyRawToHostFuture`.

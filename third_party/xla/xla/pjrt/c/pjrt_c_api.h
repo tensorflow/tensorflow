@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 84
+#define PJRT_API_MINOR 85
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1415,6 +1415,27 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
 // are optional and may not be returned by all platforms. Implementations may
 // also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
 typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
+struct PJRT_Device_PoisonExecution_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+
+  PJRT_Device* device;
+  int32_t launch_id;
+
+  // Status fields.
+  PJRT_Error_Code error_code;
+  const char* error_message;
+  size_t error_message_size;
+
+  bool poisoned;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, poisoned);
+
+// Poisons the earliest execution on this device with given launch_id if it's
+// not finished yet, i.e. makes its output buffers error.
+typedef PJRT_Error* PJRT_Device_PoisonExecution(
+    PJRT_Device_PoisonExecution_Args* args);
 
 //-------------------------------- Memory --------------------------------------
 
@@ -2772,11 +2793,11 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateErrorBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHostFuture);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_PoisonExecution);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyRawToHostFuture)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Device_PoisonExecution)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

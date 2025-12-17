@@ -245,6 +245,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",

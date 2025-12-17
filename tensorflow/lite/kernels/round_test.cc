@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -68,33 +69,29 @@ TEST(RoundOpTest, MultiDims) {
 }
 
 TEST(RoundOpTest, Float16SingleDim) {
-  RoundOpModel<Eigen::half> model({6});
-  model.PopulateTensor<Eigen::half>(
-      model.input(), {Eigen::half(8.5), Eigen::half(0.0), Eigen::half(3.5),
-                      Eigen::half(4.2), Eigen::half(-3.5), Eigen::half(-4.5)});
+  RoundOpModel<half> model({6});
+  model.PopulateTensor<half>(model.input(),
+                             {half(8.5f), half(0.0f), half(3.5f), half(4.2f),
+                              half(-3.5f), half(-4.5f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({Eigen::half(8), Eigen::half(0), Eigen::half(4),
-                        Eigen::half(4), Eigen::half(-4), Eigen::half(-4)}));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(
+                  {half(8), half(0), half(4), half(4), half(-4), half(-4)}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({6}));
 }
 
 TEST(RoundOpTest, Float16MultiDims) {
-  RoundOpModel<Eigen::half> model({2, 1, 1, 6});
-  model.PopulateTensor<Eigen::half>(
+  RoundOpModel<half> model({2, 1, 1, 6});
+  model.PopulateTensor<half>(
       model.input(),
-      {Eigen::half(0.0001), Eigen::half(8.0001), Eigen::half(0.9999),
-       Eigen::half(9.9999), Eigen::half(0.5), Eigen::half(-0.0001),
-       Eigen::half(-8.0001), Eigen::half(-0.9999), Eigen::half(-9.9999),
-       Eigen::half(-0.5), Eigen::half(-2.5), Eigen::half(1.5)});
+      {half(0.0001f), half(8.0001f), half(0.9999f), half(9.9999f), half(0.5f),
+       half(-0.0001f), half(-8.0001f), half(-0.9999f), half(-9.9999f),
+       half(-0.5f), half(-2.5f), half(1.5f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({Eigen::half(0), Eigen::half(8), Eigen::half(1),
-                        Eigen::half(10), Eigen::half(0), Eigen::half(0),
-                        Eigen::half(-8), Eigen::half(-1), Eigen::half(-10),
-                        Eigen::half(-0), Eigen::half(-2), Eigen::half(2)}));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({half(0), half(8), half(1), half(10), half(0),
+                                half(0), half(-8), half(-1), half(-10),
+                                half(-0), half(-2), half(2)}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 6}));
 }
 

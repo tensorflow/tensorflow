@@ -101,17 +101,22 @@ class HloRunnerPjRt : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) override;
+
+  // Same as above, but with specified device assignment.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) override;
+
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
       absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      OpaqueExecutable* executable,
-      const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment);
 
   absl::string_view Name() const override;
 

@@ -2578,7 +2578,7 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
-    std::vector<std::optional<uint64_t>> offset_byte_sizes,
+    std::vector<std::optional<PrimitiveType>> offset_primitive_types,
     std::optional<
         const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
         offset_as_function_of_indvar_metadata)
@@ -2588,15 +2588,15 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
       offset_as_function_of_indvar_metadata_(
           std::move(offset_as_function_of_indvar_metadata)) {
   // Zip all arguments together to create a list of SliceDef.
-  for (auto [arg, offset, orig_shape, sliced_shape, offset_byte_size] :
+  for (auto [arg, offset, orig_shape, sliced_shape, offset_primitive_type] :
        llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
-                       offset_byte_sizes)) {
+                       offset_primitive_types)) {
     slices_.push_back(DynamicSliceThunk::SliceDef{
         std::move(arg),
         std::move(offset),
         std::move(orig_shape),
         std::move(sliced_shape),
-        std::move(offset_byte_size),
+        std::move(offset_primitive_type),
     });
   }
 
@@ -2657,7 +2657,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
       TF_RET_CHECK(slice.orig_shape.has_value());
       TF_RET_CHECK(slice.sliced_shape.has_value());
-      TF_RET_CHECK(slice.offset_byte_size.has_value());
+      TF_RET_CHECK(slice.offset_primitive_type.has_value());
       TF_RET_CHECK(slice.orig_shape->IsArray());
       TF_RET_CHECK(slice.sliced_shape->IsArray());
       TF_RET_CHECK(slice.offsets->size() ==
@@ -2771,8 +2771,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 
         // Copy the `offset_idx`-th component of the offset for the
         // `argument_idx`-th argument from device to host.
-        TF_RETURN_IF_ERROR(
-            stream.Memcpy(offset_dst, offset_src, *slice.offset_byte_size));
+        TF_RETURN_IF_ERROR(stream.Memcpy(
+            offset_dst, offset_src,
+            ShapeUtil::ByteSizeOfPrimitiveType(*slice.offset_primitive_type)));
         ++num_transfers;
       }
     }

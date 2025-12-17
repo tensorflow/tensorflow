@@ -70,6 +70,9 @@ enum {
   // results to return extra information such as device time measurement.
   kExecuteResult = 21,
 
+  // kDevicePlatformName adds a PlatformName() method to Device.
+  kDevicePlatformName = 22,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,
