@@ -763,6 +763,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   for (auto* device : all_devices) {
     InitResponse::Device* d = init_resp->add_all_devices();
     d->set_id(device->Id().value());
+    d->set_platform_name(AsProtoStringData(device->PlatformName()));
     d->set_device_kind(AsProtoStringData(device->Kind()));
     if (auto default_memory = device->DefaultMemory(); default_memory.ok()) {
       d->set_default_memory_id((*default_memory)->Id().value());
