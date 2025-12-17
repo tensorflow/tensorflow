@@ -1775,11 +1775,7 @@ lit_test_suite(
         ],
     ),
     cfg = "//xla:lit.cfg.py",
-    data = [
-        "//xla/backends/gpu:specs/a100_pcie_80.txtpb",
-        "//xla/backends/gpu:specs/h100_sxm.txtpb",
-        "//xla/backends/gpu:specs/v100.txtpb",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     default_tags = tf_gpu_tests_tags(),
     tools = [
         "//xla/tools:hlo-opt",

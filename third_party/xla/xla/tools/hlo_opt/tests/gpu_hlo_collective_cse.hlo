@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=hlo --passes=schedule-aware-collective-cse --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/%{GPU}.txtpb --xla_gpu_experimental_collective_cse_distance_threshold=100 | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --passes=schedule-aware-collective-cse --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb --xla_gpu_experimental_collective_cse_distance_threshold=100 | FileCheck %s
 
 HloModule m
 
