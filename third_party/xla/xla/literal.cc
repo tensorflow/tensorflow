@@ -636,8 +636,8 @@ absl::Status LiteralBase::Piece::AllocateBuffers() {
   const int64_t bytes = total_bytes_dense();
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
-    storage_.Emplace<DenseRep>(
-        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    storage_.Emplace<DenseRep>(static_cast<char*>(tsl::port::AlignedMalloc(
+        bytes, static_cast<std::align_val_t>(kMinimumAlignment))));
     if (buffer() == nullptr) {
       return absl::ResourceExhaustedError(
           "Failed to allocate buffer for Literal");
