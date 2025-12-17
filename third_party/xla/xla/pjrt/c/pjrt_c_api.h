@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 83
+#define PJRT_API_MINOR 84
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2210,6 +2210,43 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyRawToHost_Args, event);
 typedef PJRT_Error* PJRT_Buffer_CopyRawToHost(
     PJRT_Buffer_CopyRawToHost_Args* args);
 
+struct PJRT_Buffer_CopyRawToHostFuture_Callback_Args {
+  size_t struct_size;
+
+  // callback_data should be set to the one returned by
+  // PJRT_Buffer_CopyRawToHostFuture.
+  void* callback_data;
+
+  PJRT_Error_Code error_code;
+  // error_message and error_message_size are only valid if error_code is not
+  // PJRT_ERROR_CODE_OK.
+  const char* error_message;
+  size_t error_message_size;
+  // dst is only valid if error_code is PJRT_ERROR_CODE_OK.
+  void* dst;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyRawToHostFuture_Callback_Args, dst);
+
+struct PJRT_Buffer_CopyRawToHostFuture_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  int64_t offset;
+  int64_t transfer_size;
+  PJRT_Event* event;  // out
+  // callback_data should be sent to the future_ready, when dst is ready.
+  void* callback_data;  // out
+  void (*future_ready_callback)(
+      PJRT_Buffer_CopyRawToHostFuture_Callback_Args* args);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyRawToHostFuture_Args,
+                          future_ready_callback);
+
+// Similar to PJRT_Buffer_CopyRawToHost, but the transfer will not happen until
+// `future_ready_callback` is invoked.
+typedef PJRT_Error* PJRT_Buffer_CopyRawToHostFuture(
+    PJRT_Buffer_CopyRawToHostFuture_Args* args);
+
 struct PJRT_Buffer_CopyToDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2734,11 +2771,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_GetDeviceAssignment);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateErrorBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHostFuture);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
-      PJRT_Api, PJRT_AsyncHostToDeviceTransferManager_TransferLiteral)
+  PJRT_Api_STRUCT_SIZE =
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyRawToHostFuture)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

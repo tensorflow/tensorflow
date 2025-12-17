@@ -3096,6 +3096,48 @@ Future<> PjRtCApiBuffer::CopyRawToHost(void* dst, int64_t offset,
   return pjrt::ConvertCEventToCppFuture(args.event, api);
 }
 
+Future<> PjRtCApiBuffer::CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                                             int64_t transfer_size) {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 84) {
+    return Future<>(absl::UnimplementedError(
+        "PJRT_Buffer_CopyRawToHostFuture requires PJRT C API version 0.84 or "
+        "higher."));
+  }
+
+  PJRT_Buffer_CopyRawToHostFuture_Args args;
+  args.struct_size = PJRT_Buffer_CopyRawToHostFuture_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = buffer_.get();
+  args.offset = offset;
+  args.transfer_size = transfer_size;
+  const PJRT_Api* api = pjrt_c_api();
+  RETURN_FUTURE_IF_ERROR(api->PJRT_Buffer_CopyRawToHostFuture(&args), api);
+  dst.OnReady(
+      [callback_data = args.callback_data,
+       callback = args.future_ready_callback](absl::StatusOr<void*> dst) {
+        PJRT_Buffer_CopyRawToHostFuture_Callback_Args callback_args;
+        callback_args.struct_size =
+            PJRT_Buffer_CopyRawToHostFuture_Callback_Args_STRUCT_SIZE;
+        if (dst.ok()) {
+          callback_args.dst = *dst;
+          callback_args.error_code = PJRT_Error_Code_OK;
+          callback_args.error_message = nullptr;
+          callback_args.error_message_size = 0;
+        } else {
+          callback_args.dst = nullptr;
+          callback_args.error_code =
+              pjrt::StatusCodeToPjrtErrorCode(dst.status().code());
+          callback_args.error_message = dst.status().message().data();
+          callback_args.error_message_size = dst.status().message().size();
+        }
+        callback_args.callback_data = callback_data;
+        callback(&callback_args);
+      });
+  CHECK(args.event != nullptr);
+  return pjrt::ConvertCEventToCppFuture(args.event, api);
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory) {
   const PJRT_Api* api = pjrt_c_api();

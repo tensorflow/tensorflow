@@ -639,5 +639,38 @@ TEST(PjRtCApiClientTest, AsyncHostToDeviceTransferManagerTransferLiteral) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
 }
 
+TEST(PjRtCApiClientTest, CopyRawToHostFuture) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> recv_data(4);
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  auto [dst_promise, dst_future] = Future<void*>::MakePromise();
+  ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
+
+  // Fulfill the promise with a valid host buffer.
+  dst_promise.Set(recv_data.data());
+  EXPECT_OK(result.Await());
+  ASSERT_EQ(recv_data.size(), data.size());
+  EXPECT_THAT(recv_data, ElementsAreArray(data));
+
+  // Test error case.
+  auto [error_dst_promise, error_dst_future] = Future<void*>::MakePromise();
+  result = buffer->CopyRawToHostFuture(error_dst_future, 0, size);
+  error_dst_promise.Set(absl::InternalError("Future error"));
+  absl::Status status = result.Await();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.message(), "Future error");
+}
+
 }  // namespace
 }  // namespace xla

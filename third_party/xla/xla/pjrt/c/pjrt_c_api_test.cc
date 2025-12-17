@@ -950,6 +950,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
       add_field("PJRT_AsyncHostToDeviceTransferManager_TransferLiteral",
                 kFnPtrSize);
     }
+    if (minor_version >= 84) {
+      add_field("PJRT_Buffer_CopyRawToHostFuture", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1349,6 +1352,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
                      PJRT_AsyncHostToDeviceTransferManager_TransferLiteral),
             sizeof(PJRT_Api::
                        PJRT_AsyncHostToDeviceTransferManager_TransferLiteral)}},
+          {"PJRT_Buffer_CopyRawToHostFuture",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHostFuture),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHostFuture)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

@@ -549,6 +549,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   Future<> CopyRawToHost(void* dst, int64_t offset,
                          int64_t transfer_size) override;
 
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
+
   void Delete() override;
 
   absl::StatusOr<std::unique_ptr<ExternalReference>>

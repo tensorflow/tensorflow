@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.84
+
+* Add `PJRT_Buffer_CopyRawToHostFuture`.
+
 ## 0.83
 
 * Add `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral`.
