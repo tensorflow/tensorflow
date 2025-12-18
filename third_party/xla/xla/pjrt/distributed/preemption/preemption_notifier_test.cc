@@ -15,10 +15,10 @@ limitations under the License.
 #include "xla/pjrt/distributed/preemption/preemption_notifier.h"
 
 #include <csignal>
-#include <functional>
 #include <memory>
-#include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
