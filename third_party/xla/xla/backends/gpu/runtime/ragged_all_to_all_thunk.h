@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -91,6 +92,9 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     // Device memory buffer for output offsets.
     se::DeviceAddressHandle output_offsets_device_buffer;
 
+    // Device memory buffer for local output.
+    se::DeviceAddressBase local_output_buffer;
+
     // Event to synchronize streams on different devices at the start of the
     // kernel.
     std::unique_ptr<se::Event> start_event;
@@ -102,6 +106,20 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     StreamState(int device_ordinal, RankId rank)
         : device_ordinal(device_ordinal), rank(rank) {}
   };
+
+  // Executes the rendezvous before the kernel start.
+  // Inserts CUDA events into the stream to ensure that all devices have reached
+  // the start event before the kernel starts.
+  absl::StatusOr<std::shared_ptr<std::vector<const StreamState*>>>
+  RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key,
+                              se::Stream& stream, const StreamState& state);
+
+  // Executes the rendezvous after the kernel finish. Waits for all devices to
+  // reach the end event.
+  absl::Status RendezvousAfterKernelFinish(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state,
+      absl::Span<const StreamState* const> remote_stream_states);
 
   absl::Status RunOneShotRaggedAllToAll(
       const GpuCliqueKey& clique_key, se::Stream& stream,
