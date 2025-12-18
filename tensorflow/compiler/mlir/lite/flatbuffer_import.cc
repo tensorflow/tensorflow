@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -101,7 +102,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -974,8 +974,8 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
-    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
-                                          builder));
+    CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                       builder));
   }
   if (op_name == "tfl.while") {
     // Adds two empty regions for "tfl.while". We will fill the regions after
@@ -986,8 +986,8 @@ StatusOr<Operation*> ConvertOp(
     op_state.addRegion();
   }
   if (op_name == "tfl.unidirectional_sequence_lstm") {
-    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
-                                          builder));
+    CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                       builder));
   }
   if (op_name == "tfl.reshape") {
     // Flattens reshape ops when more than one dimension shape operand is given.

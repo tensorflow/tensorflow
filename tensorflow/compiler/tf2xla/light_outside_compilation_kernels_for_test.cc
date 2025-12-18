@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <string>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -36,8 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 // Sample kernels for the light outside compilation test.
 
@@ -302,8 +303,8 @@ class TestTfMustBeConstantOp : public OpKernel {
     AllocatorAttributes pinned_alloc_attrs;
     pinned_alloc_attrs.set_on_host(true);
     pinned_alloc_attrs.set_gpu_compatible(true);
-    TF_CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
-                                   pinned_alloc_attrs));
+    CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
+                                pinned_alloc_attrs));
 
     OP_REQUIRES_OK(ctx, stream->Memcpy(tmp.data(),
                                        stream_executor::DeviceAddressBase{
