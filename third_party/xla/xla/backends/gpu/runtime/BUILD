@@ -1455,6 +1455,7 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "//xla/service:rendezvous",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_address",
@@ -1463,6 +1464,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -1474,6 +1476,21 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "all_to_all_thunk_test",
+    srcs = ["all_to_all_thunk_test.cc"],
+    deps = [
+        ":all_to_all_thunk",
+        ":collective_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2886,6 +2903,7 @@ cc_library(
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
+        ":all_to_all_thunk",
         ":collective_thunk",
         ":conditional_thunk",
         ":convolution_reorder_thunk",

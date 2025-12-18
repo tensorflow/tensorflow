@@ -426,6 +426,15 @@ message AllReduceStartThunkProto {
   bool is_async = 9;
 }
 
+message AllToAllStartThunkProto {
+  uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+
+  bool has_split_dimension = 4;
+  bool p2p_memcpy_enabled = 5;
+}
+
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
   AsyncStreamKind async_stream_kind = 2;
@@ -473,6 +482,7 @@ message ThunkProto {
     CollectiveDoneThunkProto collective_done_thunk = 37;
     AllGatherStartThunkProto all_gather_start_thunk = 38;
     AllReduceStartThunkProto all_reduce_start_thunk = 39;
+    AllToAllStartThunkProto all_to_all_start_thunk = 40;
   }
 }
 
