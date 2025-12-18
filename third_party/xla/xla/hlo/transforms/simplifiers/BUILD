@@ -405,6 +405,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:nullability",
