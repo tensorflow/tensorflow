@@ -113,3 +113,14 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
+
+xla_cc_test(
+    name = "ynn_matcher_test",
+    srcs = ["ynn_matcher_test.cc"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/service:cpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

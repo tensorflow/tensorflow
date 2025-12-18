@@ -781,17 +781,25 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return false;
   };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
+      /*should_expand=*/
+      [&library_supports_convolution](HloInstruction* conv) {
+        return !library_supports_convolution(*conv);
+      },
+      cost_model,
       /*convert_batch_groups_only=*/true);
-  auto feature_group_should_expand = [](HloInstruction* conv) {
-    switch (conv->shape().element_type()) {
-      case F16:
-      case F32:
-        return false;
-      default:
-        return true;
-    }
-  };
+  auto feature_group_should_expand =
+      [&library_supports_convolution](HloInstruction* conv) {
+        if (library_supports_convolution(*conv)) {
+          return false;
+        }
+        switch (conv->shape().element_type()) {
+          case F16:
+          case F32:
+            return false;
+          default:
+            return true;
+        }
+      };
   pipeline.AddPass<ConvolutionGroupConverter>(
       feature_group_should_expand, cost_model,
       /*convert_batch_groups_only=*/false);
