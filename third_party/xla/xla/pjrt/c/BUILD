@@ -276,6 +276,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",

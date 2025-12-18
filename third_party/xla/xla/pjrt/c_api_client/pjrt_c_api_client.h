@@ -54,9 +54,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
@@ -171,13 +174,7 @@ class PjRtCApiDevice : public PjRtDevice {
       absl::string_view kind) const override;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    LOG(FATAL)
-        << "PJRT C API does not support CreateAsyncTrackingEvent. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
-           "need this feature.";
-    return nullptr;
-  }
+      absl::string_view description) const override;
 
   absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
                                        absl::Status error) override;
@@ -322,6 +319,19 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
 
   // Initializes device specific attributes.
   void InitAttributes();
+};
+
+class PjRtCApiAsyncTrackingEvent : public ScopedAsyncTrackingEvent {
+ public:
+  PjRtCApiAsyncTrackingEvent(const PJRT_Api* c_api,
+                             PJRT_AsyncTrackingEvent* event);
+  ~PjRtCApiAsyncTrackingEvent() override;
+
+  void AddDependency(tsl::RCReference<tsl::AsyncValue> dependency) override;
+
+ private:
+  const PJRT_Api* c_api_;
+  PJRT_AsyncTrackingEvent* event_;
 };
 
 class PjRtCApiClient : public PjRtClient {

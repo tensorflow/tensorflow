@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 85
+#define PJRT_API_MINOR 86
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1436,6 +1436,36 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, poisoned);
 // not finished yet, i.e. makes its output buffers error.
 typedef PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args);
+
+// --------------------------- AsyncTrackingEvent ------------------------------
+
+typedef struct PJRT_AsyncTrackingEvent PJRT_AsyncTrackingEvent;
+
+struct PJRT_Device_CreateAsyncTrackingEvent_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Device* device;
+  const char* description;
+  size_t description_size;
+  PJRT_AsyncTrackingEvent* event;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_CreateAsyncTrackingEvent_Args, event);
+
+// Creates an async tracking event. The caller is responsible for destroying the
+// event.
+typedef PJRT_Error* PJRT_Device_CreateAsyncTrackingEvent(
+    PJRT_Device_CreateAsyncTrackingEvent_Args* args);
+
+struct PJRT_AsyncTrackingEvent_Destroy_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_AsyncTrackingEvent* event;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_AsyncTrackingEvent_Destroy_Args, event);
+
+// Destroys the async tracking event.
+typedef PJRT_Error* PJRT_AsyncTrackingEvent_Destroy(
+    PJRT_AsyncTrackingEvent_Destroy_Args* args);
 
 //-------------------------------- Memory --------------------------------------
 
@@ -2794,10 +2824,13 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_TransferLiteral);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyRawToHostFuture);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_PoisonExecution);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_CreateAsyncTrackingEvent);
+  _PJRT_API_STRUCT_FIELD(PJRT_AsyncTrackingEvent_Destroy);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Device_PoisonExecution)
+  PJRT_Api_STRUCT_SIZE =
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_AsyncTrackingEvent_Destroy)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

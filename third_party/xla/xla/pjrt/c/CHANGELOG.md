@@ -1,5 +1,11 @@
 # PJRT C API changelog
 
+## 0.86
+
+* Add `PJRT_Device_CreateAsyncTrackingEvent`.
+
+* Add `PJRT_AsyncTrackingEvent_Destroy`.
+
 ## 0.85
 
 * Add `PJRT_Device_PoisonExecution`.
