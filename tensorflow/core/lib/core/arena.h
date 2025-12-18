@@ -62,7 +62,7 @@ class Arena {
 
  protected:
   bool SatisfyAlignment(const size_t alignment);
-  void MakeNewBlock(const uint32 alignment);
+  void MakeNewBlock(const uint32_t alignment);
   void* GetMemoryFallback(const size_t size, const int align);
   void* GetMemory(const size_t size, const int align) {
     assert(remaining_ <= block_size_);                  // an invariant
@@ -88,7 +88,7 @@ class Arena {
   // The returned AllocatedBlock* is valid until the next call to AllocNewBlock
   // or Reset (i.e. anything that might affect overflow_blocks_).
   AllocatedBlock* AllocNewBlock(const size_t block_size,
-                                const uint32 alignment);
+                                const uint32_t alignment);
 
   const size_t block_size_;
   char* freestart_;  // beginning of the free space in most recent block
