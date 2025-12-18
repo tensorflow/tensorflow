@@ -145,7 +145,8 @@ class HloRunnerPjRt : public HloRunnerInterface {
       absl::AnyInvocable<
           absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
               absl::Span<const std::vector<PjRtBuffer*>>,
-              absl::AnyInvocable<OpaqueExecutable*(int64_t)>)>
+              absl::AnyInvocable<OpaqueExecutable*(int64_t)>,
+              absl::Span<PjRtDevice* const>)>
           execution_helper,
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
