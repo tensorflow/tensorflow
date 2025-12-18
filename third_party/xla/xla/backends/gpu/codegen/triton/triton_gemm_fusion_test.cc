@@ -562,10 +562,7 @@ ENTRY e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
-// deprecated. The test is disabled after we remove TransposeDimensionGrouper
-// pass, because the infra currently requires grouping of adjacent dimensions.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontractingTransposeRhs) {
+TEST_F(TritonGemmTest, SplitLhsNoncontractingTransposeRhs) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -590,10 +587,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
-// TODO: b/422676780 - Enable the tests once the indexing maps-based tiling is
-// deprecated. The test is disabled after we remove TransposeDimensionGrouper
-// pass, because the infra currently requires grouping of adjacent dimensions.
-TEST_F(TritonGemmTest, DISABLED_SplitLhsNoncontracting) {
+TEST_F(TritonGemmTest, SplitLhsNoncontracting) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[72,72] parameter(0)
@@ -1782,17 +1776,12 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root,
-      GmockMatch(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(
           m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
                         .WithFusionKind(HloInstruction::FusionKind::kCustom))
-              .WithFusionKind(HloInstruction::FusionKind::kInput)));
-
-  const HloFusionInstruction* root_fusion = Cast<HloFusionInstruction>(root);
-  EXPECT_EQ(root_fusion->fused_expression_root()->opcode(),
-            HloOpcode::kTranspose);
+              .WithFusionKind(HloInstruction::FusionKind::kInput))));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
