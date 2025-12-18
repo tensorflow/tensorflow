@@ -96,6 +96,9 @@ FileDescriptor::Offset FileDescriptorView::MovePos(
 }
 
 FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
+  if (!path) {
+    return {};
+  }
 #if defined(_WIN32)
   if (!(flags & O_TEXT)) {
     flags |= O_BINARY;
