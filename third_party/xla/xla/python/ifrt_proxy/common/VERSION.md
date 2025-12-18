@@ -131,3 +131,9 @@
 *   Changes:
     *   Added a new op `LoadedExecutableFetchExecuteResult` for reading
         execution results.
+
+## Version kkDevicePlatformName
+
+*   Added date: 2025-12-13
+*   Changes:
+    *   Added `Device::PlatformName()` for getting the platform of a device.

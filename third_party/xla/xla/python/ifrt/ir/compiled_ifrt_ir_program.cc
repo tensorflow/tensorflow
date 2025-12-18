@@ -386,14 +386,8 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     compile_pipeline_options.propagate_shardings =
         compile_options->propagate_shardings;
     for (const auto device : devices) {
-      auto platform_name =
-          device->Attributes().Get<std::string>("platform_name");
-      if (platform_name.ok()) {
-        compile_pipeline_options.platform_names.push_back(*platform_name);
-      } else {
-        compile_pipeline_options.platform_names.push_back(
-            std::string(client->platform_name()));
-      }
+      compile_pipeline_options.platform_names.push_back(
+          std::string(device->PlatformName()));
     }
     TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,

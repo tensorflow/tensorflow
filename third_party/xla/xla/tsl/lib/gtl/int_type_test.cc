@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
@@ -289,6 +290,12 @@ TYPED_TEST(IntTypeTest, TestMove) {
   foo = NotCopyable::Make(321);
   EXPECT_EQ(321, foo.inttype);
   EXPECT_EQ(321, *foo.ptr);
+}
+
+TYPED_TEST(IntTypeTest, TestAbslStringify) {
+  TypeParam a(1);
+
+  EXPECT_EQ(absl::StrCat(a), absl::StrCat(a.value()));
 }
 
 }  // namespace tsl
