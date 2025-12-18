@@ -645,8 +645,8 @@ class QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<arith::ConstantOp>(
-                quantized_op->getLoc(), attr);
+            auto cst = arith::ConstantOp::create(rewriter,
+                                                 quantized_op->getLoc(), attr);
             quantizing_op->setOperand(i, cst.getResult());
           }
         }
