@@ -425,6 +425,16 @@ HloInstructionProto HloAsyncStartInstruction::ToProto() const {
                                            HloInstruction::kMainExecutionThread
                                        ? ""
                                        : async_execution_thread_);
+  for (const auto& pair : output_to_operand_aliasing()) {
+    auto aliasing = proto.add_output_operand_aliasing();
+    aliasing->set_operand_index(pair.second.first);
+    for (int64_t index : pair.first) {
+      aliasing->add_output_shape_index(index);
+    }
+    for (int64_t index : pair.second.second) {
+      aliasing->add_operand_shape_index(index);
+    }
+  }
   return proto;
 }
 
@@ -440,6 +450,32 @@ void HloAsyncStartInstruction::PrintExtraAttributesImpl(
       async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
     async_wrapped_instruction()->PrintExtraAttributes(printer, options);
   }
+
+  if (!output_to_operand_aliasing().empty()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append("output_to_operand_aliasing={");
+      AppendJoin(printer, output_to_operand_aliasing(), ", ",
+                 [](Printer* printer, auto& pair) {
+                   AppendCat(printer, pair.first.ToString(), ": (",
+                             pair.second.first, ", ");
+                   AppendCat(printer, pair.second.second.ToString(), ")");
+                 });
+      printer->Append("}");
+    });
+  }
+}
+
+bool HloAsyncStartInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloAsyncStartInstruction&>(other);
+  return HloAsyncInstruction::opcode() == other.opcode() &&
+         eq_computations(HloAsyncInstruction::async_wrapped_computation(),
+                         other.async_wrapped_computation()) &&
+         output_to_operand_aliasing() ==
+             casted_other.output_to_operand_aliasing();
 }
 
 std::unique_ptr<HloInstruction>
@@ -464,9 +500,12 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
     }
   }
 
-  return std::make_unique<HloAsyncStartInstruction>(
-      opcode(), shape, new_operands, new_wrapped_computation,
-      async_execution_thread_);
+  auto cloned = std::make_unique<HloAsyncStartInstruction>(
+      HloAsyncInstruction::opcode(), shape, new_operands,
+      new_wrapped_computation, async_execution_thread_);
+  cloned->HloAliasible::set_output_to_operand_aliasing(
+      output_to_operand_aliasing());
+  return cloned;
 }
 
 HloCopyStartInstruction::HloCopyStartInstruction(

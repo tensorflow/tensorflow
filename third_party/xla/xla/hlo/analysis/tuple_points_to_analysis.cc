@@ -349,6 +349,32 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
         }
       });
 
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    auto it = aliased_outputs.find(index);
+    if (it == aliased_outputs.end()) {
+      points_to_set.AddPointedToBuffer(
+          logical_buffer_analysis_->GetBuffer(async_start, index), index);
+    } else {
+      const PointsToSet& input_set =
+          *PerInst(async_start->operand(it->second.first))->points_to_set;
+      for (const LogicalBuffer* input_buffer :
+           input_set.element(it->second.second)) {
+        points_to_set.AddPointedToBuffer(*input_buffer, index);
+      }
+
+      for (HloInstruction* tuple : input_set.tuple_sources(it->second.second)) {
+        points_to_set.add_tuple_source(index, tuple);
+      }
+    }
+  });
+  points_to_set.add_tuple_source({}, async_start);
   return absl::OkStatus();
 }
 
