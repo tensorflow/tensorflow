@@ -208,7 +208,6 @@ xla_cc_test(
     srcs = ["constraint_expression_test.cc"],
     deps = [
         ":constraint_expression",
-        "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:span",
