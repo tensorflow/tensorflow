@@ -1851,6 +1851,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dead_dynamic_update_slice_elimination",
+    srcs = ["dead_dynamic_update_slice_elimination.cc"],
+    hdrs = ["dead_dynamic_update_slice_elimination.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "dead_dynamic_update_slice_elimination_test",
+    srcs = ["dead_dynamic_update_slice_elimination_test.cc"],
+    deps = [
+        ":dead_dynamic_update_slice_elimination",
+        ":hlo_dce",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "call_parameter_cleanup_test",
     srcs = ["call_parameter_cleanup_test.cc"],
