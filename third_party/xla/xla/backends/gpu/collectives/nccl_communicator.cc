@@ -640,6 +640,32 @@ absl::Status NcclCommunicator::LaunchAllGather(
   return absl::OkStatus();
 }
 
+// If all buffers are contiguous returns a device address range that covers all
+// of them, otherwise returns an empty optional.
+static std::optional<se::DeviceAddressBase> IsContinguous(
+    absl::Span<const se::DeviceAddressBase> buffers) {
+  if (buffers.empty()) {
+    return std::nullopt;
+  }
+
+  if (buffers.size() == 1) {
+    return buffers[0];
+  }
+
+  size_t total_size = buffers[0].size();
+  for (size_t i = 1; i < buffers.size(); ++i) {
+    se::DeviceAddress<uint8_t> a(buffers[i - 1]);
+    se::DeviceAddress<uint8_t> b(buffers[i]);
+    total_size += b.size();
+
+    if (a.base() + a.size() != b.base()) {
+      return std::nullopt;
+    }
+  }
+
+  return se::DeviceAddressBase(buffers[0].opaque(), total_size);
+}
+
 absl::Status NcclCommunicator::LaunchAllToAll(
     absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
     absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
@@ -653,12 +679,18 @@ absl::Status NcclCommunicator::LaunchAllToAll(
     absl::StrAppendFormat(out, "%p", buffer.opaque());
   };
 
+  auto send_contiguous = IsContinguous(send_buffers);
+  auto recv_contiguous = IsContinguous(recv_buffers);
+
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL AllToAll operation; send_buffers=[%s]; "
-      "recv_buffers=[%s]; dtype=%s; count=%d; comm=%p; stream=%p",
+      "send_contiguous=%v; recv_buffers=[%s]; recv_contiguous=%v; dtype=%s; "
+      "count=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(),
       absl::StrJoin(send_buffers, ", ", buffer_formatter),
+      send_contiguous.has_value(),
       absl::StrJoin(recv_buffers, ", ", buffer_formatter),
+      recv_contiguous.has_value(),
       primitive_util::LowercasePrimitiveTypeName(dtype), count, comm_, stream);
 
   if (send_buffers.size() != recv_buffers.size()) {
@@ -677,6 +709,17 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   }
 
   TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+#if NCCL_VERSION_CODE >= 22800
+  // If send and receive buffers are contiguous we can use all-to-all API from
+  // NCCL directly without launching individual send/recv operations.
+  if (send_contiguous && recv_contiguous) {
+    XLA_NCCL_RETURN_IF_ERROR(ncclAlltoAll(
+        send_contiguous->opaque(), recv_contiguous->opaque(),
+        ToNcclCount(dtype, count), nccl_dtype, comm_, AsCudaStream(stream)));
+    return absl::OkStatus();
+  }
+#endif
 
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < send_buffers.size(); ++i) {
