@@ -313,23 +313,12 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   // Stores tuple of allowed (input, output) dtypes.
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
-      kAllowedTypesNonGrouped(
-          {{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
-
-  static const absl::NoDestructor<absl::flat_hash_set<
-      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
-      kAllowedTypesGrouped({{F32, F32, F32}, {BF16, BF16, F32}});
+      kAllowedTypes({{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
 
   PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
   PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
   PrimitiveType out_dtype = conv->shape().element_type();
-  if (conv->feature_group_count() == 1 &&
-      !kAllowedTypesNonGrouped->contains({lhs_dtype, rhs_dtype, out_dtype})) {
-    return false;
-  }
-
-  if (conv->feature_group_count() > 1 &&
-      !kAllowedTypesGrouped->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
     return false;
   }
 
