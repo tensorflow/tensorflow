@@ -84,5 +84,50 @@ TEST(FileDescriptorTest, ReadFailureReturnsFalse) {
   EXPECT_FALSE(fd.Read(dst_data.data(), dst_data.size()));
 }
 
+TEST(FileDescriptorTest, IsFileEmptyReturnTrueForAnEmptyFileThatExists) {
+  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
+                                           O_CREAT | O_TRUNC | O_WRONLY, 0644);
+  fd.Close();
+  EXPECT_TRUE(IsFileEmpty(tmp_file.c_str(), FileDescriptor()));
+}
+
+TEST(FileDescriptorTest, IsFileEmptyReturnTrueForAnNonExistingFile) {
+  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  EXPECT_TRUE(IsFileEmpty(tmp_file.c_str(), FileDescriptor()));
+}
+
+TEST(FileDescriptorTest,
+     IsFileEmptyReturnTrueForAnNonExistingFileWithFileDescriptor) {
+  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
+                                           O_CREAT | O_TRUNC | O_WRONLY, 0644);
+  EXPECT_TRUE(IsFileEmpty("asdfasdf", FileDescriptor()));
+}
+
+TEST(FileDescriptorTest, IsFileEmptyReturnFalseForAFileThatHasContents) {
+  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
+                                           O_CREAT | O_TRUNC | O_WRONLY, 0644);
+  const std::string src_data = "The quick brown fox jumps over the lazy dog.";
+  EXPECT_TRUE(fd.Write(src_data.data(), src_data.size()));
+  EXPECT_FALSE(IsFileEmpty(tmp_file.c_str(), fd));
+}
+
+TEST(FileDescriptorTest, IsFileEmptyPrioritizesTheFileDescriptor) {
+  // We open 2 files, put some data only in one and then pass the file name of
+  // the one that has data and the file descriptor of the empty one.
+  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file2 = testing::TempDir() + __FUNCTION__ + "2";
+  FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
+                                           O_CREAT | O_TRUNC | O_WRONLY, 0644);
+  FileDescriptor fd2 = FileDescriptor::Open(tmp_file2.c_str(),
+                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
+  const std::string src_data = "The quick brown fox jumps over the lazy dog.";
+  EXPECT_TRUE(fd.Write(src_data.data(), src_data.size()));
+  fd.Close();
+  EXPECT_TRUE(IsFileEmpty(tmp_file.c_str(), fd2));
+}
+
 }  // namespace
 }  // namespace tflite::xnnpack

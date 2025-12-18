@@ -175,6 +175,11 @@ class FileDescriptor : public FileDescriptorView {
 // descriptor.
 bool InMemoryFileDescriptorAvailable();
 
+// Returns true if the file is empty (the file may exist)
+//
+// Note: if `fd` is valid, then `path` is ignored.
+bool IsFileEmpty(const char* path, const FileDescriptor& fd);
+
 // Creates a new file descriptor that isn't backed by a file system. The file
 // will be automatically cleaned up when the last file descriptor pointing to it
 // is closed.

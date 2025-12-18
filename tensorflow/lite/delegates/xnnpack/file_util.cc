@@ -39,7 +39,13 @@ limitations under the License.
 #endif  // TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
 #endif  // defined(__linux__) || defined(__ANDROID__)
 
+#include <sys/stat.h>
+
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
+
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 
 #if !TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
 #include "tensorflow/lite/logger.h"
@@ -152,6 +158,23 @@ FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
                   "this build.");
   return FileDescriptor(-1);
 #endif
+}
+
+bool IsFileEmpty(const char* path, const FileDescriptor& fd) {
+#if defined(_WIN32)
+  struct _stat64 file_stats{};
+  const int res = fd.IsValid() ? _fstat64(fd.Value(), &file_stats)
+                               : _stat64(path, &file_stats);
+#else
+  struct stat file_stats{};
+  const int res =
+      fd.IsValid() ? fstat(fd.Value(), &file_stats) : stat(path, &file_stats);
+#endif
+  XNNPACK_RETURN_CHECK(
+      res == 0 || errno == ENOENT,
+      "could not access file descriptor %d stats to get size ('%s'): %s.",
+      fd.Value(), path, strerror(errno));
+  return file_stats.st_size == 0;
 }
 
 }  // namespace xnnpack
