@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "xla/layout_util.h"
@@ -182,7 +183,42 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   }
 
   ForLoopNest loop_nest(loop_name, b_);
+#define STEVEN
+#define MAGIC 977
+#ifdef STEVEN
+  llvm::LLVMContext& context = b_->getContext();
+  llvm::Type* i64Ty = llvm::Type::getInt64Ty(context);
 
+  std::vector<llvm::Value*> dynamic_dims;
+  for (auto dim : shape_.dimensions()) {
+    dynamic_dims.push_back(llvm::ConstantInt::get(i64Ty, dim));
+  }
+  // Look for magic dimension.
+  for (int i = 0; i < shape_.dimensions_size(); i++) {
+    if (shape_.dimensions()[i] == MAGIC) {
+      llvm::Function* currentFunction = b_->GetInsertBlock()->getParent();
+      llvm::Module* module = currentFunction->getParent();
+
+      llvm::Value* loadedValue;
+
+      for (auto& inst : currentFunction->getEntryBlock()) {
+        if (inst.getName() == "bdim_value") {
+          loadedValue = &inst;
+        }
+      }
+
+      if (!loadedValue) {
+        std::cerr << "Could not find the %bdim_value variable. \n";
+      }
+
+      // Replace the dynamic dim with the batch dimension.
+      dynamic_dims[i] = loadedValue;
+      dynamic_dims_ = dynamic_dims;
+      shape_.set_dynamic_dimension(i, true);
+    }
+  }
+
+#endif
   IrArray::Index array_index = dynamic_dims_.empty()
                                    ? EmitStaticIndex(&loop_nest, index_type)
                                    : EmitDynamicIndex(&loop_nest, index_type);

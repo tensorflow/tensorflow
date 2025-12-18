@@ -88,6 +88,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+#define STEVEN
+#define MAGIC 42
+
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
 constexpr char kSingleOpComponent[] = "TF2XLA_XLA_COMPILER_COMPILE_SINGLE_OP";
@@ -839,7 +842,11 @@ absl::Status XlaCompiler::CompileFunction(
                                      std::vector<TensorShape>{tensor_shape});
       }
     } else {
+      // Replace first dim with MAGIC
       TensorShape tensor_shape = std::get<TensorShape>(args[i].shape);
+      AttrSlice n_attrs = fbody->arg_nodes[i]->attrs();
+      std::vector<const TensorShapeProto*> output_shapes;
+      tensor_shape.set_dim(0, MAGIC);
       fbody->arg_nodes[i]->ClearAttr("_output_shapes");
       fbody->arg_nodes[i]->AddAttr("_output_shapes",
                                    std::vector<TensorShape>{tensor_shape});
@@ -856,6 +863,7 @@ absl::Status XlaCompiler::CompileFunction(
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
     if (n->IsArg()) {
+      std::cerr << "NODE IS " << n->DebugString() << "\n";
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }
@@ -915,6 +923,10 @@ absl::Status XlaCompiler::XLAShapeForArgument(
         TensorShape shape;
         if (std::holds_alternative<TensorShape>(arg.shape)) {
           shape = std::get<TensorShape>(arg.shape);
+          #ifdef STEVEN
+          if(shape.dims() > 0)
+            shape.set_dim(0, MAGIC);
+          #endif
         } else {
           TF_RETURN_IF_ERROR(
               XLAShapeToTensorShape(std::get<xla::Shape>(arg.shape), &shape));
@@ -1250,8 +1262,19 @@ absl::Status XlaCompiler::BuildArguments(
         // TODO(b/76097077): propagate device assignments onto arguments and
         // return values of functions, and then reshape unconditionally.
         if (is_entry_computation) {
+#ifdef STEVEN
+          auto thesizes = arg.DimensionSizes();
+          if (thesizes.size() > 0) {
+            thesizes[0] = MAGIC;
+          }
+          auto reshape = xla::Reshape(arg_handles[i], thesizes);
+          arg_expression = XlaExpression::XlaOp(
+            reshape, arg.type);
+          // arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
+#else
           arg_expression = XlaExpression::XlaOp(
               xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
+#endif
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
           if (arg.value_bound) {

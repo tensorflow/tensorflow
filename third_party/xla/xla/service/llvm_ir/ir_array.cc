@@ -559,8 +559,43 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     int64_t dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
-  return b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
-                              llvm_ir::AsStringRef(name));
+
+#define MAGIC 977
+#define STEVEN
+#ifdef STEVEN
+
+  llvm::ArrayType* outerArray = llvm::dyn_cast<llvm::ArrayType>(pointee_type_);
+
+  CHECK(outerArray) << "Expected outer array type.";
+
+  llvm::Value* gep;
+
+  if(outerArray->getNumElements() == MAGIC){
+    // Extract the inner array type: [N x T]
+    llvm::Type* innerArray = outerArray->getElementType();
+
+    CHECK(innerArray) << "Expected inner array type.";
+
+    // Create a new array type: [0 x [N x T]]
+    llvm::ArrayType* zeroOuterArray = llvm::ArrayType::get(innerArray, 0);
+
+    llvm::PointerType* newPtrTy = llvm::PointerType::getUnqual(zeroOuterArray);
+    llvm::Value* castedPtr = b->CreateBitCast(base_ptr_, newPtrTy);
+
+    gep =
+        b->CreateInBoundsGEP(zeroOuterArray,
+                            castedPtr,
+                            gep_indices, llvm_ir::AsStringRef(name));
+  } else {
+   gep = b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
+                                  llvm_ir::AsStringRef(name));
+  }
+#else
+  auto gep = b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
+                                  llvm_ir::AsStringRef(name));
+#endif
+
+  return gep;
 }
 
 llvm::Value* IrArray::EmitLinearArrayElementAddress(

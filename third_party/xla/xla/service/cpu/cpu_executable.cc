@@ -275,10 +275,25 @@ absl::Status CpuExecutable::ExecuteComputeFunction(
   return absl::OkStatus();
 }
 
+void PrintScalars(absl::Span<MaybeOwningDeviceMemory const> buffers) {
+  for (int i = 0; i < buffers.size(); ++i) {
+    const se::DeviceMemoryBase& dmem = buffers[i].AsDeviceMemoryBase();
+    if (dmem.opaque() && dmem.size() >= sizeof(int64_t)) {
+      int64_t val = 0;
+      std::memcpy(&val, dmem.opaque(), sizeof(val));
+      std::cerr << "Buffer " << i << " scalar: " << val << std::endl;
+    } else {
+      std::cerr << "Buffer " << i << " empty or too small" << std::endl;
+    }
+  }
+}
+
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
     absl::Span<MaybeOwningDeviceMemory const> buffers) {
   uint64_t start_ns = tsl::Env::Default()->NowNanos();
+
+  PrintScalars(buffers);
 
   size_t profile_counters_size = 0;
   int64_t* profile_counters = nullptr;
