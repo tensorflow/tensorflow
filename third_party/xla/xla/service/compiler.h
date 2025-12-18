@@ -41,8 +41,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -71,36 +71,7 @@ using ObjectFileData = std::vector<char>;
 
 class AotCompilationOptions;
 
-// Abstract superclass describing the result of an ahead-of-time compilation.
-class AotCompilationResult {
- public:
-  AotCompilationResult(const AotCompilationResult&) = delete;
-  AotCompilationResult& operator=(AotCompilationResult const&) = delete;
-
-  virtual ~AotCompilationResult() = default;
-
-  virtual absl::StatusOr<std::string> SerializeAsString() const {
-    return Unimplemented("SerializeAsString unimplemented.");
-  }
-
-  virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      const se::StreamExecutor* executor) && {
-    return Unimplemented("LoadExecutable unimplemented.");
-  }
-
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const {
-    return Unimplemented("buffer_assignment unimplemented.");
-  }
-
-  // Returns the optimized HLO module if one was computed and the implementation
-  // supports it.
-  virtual const HloModule* optimized_module() const = 0;
-  virtual std::shared_ptr<HloModule> shared_optimized_module() = 0;
-
- protected:
-  AotCompilationResult() = default;
-};
+using AotCompilationResult ABSL_DEPRECATE_AND_INLINE() = CompiledModule;
 
 // Abstract superclass describing metadata produced during ahead-of-time
 // compilation.
