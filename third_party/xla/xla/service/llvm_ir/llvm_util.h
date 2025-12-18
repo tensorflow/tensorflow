@@ -334,9 +334,7 @@ llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilderBase* b);
 void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
                      llvm::BasicBlock* return_block = nullptr);
 
-llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b);
-
-llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b, int64_t multiplier = 1);
+llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b, int64_t multiplier = 1);
 
 }  // namespace llvm_ir
 }  // namespace xla

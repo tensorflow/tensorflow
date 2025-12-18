@@ -316,17 +316,29 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   return EmitKernelPrototype(module, name, arguments, results);
 }
 
+#define PRINT_BATCHSIZE
 llvm::Value* KernelApiIrBuilder::EmitGetBatchDim(llvm::IRBuilderBase& builder,
                                                  llvm::Value* call_frame) {
   llvm::LLVMContext& ctx = builder.getContext();
-
   llvm::Type* ptr = llvm::PointerType::get(ctx, 0);
-
   llvm::IntegerType* i64 = llvm::IntegerType::getInt64Ty(ctx);
-
   llvm::Value* bdim_gep =
       builder.CreateStructGEP(call_frame_ty_, call_frame, 4, "bdim_gep");
   llvm::Value* bdim_value = builder.CreateLoad(i64, bdim_gep, "bdim_value");
+
+#if defined(PRINT_BATCHSIZE)
+  // Print batch size
+  llvm::Function* function = builder.GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  llvm::FunctionType* printfType = llvm::FunctionType::get(
+      builder.getInt32Ty(), llvm::PointerType::get(builder.getInt8Ty(), 0),
+      true);
+  llvm::FunctionCallee printfFunc =
+      module->getOrInsertFunction("printf", printfType);
+  llvm::Value* formatStr =
+      builder.CreateGlobalStringPtr("The batch size is : %d!\n");
+  builder.CreateCall(printfFunc, {formatStr, bdim_value});
+#endif
 
   return bdim_value;
 }

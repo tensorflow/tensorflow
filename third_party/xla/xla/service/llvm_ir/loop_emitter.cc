@@ -185,11 +185,6 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
 
   ForLoopNest loop_nest(loop_name, b_);
 
-#define DYN_DIMS
-#define PRINT_BATCHSIZE
-#define MAGIC 977
-
-#if defined(DYN_DIMS)
   llvm::LLVMContext& ctx = b_->getContext();
   llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
 
@@ -202,35 +197,20 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     dynamic_dims.push_back(llvm::ConstantInt::get(i64Type, dim));
   }
 
-  llvm::Function* function = b_->GetInsertBlock()->getParent();
-  llvm::Value* bdim_value = xla::llvm_ir::GetBatchDimByPtr(b_);
   bool dynamic = false;
   for (int i = 0; i < shape_.dimensions_size(); i++) {
     int64_t multiplier = (i == 0) ? shape_.outer_multiplier() : -1;
     if (multiplier > 0) {
-      dynamic_dims[i] = xla::llvm_ir::GetBatchDimByPtr(b_, multiplier);
+      dynamic_dims[i] = xla::llvm_ir::GetBatchDimByName(b_, multiplier);
       shape_.set_dynamic_dimension(i, true);
       dynamic = true;
     }
   }
 
   if (dynamic) {
-#if defined(PRINT_BATCHSIZE)
-    // Print batch size
-    llvm::FunctionType* printfType = llvm::FunctionType::get(
-        b_->getInt32Ty(), llvm::PointerType::get(b_->getInt8Ty(), 0), true);
-    llvm::Module* module = function->getParent();
-    llvm::FunctionCallee printfFunc =
-        module->getOrInsertFunction("printf", printfType);
-    llvm::Value* formatStr =
-        b_->CreateGlobalStringPtr("The batch size is : %d!\n");
-    b_->CreateCall(printfFunc, {formatStr, bdim_value});
-#endif
-
     // Assign dynamic batch
     dynamic_dims_ = dynamic_dims;
   }
-#endif
 
   IrArray::Index array_index = dynamic_dims_.empty()
                                    ? EmitStaticIndex(&loop_nest, index_type)

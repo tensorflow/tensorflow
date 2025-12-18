@@ -3290,7 +3290,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     llvm::Value* cdim = source_index.GetConstantWithIndexType(
         operand->shape().dimensions(concat_dim));
     if (concat_dim == 0 && operand->shape().outer_multiplier() > 0) {
-      cdim = llvm_ir::GetBatchDimByPtr(b_, operand->shape().outer_multiplier());
+      cdim = llvm_ir::GetBatchDimByName(b_, operand->shape().outer_multiplier());
     }
     current_offset = b_->CreateAdd(current_offset, cdim, "current_offset");
     coffset += operand->shape().dimensions(concat_dim);
@@ -3628,10 +3628,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     int64_t multiplier =
         (i == 0) ? hlo->operand(0)->shape().outer_multiplier() : -1;
     if (multiplier > 0) {
-      bound = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+      bound = llvm_ir::GetBatchDimByName(b_, multiplier);
     } else if (shape_dim == 977) {
       // This should not happen, and yet it does.
-      bound = llvm_ir::GetBatchDimByPtr(b_);
+      bound = llvm_ir::GetBatchDimByName(b_);
     }
 
     in_bounds = And(in_bounds, ICmpSLT(multi_index[i], bound), "in_bounds");
@@ -3706,7 +3706,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
                            ? hlo->operand(0)->shape().outer_multiplier()
                            : -1;
   if (multiplier > 0) {
-    llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+    llvm::Value* bdim_value = llvm_ir::GetBatchDimByName(b_, multiplier);
     contracted_bound = bdim_value;
   }
 
@@ -4269,7 +4269,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
         (i == 0) ? reduce_window->inputs()[0]->shape().outer_multiplier() : -1;
 
     if (multiplier > 0) {
-      llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+      llvm::Value* bdim_value = llvm_ir::GetBatchDimByName(b_, multiplier);
       shape_bound = bdim_value;
     }
 

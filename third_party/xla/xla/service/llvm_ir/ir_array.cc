@@ -322,7 +322,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
       llvm::Value* op2 = GetConstantWithIndexType(starts[i]);
 #define MAGIC 977
       if ( starts[i] > 0 && (starts[i] % MAGIC) == 0) {
-        op2 = llvm_ir::GetBatchDimByPtr(builder, starts[i] / MAGIC);
+        op2 = llvm_ir::GetBatchDimByName(builder, starts[i] / MAGIC);
       }
 
       source_multi_index[i] =

@@ -811,11 +811,12 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
   b->SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
-llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b) {
+llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b, int64_t multiplier) {
   llvm::Function* function = b->GetInsertBlock()->getParent();
-  llvm::Module* module = function->getParent();
+  llvm::LLVMContext& ctx = b->getContext();
+  llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
   llvm::Value* loadedValue = nullptr;
-
+  llvm::Value* bdim_scaled = nullptr;
   for (auto& inst : function->getEntryBlock()) {
     if (inst.getName() == "bdim_value") {
       loadedValue = &inst;
@@ -823,32 +824,15 @@ llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b) {
   }
   if (!loadedValue) {
     llvm::errs() << "Could not find the %bdim_value variable. \n";
-  }
-  return loadedValue;
-}
-
-llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b, int64_t multiplier) {
-  llvm::LLVMContext& ctx = b->getContext();
-  llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
-  llvm::PointerType* ptr = llvm::PointerType::getUnqual(ctx);
-  llvm::StructType* callFrameTy = llvm::StructType::create(
-      "XLA_CPU_KernelArg", ptr, ptr, i64Type, ptr, i64Type);
-  llvm::Function* function = b->GetInsertBlock()->getParent();
-  llvm::Value* call_frame = function->getArg(0);
-  llvm::Value* bdim_gep =
-      b->CreateStructGEP(callFrameTy, call_frame, 4, "bdim_gep");
-  llvm::Value* bdim = b->CreateLoad(i64Type, bdim_gep, "bdim_value");
-
-  if (multiplier < 1) {
+  } else if (multiplier < 1) {
     llvm::errs() << "Multiplier is less than 1, this should not happen.\n";
-    return nullptr;
   } else if (multiplier == 1) {
-    return bdim;
+    bdim_scaled = loadedValue;
   } else {
     llvm::ConstantInt* m = llvm::ConstantInt::get(i64Type, multiplier, true);
-    llvm::Value* bdim_scaled = b->CreateMul(bdim, m, "bdim_scaled");
-    return bdim_scaled;
+    bdim_scaled = b->CreateMul(loadedValue, m, "bdim_scaled");
   }
+  return bdim_scaled;
 }
 
 }  // namespace llvm_ir
