@@ -307,6 +307,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/framework:allocator",
@@ -972,6 +973,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    shard_count = 10,
     deps = [
         ":transpose",
         "//xla:array",
