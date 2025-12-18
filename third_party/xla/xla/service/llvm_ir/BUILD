@@ -311,6 +311,7 @@ xla_cc_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
