@@ -1030,63 +1030,9 @@ cc_library(
 )
 
 cc_library(
-    name = "nvshmem_memory_allocator_if_builtin_used",
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = select({
-        "//xla/stream_executor/cuda:no_builtin_used": [
-            ":nvshmem_memory_allocator_stub",
-        ],
-        "//conditions:default": [":nvshmem_memory_allocator"],
-    }),
-)
-
-cc_library(
-    name = "nvshmem_memory_allocator_if_supported",
-    hdrs = ["nvshmem_memory_allocator.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = select({
-        "//xla/stream_executor/cuda:nvshmem_supported": [
-            ":nvshmem_memory_allocator_if_builtin_used",
-        ],
-        "//conditions:default": [":nvshmem_memory_allocator_stub"],
-    }) + [
-        "//xla/stream_executor:memory_allocation",
-        "//xla/stream_executor:memory_allocator",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-# Used when NVSHMEM is not linked or can't be used.
-cc_library(
-    name = "nvshmem_memory_allocator_stub",
-    srcs = [
-        "nvshmem_memory_allocator.h",
-        "nvshmem_memory_allocator_stub.cc",
-    ],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
-    deps = [
-        "//xla/stream_executor:memory_allocation",
-        "//xla/stream_executor:memory_allocator",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
     name = "nvshmem_memory_allocator",
-    srcs = [
-        "nvshmem_memory_allocator.cc",
-        "nvshmem_memory_allocator.h",
-    ],
+    srcs = ["nvshmem_memory_allocator.cc"],
+    hdrs = ["nvshmem_memory_allocator.h"],
     tags = [
         "cuda-only",
         "gpu",
@@ -1321,10 +1267,11 @@ cc_library(
         ":cuda_timer",
         ":cuda_version_parser",
         ":cudnn_api_wrappers",
-        ":nccl_memory_allocator",
-        ":nvshmem_memory_allocator_if_supported",
         ":tma_util",
         "//xla:util",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/core/collectives",
+        "//xla/core/collectives:collectives_registry",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
