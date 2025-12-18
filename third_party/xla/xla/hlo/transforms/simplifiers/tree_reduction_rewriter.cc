@@ -58,6 +58,14 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
+    if (absl::c_any_of(hlo->dimensions(), [&](int64_t reduced_dim) {
+          return input_shape.dimensions(reduced_dim) == 977;
+        })) {
+      VLOG(1) << "Skipping tree reduction rewrite: one reduced dimension is "
+                 "dynamic ";
+      return absl::OkStatus();
+    }
+
     // All of the reduced dimensions is smaller than the window size,
     // do not perform the rewrite.
     if (absl::c_all_of(hlo->dimensions(), [&](int64_t reduced_dim) {
