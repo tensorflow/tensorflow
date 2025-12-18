@@ -183,42 +183,59 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   }
 
   ForLoopNest loop_nest(loop_name, b_);
+
 #define STEVEN
+#define PRINT_BATCHSIZE
 #define MAGIC 977
-#ifdef STEVEN
-  llvm::LLVMContext& context = b_->getContext();
-  llvm::Type* i64Ty = llvm::Type::getInt64Ty(context);
+
+#if defined(STEVEN)
+  llvm::LLVMContext &ctx = b_->getContext();
+  llvm::IntegerType *i64Type = llvm::IntegerType::getInt64Ty(ctx);
+
+  llvm::PointerType *ptr = llvm::PointerType::getUnqual(ctx);
+  llvm::StructType *callFrameTy = llvm::StructType::create(
+      "XLA_CPU_KernelArg", ptr, ptr, i64Type, ptr, i64Type);
 
   std::vector<llvm::Value*> dynamic_dims;
   for (auto dim : shape_.dimensions()) {
-    dynamic_dims.push_back(llvm::ConstantInt::get(i64Ty, dim));
+    dynamic_dims.push_back(llvm::ConstantInt::get(i64Type, dim));
   }
-  // Look for magic dimension.
+
+  llvm::Function *function = b_->GetInsertBlock()->getParent();
+  llvm::Value *call_frame = function->getArg(0);
+
+  llvm::Value *bdim_gep =
+      b_->CreateStructGEP(callFrameTy, call_frame, 4, "bdim_gep");
+  llvm::Value *bdim_value = b_->CreateLoad(i64Type, bdim_gep, "bdim_value");
+
+  bool dynamic = false;
   for (int i = 0; i < shape_.dimensions_size(); i++) {
     if (shape_.dimensions()[i] == MAGIC) {
-      llvm::Function* currentFunction = b_->GetInsertBlock()->getParent();
-      llvm::Module* module = currentFunction->getParent();
-
-      llvm::Value* loadedValue;
-
-      for (auto& inst : currentFunction->getEntryBlock()) {
-        if (inst.getName() == "bdim_value") {
-          loadedValue = &inst;
-        }
-      }
-
-      if (!loadedValue) {
-        std::cerr << "Could not find the %bdim_value variable. \n";
-      }
-
-      // Replace the dynamic dim with the batch dimension.
-      dynamic_dims[i] = loadedValue;
-      dynamic_dims_ = dynamic_dims;
+      dynamic_dims[i] = bdim_value;
       shape_.set_dynamic_dimension(i, true);
+      dynamic = true;
     }
   }
 
+  if (dynamic) {
+#if defined(PRINT_BATCHSIZE)
+    // Print batch size
+    llvm::FunctionType *printfType = llvm::FunctionType::get(
+        b_->getInt32Ty(), llvm::PointerType::get(b_->getInt8Ty(), 0),
+        true);
+    llvm::Module* module = function->getParent();
+    llvm::FunctionCallee printfFunc =
+        module->getOrInsertFunction("printf", printfType);
+    llvm::Value *formatStr =
+        b_->CreateGlobalStringPtr("The batch size is : %d!\n");
+    b_->CreateCall(printfFunc, {formatStr, bdim_value});
 #endif
+
+    // Assign dynamic batch
+    dynamic_dims_ = dynamic_dims;
+  }
+#endif
+
   IrArray::Index array_index = dynamic_dims_.empty()
                                    ? EmitStaticIndex(&loop_nest, index_type)
                                    : EmitDynamicIndex(&loop_nest, index_type);

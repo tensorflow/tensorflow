@@ -148,8 +148,6 @@ class KernelApiIrBuilder {
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
 
-  llvm::Value* EmitGetBatchDim(llvm::IRBuilderBase& builder, llvm::Value* call_frame);
-
   llvm::Function* EmitKernelFunction(llvm::Module& module,
                                      absl::string_view name);
 
