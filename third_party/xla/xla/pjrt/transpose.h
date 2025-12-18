@@ -147,23 +147,40 @@ class TransposePlan {
  protected:
   // Methods protected so they can be accessed by tests.
 
-  // Removes any size-1 dimensions.
-  static void RemoveTrivialDimensions(
-      absl::InlinedVector<int64_t, 4>& a_dims,
-      absl::InlinedVector<int64_t, 4>& permutation,
-      absl::InlinedVector<int64_t, 4>& lda,
-      absl::InlinedVector<int64_t, 4>& lda_tile,
-      absl::InlinedVector<int64_t, 4>& a_tiling,
-      absl::InlinedVector<int64_t, 4>& b_tiling);
+  struct Loop {
+    // Dimension number in A from which this loop originated. This is mostly
+    // for debugging the plan.
+    int dim_in_a;
 
-  // Collapses together dimensions that are adjacent both in `dims` and
-  // `permutation`.
-  static void CoalesceDimensions(absl::InlinedVector<int64_t, 4>& a_dims,
-                                 absl::InlinedVector<int64_t, 4>& permutation,
-                                 absl::InlinedVector<int64_t, 4>& lda,
-                                 absl::InlinedVector<int64_t, 4>& lda_tile,
-                                 absl::InlinedVector<int64_t, 4>& a_tiling,
-                                 absl::InlinedVector<int64_t, 4>& b_tiling);
+    // If true, the loop iterates over the interior of a tile.
+    // For an untiled dimension, this is always false. For a tiled dimension,
+    // we will have two loops: one over the tile exteriors and one over the tile
+    // interiors.
+    bool tile_interior;
+
+    // Size of the iteration space.
+    int64_t dim_size;
+
+    // Size of the tiles, if this a tiled dimension.
+    int64_t tile_size;
+
+    int64_t lda;  // Stride in A for this loop.
+    int64_t ldb;  // Stride in B for this loop.
+
+    // Is this the innermost (stride 1) dimension in A or B? These dimensions
+    // are special for the kernels.
+    bool is_inner_dim_in_a;
+    bool is_inner_dim_in_b;
+
+    // Number of parallel threads to use for this loop.
+    int64_t parallelism;
+
+    bool operator==(const Loop& other) const;
+  };
+
+  // Exposed for testing.
+  static void RemoveTrivialLoops(std::vector<Loop>& loops);
+  static void CoalesceLoops(std::vector<Loop>& loops);
 
  private:
   // Performs plan initialization that cannot fail.
@@ -221,34 +238,7 @@ class TransposePlan {
   bool b_is_tiled_;
 
   // Order to traverse dimensions, from slowest-varying to fastest-varying.
-  struct Loop {
-    // Dimension number in A from which this loop originated. This is mostly
-    // for debugging the plan.
-    int dim_in_a;
 
-    // If true, the loop iterates over the interior of a tile.
-    // For an untiled dimension, this is always false. For a tiled dimension,
-    // we will have two loops: one over the tile exteriors and one over the tile
-    // interiors.
-    bool tile_interior;
-
-    // Size of the iteration space.
-    int64_t dim_size;
-
-    // Size of the tiles, if this a tiled dimension.
-    int64_t tile_size;
-
-    int64_t lda;  // Stride in A for this loop.
-    int64_t ldb;  // Stride in B for this loop.
-
-    // Is this the innermost (stride 1) dimension in A or B? These dimensions
-    // are special for the kernels.
-    bool is_inner_dim_in_a;
-    bool is_inner_dim_in_b;
-
-    // Number of parallel threads to use for this loop.
-    int64_t parallelism;
-  };
   std::vector<Loop> loop_order_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop

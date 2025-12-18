@@ -548,124 +548,6 @@ static void ComputeStrides(
   }
 }
 
-void TransposePlan::RemoveTrivialDimensions(
-    absl::InlinedVector<int64_t, 4>& a_dims,
-    absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda,
-    absl::InlinedVector<int64_t, 4>& lda_tile,
-    absl::InlinedVector<int64_t, 4>& a_tiling,
-    absl::InlinedVector<int64_t, 4>& b_tiling) {
-  int ndim = a_dims.size();
-  // How many positions has the i-th dimension of 'a' been moved to the left?
-  // -1 if the dimension is to be removed.
-  std::vector<int> shift(ndim);
-  absl::InlinedVector<int64_t, 4> updated_a_dims;
-  absl::InlinedVector<int64_t, 4> updated_lda;
-  absl::InlinedVector<int64_t, 4> updated_lda_tile;
-  absl::InlinedVector<int64_t, 4> updated_a_tiling;
-  updated_a_dims.reserve(ndim);
-  updated_lda.reserve(ndim);
-  updated_lda_tile.reserve(ndim);
-  updated_a_tiling.reserve(ndim);
-  std::vector<int64_t> inv_permutation = InversePermutation(permutation);
-  for (int a_dim = 0; a_dim < ndim; ++a_dim) {
-    int b_dim = inv_permutation[a_dim];
-    // A dimension is trivial if it has size 1 and is not tiled.
-    if (a_dims[a_dim] == 1 && a_tiling[a_dim] == 1 && b_tiling[b_dim] == 1) {
-      shift[a_dim] = -1;
-    } else {
-      updated_a_dims.push_back(a_dims[a_dim]);
-      updated_lda.push_back(lda[a_dim]);
-      updated_lda_tile.push_back(lda_tile[a_dim]);
-      updated_a_tiling.push_back(a_tiling[a_dim]);
-      shift[a_dim] = a_dim + 1 - updated_a_dims.size();
-    }
-  }
-
-  // Updates the permutation and tiling of b.
-  absl::InlinedVector<int64_t, 4> updated_permutation;
-  absl::InlinedVector<int64_t, 4> updated_b_tiling;
-  updated_permutation.reserve(updated_a_dims.size());
-  updated_b_tiling.reserve(updated_a_dims.size());
-  for (int b_dim = 0; b_dim < ndim; ++b_dim) {
-    int a_dim = permutation[b_dim];
-    if (shift[a_dim] >= 0) {
-      updated_permutation.push_back(a_dim - shift[a_dim]);
-      updated_b_tiling.push_back(b_tiling[b_dim]);
-    }
-  }
-
-  DCHECK(IsPermutation(updated_permutation));
-  a_dims = std::move(updated_a_dims);
-  permutation = std::move(updated_permutation);
-  lda = std::move(updated_lda);
-  lda_tile = std::move(updated_lda_tile);
-  a_tiling = std::move(updated_a_tiling);
-  b_tiling = std::move(updated_b_tiling);
-}
-
-void TransposePlan::CoalesceDimensions(
-    absl::InlinedVector<int64_t, 4>& a_dims,
-    absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda,
-    absl::InlinedVector<int64_t, 4>& lda_tile,
-    absl::InlinedVector<int64_t, 4>& a_tiling,
-    absl::InlinedVector<int64_t, 4>& b_tiling) {
-  int ndim = a_dims.size();
-  // How many positions has the i-th dimension of 'a' been moved to the left?
-  // -1 if the dimension is to be removed.
-  std::vector<int> shift(ndim, 0);
-  absl::InlinedVector<int64_t, 4> updated_a_dims;
-  absl::InlinedVector<int64_t, 4> updated_lda;
-  absl::InlinedVector<int64_t, 4> updated_lda_tile;
-  absl::InlinedVector<int64_t, 4> updated_a_tiling;
-  updated_a_dims.reserve(ndim);
-  updated_lda.reserve(ndim);
-  updated_lda_tile.reserve(ndim);
-  updated_a_tiling.reserve(ndim);
-  std::vector<int64_t> inv_permutation = InversePermutation(permutation);
-  for (int a_dim = 0; a_dim < ndim; ++a_dim) {
-    // We can coalesce two dimensions if they appear consecutively
-    // in both the input dimensions and the output dimensions, and the stride
-    // of the outer dimension is the usual multiple of the inner dimension.
-    if (a_dim > 0 && inv_permutation[a_dim - 1] + 1 == inv_permutation[a_dim] &&
-        lda[a_dim - 1] == lda[a_dim] * a_dims[a_dim] &&
-        a_tiling[a_dim - 1] == 1 && a_tiling[a_dim] == 1 &&
-        b_tiling[inv_permutation[a_dim]] == 1 &&
-        b_tiling[inv_permutation[a_dim - 1]] == 1) {
-      updated_a_dims.back() *= a_dims[a_dim];
-      updated_lda.back() = lda[a_dim];
-      shift[a_dim] = -1;
-    } else {
-      updated_a_dims.push_back(a_dims[a_dim]);
-      updated_lda.push_back(lda[a_dim]);
-      updated_lda_tile.push_back(lda_tile[a_dim]);
-      updated_a_tiling.push_back(a_tiling[a_dim]);
-      shift[a_dim] = a_dim + 1 - updated_a_dims.size();
-    }
-  }
-
-  // Updates the permutation.
-  absl::InlinedVector<int64_t, 4> updated_permutation;
-  absl::InlinedVector<int64_t, 4> updated_b_tiling;
-  updated_permutation.reserve(updated_a_dims.size());
-  updated_b_tiling.reserve(updated_a_dims.size());
-  for (int b_dim = 0; b_dim < ndim; ++b_dim) {
-    int a_dim = permutation[b_dim];
-    if (shift[a_dim] >= 0) {
-      updated_permutation.push_back(a_dim - shift[a_dim]);
-      updated_b_tiling.push_back(b_tiling[b_dim]);
-    }
-  }
-  DCHECK(IsPermutation(updated_permutation));
-  a_dims = std::move(updated_a_dims);
-  permutation = std::move(updated_permutation);
-  lda = std::move(updated_lda);
-  lda_tile = std::move(updated_lda_tile);
-  a_tiling = std::move(updated_a_tiling);
-  b_tiling = std::move(updated_b_tiling);
-}
-
 int64_t TransposePlan::InputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
@@ -710,6 +592,15 @@ static absl::Status ParseTilingSpecification(
   offset -= tiling_spec.size();
   absl::c_copy(tiling_spec, tiling.begin() + offset);
   return absl::OkStatus();
+}
+
+bool TransposePlan::Loop::operator==(const Loop& other) const {
+  return dim_in_a == other.dim_in_a && tile_interior == other.tile_interior &&
+         dim_size == other.dim_size && tile_size == other.tile_size &&
+         lda == other.lda && ldb == other.ldb &&
+         is_inner_dim_in_a == other.is_inner_dim_in_a &&
+         is_inner_dim_in_b == other.is_inner_dim_in_b &&
+         parallelism == other.parallelism;
 }
 
 // Helper function that builds a plan.
@@ -1063,11 +954,6 @@ void TransposePlan::Initialize() {
   if (num_elems_ == 0) {
     return;
   }
-  RemoveTrivialDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
-                          b_tiling_);
-  CoalesceDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
-                     b_tiling_);
-
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation_);
@@ -1143,6 +1029,9 @@ void TransposePlan::Initialize() {
       loop_order_.push_back(loop);
     }
   }
+
+  RemoveTrivialLoops(loop_order_);
+  CoalesceLoops(loop_order_);
 
   // Bound the block sizes so they are smaller than the stride-1 dimension
   // size.
@@ -1423,6 +1312,81 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
+}
+
+/*static*/ void TransposePlan::RemoveTrivialLoops(std::vector<Loop>& loops) {
+  auto it = std::remove_if(loops.begin(), loops.end(), [](const Loop& loop) {
+    // We must preserve the loop if it corresponds to the innermost dimension
+    // of the layout, because the kernels (especially TransposeConstStride1)
+    // rely on finding a node with is_inner_dim_in_a/b set to true.
+    if (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b) {
+      return false;
+    }
+    if (loop.tile_interior) {
+      return loop.tile_size == 1;
+    }
+    // Exterior loop.
+    // Trivial if dim_size == tile_size (1 complete tile, no partials). This
+    // also accounts for the case where the dimension is of size 1, since in
+    // that case the tile size is also 1.
+    return loop.dim_size == loop.tile_size;
+  });
+  loops.erase(it, loops.end());
+}
+
+/*static*/ void TransposePlan::CoalesceLoops(std::vector<Loop>& loops) {
+  if (loops.empty()) {
+    return;
+  }
+
+  // Coalesce from slow-varying to fast-varying (outer to inner).
+  // loop_order_[0] is slowest.
+  int write_pos = 0;
+  for (int read_pos = 1; read_pos < loops.size(); ++read_pos) {
+    Loop& outer = loops[write_pos];
+    const Loop& inner = loops[read_pos];
+
+    int64_t inner_iter_size = inner.tile_interior
+                                  ? inner.tile_size
+                                  : (inner.dim_size / inner.tile_size);
+
+    // Two loops can be coalesced if:
+    // * they are both tile interiors or both tile exteriors
+    // * neither has a partial tile
+    // * the inner loop is a multiple of the outer loop.
+    // TODO(phawkins): I suspect this condition can be simplified. In particular
+    // the condition that we separate tile exteriors from interiors feels
+    // arbitrary.
+    bool coalescable = (outer.tile_interior == inner.tile_interior) &&
+                       (outer.dim_size % outer.tile_size == 0) &&
+                       (inner.dim_size % inner.tile_size == 0) &&
+                       (outer.lda == inner.lda * inner_iter_size) &&
+                       (outer.ldb == inner.ldb * inner_iter_size);
+    if (coalescable) {
+      if (outer.tile_interior) {
+        outer.tile_size *= inner.tile_size;
+        outer.dim_size *= inner.dim_size;
+      } else {
+        outer.dim_size *= inner_iter_size;
+      }
+
+      outer.lda = inner.lda;
+      outer.ldb = inner.ldb;
+
+      outer.is_inner_dim_in_a =
+          inner.is_inner_dim_in_a || outer.is_inner_dim_in_a;
+      outer.is_inner_dim_in_b =
+          inner.is_inner_dim_in_b || outer.is_inner_dim_in_b;
+
+      // Don't advance write_pos, so we can merge more into 'outer'.
+    } else {
+      ++write_pos;
+      if (write_pos != read_pos) {
+        loops[write_pos] = inner;
+      }
+    }
+  }
+  loops.resize(write_pos + 1);
 }
 
 }  // namespace xla

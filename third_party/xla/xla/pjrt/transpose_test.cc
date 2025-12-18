@@ -54,82 +54,103 @@ namespace xla {
 
 class TestTransposePlan : public TransposePlan {
  public:
-  using TransposePlan::CoalesceDimensions;
-  using TransposePlan::RemoveTrivialDimensions;
+  using Loop = TransposePlan::Loop;
+  using TransposePlan::CoalesceLoops;
+  using TransposePlan::RemoveTrivialLoops;
 };
 
-TEST(TransposeTest, RemoveTrivialDimensions) {
-  absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
-  absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
-  absl::InlinedVector<int64_t, 4> lda = {2, 5, 7, 100, 3, 0, 1};
-  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
-                                             input_tiling, output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(0, 1, 2, 4, 3));
+TEST(TransposeTest, RemoveTrivialLoops) {
+  using Loop = TestTransposePlan::Loop;
+  std::vector<Loop> loops;
+  // Exterior loop, trivial (size 1)
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/1,
+                       /*tile_size=*/1});
+  // Exterior loop, trivial (dim_size == tile_size, 1 tile)
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/10,
+                       /*tile_size=*/10});
+  // Exterior loop, non-trivial
+  loops.push_back(Loop{/*dim_in_a=*/2, /*tile_interior=*/false, /*dim_size=*/10,
+                       /*tile_size=*/2});
+  // Interior loop, trivial (size 1)
+  loops.push_back(Loop{/*dim_in_a=*/3, /*tile_interior=*/true, /*dim_size=*/10,
+                       /*tile_size=*/1});
+  // Interior loop, non-trivial
+  loops.push_back(Loop{/*dim_in_a=*/4, /*tile_interior=*/true, /*dim_size=*/10,
+                       /*tile_size=*/10});
+  // Trivial loop (size 1) but preserved because it is inner dim
+  loops.push_back(Loop{/*dim_in_a=*/5, /*tile_interior=*/false, /*dim_size=*/1,
+                       /*tile_size=*/1, /*lda=*/1, /*ldb=*/1,
+                       /*is_inner_dim_in_a=*/true,
+                       /*is_inner_dim_in_b=*/false});
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 3, 2, 1, 0};
-  lda = {2, 5, 100, 0, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
-                                             input_tiling, output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(4, 3, 2, 1, 0));
+  TestTransposePlan::RemoveTrivialLoops(loops);
+
+  ASSERT_EQ(loops.size(), 3);
+  // Expect loop 2 (Exterior non-trivial)
+  EXPECT_EQ(loops[0].dim_in_a, 2);
+  EXPECT_EQ(loops[0].tile_interior, false);
+  // Expect loop 4 (Interior non-trivial)
+  EXPECT_EQ(loops[1].dim_in_a, 4);
+  EXPECT_EQ(loops[1].tile_interior, true);
+  // Expect loop 5 (Trivial but preserved)
+  EXPECT_EQ(loops[2].dim_in_a, 5);
+  EXPECT_EQ(loops[2].is_inner_dim_in_a, true);
 }
 
-TEST(TransposeTest, CoalesceDimensions) {
-  absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
-  absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
-  absl::InlinedVector<int64_t, 4> lda = {50, 30, 30, 10, 10, 5, 1};
-  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 1, 3, 1, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(0, 2, 1, 4, 3, 6, 5));
-  EXPECT_THAT(lda, testing::ElementsAre(50, 30, 30, 10, 10, 5, 1));
+TEST(TransposeTest, CoalesceLoops) {
+  using Loop = TestTransposePlan::Loop;
+  std::vector<Loop> loops;
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 1, 2, 3, 0};
-  lda = {150, 30, 10, 5, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 30, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(2, 1, 0));
-  EXPECT_THAT(lda, testing::ElementsAre(150, 5, 1));
+  // Case 1: Compatible untiled loops
+  // Outer: size 4, stride 20 (inner size 5 * inner stride 4)
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
+  // Inner: size 5, stride 4
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
+                       /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {0, 1, 2, 3, 4};
-  lda = {150, 30, 10, 5, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(600));
-  EXPECT_THAT(perm, testing::ElementsAre(0));
-  EXPECT_THAT(lda, testing::ElementsAre(1));
+  TestTransposePlan::CoalesceLoops(loops);
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 1, 2, 3, 0};
-  lda = {150, 30, 10, 7, 1};  // Non-standard stridings prevent coalescing.
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 15, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(3, 1, 2, 0));
-  EXPECT_THAT(lda, testing::ElementsAre(150, 10, 7, 1));
+  ASSERT_EQ(loops.size(), 1);
+  EXPECT_EQ(loops[0].dim_size, 20);
+  EXPECT_EQ(loops[0].tile_size, 1);
+  EXPECT_EQ(loops[0].lda, 4);
+  EXPECT_EQ(loops[0].ldb, 80);
+
+  // Case 2: Incompatible strides
+  loops.clear();
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/21,
+                       /*ldb=*/400});  // lda mismatch
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
+                       /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  EXPECT_EQ(loops.size(), 2);
+
+  // Case 3: Compatible tiled interior
+  loops.clear();
+  // Outer interior: tile_size 4, lda 16
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/true, /*dim_size=*/100,
+                       /*tile_size=*/4, /*lda=*/16, /*ldb=*/320});
+  // Inner interior: tile_size 4, lda 4
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/100,
+                       /*tile_size=*/4, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  ASSERT_EQ(loops.size(), 1);
+  EXPECT_EQ(loops[0].tile_size, 16);
+  EXPECT_EQ(loops[0].tile_interior, true);
+
+  // Case 4: Mismatched tile_interior status (should not coalesce)
+  loops.clear();
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/5,
+                       /*tile_size=*/5, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  EXPECT_EQ(loops.size(), 2);
 }
 
 TEST(TransposeTest, InvalidTilings) {
