@@ -402,9 +402,7 @@ CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
   return response;
 }
 
-absl::Status CoordinationServiceAgent::Shutdown() { return ShutdownInternal(); }
-
-absl::Status CoordinationServiceAgent::ShutdownInternal() {
+absl::Status CoordinationServiceAgent::Shutdown() {
   absl::Status status = absl::OkStatus();
   bool is_connected = false;
   {
