@@ -110,6 +110,8 @@ class MarkForCompilationPassImpl {
     // stable from run to rum.
     bool deterministic_cluster_names;
 
+    bool enable_dynamic_sizes;
+
     int max_cluster_size;
     int min_cluster_size;
 
@@ -2018,6 +2020,8 @@ absl::Status MarkForCompilationPass::Run(
   debug_options.ignore_xla_compile_attr = false;
   debug_options.deterministic_cluster_names =
       flags->tf_xla_deterministic_cluster_names;
+  debug_options.enable_dynamic_sizes =
+      flags->tf_xla_enable_dynamic_sizes;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);
@@ -2038,6 +2042,7 @@ absl::Status MarkForCompilationPass::RunForTest(
       flags->tf_xla_disable_resource_variable_safety_checks_for_debugging;
   debug_options.ignore_xla_compile_attr = true;
   debug_options.deterministic_cluster_names = deterministic_cluster_names;
+  debug_options.enable_dynamic_sizes = false;
   debug_options.max_cluster_size = flags->tf_xla_max_cluster_size;
   debug_options.min_cluster_size = flags->tf_xla_min_cluster_size;
   debug_options.fuel = GetPointerToFuel(flags->tf_xla_clustering_fuel);

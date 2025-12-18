@@ -96,6 +96,9 @@ struct MarkForCompilationPassFlags {
   // so that they remain stable from run to run of auto clusteing.
   bool tf_xla_deterministic_cluster_names;
 
+  // If true enables support of dynamic sizes.
+  bool tf_xla_enable_dynamic_sizes;
+
   // If non-empty, JIT-compiled executables are saved to and loaded from the
   // specified file system directory path.
   std::string tf_xla_persistent_cache_directory;
