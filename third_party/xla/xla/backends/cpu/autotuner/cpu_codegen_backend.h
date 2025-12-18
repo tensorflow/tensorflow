@@ -46,7 +46,7 @@ class CpuCodegenBackend : public CodegenBackend {
     TF_ASSIGN_OR_RETURN(
         auto platform,
         stream_executor::PlatformManager::PlatformWithName("host", true));
-    return Compiler::GetForPlatform(platform);
+    return Compiler::GetForPlatform(platform->id());
   }
 
   CpuCodegenBackend(Compiler* compiler, absl::string_view name)
