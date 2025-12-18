@@ -1197,10 +1197,10 @@ absl::Status XlaCompiler::BuildArguments(
       xla::OpMetadata arg_metadata;
       arg_metadata.set_op_name(arg.node_name);
 
-      if (!arg.dynamic_dims.empty()) {
+      if (arg.dynamic_dim==0) {
         // Encode dynamic dims as a string in op_type, so it appears in HLO metadata.
         arg_metadata.set_op_type(
-            absl::StrCat("XLA_Arg_dyn[", absl::StrJoin(arg.dynamic_dims, ","), "]"));
+            absl::StrCat("XLA_Arg_dyn[",arg.dynamic_dim, "]"));
       }
 
       builder->SetOneShotOpMetadata(arg_metadata);
@@ -1215,9 +1215,9 @@ absl::Status XlaCompiler::BuildArguments(
       auto& arg = args[input_to_args->at(i)];
       xla::OpMetadata arg_metadata;
       arg_metadata.set_op_name(arg.node_name);
-      if (!arg.dynamic_dims.empty()) {
+      if (arg.dynamic_dim==0) {
         arg_metadata.set_op_type(
-            absl::StrCat("XLA_Arg_dyn[", absl::StrJoin(arg.dynamic_dims, ","), "]"));
+            absl::StrCat("XLA_Arg_dyn[",arg.dynamic_dim, "]"));
       }
       builder->SetOneShotOpMetadata(arg_metadata);
       

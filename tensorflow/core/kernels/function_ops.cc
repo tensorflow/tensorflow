@@ -42,7 +42,6 @@ static constexpr const char* const kGradientOp =
 ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("_is_batch", &is_batch_));
 }
 
 void ArgOp::Compute(OpKernelContext* ctx) {

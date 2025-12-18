@@ -53,8 +53,8 @@ struct XlaArgument {
     kTensorList,
   };
 
-  //To keep dynamic dims as an attribute of the argument.
-  std::vector<int64_t> dynamic_dims;
+  //To keep dynamic dim as an attribute of the argument.
+  int64_t dynamic_dim = -1;
 
   Kind kind = kInvalid;
 

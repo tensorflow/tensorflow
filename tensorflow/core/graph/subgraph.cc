@@ -81,14 +81,13 @@ absl::Status FeedInputs(
 
     // Set an attribute in _Arg node to indicate it has a batch dimension
     auto node_attrs = n->attrs();
-    const AttrValue* shape_attr  = node_attrs.FindByString("_output_shapes");
+    const AttrValue* shape_attr = node_attrs.FindByString("_output_shapes");
     if (shape_attr && shape_attr->has_list()) {
       const TensorShapeProto& shape = shape_attr->list().shape(0);
       if (shape.dim_size() >= 1 && shape.dim(0).size() == -1) {
         feed_node->AddAttr("_is_batch", true);
       }
     }
-
     // Update name_index
     (*name_index)[feed_node->name()] = feed_node;
     // Duplicate control edges aren't allowed, but feed_node was *just* created

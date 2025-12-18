@@ -55,6 +55,7 @@ class RetvalOp : public OpKernel {
  private:
   int index_;
   DataType dtype_;
+  bool is_batch_;
 
   RetvalOp(const RetvalOp&) = delete;
   void operator=(const RetvalOp&) = delete;

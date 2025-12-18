@@ -428,60 +428,38 @@ absl::Status CompileToLocalExecutable(
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
   // Rewriting the argument with the magic number if they have dynamic
-  // dimension, detecting dynamic dimension via _custom_dynamic_dims attr in the
+  // dimension, detecting dynamic dimension via _is_batch attr in the
   // argument.
   std::vector<XlaCompiler::Argument> norm_args(args.begin(), args.end());
   constexpr int64_t kMagicBound = 977;
-
   if (options.flib_def != nullptr) {
     const FunctionDef* fdef = options.flib_def->Find(function.name());
     if (fdef != nullptr) {
       for (const auto& kv : fdef->arg_attr()) {
         int arg_index = kv.first;
         const auto& attr_map = kv.second.attr();
-        auto it = attr_map.find("_custom_dynamic_dims");
-        if (it == attr_map.end()) continue;
+        auto it = attr_map.find("_is_batch");
 
         const AttrValue& v = it->second;
-        std::vector<int64_t> dyn_dims(v.list().i().begin(), v.list().i().end());
-        if (arg_index >= 0 && arg_index < norm_args.size()) {
-          norm_args[arg_index].dynamic_dims = dyn_dims;
-        }
+        if (it == attr_map.end()) continue;
+        norm_args[arg_index].dynamic_dim = 0;
       }
     }
   }
   for (int i = 0; i < norm_args.size(); ++i) {
     auto& arg = norm_args[i];
-    // Part 1: dynamic dims / TensorShape.
-    if (!arg.dynamic_dims.empty()) {
+    // argument rewrite.
+    if (arg.dynamic_dim == 0) {
       TensorShape& shp = std::get<TensorShape>(arg.shape);
-
-      for (int64_t d : arg.dynamic_dims) {
-        if (d < 0 || d >= shp.dims()) continue;
-
-        int64_t old = shp.dim_size(d);
-        // Passing the incoming batch size to ctx to save it.
-        ctx->params()->batch_size = old;
-        if (old != kMagicBound) {
-          shp.set_dim(d, kMagicBound);
-        }
-      }
+      int64_t old = shp.dim_size(0);
+      shp.set_dim(0, kMagicBound);
     }
-    // Part 2: constant argument rewrite otherwise it still store the incoming
-    // batch request.
+    // constant argument rewrite otherwise it still store the incoming batch
+    // request.
     if (arg.kind == XlaCompiler::Argument::kConstant) {
       auto flat = arg.constant_value.flat<int32>();
       int32 old_batch = flat(0);
       flat(0) = static_cast<int32>(kMagicBound);
-      VLOG(2) << "[Huawei]  -> rewriting to [" << old_batch << ", "
-              << kMagicBound << "]\n";
-    }
-  }
-
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "[Huawei] num_inputs=" << norm_args.size();
-    for (int i = 0, end = norm_args.size(); i < end; i++) {
-      VLOG(3) << i << ": " << norm_args[i].HumanString();
     }
   }
 
