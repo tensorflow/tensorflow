@@ -594,11 +594,13 @@ cc_library(
     name = "indexing_analysis",
     srcs = [
         "indexing_analysis.cc",
+        "indexing_analysis_utils.cc",
         "indexing_map.cc",
         "indexing_map_serialization.cc",
     ],
     hdrs = [
         "indexing_analysis.h",
+        "indexing_analysis_utils.h",
         "indexing_map.h",
         "indexing_map_serialization.h",
     ],
@@ -626,6 +628,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:logging",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -644,8 +647,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -698,12 +699,18 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
+        ":stablehlo_indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:stablehlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -794,5 +801,24 @@ xla_cc_test(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_indexing_analysis",
+    srcs = ["stablehlo_indexing_analysis.cc"],
+    hdrs = ["stablehlo_indexing_analysis.h"],
+    deps = [
+        ":indexing_analysis",
+        ":interval",
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla/mlir_hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
     ],
 )

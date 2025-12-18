@@ -1147,7 +1147,7 @@ ComposeIndexingResult ComposeInstructionIndexing(
     IndexingMap rt_map =
         ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(), rt_var.map);
     HloInstructionAdaptor hlo_adaptor =
-        instruction_adaptor.parent().GetInstruction(rt_var.hlo);
+        instruction_adaptor.parent().GetInstruction(rt_var.hlo());
     auto tiled_runtime_var = std::make_unique<SymbolicTiledHloInstruction>(
         &hlo_adaptor.instruction(), rt_map,
         tiled_hlo_instruction->runtime_variables());
