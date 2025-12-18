@@ -395,6 +395,13 @@ ENTRY e {
 
 class PersistedAutotuningTest : public HloTestBase {
  protected:
+  void SetUp() override {
+    AutotunerUtil::ClearAutotuneResults();
+    xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
+  }
+
+  void TearDown() override { AutotunerUtil::ClearAutotuneResults(); }
+
   static constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -428,7 +435,6 @@ ENTRY e {
 
 TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
-  xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
 
   // Check that it writes the results on the first compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
@@ -459,8 +465,6 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
 }
 
 TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
-  xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
-
   TF_EXPECT_OK(GetOptimizedModule(R"(
 e {
   a = f32[64,128] parameter(0)
