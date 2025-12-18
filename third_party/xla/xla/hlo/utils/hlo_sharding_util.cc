@@ -789,6 +789,27 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
+
+  if (sharding.UseNamedShardingLeaf()) {
+    // Check to ensure subgroup dimensions are not passed in dimensions as named
+    // sharding doesn't handle them as part of dim_shardings but separate
+    // replicated, unreduced axes as opposed to tile hlo sharding format which
+    // uses tile dimensions to represent subgroup dimensions as well.
+    DCHECK_EQ(sharding.num_dimensions(), dimensions.size());
+
+    std::vector<NamedSharding::DimensionSharding> transposed_dim_shardings(
+        sharding.num_dimensions());
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      transposed_dim_shardings[dimensions[i]] =
+          sharding.named_sharding().dim_sharding(i);
+    }
+    return HloSharding(NamedSharding(
+        sharding.named_sharding().mesh(), transposed_dim_shardings,
+        sharding.named_sharding().replicated_axes(),
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().metadata()));
+  }
+
   std::vector<int> perm_dimensions(dimensions.begin(), dimensions.end());
   // Add subgroup dims if missing.
   if (sharding.TiledDataRank() == dimensions.size()) {
@@ -846,8 +867,13 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   int64_t source_size;
   int64_t target_size;
   int64_t source_tile_dim;
+  NamedSharding::DimensionSharding source_dim_sharding;
   DimensionVector target_tile_dims(target_rank, 1);
+  std::vector<NamedSharding::DimensionSharding> target_dim_shardings(
+      target_rank);
   std::vector<int64_t> source_dims_to_replicate;
+
+  bool use_named_sharding = source_sharding.UseNamedShardingLeaf();
 
   auto advance_source = [&]() {
     source_index++;
@@ -856,6 +882,10 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     }
     source_size = source_shape.dimensions()[source_index];
     source_tile_dim = source_sharding.dimension(source_index);
+    if (use_named_sharding) {
+      source_dim_sharding =
+          source_sharding.named_sharding().dim_sharding(source_index);
+    }
     return true;
   };
   auto advance_target = [&]() {
@@ -880,6 +910,9 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     while (source_dims_product != 1 && source_dims_product % target_size == 0) {
       source_dims_product /= target_size;
       if (!advance_target()) {
+        // TODO: At this point we are losing adding source axis of size 1 to
+        // target, but because there is no 1:1 correspondence between source and
+        // target shape's size we can't propagate it.
         break;
       }
     }
@@ -891,11 +924,18 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     if (source_size == target_size) {
       if (target_size != target_shape.dimensions()[target_index] &&
           source_size % source_tile_dim != 0) {
-        target_tile_dims[target_index] *=
-            std::gcd(source_size, source_tile_dim);
+        int64_t gcd = std::gcd(source_size, source_tile_dim);
+        target_tile_dims[target_index] *= gcd;
+        if (use_named_sharding) {
+          target_dim_shardings[target_index].append(source_dim_sharding.split(
+              source_sharding.named_sharding().mesh(), gcd));
+        }
         break;
       }
       target_tile_dims[target_index] *= source_tile_dim;
+      if (use_named_sharding) {
+        target_dim_shardings[target_index].append(source_dim_sharding);
+      }
       advance_source();
       advance_target();
     } else if (target_size == 1) {
@@ -920,11 +960,23 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       source_tile_dim /= gcd;
       target_size /= gcd;
       target_tile_dims[target_index] *= gcd;
+      if (use_named_sharding) {
+        target_dim_shardings[target_index].append(source_dim_sharding.split(
+            source_sharding.named_sharding().mesh(), gcd));
+      }
     }
   }
 
   if (Product(target_tile_dims) == 1) {
     return std::nullopt;
+  }
+
+  if (use_named_sharding) {
+    return HloSharding(NamedSharding(
+        source_sharding.named_sharding().mesh(), target_dim_shardings,
+        source_sharding.named_sharding().replicated_axes(),
+        source_sharding.named_sharding().unreduced_axes(),
+        source_sharding.named_sharding().metadata()));
   }
 
   // If there is a source dimension satisfying (1) size is 1, (2) partition > 1,
@@ -1669,6 +1721,31 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
   if (source.IsTileMaximal() || source.IsManual()) {
     return source;
   }
+
+  // TODO: tgt_to_src is sufficient for transposing, we don't need src_to_tgt,
+  // at least for named sharding case.
+  if (source.UseNamedShardingLeaf()) {
+    // Check to ensure subgroup dimensions are not passed in src_to_tgt as named
+    // sharding doesn't handle them as part of dim_shardings but separate
+    // replicated, unreduced axes as opposed to tile hlo sharding format which
+    // uses tile dimensions to represent subgroup dimensions as well.
+    DCHECK_EQ(source.num_dimensions(), src_to_tgt.size());
+
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        tgt_to_src.size());
+    for (int64_t i = 0; i < tgt_to_src.size(); ++i) {
+      if (tgt_to_src[i] >= 0) {
+        new_dim_shardings[i] =
+            source.named_sharding().dim_sharding(tgt_to_src[i]);
+      }
+    }
+
+    return HloSharding(NamedSharding(
+        source.named_sharding().mesh(), new_dim_shardings,
+        source.named_sharding().replicated_axes(),
+        source.named_sharding().unreduced_axes(), source.metadata()));
+  }
+
   if (src_to_tgt.size() < source.num_dimensions()) {
     // Add missing subgroup dims.
     DimensionVector new_src_to_tgt(src_to_tgt.begin(), src_to_tgt.end());

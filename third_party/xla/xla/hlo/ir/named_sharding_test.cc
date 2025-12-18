@@ -111,6 +111,98 @@ TEST(NamedShardingTest, Equality) {
             NamedSharding(mesh_diff_shape, {ds_ab, ds_dc}, {axis_b}, {axis_c}));
 }
 
+TEST(NamedShardingTest, ToString) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1, {2, 2});
+  AxisRef axis_c(2);
+  AxisRef axis_d(3, {4, 2});
+
+  DimensionSharding ds_empty;
+  EXPECT_EQ(ds_empty.ToString(mesh), "{}");
+
+  DimensionSharding ds_empty_open(/*axes=*/{}, /*is_closed=*/false);
+  EXPECT_EQ(ds_empty_open.ToString(mesh), "{?}");
+
+  DimensionSharding ds_a({axis_a}, /*is_closed=*/true);
+  EXPECT_EQ(ds_a.ToString(mesh), "{a}");
+
+  DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+  EXPECT_EQ(ds_ab.ToString(mesh), "{a, b:(2)2}");
+
+  DimensionSharding ds_ab_open({axis_a, axis_b}, /*is_closed=*/false);
+  EXPECT_EQ(ds_ab_open.ToString(mesh), "{a, b:(2)2, ?}");
+
+  NamedSharding sharding_dim(mesh, {ds_a, ds_ab_open});
+  EXPECT_EQ(sharding_dim.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [{a}, {a, b:(2)2, ?}]}");
+
+  NamedSharding sharding_replicated(mesh, {}, {axis_c});
+  EXPECT_EQ(sharding_replicated.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [], replicated={c}}");
+
+  NamedSharding sharding_unreduced(mesh, {}, {}, {axis_d});
+  EXPECT_EQ(sharding_unreduced.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [], unreduced={d:(4)2}}");
+
+  Mesh maximal_mesh(5);
+  NamedSharding maximal_sharding(maximal_mesh);
+  EXPECT_EQ(maximal_sharding.ToString(), "{@maximal_mesh<device_ids=[5]>, []}");
+
+  OpMetadata metadata;
+  metadata.set_op_name("foo");
+  NamedSharding sharding_all(mesh, {ds_a}, {axis_c}, {axis_d}, {metadata});
+  EXPECT_EQ(
+      sharding_all.ToString(),
+      "{@mesh<a=2,b=4,c=3,d=8>, [{a}], replicated={c}, unreduced={d:(4)2}}");
+  // EXPECT_EQ(
+  //     sharding_all.ToString(/*include_metadata=*/true),
+  //     "{@mesh<a=2,b=4,c=3,d=8>, dim_shardings={{a}}, replicated_axes={c}, "
+  //     "unreduced_axes={d:(4)2}, metadata={op_name: \"foo\"}}");
+
+  // TODO: Add tests for mesh with non iota device assignment.
+}
+
+TEST(NamedShardingTest, DimensionShardingSplit) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef a(0), b(1), c(2), d(3);
+  AxisRef b1(1, {1, 2}), b2(1, {2, 2});
+  AxisRef d1(3, {1, 4}), d2(3, {4, 2});
+
+  DimensionSharding ds1({a, b1, c}, /*is_closed=*/true);
+  DimensionSharding split1 = ds1.split(mesh, 6);
+  EXPECT_THAT(split1.axes(), ElementsAre(a, c));
+  EXPECT_THAT(ds1.axes(), ElementsAre(b1));
+
+  DimensionSharding ds2({a, b, c}, /*is_closed=*/true);
+  DimensionSharding split2 = ds2.split(mesh, 4);
+  EXPECT_THAT(split2.axes(), ElementsAre(a, b1));
+  EXPECT_THAT(ds2.axes(), ElementsAre(b2, c));
+  DimensionSharding split3 = ds2.split(mesh, 2);
+  EXPECT_THAT(split3.axes(), ElementsAre(b2));
+  EXPECT_THAT(ds2.axes(), ElementsAre(c));
+
+  DimensionSharding ds3({b, d}, /*is_closed=*/true);
+  DimensionSharding split4 = ds3.split(mesh, 16);
+  EXPECT_THAT(split4.axes(), ElementsAre(b, d1));
+  EXPECT_THAT(ds3.axes(), ElementsAre(d2));
+
+  DimensionSharding ds4({a, c}, /*is_closed=*/true);
+  DimensionSharding split5 = ds4.split(mesh, 3);
+  EXPECT_THAT(split5.axes(), ElementsAre(c));
+  EXPECT_THAT(ds4.axes(), ElementsAre(a));
+
+  // TODO: Should we merge axes while pushing in dimension sharding, it would
+  // only be required if we allow non-sorted or non-merged axes in
+  // dimension sharding construction.
+  DimensionSharding ds5({b1, c, b2}, /*is_closed=*/true);
+  DimensionSharding split6 = ds5.split(mesh, 3);
+  EXPECT_THAT(split6.axes(), ElementsAre(c));
+  EXPECT_THAT(ds5.axes(), ElementsAre(b1, b2));
+}
+
 TEST(NamedShardingTest, GetShardedSize) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 
