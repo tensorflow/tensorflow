@@ -404,9 +404,9 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // for the generic builder.
     StablehloToHloOp<StablehloOpTy> hloOp;
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
-      hloOp = rewriter.create<mhlo::CaseOp>(stablehloOp.getLoc(), hloTypes,
-                                            hloOperands, hloAttrs,
-                                            stablehloOp.getBranches().size());
+      hloOp = mhlo::CaseOp::create(rewriter, stablehloOp.getLoc(), hloTypes,
+                                   hloOperands, hloAttrs,
+                                   stablehloOp.getBranches().size());
     } else {
       hloOp = rewriter.create<StablehloToHloOp<StablehloOpTy>>(
           stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);

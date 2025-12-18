@@ -159,9 +159,9 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dimNumbers = mhlo::DotDimensionNumbersAttr::get(
         rewriter.getContext(), lhsBatchingDims, rhsBatchingDims,
         lhsContractingDims, rhsContractingDims);
-    auto dotGeneralOp = rewriter.create<DotGeneralOp>(
-        einsum.getLoc(), dotGeneralResultType, einsum.getLhs(), einsum.getRhs(),
-        dimNumbers,
+    auto dotGeneralOp = DotGeneralOp::create(
+        rewriter, einsum.getLoc(), dotGeneralResultType, einsum.getLhs(),
+        einsum.getRhs(), dimNumbers,
         /*precision_config=*/ArrayAttr{}, /*dot_algorithm=*/DotAlgorithmAttr{});
 
     if (isNaturalOrder) {
