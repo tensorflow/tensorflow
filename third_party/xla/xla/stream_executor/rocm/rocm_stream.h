@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
