@@ -3616,11 +3616,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
             "in_bounds");
     multi_index[i] =
         SDiv(multi_index[i], index_typed_const(pad_dim.interior_padding() + 1));
-    in_bounds =
-        And(in_bounds,
-            ICmpSLT(multi_index[i],
-                    index_typed_const(hlo->operand(0)->shape().dimensions(i))),
-            "in_bounds");
+
+#define MAGIC 977
+    int64_t shape_dim = hlo->operand(0)->shape().dimensions(i);
+    llvm::Value* bound = (shape_dim == MAGIC) ? llvm_ir::GetBatchDimByPtr(b_)
+                                              : index_typed_const(shape_dim);
+
+    in_bounds = And(in_bounds, ICmpSLT(multi_index[i], bound), "in_bounds");
   }
 
   // if (in_bounds) {
@@ -3687,9 +3689,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     return llvm::ConstantInt::get(index_type, c);
   };
 
+  #define MAGIC 977
+  llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_);
+  llvm::Value* contracted_bound = (contracted_dim_size == MAGIC)
+                                       ? bdim_value
+                                       : index_typed_const(contracted_dim_size);
+
   std::unique_ptr<llvm_ir::ForLoop> inner_loop = llvm_ir::ForLoop::EmitForLoop(
-      IrName(hlo, "inner"), index_typed_const(0),
-      index_typed_const(contracted_dim_size), index_typed_const(1), b_);
+      IrName(hlo, "inner"), index_typed_const(0), contracted_bound,
+      index_typed_const(1), b_);
 
   SetToFirstInsertPoint(inner_loop->GetPreheaderBasicBlock(), b_);
   PrimitiveType primitive_type = hlo->shape().element_type();
@@ -4236,11 +4244,17 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     // comparison is equivalent to the unsigned comparison
     // input_multi_index[i] < bound, as a negative value wraps to a large
     // positive value.
+
+    llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_);
+    int64_t dim_bound = reduce_window->inputs()[0]->shape().dimensions(i);
+
+    llvm::Value* shape_bound =
+        (dim_bound == MAGIC) ? bdim_value : index_typed_const(dim_bound);
+
     in_bounds =
         And(in_bounds,
             ICmpULT(input_multi_index[i],
-                    index_typed_const(
-                        reduce_window->inputs()[0]->shape().dimensions(i))));
+                    shape_bound));
   }
 
   llvm_ir::LlvmIfData if_data =

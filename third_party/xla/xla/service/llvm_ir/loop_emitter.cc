@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -189,11 +190,11 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
 #define MAGIC 977
 
 #if defined(STEVEN)
-  llvm::LLVMContext &ctx = b_->getContext();
-  llvm::IntegerType *i64Type = llvm::IntegerType::getInt64Ty(ctx);
+  llvm::LLVMContext& ctx = b_->getContext();
+  llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
 
-  llvm::PointerType *ptr = llvm::PointerType::getUnqual(ctx);
-  llvm::StructType *callFrameTy = llvm::StructType::create(
+  llvm::PointerType* ptr = llvm::PointerType::getUnqual(ctx);
+  llvm::StructType* callFrameTy = llvm::StructType::create(
       "XLA_CPU_KernelArg", ptr, ptr, i64Type, ptr, i64Type);
 
   std::vector<llvm::Value*> dynamic_dims;
@@ -201,13 +202,8 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
     dynamic_dims.push_back(llvm::ConstantInt::get(i64Type, dim));
   }
 
-  llvm::Function *function = b_->GetInsertBlock()->getParent();
-  llvm::Value *call_frame = function->getArg(0);
-
-  llvm::Value *bdim_gep =
-      b_->CreateStructGEP(callFrameTy, call_frame, 4, "bdim_gep");
-  llvm::Value *bdim_value = b_->CreateLoad(i64Type, bdim_gep, "bdim_value");
-
+  llvm::Function* function = b_->GetInsertBlock()->getParent();
+  llvm::Value* bdim_value = xla::llvm_ir::GetBatchDimByPtr(b_);
   bool dynamic = false;
   for (int i = 0; i < shape_.dimensions_size(); i++) {
     if (shape_.dimensions()[i] == MAGIC) {
@@ -220,13 +216,12 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   if (dynamic) {
 #if defined(PRINT_BATCHSIZE)
     // Print batch size
-    llvm::FunctionType *printfType = llvm::FunctionType::get(
-        b_->getInt32Ty(), llvm::PointerType::get(b_->getInt8Ty(), 0),
-        true);
+    llvm::FunctionType* printfType = llvm::FunctionType::get(
+        b_->getInt32Ty(), llvm::PointerType::get(b_->getInt8Ty(), 0), true);
     llvm::Module* module = function->getParent();
     llvm::FunctionCallee printfFunc =
         module->getOrInsertFunction("printf", printfType);
-    llvm::Value *formatStr =
+    llvm::Value* formatStr =
         b_->CreateGlobalStringPtr("The batch size is : %d!\n");
     b_->CreateCall(printfFunc, {formatStr, bdim_value});
 #endif

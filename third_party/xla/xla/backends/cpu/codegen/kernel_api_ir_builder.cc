@@ -316,6 +316,21 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   return EmitKernelPrototype(module, name, arguments, results);
 }
 
+llvm::Value* KernelApiIrBuilder::EmitGetBatchDim(llvm::IRBuilderBase& builder,
+                                                 llvm::Value* call_frame) {
+  llvm::LLVMContext& ctx = builder.getContext();
+
+  llvm::Type* ptr = llvm::PointerType::get(ctx, 0);
+
+  llvm::IntegerType* i64 = llvm::IntegerType::getInt64Ty(ctx);
+
+  llvm::Value* bdim_gep =
+      builder.CreateStructGEP(call_frame_ty_, call_frame, 4, "bdim_gep");
+  llvm::Value* bdim_value = builder.CreateLoad(i64, bdim_gep, "bdim_value");
+
+  return bdim_value;
+}
+
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
@@ -393,6 +408,8 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
     }
     ir_results.push_back(std::move(ir_result));
   }
+
+  EmitGetBatchDim(b, call_frame);
 
   // Return null pointer to signal success as we do not support error handling
   // in the compiled host kernel.
@@ -503,7 +520,11 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
   const llvm::DataLayout& data_layout = llvm_module->getDataLayout();
   int64_t pointer_size = data_layout.getTypeStoreSize(builder.getPtrTy());
   int64_t byte_size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  llvm_ir::SetDereferenceableMetadataForLoad(data, byte_size);
+  #define MAGIC 977
+  int64_t bsize = ShapeUtil::ByteSizeOf(shape);
+  if (bsize != MAGIC){
+    llvm_ir::SetDereferenceableMetadataForLoad(data,bsize);
+  }
 
   // All buffers pointers passed to host kernels are expected to be invariant
   // over the whole program. Note the metadata is attached only to loading

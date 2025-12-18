@@ -811,5 +811,35 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
   b->SetInsertPoint(continued, continued->getFirstInsertionPt());
 }
 
+llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b) {
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  llvm::Value* loadedValue = nullptr;
+
+  for (auto& inst : function->getEntryBlock()) {
+    if (inst.getName() == "bdim_value") {
+      loadedValue = &inst;
+    }
+  }
+  if (!loadedValue) {
+    llvm::errs() << "Could not find the %bdim_value variable. \n";
+  }
+  return loadedValue;
+}
+
+llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b) {
+  llvm::LLVMContext& ctx = b->getContext();
+  llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
+  llvm::PointerType* ptr = llvm::PointerType::getUnqual(ctx);
+  llvm::StructType* callFrameTy = llvm::StructType::create(
+      "XLA_CPU_KernelArg", ptr, ptr, i64Type, ptr, i64Type);
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Value* call_frame = function->getArg(0);
+  llvm::Value* bdim_gep =
+      b->CreateStructGEP(callFrameTy, call_frame, 4, "bdim_gep");
+
+  return b->CreateLoad(i64Type, bdim_gep, "bdim_value");
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

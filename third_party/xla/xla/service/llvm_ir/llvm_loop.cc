@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
+#include "llvm/include/llvm/Support/Debug.h"
+#define MAGIC 977
 
 namespace xla {
 namespace llvm_ir {
@@ -225,9 +227,13 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
-  return AddLoop(suffix, GetConstantWithIndexType(start_index),
-                 GetConstantWithIndexType(end_index), unroll_mode,
-                 prevent_vectorization);
+
+  llvm::Value* batch_dim = GetBatchDimByName(b_);
+  llvm::Value* end =
+      (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
+
+  return AddLoop(suffix, GetConstantWithIndexType(start_index), end,
+                 unroll_mode, prevent_vectorization);
 }
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
@@ -236,8 +242,12 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
-  return AddLoop(suffix, GetConstantWithIndexType(start_index),
-                 GetConstantWithIndexType(end_index),
+
+  llvm::Value* batch_dim = GetBatchDimByName(b_);
+  llvm::Value* end =
+      (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
+
+  return AddLoop(suffix, GetConstantWithIndexType(start_index), end,
                  GetConstantWithIndexType(stride), unroll_mode,
                  prevent_vectorization);
 }
