@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
 
-#include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"

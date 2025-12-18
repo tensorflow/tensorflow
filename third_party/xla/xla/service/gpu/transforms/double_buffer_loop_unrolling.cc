@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <optional>
