@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace {
 tensorflow::string* g_test_model_dir = nullptr;
@@ -655,8 +656,9 @@ TEST_F(QuantizationUtilsTest, QuantizeFloat16Clamp) {
   auto subgraph = std::make_unique<tflite::SubGraphT>();
   auto tensor = std::make_unique<TensorT>();
   auto buffer = std::make_unique<tflite::BufferT>();
-  constexpr int kNumElements = 6;
-  const std::vector<float> weights = {2.0, 1.0, 65504., 65505, -65504., -99999};
+  constexpr int kNumElements = 7;
+  const std::vector<float> weights = {0.0,   2.0,     1.0,   65504.,
+                                      65505, -65504., -99999};
   auto weights_reinterpreted_data =
       reinterpret_cast<const unsigned char*>(weights.data());
   buffer->data.assign(weights_reinterpreted_data,
@@ -673,15 +675,20 @@ TEST_F(QuantizationUtilsTest, QuantizeFloat16Clamp) {
   EXPECT_EQ(
       QuantizeTensorFloat16(model.get(), model->subgraphs[0]->tensors[0].get()),
       kTfLiteOk);
-  auto weightsf16 = reinterpret_cast<Eigen::half*>(
+  auto weightsf16 = reinterpret_cast<half*>(
       model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data.data());
   std::vector<float> wf32(kNumElements);
-  std::transform(weightsf16, weightsf16 + 6, wf32.begin(),
-                 [](Eigen::half a) { return static_cast<float>(a); });
+  std::transform(weightsf16, weightsf16 + kNumElements, wf32.begin(),
+                 [](half a) { return static_cast<float>(a); });
 
-  EXPECT_THAT(wf32,
-              ElementsAreArray({2.0, 1.0, 65504., 65504., -65504., -65504.}));
+  EXPECT_THAT(wf32, ElementsAreArray(
+                        {0.0, 2.0, 1.0, 65504., 65504., -65504., -65504.}));
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_FLOAT16);
+}
+
+TEST_F(QuantizationUtilsTest, QuantizeTensorFloat16NullInputs) {
+  tflite::TestErrorReporter error_reporter_;
+  EXPECT_EQ(QuantizeTensorFloat16(nullptr, nullptr), kTfLiteError);
 }
 
 TEST_F(QuantizationUtilsTest, QuantizeFloat16) {

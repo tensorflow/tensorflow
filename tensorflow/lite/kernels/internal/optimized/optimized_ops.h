@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/transpose_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/types/half.h"
 
 #if __aarch64__ && __clang__
 #define TFLITE_SOFTMAX_USE_UINT16_LUT
@@ -6483,8 +6484,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
-inline void Dequantize(const RuntimeShape& input_shape,
-                       const Eigen::half* input_data,
+inline void Dequantize(const RuntimeShape& input_shape, const half* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
   reference_ops::Dequantize(input_shape, input_data, output_shape, output_data);
 }
