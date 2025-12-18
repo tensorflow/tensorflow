@@ -72,8 +72,8 @@ CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
     }
   }
 
-  config.group_mode =
-      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  config.group_mode = CollectiveOpGroupMode::
+      COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION;
 
   return config;
 }
