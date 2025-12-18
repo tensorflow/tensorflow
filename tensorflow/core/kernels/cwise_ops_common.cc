@@ -36,7 +36,7 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   // associated information.  This is sufficient for now, since the only binary
   // ops that have compute errors are integer division and mod, and the only
   // error they produce is zero division.
-  const string& op = ctx->op_kernel().type_string();
+  const std::string& op = ctx->op_kernel().type_string();
   if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
@@ -62,7 +62,7 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
         TryGetNodeAttr(ctx->op_kernel().def(), "incompatible_shape_error",
                        &(incompatible_shape_error));
     if (has_attr && !incompatible_shape_error) {
-      const string& op = ctx->op_kernel().type_string();
+      const std::string& op = ctx->op_kernel().type_string();
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
       result = (op == "NotEqual");
       return;
