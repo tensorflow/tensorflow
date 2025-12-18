@@ -980,6 +980,14 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
                                                  fingerprint_bytes.size());
   return absl::StrCat(absl::BytesToHexString(fingerprint_bytes_view), ".bin");
 }
+
+inline absl::StatusOr<DeviceAssignment> SplitPhaseDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) {
+  DeviceAssignment device_assignment(num_replicas, num_partitions);
+  device_assignment.FillIota(0);
+  return device_assignment;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
@@ -999,6 +1007,12 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(tsl::Env::Default(), path, serialized_executable));
   return wrapped_executable;
+}
+
+absl::StatusOr<DeviceAssignment>
+CompilePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
@@ -1043,6 +1057,12 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   }
 
   return DeserializeExecutable(serialized_executable);
+}
+
+absl::StatusOr<DeviceAssignment>
+ExecutePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
+    int num_replicas, int num_partitions) const {
+  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 }  // namespace xla

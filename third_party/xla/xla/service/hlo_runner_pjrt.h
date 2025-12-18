@@ -192,6 +192,9 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
         "expected.");
   }
 
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
  private:
   std::string artifact_dir_;
 };
@@ -220,6 +223,9 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
 
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) override;
+
+  absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
 
  private:
   std::string artifact_dir_;
