@@ -62,7 +62,7 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     // TODO(dga):  Test the batch case also.
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<tstring>()() =
-        string(reinterpret_cast<const char*>(data), size);
+        std::string(reinterpret_cast<const char*>(data), size);
     RunInputs({{"input", input_tensor}});
   }
 };
