@@ -827,7 +827,7 @@ llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b) {
   return loadedValue;
 }
 
-llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b) {
+llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b, int64_t multiplier) {
   llvm::LLVMContext& ctx = b->getContext();
   llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
   llvm::PointerType* ptr = llvm::PointerType::getUnqual(ctx);
@@ -837,8 +837,18 @@ llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b) {
   llvm::Value* call_frame = function->getArg(0);
   llvm::Value* bdim_gep =
       b->CreateStructGEP(callFrameTy, call_frame, 4, "bdim_gep");
+  llvm::Value* bdim = b->CreateLoad(i64Type, bdim_gep, "bdim_value");
 
-  return b->CreateLoad(i64Type, bdim_gep, "bdim_value");
+  if (multiplier < 1) {
+    llvm::errs() << "Multiplier is less than 1, this should not happen.\n";
+    return nullptr;
+  } else if (multiplier == 1) {
+    return bdim;
+  } else {
+    llvm::ConstantInt* m = llvm::ConstantInt::get(i64Type, multiplier, true);
+    llvm::Value* bdim_scaled = b->CreateMul(bdim, m, "bdim_scaled");
+    return bdim_scaled;
+  }
 }
 
 }  // namespace llvm_ir

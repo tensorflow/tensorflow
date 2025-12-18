@@ -336,7 +336,7 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
 
 llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b);
 
-llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b);
+llvm::Value* GetBatchDimByPtr(llvm::IRBuilderBase* b, int64_t multiplier = 1);
 
 }  // namespace llvm_ir
 }  // namespace xla

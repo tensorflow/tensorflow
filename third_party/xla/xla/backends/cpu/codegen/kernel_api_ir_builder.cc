@@ -520,11 +520,8 @@ llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(
   const llvm::DataLayout& data_layout = llvm_module->getDataLayout();
   int64_t pointer_size = data_layout.getTypeStoreSize(builder.getPtrTy());
   int64_t byte_size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  #define MAGIC 977
-  int64_t bsize = ShapeUtil::ByteSizeOf(shape);
-  if (bsize != MAGIC){
-    llvm_ir::SetDereferenceableMetadataForLoad(data,bsize);
-  }
+  if (shape.outer_multiplier() < 0)
+    llvm_ir::SetDereferenceableMetadataForLoad(data,byte_size);
 
   // All buffers pointers passed to host kernels are expected to be invariant
   // over the whole program. Note the metadata is attached only to loading

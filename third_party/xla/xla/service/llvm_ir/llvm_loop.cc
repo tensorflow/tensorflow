@@ -229,6 +229,8 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
   CHECK_LE(start_index, end_index);
 
   llvm::Value* batch_dim = GetBatchDimByName(b_);
+  // [Steven] Issue here because we do not have access to the shape we cannot
+  // check the multiplier.
   llvm::Value* end =
       (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
 
@@ -244,6 +246,8 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
   CHECK_LE(start_index, end_index);
 
   llvm::Value* batch_dim = GetBatchDimByName(b_);
+  // [Steven] Issue here because we do not have access to the shape we cannot
+  // check the multiplier.
   llvm::Value* end =
       (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
 

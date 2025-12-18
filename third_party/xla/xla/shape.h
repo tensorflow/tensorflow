@@ -532,7 +532,10 @@ class Shape {
     return Shape::Hash(std::move(h), s);
   }
 
+  int64_t outer_multiplier() const { return outer_multiplier_; }
+  void set_outer_multiplier(int64_t m) { outer_multiplier_ = m; }
  private:
+  int64_t outer_multiplier_ = -1;
   friend absl::Status ValidateNonLayoutProperties(const Shape& shape);
 
   // Define one state struct for each shape category. Depending on the element

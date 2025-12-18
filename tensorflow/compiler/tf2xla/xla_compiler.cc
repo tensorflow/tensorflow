@@ -858,7 +858,6 @@ absl::Status XlaCompiler::CompileFunction(
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
     if (n->IsArg()) {
-      std::cerr << "NODE IS " << n->DebugString() << "\n";
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }

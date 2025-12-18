@@ -295,6 +295,8 @@ cc_library(
         "//xla/mlir_hlo:all_passes",
         "//xla/mlir_hlo:transforms_passes",
         "//xla/service:all_reduce_promotion",
+        "//xla/service:outer_dimension_propagation",
+        "//xla/service:outer_dimension_propagation_example",
         "//xla/service:all_to_all_decomposer",
         "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",

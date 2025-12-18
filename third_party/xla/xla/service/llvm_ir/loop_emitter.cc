@@ -185,11 +185,11 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
 
   ForLoopNest loop_nest(loop_name, b_);
 
-#define STEVEN
+#define DYN_DIMS
 #define PRINT_BATCHSIZE
 #define MAGIC 977
 
-#if defined(STEVEN)
+#if defined(DYN_DIMS)
   llvm::LLVMContext& ctx = b_->getContext();
   llvm::IntegerType* i64Type = llvm::IntegerType::getInt64Ty(ctx);
 
@@ -206,8 +206,9 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   llvm::Value* bdim_value = xla::llvm_ir::GetBatchDimByPtr(b_);
   bool dynamic = false;
   for (int i = 0; i < shape_.dimensions_size(); i++) {
-    if (shape_.dimensions()[i] == MAGIC) {
-      dynamic_dims[i] = bdim_value;
+    int64_t multiplier = (i == 0) ? shape_.outer_multiplier() : -1;
+    if (multiplier > 0) {
+      dynamic_dims[i] = xla::llvm_ir::GetBatchDimByPtr(b_, multiplier);
       shape_.set_dynamic_dimension(i, true);
       dynamic = true;
     }

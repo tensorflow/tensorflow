@@ -3278,51 +3278,56 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
   }
 
   // We use bisection to select the input operand.
-  int64_t current_offset = 0;
+  int64_t coffset = 0;
+  llvm::Value* current_offset = source_index.GetConstantWithIndexType(0);
 
   // Offset for every operand.
-  std::vector<std::pair<int64_t, const HloInstruction*>> cases;
+  std::vector<std::pair<llvm::Value*, const HloInstruction*>> cases;
 
   cases.reserve(hlo->operand_count());
   for (const HloInstruction* operand : hlo->operands()) {
     cases.emplace_back(current_offset, operand);
-    current_offset += operand->shape().dimensions(concat_dim);
+    llvm::Value* cdim = source_index.GetConstantWithIndexType(
+        operand->shape().dimensions(concat_dim));
+    if (concat_dim == 0 && operand->shape().outer_multiplier() > 0) {
+      cdim = llvm_ir::GetBatchDimByPtr(b_, operand->shape().outer_multiplier());
+    }
+    current_offset = b_->CreateAdd(current_offset, cdim, "current_offset");
+    coffset += operand->shape().dimensions(concat_dim);
   }
-  CHECK_EQ(current_offset, hlo->shape().dimensions(concat_dim));
+  CHECK_EQ(coffset, hlo->shape().dimensions(concat_dim));
 
   std::function<llvm::BasicBlock*(
-      absl::Span<const std::pair<int64_t, const HloInstruction*>> operands)>
+      absl::Span<const std::pair<llvm::Value*, const HloInstruction*>> operands)>
       emit_tree =
-          [&](absl::Span<const std::pair<int64_t, const HloInstruction*>>
+          [&](absl::Span<const std::pair<llvm::Value*, const HloInstruction*>>
                   operands) {
             llvm::IRBuilder<>::InsertPointGuard guard(*b_);
             size_t mid = operands.size() / 2;
-            const std::pair<int64_t, const HloInstruction*>& pivot =
+            const std::pair<llvm::Value*, const HloInstruction*>& pivot =
                 operands[mid];
             llvm::BasicBlock* block = llvm_ir::CreateBasicBlock(
                 exit_block,
-                absl::StrCat("concatenate.pivot.", pivot.first, "."), b_);
+                absl::StrCat("concatenate.pivot."), b_);
             b_->SetInsertPoint(block);
 
             // If there's only one element we're done. The range is contiguous
             // so we can just jump to the block for it.
             if (operands.size() == 1) {
-              const std::pair<int64_t, const HloInstruction*>& operand =
+              const std::pair<llvm::Value*, const HloInstruction*>& operand =
                   operands.back();
               int64_t operand_id = to_unique_operand_id[operand.second];
 
               source_index_phis[operand_id]->addIncoming(
-                  source_index.GetConstantWithIndexType(operand.first),
+                  operand.first,
                   b_->GetInsertBlock());
               b_->CreateBr(emit_operand_blocks[operand_id]);
               return block;
             }
 
             // Take the middle element and recurse.
-            llvm::Constant* pivot_const = llvm::ConstantInt::get(
-                source_index[concat_dim]->getType(), pivot.first);
             llvm::Value* comp =
-                b_->CreateICmpULT(source_index[concat_dim], pivot_const);
+                b_->CreateICmpULT(source_index[concat_dim], pivot.first);
 
             llvm::BasicBlock* left_block = emit_tree(operands.subspan(0, mid));
             llvm::BasicBlock* right_block = emit_tree(operands.subspan(mid));
@@ -3617,10 +3622,17 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     multi_index[i] =
         SDiv(multi_index[i], index_typed_const(pad_dim.interior_padding() + 1));
 
-#define MAGIC 977
     int64_t shape_dim = hlo->operand(0)->shape().dimensions(i);
-    llvm::Value* bound = (shape_dim == MAGIC) ? llvm_ir::GetBatchDimByPtr(b_)
-                                              : index_typed_const(shape_dim);
+    llvm::Value* bound = index_typed_const(shape_dim);
+
+    int64_t multiplier =
+        (i == 0) ? hlo->operand(0)->shape().outer_multiplier() : -1;
+    if (multiplier > 0) {
+      bound = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+    } else if (shape_dim == 977) {
+      // This should not happen, and yet it does.
+      bound = llvm_ir::GetBatchDimByPtr(b_);
+    }
 
     in_bounds = And(in_bounds, ICmpSLT(multi_index[i], bound), "in_bounds");
   }
@@ -3689,11 +3701,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
     return llvm::ConstantInt::get(index_type, c);
   };
 
-  #define MAGIC 977
-  llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_);
-  llvm::Value* contracted_bound = (contracted_dim_size == MAGIC)
-                                       ? bdim_value
-                                       : index_typed_const(contracted_dim_size);
+  llvm::Value* contracted_bound = index_typed_const(contracted_dim_size);
+  int64_t multiplier = (lhs_contracting_dim == 0)
+                           ? hlo->operand(0)->shape().outer_multiplier()
+                           : -1;
+  if (multiplier > 0) {
+    llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+    contracted_bound = bdim_value;
+  }
 
   std::unique_ptr<llvm_ir::ForLoop> inner_loop = llvm_ir::ForLoop::EmitForLoop(
       IrName(hlo, "inner"), index_typed_const(0), contracted_bound,
@@ -3975,6 +3990,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> absl::StatusOr<llvm::Value*> {
+        // [Steven] the problem is that slices are represented by integer ranges.
+        // If these are based on the magic number they are wrong.
         IrArray::Index sliced_index = index.SourceIndexOfSlice(
             /*operand_shape=*/hlo->operand(0)->shape(),
             /*starts=*/hlo->slice_starts(),
@@ -4245,11 +4262,16 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     // input_multi_index[i] < bound, as a negative value wraps to a large
     // positive value.
 
-    llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_);
     int64_t dim_bound = reduce_window->inputs()[0]->shape().dimensions(i);
+    llvm::Value* shape_bound = index_typed_const(dim_bound);
 
-    llvm::Value* shape_bound =
-        (dim_bound == MAGIC) ? bdim_value : index_typed_const(dim_bound);
+    int64_t multiplier =
+        (i == 0) ? reduce_window->inputs()[0]->shape().outer_multiplier() : -1;
+
+    if (multiplier > 0) {
+      llvm::Value* bdim_value = llvm_ir::GetBatchDimByPtr(b_, multiplier);
+      shape_bound = bdim_value;
+    }
 
     in_bounds =
         And(in_bounds,

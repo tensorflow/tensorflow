@@ -316,8 +316,17 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
           builder->CreateMul(multidim_[i], GetConstantWithIndexType(stride)),
           GetConstantWithIndexType(starts[i]));
     } else {
+      // [Steven] Big problem here: there is no way to check the shape
+      // multiplier! Oops! Hacky solution is to check if multiple of 977.
+
+      llvm::Value* op2 = GetConstantWithIndexType(starts[i]);
+#define MAGIC 977
+      if ( starts[i] > 0 && (starts[i] % MAGIC) == 0) {
+        op2 = llvm_ir::GetBatchDimByPtr(builder, starts[i] / MAGIC);
+      }
+
       source_multi_index[i] =
-          builder->CreateAdd(multidim_[i], GetConstantWithIndexType(starts[i]));
+          builder->CreateAdd(multidim_[i], op2);
     }
   }
   return Index(source_multi_index, operand_shape, index_type_);
@@ -560,9 +569,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     gep_indices.push_back(actual_index[dimension]);
   }
 
-#define MAGIC 977
-#define STEVEN
-#ifdef STEVEN
+#define DYN_DIMS
+#ifdef DYN_DIMS
 
   llvm::ArrayType* outerArray = llvm::dyn_cast<llvm::ArrayType>(pointee_type_);
 
@@ -570,7 +578,14 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
 
   llvm::Value* gep;
 
-  if(outerArray->getNumElements() == MAGIC){
+  if (shape_.outer_multiplier() > 0 || outerArray->getNumElements() == MAGIC) {
+
+    if (shape_.outer_multiplier() <= 0){
+      llvm::errs() << "This should never happen... \n";
+      llvm::errs() << "Shape is " << shape_.ToString() << "\n";
+
+    }
+
     // Extract the inner array type: [N x T]
     llvm::Type* innerArray = outerArray->getElementType();
 
@@ -587,8 +602,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
                             castedPtr,
                             gep_indices, llvm_ir::AsStringRef(name));
   } else {
-   gep = b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
-                                  llvm_ir::AsStringRef(name));
+    gep = b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,
+                               llvm_ir::AsStringRef(name));
   }
 #else
   auto gep = b->CreateInBoundsGEP(pointee_type_, base_ptr_, gep_indices,

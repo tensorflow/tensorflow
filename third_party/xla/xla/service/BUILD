@@ -122,6 +122,38 @@ cc_library(
 )
 
 cc_library(
+    name = "outer_dimension_propagation",
+    srcs = ["outer_dimension_propagation.cc"],
+    hdrs = ["outer_dimension_propagation.h"],
+    deps = [
+        "hlo_proto_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "outer_dimension_propagation_example",
+    srcs = ["outer_dimension_propagation_example.cc"],
+    hdrs = ["outer_dimension_propagation_example.h"],
+    deps = [
+        "hlo_proto_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "all_reduce_promotion",
     srcs = ["all_reduce_promotion.cc"],
     hdrs = ["all_reduce_promotion.h"],
