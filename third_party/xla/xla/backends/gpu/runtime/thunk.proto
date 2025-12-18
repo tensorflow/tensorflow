@@ -405,6 +405,27 @@ message AllGatherStartThunkProto {
   repeated CollectiveBufferProto buffers = 3;
 }
 
+enum ReductionKindProto {
+  REDUCTION_KIND_UNSPECIFIED = 0;
+  REDUCTION_KIND_SUM = 1;
+  REDUCTION_KIND_PRODUCT = 2;
+  REDUCTION_KIND_MIN = 3;
+  REDUCTION_KIND_MAX = 4;
+}
+
+message AllReduceStartThunkProto {
+  uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+
+  ReductionKindProto reduction_kind = 4;
+  bool is_multimem_enabled = 5;
+  int32 shmem_bytes = 6;
+  string kernel_name = 7;
+  bool collective_kernel_enabled = 8;
+  bool is_async = 9;
+}
+
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
   AsyncStreamKind async_stream_kind = 2;
@@ -451,6 +472,7 @@ message ThunkProto {
     CustomKernelThunkProto custom_kernel_thunk = 36;
     CollectiveDoneThunkProto collective_done_thunk = 37;
     AllGatherStartThunkProto all_gather_start_thunk = 38;
+    AllReduceStartThunkProto all_reduce_start_thunk = 39;
   }
 }
 

@@ -78,6 +78,15 @@ class CollectiveKernelThunk : public Thunk {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
 
+  bool is_multimem_enabled() const { return is_multimem_enabled_; }
+
+  int32_t shmem_bytes() const { return shmem_bytes_; }
+
+  absl::string_view kernel_name() const { return kernel_name_; }
+
+  bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
+  bool is_async() const { return is_async_; }
+
   // Returns true if the collective kernel is supported for the given clique.
   absl::StatusOr<bool> IsSupported(
       const GpuCliqueKey& clique_key, se::StreamExecutor& executor,

@@ -29,6 +29,7 @@ limitations under the License.
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
@@ -246,6 +247,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kAllGatherStartThunk:
       return AllGatherStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.all_gather_start_thunk(),
+          buffer_allocations, collective_async_events_map);
+    case ThunkProto::kAllReduceStartThunk:
+      return AllReduceStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.all_reduce_start_thunk(),
           buffer_allocations, collective_async_events_map);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
