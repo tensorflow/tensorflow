@@ -563,6 +563,9 @@ absl::Status GraphToFunctionDefHelper(
     return absl::OkStatus();
   };
 
+  //arg_index → [list of dynamic dim indices]
+  absl::flat_hash_map<int, std::vector<int>> dynamic_dims_by_arg; 
+
   std::vector<const Node*> body_nodes;
   std::vector<OutputTensor> inputs;
   std::vector<OutputTensor> outputs;
@@ -570,6 +573,41 @@ absl::Status GraphToFunctionDefHelper(
   std::vector<string> control_output_names;
   for (Node* node : graph.op_nodes()) {
     if (node->IsArg()) {
+      //This logic is to check the consumers of the operation and writing a new attribute to Arg_ which can be traceable later on.
+     
+      int arg_index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(),"index",&arg_index));
+      std::vector<int> dyn_dims;
+
+      //_Args don't store the _output_shapes. _output_shapes are only stored by operators.
+      for(const Edge* e:node->out_edges()){
+
+        if(e->IsControlEdge()) continue; 
+        const Node* consumer = e->dst();
+
+        const auto& attr_map = consumer->def().attr();
+        auto it = attr_map.find("_output_shapes");
+        if(it==attr_map.end()) continue;
+
+        const auto& shp_list = it->second.list().shape();
+        if (shp_list.empty()) continue;
+        const TensorShapeProto& shp = shp_list[0];
+
+        for(int d = 0; d< shp.dim_size();++d){
+          if(shp.dim(d).size()<0){ // -1 is the dynamic dim.
+            dyn_dims.push_back(d);
+          }
+        }
+      }
+
+      //Normalize and record dynamic dimension indices for this argument:
+      // * sort + dedup so the list is in canonical form(Multiple consumer).
+      if(!dyn_dims.empty()){
+        std::sort(dyn_dims.begin(), dyn_dims.end());
+        dyn_dims.erase(std::unique(dyn_dims.begin(), dyn_dims.end()),dyn_dims.end());
+        dynamic_dims_by_arg[arg_index] = dyn_dims;
+      }
+      
       TF_RETURN_IF_ERROR(add_arg_or_retval(node, &inputs));
       continue;
     }
@@ -605,12 +643,30 @@ absl::Status GraphToFunctionDefHelper(
   TF_RETURN_IF_ERROR(validate_args_retvals(inputs, "_Arg"));
   TF_RETURN_IF_ERROR(validate_args_retvals(outputs, "_Retval"));
 
-  return GraphToFunctionDefHelper(
+  TF_RETURN_IF_ERROR(GraphToFunctionDefHelper(
       graph, name, /*append_hash_to_fn_name=*/false,
       /*set_stateful_from_nodes=*/false,
       /*copy_placeholder_attrs_from_nodes=*/false, body_nodes, inputs, outputs,
       output_names, control_outputs, control_output_names,
-      /*description=*/nullptr, allow_destructive_reads, fdef);
+      /*description=*/nullptr, allow_destructive_reads, fdef));
+
+  //add attr
+  for(const auto& kv: dynamic_dims_by_arg){
+    int arg_index = kv.first;
+    const std::vector<int>& dyn_dims = kv.second;
+
+    AttrValue dyn_attr;
+    for(int d : dyn_dims){
+      dyn_attr.mutable_list() -> add_i(d);
+    }
+
+    auto* arg_attr_map = fdef->mutable_arg_attr();
+    FunctionDef::ArgAttrs& arg_attrs = (*arg_attr_map)[arg_index];
+    auto* attr_map = arg_attrs.mutable_attr();
+
+    (*attr_map)["_custom_dynamic_dims"] = dyn_attr;
+  }
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace

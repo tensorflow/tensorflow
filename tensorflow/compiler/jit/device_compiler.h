@@ -436,17 +436,56 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
     ExecutableType** out_executable) {
+    
+    //Modify the cache to disable the recompilation.
+    std::vector<XlaCompiler::Argument> norm_args(args.begin(), args.end());
+    constexpr int64_t kMagicBound = 977;
+    
+    if(options.flib_def != nullptr){
+      const FunctionDef* fdef = options.flib_def->Find(function.name());
+      if(fdef != nullptr){
+        for (const auto&kv : fdef->arg_attr()){
+          int arg_index = kv.first;
+          const auto& attr_map = kv.second.attr();
+          auto it = attr_map.find("_custom_dynamic_dims");
+          if (it == attr_map.end()) continue;
+
+          const AttrValue& v = it->second;
+          std::vector<int64_t> dyn_dims(v.list().i().begin(), v.list().i().end() );
+          if(arg_index >= 0 && arg_index < norm_args.size()){
+            norm_args[arg_index].dynamic_dims = dyn_dims;
+          }
+
+        } 
+      }
+    }
+
+    for (int i=0; i<norm_args.size() ; ++i){
+      auto& arg = norm_args[i];
+      if(arg.dynamic_dims.empty()) continue;
+
+      TensorShape& shp = std::get<TensorShape>(arg.shape);
+
+      for(int64_t d: arg.dynamic_dims){
+        if( d<0 || d>= shp.dims()) continue;
+        int64_t old = shp.dim_size(d);
+        if(old != kMagicBound){
+          shp.set_dim(d,kMagicBound);
+        }
+      }
+    }
+    
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "DeviceCompiler::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "num_inputs=" << args.size();
-    for (int i = 0, end = args.size(); i < end; i++) {
-      VLOG(3) << i << ": " << args[i].HumanString();
+    VLOG(2) << "num_inputs=" << norm_args.size();
+    for (int i = 0, end = norm_args.size(); i < end; i++) {
+      VLOG(3) << i << ": " << norm_args[i].HumanString();
     }
   }
   TF_ASSIGN_OR_RETURN(auto signature,
-                      DeviceCompilationClusterSignature::Build(function, args));
+                      DeviceCompilationClusterSignature::Build(function, norm_args));
 
   // The outer lock protects the existence of the mutex in the map.
   mutex* cluster_mutex;
@@ -489,7 +528,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   if (state == DeviceCompileState::kUncompiled && FailOnXlaCompilation()) {
     VLOG(1) << "XLA compilation disabled: " << function.name() << "\n"
             << absl::StrJoin(
-                   args, "\n",
+                   norm_args, "\n",
                    [](std::string* out, const XlaCompiler::Argument& arg) {
                      absl::StrAppend(out, " arg: ", arg.HumanString());
                    });
@@ -507,14 +546,14 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, compile_options,
-                                             options, args, function, scope,
+                                             options, norm_args, function, scope,
                                              ctx, profiler));
       return absl::OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_ASSIGN_OR_RETURN(
           cache_value,
-          CompileStrict(signature, compile_options, options, args, function,
+          CompileStrict(signature, compile_options, options, norm_args, function,
                         cache_value, scope, ctx, profiler, cluster_mutex));
     }
   } else if (state == DeviceCompileState::kCompiling) {

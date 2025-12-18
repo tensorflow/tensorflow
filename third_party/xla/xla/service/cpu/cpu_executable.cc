@@ -163,14 +163,34 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
     se::DeviceMemoryAllocator* memory_allocator, int device_ordinal) {
   VLOG(3) << allocation.ToString();
   if (allocation.is_entry_computation_parameter()) {
-    se::DeviceMemoryBase out = arguments[allocation.parameter_number()]
+    se::DeviceMemoryBase param_mem = arguments[allocation.parameter_number()]
                                    .Buffer(allocation.param_shape_index())
                                    .AsDeviceMemoryBase();
-    CHECK_LE(allocation.size(), out.size())
-        << "Size mismatch on param " << allocation.parameter_number()
-        << " at shape index " << allocation.param_shape_index().ToString();
-    VLOG(3) << "allocation is a parameter";
-    return MaybeOwningDeviceMemory{out};
+
+    const int64_t compiled_bytes = allocation.size();
+    const int64_t runtime_bytes = param_mem.size();
+
+    if(runtime_bytes == 0){
+      return MaybeOwningDeviceMemory{param_mem};
+    }
+
+    if (compiled_bytes <= runtime_bytes) {
+      return MaybeOwningDeviceMemory{param_mem};
+    }
+
+    //padded owns that device memory
+    TF_ASSIGN_OR_RETURN(
+        se::OwningDeviceMemory padded,
+        memory_allocator->Allocate(device_ordinal, compiled_bytes));
+    
+    void* dst = padded-> opaque();
+    void* src = param_mem.opaque();
+
+    std::memcpy(dst, src, runtime_bytes);
+    //Fill rest of them with zeros.
+    std::memset(static_cast<char*>(dst) + runtime_bytes, 0, compiled_bytes - runtime_bytes);
+    return MaybeOwningDeviceMemory{std::move(padded)};
+
   } else if (allocation.is_constant()) {
     VLOG(3) << "allocation is a constant";
     if (allocation.index() < constants.size()) {

@@ -376,6 +376,15 @@ GetXlaCompilerArgsAndSnapshotVariables(
                       XlaComputationLaunchContext::BuildXlaCompilerArguments(
                           must_be_constant_idxs, inputs, variable_infos,
                           static_cast<Device*>(ctx->device())));
+
+  //Pass incoming request batch dimension  to ctx 
+  if(!result.first.empty() && result.first[0].kind == XlaArgument::kParameter){
+    auto dims = result.first[0].DimensionSizes();
+    if(!dims.empty()){
+      ctx->params()->batch_size = dims[0];
+    }
+  }                     
+  
   return result;
 }
 
