@@ -224,6 +224,10 @@ TEST(MeshAndAxisTest, MeshAxesToString) {
   array.Reshape({10});
   Mesh mesh_ooo(array, {"ooo"});
   EXPECT_EQ(mesh_ooo.ToString(), "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9)");
+  // TODO: I think this should be @mesh[<ooo=10>] to match sdy ?
+
+  Mesh maximal_mesh(5);
+  EXPECT_EQ(maximal_mesh.ToString(), "@maximal_mesh<device_ids=[5]>");
 }
 
 TEST(MeshAndAxisTest, ValidateAxisForMesh) {

@@ -789,6 +789,27 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
+
+  if (sharding.UseNamedShardingLeaf()) {
+    // Check to ensure subgroup dimensions are not passed in dimensions as named
+    // sharding doesn't handle them as part of dim_shardings but separate
+    // replicated, unreduced axes as opposed to tile hlo sharding format which
+    // uses tile dimensions to represent subgroup dimensions as well.
+    DCHECK_EQ(sharding.num_dimensions(), dimensions.size());
+
+    std::vector<NamedSharding::DimensionSharding> transposed_dim_shardings(
+        sharding.num_dimensions());
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      transposed_dim_shardings[dimensions[i]] =
+          sharding.named_sharding().dim_sharding(i);
+    }
+    return HloSharding(NamedSharding(
+        sharding.named_sharding().mesh(), transposed_dim_shardings,
+        sharding.named_sharding().replicated_axes(),
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().metadata()));
+  }
+
   std::vector<int> perm_dimensions(dimensions.begin(), dimensions.end());
   // Add subgroup dims if missing.
   if (sharding.TiledDataRank() == dimensions.size()) {
@@ -1669,6 +1690,31 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
   if (source.IsTileMaximal() || source.IsManual()) {
     return source;
   }
+
+  // TODO: tgt_to_src is sufficient for transposing, we don't need src_to_tgt,
+  // at least for named sharding case.
+  if (source.UseNamedShardingLeaf()) {
+    // Check to ensure subgroup dimensions are not passed in src_to_tgt as named
+    // sharding doesn't handle them as part of dim_shardings but separate
+    // replicated, unreduced axes as opposed to tile hlo sharding format which
+    // uses tile dimensions to represent subgroup dimensions as well.
+    DCHECK_EQ(source.num_dimensions(), src_to_tgt.size());
+
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        tgt_to_src.size());
+    for (int64_t i = 0; i < tgt_to_src.size(); ++i) {
+      if (tgt_to_src[i] >= 0) {
+        new_dim_shardings[i] =
+            source.named_sharding().dim_sharding(tgt_to_src[i]);
+      }
+    }
+
+    return HloSharding(NamedSharding(
+        source.named_sharding().mesh(), new_dim_shardings,
+        source.named_sharding().replicated_axes(),
+        source.named_sharding().unreduced_axes(), source.metadata()));
+  }
+
   if (src_to_tgt.size() < source.num_dimensions()) {
     // Add missing subgroup dims.
     DimensionVector new_src_to_tgt(src_to_tgt.begin(), src_to_tgt.end());
