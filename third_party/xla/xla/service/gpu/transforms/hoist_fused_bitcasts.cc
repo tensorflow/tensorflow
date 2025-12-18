@@ -638,7 +638,9 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
   return result;
 }
 
-// Returns the shape of the root instruction after hoisting all bitcasts.
+// Returns the shape of the root instruction after hoisting bitcasts away from
+// the dot instruction. If traversal encounters an instruction we cannot hoist
+// bitcasts past we try to sink the bitcast starting from that instruction.
 //
 // For example, given:
 //
@@ -700,28 +702,35 @@ absl::StatusOr<Shape> ComputeRootShapeAfterHoistingBitcasts(
     TF_ASSIGN_OR_RETURN(Shape result_shape, [&]() -> absl::StatusOr<Shape> {
       switch (instruction->opcode()) {
         case HloOpcode::kBroadcast: {
-          TF_ASSIGN_OR_RETURN(
-              BitcastParams params,
-              CalculateBroadcastOfBitcast(
-                  Cast<HloBroadcastInstruction>(instruction), operand_shape));
-          return params.new_shape;
+          auto paramsOr = CalculateBroadcastOfBitcast(
+              Cast<HloBroadcastInstruction>(instruction), operand_shape);
+          if (paramsOr.ok()) {
+            return paramsOr->new_shape;
+          }
+          VLOG(2) << "Failed to calculate broadcast of bitcast: "
+                  << paramsOr.status();
+          return instruction->shape();
         }
         case HloOpcode::kTranspose: {
-          TF_ASSIGN_OR_RETURN(
-              BitcastParams params,
-              CalculateTransposeOfBitcast(
-                  Cast<HloTransposeInstruction>(instruction), operand_shape));
-          return params.new_shape;
-        }
-        default:
-          if (!instruction->IsElementwise()) {
-            return absl::FailedPreconditionError(absl::StrCat(
-                "Cannot hoist bitcast past ", instruction->ToString()));
+          auto paramsOr = CalculateTransposeOfBitcast(
+              Cast<HloTransposeInstruction>(instruction), operand_shape);
+          if (paramsOr.ok()) {
+            return paramsOr->new_shape;
           }
-          [[fallthrough]];
-        case HloOpcode::kReshape:  // Reshape is a bitcast.
+          VLOG(2) << "Failed to calculate transpose of bitcast: "
+                  << paramsOr.status();
+          return instruction->shape();
+        }
+        case HloOpcode::kReshape:
         case HloOpcode::kBitcast:
           return operand_shape;
+        default:
+          if (instruction->IsElementwise()) {
+            return operand_shape;
+          }
+          // TODO(b/467421789): we can probably allow sinking from this op down.
+          return absl::FailedPreconditionError(absl::StrCat(
+              "Cannot hoist bitcast past ", instruction->ToString()));
       }
     }());
     if (instruction->IsRoot()) {
@@ -822,6 +831,9 @@ absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
 // transposes and broadcasts. This is not reported as an error.
 absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
                                                     CallGraph* call_graph) {
+  // Instead of implementing a logic to hoist bitcast upwards and downwards
+  // we insert a bitcast at the root that and always hoist bitcasts upwards.
+  // That significantly simplifies the implementation.
   VLOG(2) << "Before hoisting bitcasts: " << dot->parent()->ToString();
 
   auto callers = call_graph->GetComputationCallers(dot->parent());

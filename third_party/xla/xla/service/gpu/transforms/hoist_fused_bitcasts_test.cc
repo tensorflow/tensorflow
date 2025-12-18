@@ -231,27 +231,25 @@ CHECK: f16[3,11]{1,0} fusion(
       IsOkAndHolds(true));
 }
 
-// We cannot hoist bitcasts past transposes, but we don't need to hoist
-// because the bitcast is not rank-expanding and symbolic tile analysis
-// works fine.
-TEST_P(HoistFusedBitcastsReshapeTest, BitcastsCannotBeHoistedPastTransposes) {
+TEST_P(HoistFusedBitcastsReshapeTest,
+       ResumeBitcastSinkingAfterIncompatibleOps) {
+  // Even though we cannot hoist the bitcast1 past the transpose we still can
+  // remove bitcast2.
   HloOpcode opcode = GetParam();
   absl::string_view hlo = R"(
 dot {
-  p0 = f32[72,36,2] parameter(0)
-  transpose0 = f32[72,2,36] transpose(p0), dimensions={0,2,1}
-  bitcast0 = f32[144,36] $0(transpose0)
-  p1 = f32[36,3] parameter(1)
-  dot = f32[144,3] dot(bitcast0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  bitcast1 = f32[144,3] $0(dot)
-  ROOT transpose1 = f32[3,144] transpose(bitcast1), dimensions={1,0}
+  p0 = f32[2,32] parameter(0)
+  p1 = f32[64,32] parameter(1)
+  dot = f32[2,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast1 = f32[2,32,2] $0(dot)
+  transpose1 = f32[2,2,32] transpose(bitcast1), dimensions={0,2,1}
+  ROOT bitcast2 = f32[1,2,1,2,32] $0(transpose1)
 }
 
 ENTRY entry {
-  p0 = f32[72,36,2] parameter(0)
-  p1 = f32[36,3] parameter(1)
-  ROOT fusion = f32[3,144] fusion(p0, p1),
+  p0 = f32[2,32] parameter(0)
+  p1 = f32[64,32] parameter(1)
+  ROOT fusion = f32[1,2,1,2,32] fusion(p0, p1),
     kind=kCustom, calls=dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_gemm","triton_gemm_config":{
@@ -261,7 +259,15 @@ ENTRY entry {
       }
     }
 })";
-  RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+  auto module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+  CHECK: ROOT {{.*}} = f32[2,2,32]{2,1,0} transpose
+  CHECK: ENTRY
+  CHECK: ROOT {{.*}} = f32[1,2,1,2,32]{4,3,2,1,0} bitcast
+)"),
+      IsOkAndHolds(true));
 }
 
 TEST_P(HoistFusedBitcastsReshapeTest, BitcastsKeepElementSizeInBits) {
