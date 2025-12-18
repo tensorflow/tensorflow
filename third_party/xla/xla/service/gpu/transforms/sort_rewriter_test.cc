@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/transforms/estimate_cub_scratch_size.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -58,10 +59,11 @@ class SortRewriterTest
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(),
-                                GetTestPlatform()->Name())
-                       .Run(module)
-                       .value();
+    const std::string& platform_name = GetTestPlatform()->Name();
+    bool changed =
+        SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(), platform_name)
+            .Run(module)
+            .value();
     if (changed) {
       // Here we run an end to end test to make sure that SortRewriter does
       // not introduce an incorrect rewrite. To do this, we need to clone the
@@ -106,7 +108,9 @@ ENTRY %main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Parameter()),
+          0)));
   ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
                   /*descending=*/false);
 }
@@ -132,7 +136,9 @@ ENTRY %main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Parameter()),
+          0)));
   ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
                   /*descending=*/true);
 }
@@ -158,7 +164,9 @@ ENTRY %main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Parameter()),
+          0)));
   ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
                   /*descending=*/false);
 }
@@ -512,7 +520,9 @@ ENTRY %main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Parameter()),
+          0)));
   ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
                   /*descending=*/false);
 }
@@ -538,7 +548,9 @@ ENTRY %main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Parameter()), 0)));
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Parameter()),
+          0)));
   ExpectDirection(module->entry_computation()->root_instruction()->operand(0),
                   /*descending=*/false);
 }
@@ -559,7 +571,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare, metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
 })";
   constexpr char kExpectedPattern[] = R"(
-    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSort", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
+    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
   for (const auto& [device_description, platform_name] :
        {std::tuple{TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA"},
@@ -602,7 +614,8 @@ ENTRY main {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::GetTupleElement(
-          m::CustomCall({kCubDeviceRadixSortTarget}, m::Op(), m::Parameter()),
+          m::CustomCall({kCubDeviceRadixSortUnassignedScratchSizeTarget},
+                        m::Op(), m::Parameter()),
           1)))
       << module->ToString();
 }

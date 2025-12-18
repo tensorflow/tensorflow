@@ -99,6 +99,8 @@ const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
     "__cudnn$fmhaSoftmaxDropoutBackward";
 
 const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
+const absl::string_view kCubDeviceRadixSortUnassignedScratchSizeTarget =
+    "__cub$DeviceRadixSortUnassignedScratchSize";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -184,6 +186,12 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo) {
 bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kCubDeviceRadixSortTarget;
+}
+
+bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() ==
+             kCubDeviceRadixSortUnassignedScratchSizeTarget;
 }
 
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(

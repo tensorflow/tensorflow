@@ -108,10 +108,10 @@ def workspace():
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "53905ede50e3eebc782266e20e9b9ac1d7166ef68b877bea593d3600dcfe03e6",
-        strip_prefix = "rules_ml_toolchain-a1ff84835e407b41eef5fd1a865a23748c294db6",
+        sha256 = "1d0b38fdf99f2b98ed9cc0e49fc70bd97add85d4bfa2c190b187947c4ae867a1",
+        strip_prefix = "rules_ml_toolchain-eaf67ef8afe575aca89491bd69c4a2d6edd3cba2",
         urls = tf_mirror_urls(
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/a1ff84835e407b41eef5fd1a865a23748c294db6.tar.gz",
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/eaf67ef8afe575aca89491bd69c4a2d6edd3cba2.tar.gz",
         ),
     )
 
