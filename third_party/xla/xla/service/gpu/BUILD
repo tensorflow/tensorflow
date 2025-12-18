@@ -2788,7 +2788,6 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest",
     ],

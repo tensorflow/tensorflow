@@ -1300,6 +1300,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
+    case HloFusionAnalysis::EmitterFusionKind::kSort:
       return HloInstruction::FusionKind::kInput;
   }
 }

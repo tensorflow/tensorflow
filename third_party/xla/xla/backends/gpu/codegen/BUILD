@@ -297,6 +297,7 @@ cc_library(
         ":cudnn",
         ":custom",
         ":fusion_emitter",
+        ":sort",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
@@ -314,5 +315,29 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "sort",
+    srcs = ["sort.cc"],
+    hdrs = ["sort.h"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen/llvm:llvm_emitter",
+        "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

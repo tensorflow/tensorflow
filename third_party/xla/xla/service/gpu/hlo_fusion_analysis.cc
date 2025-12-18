@@ -182,6 +182,10 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
     return HloFusionAnalysis::EmitterFusionKind::kScatter;
   }
 
+  if (fusion_roots[0].opcode() == HloOpcode::kSort) {
+    return HloFusionAnalysis::EmitterFusionKind::kSort;
+  }
+
   if (UseConcatenateFusion(fusion_roots, fusion_heroes)) {
     return HloFusionAnalysis::EmitterFusionKind::kConcatenate;
   }

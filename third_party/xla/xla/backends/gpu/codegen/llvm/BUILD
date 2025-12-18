@@ -54,7 +54,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -120,6 +121,9 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kSort: {
+      return std::make_unique<SortFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
