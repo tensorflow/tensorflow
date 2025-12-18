@@ -86,7 +86,7 @@ inline BufferAllocations::BufferAllocations(
       buffers_data_(buffers_.data()),
       num_buffers_(buffers_.size()) {
   for (size_t i = 0; i < buffers.size(); ++i) {
-    buffers_[i] = buffers[i].AsDeviceMemoryBase();
+    buffers_[i] = buffers[i].AsDeviceAddress();
   }
 }
 
