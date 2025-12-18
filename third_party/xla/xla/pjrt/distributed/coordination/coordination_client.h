@@ -36,8 +36,6 @@ using tensorflow::GetKeyValueDirRequest;
 using tensorflow::GetKeyValueDirResponse;
 using tensorflow::GetKeyValueRequest;
 using tensorflow::GetKeyValueResponse;
-using tensorflow::GetTaskStateRequest;
-using tensorflow::GetTaskStateResponse;
 using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
 using tensorflow::IncrementKeyValueRequest;
@@ -81,10 +79,6 @@ class CoordinationClient {
   virtual void ResetTaskAsync(const ResetTaskRequest* request,
                               ResetTaskResponse* response,
                               tsl::StatusCallback done) = 0;
-
-  virtual void GetTaskStateAsync(const GetTaskStateRequest* request,
-                                 GetTaskStateResponse* response,
-                                 tsl::StatusCallback done) = 0;
 
   virtual void WatchJobStateAsync(tsl::CallOptions* call_opts,
                                   const WatchJobStateRequest* request,

@@ -116,22 +116,6 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
   done(service_->ResetTask(request->source_task()));
 }
 
-void CoordinationServiceRpcHandler::GetTaskStateAsync(
-    const tensorflow::GetTaskStateRequest* request,
-    tensorflow::GetTaskStateResponse* response, tsl::StatusCallback done) {
-  absl::ReaderMutexLock l(mu_);
-  if (service_ == nullptr) {
-    done(MakeCoordinationError(
-        absl::InternalError("Coordination service is not enabled.")));
-    return;
-  }
-  auto result = service_->GetTaskState(
-      {request->source_task().begin(), request->source_task().end()});
-  absl::c_move(result, tsl::protobuf::RepeatedFieldBackInserter(
-                           response->mutable_task_state()));
-  done(absl::OkStatus());
-}
-
 void CoordinationServiceRpcHandler::WatchJobStateAsync(
     const tensorflow::WatchJobStateRequest* request,
     tensorflow::WatchJobStateResponse* response, tsl::StatusCallback done) {

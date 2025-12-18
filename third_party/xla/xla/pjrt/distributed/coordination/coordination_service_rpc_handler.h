@@ -48,10 +48,6 @@ class CoordinationServiceRpcHandler {
                       tensorflow::ResetTaskResponse* response,
                       tsl::StatusCallback done);
 
-  void GetTaskStateAsync(const tensorflow::GetTaskStateRequest* request,
-                         tensorflow::GetTaskStateResponse* response,
-                         tsl::StatusCallback done);
-
   void WatchJobStateAsync(const tensorflow::WatchJobStateRequest* request,
                           tensorflow::WatchJobStateResponse* response,
                           tsl::StatusCallback done);
