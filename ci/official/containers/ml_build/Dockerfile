@@ -15,7 +15,6 @@ RUN /setup.sources.sh && /setup.packages.sh /builder.packages.txt
 # Setup Python
 COPY setup.python.sh /setup.python.sh
 COPY builder.requirements.txt /builder.requirements.txt
-RUN /setup.python.sh python3.9 /builder.requirements.txt
 RUN /setup.python.sh python3.10 /builder.requirements.txt
 RUN /setup.python.sh python3.11 /builder.requirements.txt
 RUN /setup.python.sh python3.13 /builder.requirements.txt
