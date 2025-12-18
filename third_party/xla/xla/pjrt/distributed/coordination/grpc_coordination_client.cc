@@ -71,8 +71,6 @@ using tensorflow::ShutdownTaskRequest;
 using tensorflow::ShutdownTaskResponse;
 using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
-using tensorflow::WaitForAllTasksRequest;
-using tensorflow::WaitForAllTasksResponse;
 using tensorflow::WatchJobStateRequest;
 using tensorflow::WatchJobStateResponse;
 
@@ -127,16 +125,6 @@ class GrpcCoordinationClient : public CoordinationClient {
         &stub_, cq_, "/tensorflow.CoordinationService/RegisterTask", *request,
         response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/false,
-        &target_);
-  }
-
-  void WaitForAllTasksAsync(const WaitForAllTasksRequest* request,
-                            WaitForAllTasksResponse* response,
-                            tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/WaitForAllTasks",
-        *request, response, std::move(done), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
 

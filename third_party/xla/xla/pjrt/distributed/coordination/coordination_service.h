@@ -144,15 +144,6 @@ class CoordinationService {
   void RegisterTaskAsync(const tensorflow::CoordinatedTask& task,
                          IncarnationId incarnation, tsl::StatusCallback done);
 
-  // Wait for all tasks to be up and running, and register local device
-  // info. The callback is invoked when all tasks are up and registered, or some
-  // error occurs.
-  // Each task's local devices will be appended in a deterministic order, and
-  // post-processed by the callback in SetDeviceAggregationFunction() (if set).
-  void WaitForAllTasks(const tensorflow::CoordinatedTask& task,
-                       const tensorflow::DeviceInfo& devices,
-                       tsl::StatusCallback done);
-
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
   // specified in the config, blocks until all tasks reach the barrier before
   // disconnecting together.
@@ -564,13 +555,6 @@ class CoordinationService {
     // Sets the error and returns true if the task state is not ERROR.
     // Otherwise, don't overwrite the error and return false.
     bool SetError(const absl::Status& status);
-    tensorflow::DeviceInfo GetDeviceInfo() { return devices_; }
-    void CollectDeviceInfo(const tensorflow::DeviceInfo& devices) {
-      devices_ = devices;
-    }
-    // Checks if task has called WaitForAllTasks() previously, which gathers the
-    // local device info.
-    bool DeviceInfoIsCollected() { return !devices_.device().empty(); }
 
     // This is used to propagate state changes (disconnect, error) to ongoing
     // barriers.
@@ -601,7 +585,6 @@ class CoordinationService {
     // accounts for the lag time between the service recording the state change
     // and the agent stopping heartbeats/error polling.
     uint64_t disconnect_grace_period_us_ = 0;
-    tensorflow::DeviceInfo devices_;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -654,8 +637,6 @@ class CoordinationService {
   std::function<tensorflow::DeviceInfo(const tensorflow::DeviceInfo& devices)>
       post_aggregate_device_fn_;
 
-  const std::string device_propagation_barrier_id_ =
-      absl::StrCat("WaitForAllTasks::", service_incarnation_.value());
   const std::string shutdown_barrier_id_ =
       absl::StrCat("Shutdown::", service_incarnation_.value());
   std::vector<tensorflow::CoordinatedTask> shutdown_barrier_tasks_

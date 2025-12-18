@@ -149,14 +149,6 @@ class CoordinationServiceAgent {
   //              the configured timeout)
   absl::Status Connect();
 
-  // Wait for all tasks to be up and registered. The call blocks until all tasks
-  // in the cluster are up, or some error occurs.
-  // Possible service errors:
-  //   - Internal: Coordination service has shut down.
-  //   - FailedPrecondition: Agent is not in CONNECTED state.
-  //   - InvalidArgument: Unexpected task request
-  absl::Status WaitForAllTasks(const tensorflow::DeviceInfo& local_devices);
-
   // Get the device attributes of tasks from remote tasks in the cluster.
   const tensorflow::DeviceInfo& GetClusterDeviceInfo();
 

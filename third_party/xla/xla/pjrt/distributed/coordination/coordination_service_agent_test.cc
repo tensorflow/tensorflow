@@ -136,16 +136,6 @@ class TestCoordinationClient : public CoordinationClient {
               (tsl::CallOptions * call_opts, const PollForErrorRequest*,
                PollForErrorResponse*, tsl::StatusCallback),
               (override));
-
-#define UNIMPLEMENTED(method)                                              \
-  void method##Async(const method##Request* request,                       \
-                     method##Response* response, tsl::StatusCallback done) \
-      override {                                                           \
-    done(absl::UnimplementedError(#method "Async"));                       \
-  }
-
-  UNIMPLEMENTED(WaitForAllTasks);
-#undef UNIMPLEMENTED
 };
 
 class CoordinationServiceAgentTest : public ::testing::Test {

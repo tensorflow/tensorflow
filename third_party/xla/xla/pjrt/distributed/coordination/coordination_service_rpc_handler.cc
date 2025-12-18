@@ -91,26 +91,6 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
   done(absl::OkStatus());
 }
 
-void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
-    const tensorflow::WaitForAllTasksRequest* request,
-    tensorflow::WaitForAllTasksResponse* response, tsl::StatusCallback done) {
-  absl::ReaderMutexLock l(mu_);
-  if (service_ == nullptr) {
-    done(MakeCoordinationError(
-        absl::InternalError("Coordination service is not enabled.")));
-    return;
-  }
-  service_->WaitForAllTasks(
-      request->source_task(), request->device_info(),
-      [response, service = service_, done = std::move(done)](absl::Status s) {
-        if (s.ok()) {
-          service->state_mu_.AssertHeld();
-          *response->mutable_device_info() = service->ListClusterDevices();
-        }
-        done(s);
-      });
-}
-
 void CoordinationServiceRpcHandler::ShutdownTaskAsync(
     const tensorflow::ShutdownTaskRequest* request,
     tensorflow::ShutdownTaskResponse* response, tsl::StatusCallback done) {
