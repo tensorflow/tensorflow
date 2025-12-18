@@ -338,8 +338,8 @@ message NormThunkProto {
 
 message ConvolutionThunkProto {
   GpuConvDescriptorProto conv_descriptor = 1;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto operand_buffers = 2;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto result_buffers = 3;
+  repeated ShapedSliceProto operand_buffers = 2;
+  repeated ShapedSliceProto result_buffers = 3;
   xla.buffer_assignment.BufferAllocationSliceProto scratch_buffer = 4;
 }
 

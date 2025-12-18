@@ -153,7 +153,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -168,6 +167,7 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -523,21 +523,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
     const HloCustomCallInstruction* instr) {
-  std::vector<BufferAllocation::Slice> operand_slices;
+  std::vector<ShapedSlice> operand_slices;
   operand_slices.reserve(instr->operand_count());
   for (const HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        GetAllocationSliceForHlo(operand, {}));
+    ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(operand, {}));
     operand_slices.push_back(slice);
   }
 
   // The first and the last element in the result tuple for a convolution are
   // always the result and the scratch buffer. It may have auxiliary results in
   // addition to the main result.
-  std::vector<BufferAllocation::Slice> result_slices;
+  std::vector<ShapedSlice> result_slices;
   for (int i = 0; i < instr->shape().tuple_shapes().size() - 1; i++) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                        GetAllocationSliceForHlo(instr, {i}));
+    ASSIGN_OR_RETURN(ShapedSlice result_slice,
+                     GetShapedSliceForHlo(instr, {i}));
     result_slices.push_back(result_slice);
   }
 
@@ -926,8 +925,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(
 
 absl::StatusOr<BufferAllocation::Slice> ThunkEmitter::GetAllocationSliceForHlo(
     const HloInstruction* instr, const ShapeIndex& index) const {
-  return xla::gpu::GetAllocationSlice(ir_emitter_context_->buffer_assignment(),
-                                      instr, index);
+  return ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, index);
+}
+
+absl::StatusOr<ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
+    const HloInstruction* instr, const ShapeIndex& index) const {
+  ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   GetAllocationSliceForHlo(instr, index));
+  ASSIGN_OR_RETURN(
+      Shape shape,
+      ir_emitter_context_->buffer_assignment().GetShapeForUniqueSlice(instr,
+                                                                      index));
+  return ShapedSlice{slice, shape};
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceRadixSort(

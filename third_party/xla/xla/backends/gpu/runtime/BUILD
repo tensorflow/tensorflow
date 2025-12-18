@@ -505,6 +505,7 @@ cc_library(
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
     deps = [
+        ":shaped_slice",
         ":thunk",
         "//xla:util",
         "//xla/runtime:buffer_use",
