@@ -1,10 +1,9 @@
 // RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/a100_pcie_80.txtpb --split-input-file | FileCheck %s
 
-// CHECK: fused_transpose
+// CHECK: %wrapped_transpose_computation
 // CHECK-NEXT: bf16[3,3,16,32]{3,2,1,0} parameter(0)
-// CHECK-NEXT: bf16[144,32]{1,0} bitcast
-// CHECK-NEXT: bf16[32,144]{1,0} transpose
-// CHECK-SAME: dimensions={1,0}
+// CHECK-NEXT: bf16[32,3,3,16]{3,2,1,0} transpose
+// CHECK-SAME: dimensions={3,0,1,2}
 // CHECK: (bf16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call
 // CHECK-SAME: window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward
 

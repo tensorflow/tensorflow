@@ -245,20 +245,23 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return std::nullopt;
   }
 
-  // We can assume that TransposeDimensionGrouper pass has run, so no need to
-  // call GetNormalizedLogicalTransposeShape here.
-  absl::InlinedVector<int64_t, 3> permutation(hero.dimensions().begin(),
-                                              hero.dimensions().end());
+  absl::InlinedVector<int64_t, 3> permutation;
+  auto normalized_dims_or = ShapeUtil::GetNormalizedLogicalTransposeShape(
+      hero.operand(0)->shape(), hero.shape(), hero.dimensions(), permutation);
+  if (!normalized_dims_or.ok()) {
+    return std::nullopt;
+  }
+  auto normalized_dims = normalized_dims_or.value();
+  auto normalized_operand_dims =
+      Permute(normalized_dims, InversePermutation(permutation));
   // A real transpose needs at least 2 transpose dimensions.
   if (permutation.size() < 2) {
     return std::nullopt;
   }
   auto bit_width = GetBitwidth(hero.shape().element_type());
-  absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
-                                             hero.shape().dimensions().end());
-  int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
+  int64_t operand_most_minor_dim = normalized_operand_dims.back();
 
-  TransposeDescription desc{&hero, dimensions, permutation,
+  TransposeDescription desc{&hero, normalized_dims, permutation,
                             /*shmem_usage=*/0};
   if (CanEmitPackedTranspose(desc)) {
     int64_t vector_size =
@@ -267,27 +270,28 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
         kNumShmemBanks * (kBankBitwidth / 8) * kNumShmemBanks * vector_size;
     return desc;
   }
-  if (permutation.back() == dimensions.size() - 1) {
+  // Minor dimension is preserved.
+  if (permutation.back() == normalized_dims.size() - 1) {
     operand_most_minor_dim =
-        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (bit_width * dimensions.back() <= kMaxBitsInMostMinorDimension &&
-        bit_width * dimensions.back() *
+        normalized_operand_dims[normalized_dims.size() - 2];
+    if (bit_width * normalized_dims.back() <= kMaxBitsInMostMinorDimension &&
+        bit_width * normalized_dims.back() *
                 std::min(operand_most_minor_dim,
-                         dimensions[dimensions.size() - 2]) >=
+                         normalized_dims[normalized_dims.size() - 2]) >=
             8 * kMinDimensionToTransposeTiled) {
       // Tile size for transposition.
       int64_t shmem_usage_bytes =
           CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
-                          dimensions.back(),
+                          normalized_dims.back(),
                       8LL);
-      return TransposeDescription{&hero, dimensions, permutation,
+      return TransposeDescription{&hero, normalized_dims, permutation,
                                   shmem_usage_bytes};
     }
   } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+              normalized_dims.back() >= kMinDimensionToTransposeTiled) ||
              (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-              operand_most_minor_dim * dimensions.back() >=
+              normalized_dims.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * normalized_dims.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
     // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last
     // dimension is being transposed. The issue seems to be related to bank
@@ -297,7 +301,7 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     }
     int64_t shmem_usage_bytes =
         CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width, 8LL);
-    return TransposeDescription{&hero, dimensions, permutation,
+    return TransposeDescription{&hero, normalized_dims, permutation,
                                 shmem_usage_bytes};
   }
   return std::nullopt;
