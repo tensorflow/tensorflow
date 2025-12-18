@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace xla::gpu {
@@ -41,9 +41,8 @@ struct KernelCall {
   std::vector<int32_t> output_indices;
 
   // Parse the metadata of a __gpu$xla.gpu.ptx call.
-  static absl::StatusOr<KernelCall> Parse(
-      absl::string_view backend_config,
-      SymbolicExprContext* symbolic_expr_context);
+  static absl::StatusOr<KernelCall> Parse(absl::string_view backend_config,
+                                          mlir::MLIRContext* mlir_context);
 };
 
 }  // namespace xla::gpu

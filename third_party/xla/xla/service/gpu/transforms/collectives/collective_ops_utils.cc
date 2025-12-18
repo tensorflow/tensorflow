@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -79,8 +79,8 @@ bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
   for (const auto& [_, v] : rhs) {
     rhs_counts.push_back(v);
   }
-  std::sort(lhs_counts.begin(), lhs_counts.end());
-  std::sort(rhs_counts.begin(), rhs_counts.end());
+  absl::c_sort(lhs_counts);
+  absl::c_sort(rhs_counts);
   return lhs_counts == rhs_counts;
 }
 
@@ -134,7 +134,97 @@ bool IsNonWorldLevelCommunication(const CollectiveMetadata& pattern) {
   return !IsSingleHost(pattern) && !IsWorldLevelCommunication(pattern);
 }
 
+// Properties of a collective-permute instruction, categorizing its
+// communication pattern.
+struct CollectivePermuteProperty {
+  std::vector<std::pair<int64_t, int64_t>> intra_partition_source_target_pairs;
+  std::vector<std::pair<int64_t, int64_t>> inter_partition_source_target_pairs;
+  // If true, at least one device both sends and receives data. If false, every
+  // device involved in the collective-permute either only sends or only
+  // receives data.
+  bool has_devices_with_two_edges = false;
+  // True if for every pair (s,t) in source_target_pairs, the pair (t,s) is
+  // also present in source_target_pairs.
+  bool is_all_mutual = false;
+};
+
+// TODO(b/460155942): remove the optional wrapper once the HLO verifier stop
+// supporting empty source-target pairs.
+std::optional<CollectivePermuteProperty> GetCollectivePermuteProperty(
+    const HloCollectivePermuteInstruction& instr,
+    int64_t num_devices_per_partition) {
+  CHECK_GT(num_devices_per_partition, 0);
+  if (instr.source_target_pairs().empty()) {
+    return std::nullopt;
+  }
+
+  CollectivePermuteProperty property;
+  absl::flat_hash_set<int64_t> sources, targets;
+  absl::flat_hash_set<std::pair<int64_t, int64_t>> pairs_set;
+  absl::c_for_each(instr.source_target_pairs(),
+                   [&](const auto& pair) { pairs_set.insert(pair); });
+
+  property.is_all_mutual = true;
+
+  for (const auto& [source, target] : instr.source_target_pairs()) {
+    sources.insert(source);
+    targets.insert(target);
+
+    bool is_intra_partition = (source / num_devices_per_partition ==
+                               target / num_devices_per_partition);
+
+    if (is_intra_partition) {
+      property.intra_partition_source_target_pairs.push_back({source, target});
+    } else {
+      property.inter_partition_source_target_pairs.push_back({source, target});
+    }
+    // If anyone of the pair (t,s) is not present in source_target_pairs, the
+    // communication pattern is not all-mutual.
+    if (property.is_all_mutual && !pairs_set.contains({target, source})) {
+      property.is_all_mutual = false;
+    }
+  }
+
+  // If any source device is a target device, then it has two edges.
+  for (int64_t source : sources) {
+    if (targets.contains(source)) {
+      property.has_devices_with_two_edges = true;
+      break;
+    }
+  }
+
+  return property;
+}
+
 }  // namespace
+
+CollectivePermuteCostModelType GetCollectivePermuteCostModelType(
+    const HloCollectivePermuteInstruction& instr,
+    int64_t num_devices_per_partition) {
+  std::optional<CollectivePermuteProperty> property =
+      GetCollectivePermuteProperty(instr, num_devices_per_partition);
+  if (!property) {
+    return CollectivePermuteCostModelType::kUnknown;
+  }
+
+  if (!property->inter_partition_source_target_pairs.empty()) {
+    if (property->has_devices_with_two_edges) {
+      return property->is_all_mutual ? CollectivePermuteCostModelType::
+                                           kInterPartitionTwoWayAllMutual
+                                     : CollectivePermuteCostModelType::
+                                           kInterPartitionTwoWayHasNonMutual;
+    }
+    return CollectivePermuteCostModelType::kInterPartitionOneWay;
+  }
+
+  if (property->has_devices_with_two_edges) {
+    return property->is_all_mutual
+               ? CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual
+               : CollectivePermuteCostModelType::
+                     kIntraPartitionTwoWayHasNonMutual;
+  }
+  return CollectivePermuteCostModelType::kIntraPartitionOneWay;
+}
 
 bool IsGPUSyncCollective(const HloInstruction& instr) {
   auto backend_config = instr.backend_config<GpuBackendConfig>();

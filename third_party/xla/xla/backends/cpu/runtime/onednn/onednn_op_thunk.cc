@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_softmax.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -142,11 +142,13 @@ OneDnnOpThunk::~OneDnnOpThunk() = default;
 
 OneDnnOpThunk::BufferUses OneDnnOpThunk::buffer_uses() const {
   BufferUses buffer_uses;
-  for (const auto& argument : op_buffers_.arguments_buffers) {
-    buffer_uses.emplace_back(BufferUse::Read(argument));
+  for (int i = 0; i < op_buffers_.arguments_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Read(op_buffers_.arguments_buffers[i],
+                                             op_buffers_.arguments_shapes[i]));
   }
-  for (const auto& result : op_buffers_.results_buffers) {
-    buffer_uses.emplace_back(BufferUse::Write(result));
+  for (int i = 0; i < op_buffers_.results_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Write(op_buffers_.results_buffers[i],
+                                              op_buffers_.results_shapes[i]));
   }
   return buffer_uses;
 }
@@ -165,7 +167,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   runtime->resources.arg_memrefs.reserve(num_operands);
   for (size_t i = 0; i < num_operands; ++i) {
     const auto& shape = op_buffers_.arguments_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
                         params.buffer_allocations->GetDeviceAddress(
                             op_buffers_.arguments_buffers[i]));
 
@@ -183,7 +185,7 @@ tsl::AsyncValueRef<OneDnnOpThunk::ExecuteEvent> OneDnnOpThunk::Execute(
   runtime->resources.result_memrefs.reserve(num_results);
   for (size_t i = 0; i < num_results; ++i) {
     const auto& shape = op_buffers_.results_shapes[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase res,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase res,
                         params.buffer_allocations->GetDeviceAddress(
                             op_buffers_.results_buffers[i]));
 

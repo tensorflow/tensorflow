@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 
+#include <cstdlib>
+
 #ifdef _MSC_VER
 #include <math.h>
 #endif  // _MSC_VER
@@ -148,6 +150,8 @@ static Registry CreateRegistry() {
       SymbolDef(static_cast<void* (*)(void*, const void*, size_t)>(memmove));
   registry["memset"] =
       SymbolDef(static_cast<void* (*)(void*, int, size_t)>(memset));
+  registry["malloc"] = SymbolDef(static_cast<void* (*)(size_t)>(malloc));
+  registry["free"] = SymbolDef(static_cast<void (*)(void*)>(free));
 
   registry["__gnu_f2h_ieee"] = SymbolDef(__gnu_f2h_ieee);
   registry["__gnu_h2f_ieee"] = SymbolDef(__gnu_h2f_ieee);

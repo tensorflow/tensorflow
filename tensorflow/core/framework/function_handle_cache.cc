@@ -23,7 +23,7 @@ namespace tensorflow {
 FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
     : lib_(lib),
       state_handle_(
-          strings::Printf("%lld", static_cast<long long>(random::New64()))) {}
+          absl::StrFormat("%lld", static_cast<long long>(random::New64()))) {}
 
 FunctionHandleCache::~FunctionHandleCache() {
   absl::Status s = Clear();
@@ -33,10 +33,10 @@ FunctionHandleCache::~FunctionHandleCache() {
 }
 
 absl::Status FunctionHandleCache::Instantiate(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     FunctionLibraryRuntime::InstantiateOptions options,
     FunctionLibraryRuntime::Handle* handle) {
-  string key = Canonicalize(function_name, attrs, options);
+  std::string key = Canonicalize(function_name, attrs, options);
   FunctionLibraryRuntime::Handle h;
   {
     tf_shared_lock l(mu_);

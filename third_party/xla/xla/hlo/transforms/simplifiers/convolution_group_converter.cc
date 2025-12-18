@@ -22,23 +22,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -104,7 +105,7 @@ bool ConvolutionVisitor::Run(
     bool convert_batch_groups_only, bool filter_expansion) {
   ConvolutionVisitor visitor(computation, should_expand, is_cost_viable,
                              convert_batch_groups_only, filter_expansion);
-  TF_CHECK_OK(computation->Accept(&visitor));
+  CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
 
@@ -317,7 +318,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
             /*preferred_element_type=*/convolution->shape().element_type())
             .value();
     convolution->SetupDerivedInstruction(new_convolution);
-    TF_CHECK_OK(computation_->ReplaceInstruction(
+    CHECK_OK(computation_->ReplaceInstruction(
         convolution,
         MakeReshapeHlo(convolution->shape(), new_convolution).value()));
     changed_ = true;
@@ -416,7 +417,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     auto reduce_window_converted =
         HloInstruction::CreateConvert(convert_back_shape, reduce_window);
 
-    TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+    CHECK_OK(computation_->ReplaceWithNewInstruction(
         convolution, std::move(reduce_window_converted)));
     changed_ = true;
   }

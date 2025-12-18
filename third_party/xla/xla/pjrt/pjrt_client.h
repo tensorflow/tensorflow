@@ -1032,7 +1032,7 @@ class PjRtClient {
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) {
-    return absl::InternalError(
+    return absl::UnimplementedError(
         "Cross-host data transfers are not supported by this client.");
   }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -44,14 +45,14 @@ ENTRY main {
   output_offsets = s32[2] parameter(4)
   recv_sizes = s32[2] parameter(5)
   ROOT ra2a = bf16[16] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
+    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}, frontend_attributes={_scheduling_group_id="0",latency_metadata="150000",sync_collective="false"}
 }
 )"));
 
   RaggedAllToAllCanonicalizer canonicalizer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
-  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
 
   auto* ragged_all_to_all =
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
@@ -60,6 +61,8 @@ ENTRY main {
   EXPECT_EQ(ragged_all_to_all->operand(3)->shape().element_type(), S64);
   EXPECT_EQ(ragged_all_to_all->operand(4)->shape().element_type(), S64);
   EXPECT_EQ(ragged_all_to_all->operand(5)->shape().element_type(), S64);
+  EXPECT_TRUE(ragged_all_to_all->has_frontend_attributes());
+  EXPECT_EQ(ragged_all_to_all->frontend_attributes().map().size(), 3);
 }
 
 TEST_F(RaggedAllToAllCanonicalizerTest, CanonicalRaggedAllToAllIsNotChanged) {
@@ -81,7 +84,7 @@ ENTRY main {
   RaggedAllToAllCanonicalizer canonicalizer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
-  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
 }
 
 }  // namespace

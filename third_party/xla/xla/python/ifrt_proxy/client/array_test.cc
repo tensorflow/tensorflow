@@ -25,6 +25,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -51,7 +52,6 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -59,7 +59,6 @@ using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
 
 namespace xla {
 namespace ifrt {

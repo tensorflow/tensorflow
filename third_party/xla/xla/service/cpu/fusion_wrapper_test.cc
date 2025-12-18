@@ -56,7 +56,7 @@ TEST_F(FusionWrapperTest, Scatter) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(hlo_string));
-  FusionWrapper wrapper(false);
+  FusionWrapper wrapper(false, false);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wrapper.Run(m.get()));
   EXPECT_TRUE(changed);
 

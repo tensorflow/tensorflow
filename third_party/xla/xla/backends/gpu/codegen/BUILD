@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -25,6 +26,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
@@ -104,7 +106,6 @@ xla_test(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -128,12 +129,13 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:all_reduce_thunk",
         "//xla/backends/gpu/runtime:collective_thunk",
         "//xla/backends/gpu/runtime:copy_thunk",
         "//xla/backends/gpu/runtime:custom_call_target",
         "//xla/backends/gpu/runtime:custom_call_thunk",
+        "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:dynamic_slice_thunk",
         "//xla/backends/gpu/runtime:gemm_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
@@ -184,6 +186,16 @@ cc_library(
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = ["dynamic_slice_fusion_test.cc"],
+    # TODO(b/467915739): Remove heap_check= once the bug is fixed.
+    backend_args = if_google(
+        {
+            "gpu": ["--heap_check="],
+            "b200": ["--heap_check="],
+            "a100": ["--heap_check="],
+            "h100": ["--heap_check="],
+        },
+        {},
+    ),
     backend_tags = {
         "gpu": [
             "multi_gpu",
@@ -200,6 +212,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:ffi",
         "//xla/backends/gpu/runtime:dynamic_slice_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
@@ -218,11 +231,10 @@ xla_test(
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -249,7 +261,6 @@ cc_library(
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_dimensions",
         "//xla/service/gpu:ir_emitter_context",
@@ -270,7 +281,6 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -287,6 +297,7 @@ cc_library(
         ":cudnn",
         ":custom",
         ":fusion_emitter",
+        ":sort",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
@@ -296,7 +307,6 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters:transpose",
         "//xla/backends/gpu/codegen/triton:fusion",
         "//xla/codegen:ir_emission_utils",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
@@ -305,5 +315,29 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "sort",
+    srcs = ["sort.cc"],
+    hdrs = ["sort.h"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/codegen/llvm:llvm_emitter",
+        "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:shaped_slice",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

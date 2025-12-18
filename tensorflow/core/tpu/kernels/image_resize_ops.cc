@@ -57,7 +57,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
     return output_shape;
   }
 
-  string OpaqueField() const {
+  std::string OpaqueField() const {
     return absl::StrCat("\"", align_corners_, half_pixel_centers_, "\"");
   }
 

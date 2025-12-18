@@ -34,7 +34,7 @@ GenNode::GenNode(const NodeDef* node) : node_(node), op_(nullptr) {}
 
 absl::Status GenNode::BuildGraphInMap(const GraphDef& source, GenNodeMap* map) {
   for (const auto& n : source.node()) {
-    const string& name = n.name();
+    const std::string& name = n.name();
     if (map->find(name) != map->end()) {
       // This error code looks more meaningful than ALREADY_EXISTS.
       return absl::Status(absl::StatusCode::kInvalidArgument,
@@ -95,7 +95,7 @@ absl::Status GenNode::ParseInputs(const GenNodeMap* map) {
 
   for (int i = 0; i < n_inputs; ++i) {
     int other_position;
-    string other_name = ParseNodeName(node_->input(i), &other_position);
+    std::string other_name = ParseNodeName(node_->input(i), &other_position);
     auto other_it = map->find(other_name);
     if (other_it == map->end()) {
       return absl::Status(
@@ -138,8 +138,8 @@ bool GenNode::IsMultiInput(Port port) const {
   return (it->second.size() > 1);
 }
 
-GenNode::Port::operator string() const {
-  string result = this->IsInbound() ? "i" : "o";
+GenNode::Port::operator std::string() const {
+  std::string result = this->IsInbound() ? "i" : "o";
   if (this->IsControl()) {
     result.append("C");
   } else {

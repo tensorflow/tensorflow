@@ -224,6 +224,27 @@ absl::StatusOr<absl::Duration> SolGPUCostModel::RingLatency(
   return ret + xla_flag_config_.nccl_op_launch_time;
 }
 
+absl::StatusOr<absl::Duration> SolGPUCostModel::AllToAllLatency(
+    const int64_t buff_size_bytes, const int num_nodes,
+    const int num_communicators) const {
+  TF_ASSIGN_OR_RETURN(
+      int num_gpus,
+      NumGpusPerComm(num_nodes, SolGPUCostModel::CollectiveType::kAllToAll,
+                     num_communicators));
+
+  const int num_gpus_per_node = num_gpus / num_nodes;
+  // Each GPU sends to (num_gpus_per_node * (num_nodes-1)) peers off-node.
+  const int inter_node_peers_per_gpu = num_gpus_per_node * (num_nodes - 1);
+  // Sending buff_size_bytes / (num_gpus - 1) bytes to each peer off-node.
+  const int64_t per_peer_bytes = buff_size_bytes / (num_gpus - 1);
+  absl::Duration per_peer_duration = TransferDuration(per_peer_bytes) +
+                                     ChunkPrepLatency(per_peer_bytes) +
+                                     xla_flag_config_.rtt;
+  absl::Duration total = inter_node_peers_per_gpu * per_peer_duration;
+
+  return total + xla_flag_config_.nccl_op_launch_time;
+}
+
 // Helper functions
 absl::StatusOr<int> SolGPUCostModel::NumGpusPerComm(
     int num_nodes, const CollectiveType& coll_type,

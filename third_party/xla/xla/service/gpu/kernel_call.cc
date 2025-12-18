@@ -29,9 +29,9 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -52,11 +52,10 @@ absl::StatusOr<KernelCall::KernelType> ParseKernelType(
   }
 }
 
-absl::StatusOr<KernelCall> KernelCall::Parse(
-    absl::string_view backend_config,
-    SymbolicExprContext* symbolic_expr_context) {
-  auto attrs = mlir::cast<mlir::DictionaryAttr>(mlir::parseAttribute(
-      backend_config, symbolic_expr_context->GetMLIRContext()));
+absl::StatusOr<KernelCall> KernelCall::Parse(absl::string_view backend_config,
+                                             mlir::MLIRContext* mlir_context) {
+  auto attrs = mlir::cast<mlir::DictionaryAttr>(
+      mlir::parseAttribute(backend_config, mlir_context));
 
   // Check for required "name" field
   auto name_attr = attrs.getAs<mlir::StringAttr>("name");

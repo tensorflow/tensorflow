@@ -29,7 +29,6 @@ namespace xla {
 // The output gather's attributes will have the following characteristics:
 // - start_indices is a two-dimensional tensor
 // - index_vector_dim is 1
-// - start_index_map is [0, 1, ...]
 // - collapsed_slice_dims is []
 // - offset_dims is [1, 2, ...]
 //

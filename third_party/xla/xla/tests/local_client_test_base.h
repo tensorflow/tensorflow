@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -47,17 +47,17 @@ limitations under the License.
 
 namespace xla {
 
-class TestAllocator : public se::StreamExecutorMemoryAllocator {
+class TestAllocator : public stream_executor::StreamExecutorAddressAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
-      : se::StreamExecutorMemoryAllocator(
+      : stream_executor::StreamExecutorAddressAllocator(
             platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
-  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+  absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
       int64_t memory_space) override;
   absl::Status Deallocate(int device_ordinal,
-                          se::DeviceMemoryBase mem) override;
+                          se::DeviceAddressBase mem) override;
 
   // Return the number of allocations that have been performed.
   int64_t allocation_count() const;

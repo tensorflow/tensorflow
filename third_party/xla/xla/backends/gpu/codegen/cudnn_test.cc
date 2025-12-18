@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -58,8 +57,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class CuDnnFusionTest : public GpuCodegenTest {
  public:
@@ -80,12 +77,14 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
-  bool IsAtLeastCuDnn91() {
+  bool IsAtLeastCuDnnVersion(int major, int minor) {
     se::StreamExecutor* executor = backend().default_stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
-    return (version.major_version() == 9 && version.minor_version() >= 1) ||
-           version.major_version() > 9;
+    return (version.major_version() == major &&
+            version.minor_version() >= minor) ||
+           version.major_version() > major;
   }
+  bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
 
  protected:
   void SetUp() override {
@@ -457,6 +456,29 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
+TEST_F(CuDnnFusionExecutionTest, DotS4BF16ExecutesCorrectly) {
+  if (!IsAtLeastCuDnnVersion(9, 12)) {
+    GTEST_SKIP() << "This test case requires cuDNN 9.12+.";
+  }
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  a = s4[3,128,128] parameter(0)
+  c = bf16[3,128,128] convert(a)
+  b = bf16[3,128,128] parameter(1)
+  d = bf16[3,128,128] dot(c, b),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+e {
+  a = s4[3,128,128] parameter(0)
+  b = bf16[3,128,128] parameter(1)
+  f = bf16[3,128,128] fusion(a, b), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
 TEST_F(CuDnnFusionExecutionTest, DotF32WithOutputSubtractionExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
@@ -533,6 +555,24 @@ ENTRY e {
   p0 = f32[27,23] parameter(0)
   p1 = f32[23,21] parameter(1)
   ROOT r = f32[27,21] fusion(p0, p1), kind=kCustom, calls=t,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})"));
+}
+
+TEST_F(CuDnnFusionExecutionTest, NonDefaultDotAlgorithmIsNotSupported) {
+  EXPECT_FALSE(Run(R"(
+fusion1 {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  r = f32[32,64] dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_f32
+}
+
+e {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  _ = f32[32,64] fusion(a, b), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })"));
 }
@@ -1228,15 +1268,18 @@ ENTRY main {
       backend_config={"fusion_backend_config":{kind:"__cudnn$fusion"}}
 })";
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "intermediate_data_type": "FLOAT"
 CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "lhs"
 CHECK: "scale": "lhs_scale"
 CHECK: "Y": "result_lhs_dq"
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "rhs"
 CHECK: "scale": "rhs_scale"
 CHECK: "Y": "result_rhs_dq"

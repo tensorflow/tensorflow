@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 
@@ -71,16 +72,18 @@ absl::StatusOr<AttributeMap> AttributeMap::FromProto(
   return AttributeMap(std::move(map));
 }
 
-AttributeMapProto AttributeMap::ToProto(SerDesVersion version) const {
+void AttributeMap::ToProto(AttributeMapProto& proto,
+                           SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for AttributeMap serialization";
 
-  AttributeMapProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
+  absl::ReaderMutexLock lock(mu_);
   for (const auto& [key, value] : map_) {
     AttributeMapProto::Value value_proto;
     std::visit(
@@ -105,11 +108,11 @@ AttributeMapProto AttributeMap::ToProto(SerDesVersion version) const {
         value);
     proto.mutable_attributes()->insert({key, std::move(value_proto)});
   }
-  return proto;
 }
 
 std::string AttributeMap::DebugString(size_t max_string_length,
                                       size_t max_int64_list_size) const {
+  absl::ReaderMutexLock lock(mu_);
   auto formatter = [=](std::string* out,
                        const AttributeMap::Map::value_type& key_value) {
     absl::StrAppend(out, key_value.first, "=");

@@ -43,6 +43,7 @@ cc_library(
     hdrs = ["cpu_client_options.h"],
     deps = [
         ":cpu_memory",
+        ":cpu_topology_description",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/status:statusor",

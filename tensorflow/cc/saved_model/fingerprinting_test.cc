@@ -78,33 +78,6 @@ TEST(FingerprintingTest, TestCreateFingerprint) {
   EXPECT_GT(fingerprint_def.checkpoint_hash(), 0);
 }
 
-TEST(FingerprintingTest, TestCreateFingerprintForPbtxtWorks) {
-  // This test ensures that we get a minimal fingerprint with an uuid, even
-  // when the SavedModel cannot be read.
-  const std::string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
-                   "half_plus_two_pbtxt");
-  TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
-                          CreateFingerprintDef(export_dir));
-
-  EXPECT_EQ(fingerprint_def.saved_model_checksum(), 0);
-  EXPECT_EQ(fingerprint_def.graph_def_program_hash(), 0);
-  EXPECT_EQ(fingerprint_def.signature_def_hash(), 0);
-  EXPECT_EQ(fingerprint_def.saved_object_graph_hash(), 0);
-  EXPECT_EQ(fingerprint_def.checkpoint_hash(), 0);
-
-  // The uuid is a random number (as string), but it should be a number > 0.
-  absl::uint128 uuid = 0;
-  EXPECT_TRUE(absl::SimpleAtoi(fingerprint_def.uuid(), &uuid))
-      << "String to Uint128 conversion failed. "
-      << "UUID from proto, and Uint128Max(): \n"
-      << fingerprint_def.uuid() << "\n"
-      << absl::Uint128Max();
-  EXPECT_GT(uuid, 0);
-  // version().producer()differs between WIN and non-WIN platforms.
-  EXPECT_GT(fingerprint_def.version().producer(), 3);
-}
-
 // Compare the fingerprints of two models saved by calling
 // `tf.saved_model.save` twice in a row in the same program.
 TEST(FingerprintingTest, TestCompareFingerprintForTwoModelSavedTwice) {
@@ -158,7 +131,7 @@ TEST(FingerprintingTest, TestFingerprintHasVersion) {
                           ReadSavedModel(export_dir));
   TF_ASSERT_OK_AND_ASSIGN(FingerprintDef fingerprint_def,
                           CreateFingerprintDef(export_dir));
-  EXPECT_EQ(fingerprint_def.version().producer(), 4);
+  EXPECT_EQ(fingerprint_def.version().producer(), 1);
 }
 
 TEST(FingerprintingTest, TestHashCheckpointForModelWithNoVariables) {

@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "Python.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
@@ -130,7 +132,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
          const std::string& protocol) -> tensorflow::data::DataServiceMetadata {
         tensorflow::data::DataServiceMetadata metadata;
         tensorflow::data::DataServiceDispatcherClient client(address, protocol);
-        int64_t deadline_micros = tensorflow::kint64max;
+        int64_t deadline_micros = std::numeric_limits<int64_t>::max();
         absl::Status status;
         Py_BEGIN_ALLOW_THREADS;
         status = tensorflow::data::grpc_util::Retry(

@@ -54,6 +54,8 @@ class NormThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
+  BufferUses buffer_uses() const override;
+
   static absl::StatusOr<std::unique_ptr<NormThunk>> FromProto(
       ThunkInfo thunk_info, const NormThunkProto& proto,
       absl::Span<const BufferAllocation> buffer_allocations);

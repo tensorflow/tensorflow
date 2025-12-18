@@ -43,13 +43,14 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -88,7 +89,7 @@ class MockExecutable : public Executable {
 };
 
 absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
-    se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream_exec,
+    se::DeviceAddressAllocator* allocator, se::StreamExecutor* stream_exec,
     se::Stream* stream, int32_t value) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
   TF_ASSIGN_OR_RETURN(auto* transfer_manager, TransferManager::GetForPlatform(
@@ -104,7 +105,7 @@ absl::StatusOr<ScopedShapedBuffer> CreateTestBuffer(
 }
 
 absl::StatusOr<ScopedShapedBuffer> CreateTupleTestBuffer(
-    se::DeviceMemoryAllocator* allocator, se::StreamExecutor* stream_exec,
+    se::DeviceAddressAllocator* allocator, se::StreamExecutor* stream_exec,
     se::Stream* stream, int32_t value1, int32_t value2) {
   Shape test_shape = ShapeUtil::MakeShape(S32, {});
   Shape test_shape_tuple = ShapeUtil::MakeTupleShape({test_shape, test_shape});
@@ -133,7 +134,7 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
         std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec_);
   }
   se::StreamExecutor* stream_exec_;
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
 
 TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {

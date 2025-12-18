@@ -33,8 +33,8 @@ namespace stream_executor {
 class Stream;
 class Event;
 class Platform;
-class DeviceMemoryAllocator;
-class DeviceMemoryBase;
+class DeviceAddressAllocator;
+class DeviceAddressBase;
 }  // namespace stream_executor
 
 namespace Eigen {
@@ -108,7 +108,7 @@ using ThenExecuteFunction =
 using SendDeviceMemoryFunction = std::function<
     absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        const stream_executor::DeviceMemoryBase& src,
+        const stream_executor::DeviceAddressBase& src,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Callback for receiving device buffer from a channel. Returned event will be
@@ -118,7 +118,7 @@ using SendDeviceMemoryFunction = std::function<
 using RecvDeviceMemoryFunction = std::function<
     absl::StatusOr<tsl::AsyncValueRef<std::unique_ptr<stream_executor::Event>>>(
         int64_t channel_id, stream_executor::Stream* stream, const Shape& shape,
-        stream_executor::DeviceMemoryBase* dst,
+        stream_executor::DeviceAddressBase* dst,
         const absl::flat_hash_map<std::string, std::string>& frontend_attrs)>;
 
 // Class containing options for running a LocalExecutable.
@@ -126,8 +126,8 @@ class ExecutableRunOptions {
  public:
   // Specifies the allocator to use during execution.
   ExecutableRunOptions& set_allocator(
-      stream_executor::DeviceMemoryAllocator* allocator);
-  stream_executor::DeviceMemoryAllocator* allocator() const;
+      stream_executor::DeviceAddressAllocator* allocator);
+  stream_executor::DeviceAddressAllocator* allocator() const;
 
   // If set, this is the device to run the computation on. Valid device_ordinal
   // values are: 0 to # of devices - 1. These are the logical device ordinals,
@@ -261,7 +261,7 @@ class ExecutableRunOptions {
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys() const;
 
  private:
-  stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
+  stream_executor::DeviceAddressAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
   int local_device_count_ = 0;
   int physical_device_ordinal_ = -1;

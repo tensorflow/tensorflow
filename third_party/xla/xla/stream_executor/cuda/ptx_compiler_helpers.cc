@@ -27,7 +27,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "re2/re2.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
@@ -89,6 +91,26 @@ absl::StatusOr<int> GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
                         minor));
   }
   return major * 10 + minor;
+}
+
+ModuleStats ExtractModuleStatsFromLog(absl::string_view log) {
+  // Reads the log for registers spilled and adds up the count. An example of
+  // this line is:
+  // "Registers are spilled to local memory in function 'rr', 1080 bytes spill
+  // stores, 968 bytes spill loads"
+  static constexpr LazyRE2 kSpillRegex{
+      R"(function\s+'(\w+)',\s*(\d+)\s+bytes\s+spill\s+stores,\s*(\d+)\s+bytes\s+spill\s+loads)"};
+  ModuleStats kernel_stats_map;
+
+  int spill_stores = 0;
+  int spill_loads = 0;
+  std::string function_name;
+  absl::string_view search_log = log;
+  while (RE2::FindAndConsume(&search_log, *kSpillRegex, &function_name,
+                             &spill_stores, &spill_loads)) {
+    kernel_stats_map[function_name] = {spill_stores, spill_loads};
+  }
+  return kernel_stats_map;
 }
 
 absl::Status CreateErrorFromPTXASLog(absl::string_view log,

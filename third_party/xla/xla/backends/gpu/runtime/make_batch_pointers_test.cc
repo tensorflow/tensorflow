@@ -23,17 +23,15 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 using ::testing::ElementsAreArray;
-using tsl::testing::IsOk;
 
 static absl::StatusOr<stream_executor::StreamExecutor*> GpuExecutor() {
   TF_ASSIGN_OR_RETURN(stream_executor::Platform * platform,
@@ -49,8 +47,8 @@ TEST(MakeBatchPointersTest, Basic) {
 
   // We don't care what `base` points to, we only need a pointer to a buffer
   // that we can use as a base.
-  stream_executor::DeviceMemory<char> base = executor->AllocateScalar<char>();
-  stream_executor::DeviceMemory<void*> ptrs_out =
+  stream_executor::DeviceAddress<char> base = executor->AllocateScalar<char>();
+  stream_executor::DeviceAddress<void*> ptrs_out =
       executor->AllocateArray<void*>(8);
 
   constexpr int kStride = 13;

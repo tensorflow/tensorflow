@@ -20,18 +20,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/util.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
-#else
 #include "third_party/nccl/nccl.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/util.h"
 
 namespace xla::gpu {
 

@@ -275,6 +275,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
+        "//tensorflow/lite/types:half",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -286,7 +287,9 @@ cc_test(
     deps = [
         ":split",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -333,6 +336,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ] + select({

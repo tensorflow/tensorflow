@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -153,9 +152,6 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<mlir::MLIRContext>(kernel_runner_module, "MLIRContext")
       .def(nb::new_([] { return FusionCompiler::CreateContext(); }));
 
-  nb::class_<SymbolicExprContext>(kernel_runner_module, "SymbolicExprContext")
-      .def(nb::init<mlir::MLIRContext*>(), nb::keep_alive<1, 2>());
-
   nb::class_<TargetMachineFeatures>(kernel_runner_module,
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
@@ -194,20 +190,20 @@ NB_MODULE(_extension, kernel_runner_module) {
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
              const BufferAssignment* buffer_assignment,
-             SymbolicExprContext* symbolic_expr_context) {
-            new (self) CpuScatterFusion(*buffer_assignment, instruction,
-                                        symbolic_expr_context);
+             mlir::MLIRContext* mlir_context) {
+            new (self)
+                CpuScatterFusion(*buffer_assignment, instruction, mlir_context);
           },
           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
           nb::keep_alive<1, 4>());
 
   kernel_runner_module.def(
       "emit_fusion_kernel",
-      [](mlir::MLIRContext& mlir_context, SymbolicExprContext& expr_context,
-         const HloFusionInstruction& fusion,
-         const BufferAssignment* buffer_assignment) {
-        auto kernel_definition = EmitFusionKernel(
-            mlir_context, expr_context, fusion, buffer_assignment, false);
+      [](mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+         const BufferAssignment* buffer_assignment, bool enable_tiled_emitter) {
+        auto kernel_definition =
+            EmitFusionKernel(mlir_context, fusion, buffer_assignment, false,
+                             enable_tiled_emitter);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }
@@ -275,7 +271,8 @@ NB_MODULE(_extension, kernel_runner_module) {
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
       [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(true);
+        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
+                                     /*use_tiled_emitter=*/true);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));

@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --split-input-file --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck  %s
+// RUN: hlo-opt %s --platform=gpu --split-input-file --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb | FileCheck  %s
 
 e {
   a = s4[4,16]{1,0:E(4)} parameter(0)
@@ -19,11 +19,11 @@ e {
 
 // CHECK-NOT: convert
 // CHECK:      s4[4,2]{1,0:E(4)} parameter
-// CHECK-NEXT: s4[2,4]{1,0:E(4)} transpose
+// CHECK:      s4[2,4]{1,0:E(4)} fusion(%{{.+}})
 // CHECK-NEXT: s8[2,2]{0,1} bitcast
 // CHECK:      s8[2,4]{0,1} all-gather-done
 // CHECK-NEXT: s4[4,4]{1,0:E(4)} bitcast
-// CHECK-NEXT: s4[4,4]{1,0:E(4)} transpose
+// CHECK:      s4[4,4]{1,0:E(4)} fusion(%{{.+}})
 
 // -----
 

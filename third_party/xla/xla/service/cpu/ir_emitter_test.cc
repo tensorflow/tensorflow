@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -116,7 +117,8 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+          BufferAssigner::Options{}));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
@@ -232,7 +234,8 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
   IrCompiler::Options ir_compiler_options{
       /*optimization_level=*/llvm::CodeGenOptLevel::Default,
       /*optimize_for_size=*/options::OptimizeForSizeRequested(config),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
+      /*target_machine_options=*/
+      TargetMachineOptions(module.config().debug_options()),
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(config),
       /*disable_expensive_passes=*/
       debug_options.xla_llvm_disable_expensive_passes(),
@@ -288,12 +291,14 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
 
   auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          &module, std::make_unique<SequentialHloOrdering>(schedule),
-          buffer_size_bytes_function, &alias_info, memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(&module,
+                          std::make_unique<SequentialHloOrdering>(schedule),
+                          buffer_size_bytes_function, &alias_info,
+                          memory_alignment, std::move(opts)));
 
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());

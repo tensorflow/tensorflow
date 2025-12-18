@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -54,8 +54,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
       return std::nullopt;
     }
 
-    return std::make_unique<DynamicMemcpyFusion>(analysis(),
-                                                 buffer_assignment_);
+    return std::make_unique<DynamicMemcpyFusion>(analysis());
   }
 
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
@@ -68,7 +67,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     }
   }
 
-  return std::make_unique<MemcpyFusion>(analysis(), buffer_assignment_);
+  return std::make_unique<MemcpyFusion>(analysis());
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
@@ -78,7 +77,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
 }
 
 std::unique_ptr<FusionInterface> GetFusionEmitter(
-    const FusionInfo& fusion_info, SymbolicExprContext* symbolic_expr_context) {
+    const FusionInfo& fusion_info, mlir::MLIRContext* mlir_context) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
 
@@ -109,19 +108,22 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
           fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
         return std::make_unique<InPlaceDynamicUpdateSliceFusion>(analysis);
       }
-      return std::make_unique<LoopFusion>(analysis, symbolic_expr_context);
+      return std::make_unique<LoopFusion>(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      return CreateReductionFusion(analysis, symbolic_expr_context);
+      return CreateReductionFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      return CreateScatterFusion(analysis, symbolic_expr_context);
+      return CreateScatterFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      return CreateTransposeFusion(analysis, symbolic_expr_context);
+      return CreateTransposeFusion(analysis, mlir_context);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kSort: {
+      return std::make_unique<SortFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);

@@ -49,7 +49,6 @@ cc_library(
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
     ],
     alwayslink = True,
 )
@@ -58,10 +57,9 @@ tsl_cc_test(
     name = "traceme_recorder_test",
     srcs = ["traceme_recorder_test.cc"],
     deps = [
-        ":traceme_recorder",
         ":traceme_recorder_impl",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:types",

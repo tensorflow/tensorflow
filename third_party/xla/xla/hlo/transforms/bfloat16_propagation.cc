@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,8 +51,9 @@ limitations under the License.
 
 namespace xla {
 
-BFloat16Propagation::BFloat16Propagation(const FloatSupport* bfloat16_support)
-    : bfloat16_support_(bfloat16_support) {
+BFloat16Propagation::BFloat16Propagation(const FloatSupport* bfloat16_support,
+                                         const AliasInfo* alias_info)
+    : bfloat16_support_(bfloat16_support), alias_info_(alias_info) {
   DCHECK_EQ(bfloat16_support->LowPrecisionType(), BF16);
 }
 
@@ -744,7 +746,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         // HloAliasAnalysis (e.g., their computation graphs may not have been
         // flattened yet).
         for (const auto& operand_and_output_index :
-             HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
+             alias_info_->GetInPlaceInputOutputPairs(hlo)) {
           if (operand_and_output_index.second == index) {
             const HloOperandIndex& operand_index =
                 operand_and_output_index.first;

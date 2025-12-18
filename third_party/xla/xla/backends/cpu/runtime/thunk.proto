@@ -145,6 +145,7 @@ message SortThunkProto {
   repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
 }
 
+// TODO: b/467367981, this is deprecated and should be removed.
 message XnnDotThunkProto {
   DotDimensionNumbers dot_dimensions = 1;
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
@@ -295,6 +296,7 @@ message ThunkProto {
     CallThunkProto call_thunk = 3;
     ConditionalThunkProto conditional_thunk = 4;
     SortThunkProto sort_thunk = 5;
+    // TODO: b/467367981, this is deprecated and should be removed.
     XnnFusionThunkProto xnn_fusion_thunk = 6;
     DotThunkProto dot_thunk = 7;
     RngGetAndUpdateStateThunkProto rng_get_and_update_state_thunk = 8;

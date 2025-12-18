@@ -11,14 +11,14 @@ xtile.entry_func @extract_insert_no_layout(%input: memref<1024xf32, #nvvm.memory
 // CHECK: func.func @extract_insert_no_layout(%[[ARG0:.*]]: !tt.ptr<f32>, %[[ARG1:.*]]: !tt.ptr<f32>) {
 // CHECK:   %[[PID:.*]] = tt.get_program_id x : i32
 // CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID]] : i32 to index
-// CHECK:   %[[TILE:.*]] = triton_xla.extract from %[[ARG0]] as memref<1024xf32, #triton_xla.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
-// CHECK:   triton_xla.insert %[[TILE]] into %[[ARG1]] as memref<32xf32, #triton_xla.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
+// CHECK:   %[[TILE:.*]] = triton_xla.extract from %[[ARG0]] as memref<1024xf32, #xtile.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
+// CHECK:   triton_xla.insert %[[TILE]] into %[[ARG1]] as memref<32xf32, #xtile.layout<[0]>> [%[[PID_IDX]]] [1] [1] : tensor<1xf32>
 // CHECK:   return
 // CHECK: }
 
 // -----
 
-!arg_type = memref<1024x32x1x1xbf16, #triton_xla.layout<[2, 3, 0, 1]>, #nvvm.memory_space<global>>
+!arg_type = memref<1024x32x1x1xbf16, #xtile.layout<[2, 3, 0, 1]>, #nvvm.memory_space<global>>
 xtile.entry_func @layout_preserved(%input: !arg_type,
                                    %tile_id: index) {
   %c_0 = arith.constant 0 : index
@@ -30,7 +30,7 @@ xtile.entry_func @layout_preserved(%input: !arg_type,
 // CHECK:   %[[PID:.*]] = tt.get_program_id x : i32
 // CHECK:   %[[PID_IDX:.*]] = arith.index_cast %[[PID]] : i32 to index
 // CHECK:   %[[TILE:.*]] = triton_xla.extract from %[[ARG0]]
-// CHECK-SAME: as memref<1024x32x1x1xbf16, #triton_xla.layout<[3, 2, 0, 1]>>
+// CHECK-SAME: as memref<1024x32x1x1xbf16, #xtile.layout<[3, 2, 0, 1]>>
 // CHECK-SAME: [%[[PID_IDX]], 0, 0, 0]
 // CHECK-SAME: [1, 1, 1, 1] [1, 1, 1, 1] : tensor<1x1x1x1xbf16>
 // CHECK:   return
@@ -71,13 +71,34 @@ xtile.entry_func @insert_extract_with_opaque_arg(%input: !memref_type,
 // -----
 
 // CHECK-LABEL: func.func @fold_transpose_into_ptr
-// CHECK-SAME: (%[[ARG0:.*]]: memref<32x16xf64, #triton_xla.layout<[0, 1]>>)
+// CHECK-SAME: (%[[ARG0:.*]]: memref<32x16xf64, #xtile.layout<[0, 1]>>)
 func.func @fold_transpose_into_ptr(
-    %arg0: memref<32x16xf64, #triton_xla.layout<[0, 1]>>) -> !tt.ptr<f64> {
+    %arg0: memref<32x16xf64, #xtile.layout<[0, 1]>>) -> !tt.ptr<f64> {
   %transposed = memref.transpose %arg0 (d0, d1) -> (d1, d0)
-    : memref<32x16xf64, #triton_xla.layout<[0, 1]>> to memref<16x32xf64>
-  // CHECK: %[[PTR:.*]] = triton_xla.memref_to_ptr %[[ARG0]] from memref<32x16xf64, #triton_xla.layout<[0, 1]>> to <f64>
+    : memref<32x16xf64, #xtile.layout<[0, 1]>> to memref<16x32xf64>
+  // CHECK: %[[PTR:.*]] = triton_xla.memref_to_ptr %[[ARG0]] from memref<32x16xf64, #xtile.layout<[0, 1]>> to <f64>
   %ptr = triton_xla.memref_to_ptr %transposed from memref<16x32xf64> to !tt.ptr<f64>
   // CHECK: return %[[PTR]] : !tt.ptr<f64>
   return %ptr : !tt.ptr<f64>
 }
+
+// -----
+
+// CHECK-LABEL: @mask_lowers_to_stable_hlo(%arg0: tensor<32xf64>, %arg1: f64) -> tensor<32xf64>
+func.func @mask_lowers_to_stable_hlo(%arg0: tensor<32xf64>, %arg1: f64) -> tensor<32xf64> {
+  // CHECK: %[[BOUND:.*]] = arith.constant dense<10> : tensor<32xi32>
+  // CHECK: %[[IDX:.*]] = stablehlo.iota dim = 0 : tensor<32xi32>
+  // CHECK: %[[IDX_BROADCASTED:.*]] = stablehlo.broadcast_in_dim %[[IDX]],
+  // CHECK-SAME: dims = [0] : (tensor<32xi32>) -> tensor<32xi32>
+  // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IDX_BROADCASTED]], %[[BOUND]]
+  // CHECK-SAME: : tensor<32xi32>
+  // CHECK: %[[INIT:.*]] = tensor.from_elements %arg1 : tensor<f64>
+  // CHECK: %[[INIT_TENSOR:.*]] = stablehlo.broadcast_in_dim %[[INIT]],
+  // CHECK-SAME: dims = [] : (tensor<f64>) -> tensor<32xf64>
+  // CHECK: %[[RESULT:.*]] = arith.select %[[MASK]], %arg0, %[[INIT_TENSOR]]
+  // CHECK-SAME: : tensor<32xi1>, tensor<32xf64>
+  %paded = xtile.mask %arg0 bounds [10], %arg1 : tensor<32xf64>
+  // CHECK: return %[[RESULT]] : tensor<32xf64>
+  return %paded : tensor<32xf64>
+}
+

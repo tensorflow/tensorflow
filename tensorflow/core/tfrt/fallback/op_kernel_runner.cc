@@ -148,17 +148,14 @@ absl::StatusOr<OpKernelRunner> OpKernelRunner::Create(
     return absl::InternalError(
         absl::StrCat("Failed to create OpKernel for op: ", op_name));
   }
-  return OpKernelRunner(op_name, device, function_library_runtime,
-                        std::move(op_kernel));
+  return OpKernelRunner(device, function_library_runtime, std::move(op_kernel));
 }
 
 OpKernelRunner::OpKernelRunner(
-    absl::string_view op_name, tensorflow::Device* device,
+    tensorflow::Device* device,
     tensorflow::FunctionLibraryRuntime* function_library_runtime,
     std::unique_ptr<tensorflow::OpKernel> op_kernel)
-    : op_kernel_(std::move(op_kernel)),
-      op_name_(op_name),
-      info_(std::make_unique<Info>()) {
+    : op_kernel_(std::move(op_kernel)), info_(std::make_unique<Info>()) {
   DCHECK(device);
   DCHECK(function_library_runtime);
 

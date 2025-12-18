@@ -24,8 +24,9 @@ endif()
 
 add_library(ml_dtypes INTERFACE)
 target_include_directories(ml_dtypes INTERFACE
-  "${ML_DTYPES_SOURCE_DIR}"
-  "${ML_DTYPES_SOURCE_DIR}/ml_dtypes")
+  "$<BUILD_INTERFACE:${ML_DTYPES_SOURCE_DIR}>"
+  "$<BUILD_INTERFACE:${ML_DTYPES_SOURCE_DIR}/ml_dtypes>"
+  "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 file(GLOB ML_DTYPES_PUBLIC_HEADERS
   ${ML_DTYPES_SOURCE_DIR}/ml_dtypes/include/*.h)
 set_target_properties(ml_dtypes PROPERTIES

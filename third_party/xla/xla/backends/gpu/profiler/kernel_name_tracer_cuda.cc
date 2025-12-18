@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -46,13 +46,13 @@ class KernelNameTracerCuda : public KernelNameTracer {
 };
 
 void KernelNameTracerCuda::start() {
-  profiler::CuptiTracerCollectorOptions collector_options;
+  profiler::CuptiTracerCollectorOptions collector_options{};
   collector_options.num_gpus = profiler::CuptiTracer::NumGpus();
   auto start_gputime_ns = profiler::CuptiTracer::GetTimestamp();
   auto start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = profiler::CreateCuptiCollector(
       collector_options, start_walltime_ns, start_gputime_ns);
-  profiler::CuptiTracerOptions options;
+  profiler::CuptiTracerOptions options{};
   options.activities_selected = {CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL};
   cupti_tracer_->Enable(options, cupti_collector_.get()).IgnoreError();
 }

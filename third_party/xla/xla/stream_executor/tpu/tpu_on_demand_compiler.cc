@@ -140,7 +140,7 @@ class TpuCompiler : public Compiler {
               ->se_executor();
     }
 
-    SE_DeviceMemoryAllocator allocator =
+    SE_DeviceAddressAllocator allocator =
         ApiConverter::ToC(options.device_allocator);
 
     SE_Executable** se_executables = new SE_Executable*[1];

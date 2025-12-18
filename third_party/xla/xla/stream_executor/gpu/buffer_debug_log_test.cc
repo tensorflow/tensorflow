@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -52,23 +52,22 @@ class BufferDebugLogTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
   }
 
   Platform* platform_;
   StreamExecutor* executor_;
   std::unique_ptr<Stream> stream_;
-  std::unique_ptr<StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesEmptyLog) {
-  DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(1024);
+  DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
+                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                               *stream_, log_buffer));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto host_log, device_log.ReadFromDevice<BufferDebugLogEntry>(*stream_));
+  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
 
   EXPECT_EQ(host_log.size(), 0);
 }
@@ -79,26 +78,24 @@ TEST_F(BufferDebugLogTest,
   constexpr size_t kExpectedHeaderSize = sizeof(BufferDebugLogHeader);
   constexpr size_t kExpectedEntriesSize =
       sizeof(BufferDebugLogEntry) * kMaxEntries;
-  DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+  DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
       kExpectedHeaderSize + kExpectedEntriesSize);
 
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
+                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                               *stream_, log_buffer));
 
   EXPECT_EQ(device_log.GetDeviceHeader().size(), kExpectedHeaderSize);
-  EXPECT_EQ(device_log.GetDeviceEntries<BufferDebugLogEntry>().size(),
-            kExpectedEntriesSize);
+  EXPECT_EQ(device_log.GetDeviceEntries().size(), kExpectedEntriesSize);
 }
 
 TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesHeader) {
   constexpr size_t kMaxEntries = 123;
-  DeviceMemory<uint8_t> log_buffer =
-      executor_->AllocateArray<uint8_t>(BufferDebugLog::RequiredSizeForEntries(
-          kMaxEntries, sizeof(BufferDebugLogEntry)));
+  DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      BufferDebugLog<BufferDebugLogEntry>::RequiredSizeForEntries(kMaxEntries));
 
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
+                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                               *stream_, log_buffer));
   TF_ASSERT_OK_AND_ASSIGN(BufferDebugLogHeader header,
                           device_log.ReadHeaderFromDevice(*stream_));
@@ -108,19 +105,18 @@ TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesHeader) {
 }
 
 TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_FailsForNullBuffer) {
-  EXPECT_THAT(BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
-                  *stream_, DeviceMemory<uint8_t>()),
+  EXPECT_THAT(BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                  *stream_, DeviceAddress<uint8_t>()),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(BufferDebugLogTest,
        CreateBufferDebugLogOnDevice_FailsForTooSmallBuffer) {
-  DeviceMemory<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
-      BufferDebugLog::RequiredSizeForEntries(1, sizeof(BufferDebugLogEntry)) -
-      1);
+  DeviceAddress<uint8_t> log_buffer = executor_->AllocateArray<uint8_t>(
+      BufferDebugLog<BufferDebugLogEntry>::RequiredSizeForEntries(1) - 1);
 
   EXPECT_THAT(
-      BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(*stream_, log_buffer),
+      BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_, log_buffer),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

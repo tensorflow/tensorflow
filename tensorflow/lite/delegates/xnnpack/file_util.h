@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_FILE_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_FILE_UTIL_H_
 
+#if !defined(_WIN32)
 #include <sys/types.h>
+#endif
 
 #include <cstddef>
 #include <utility>
@@ -73,6 +75,14 @@ class FileDescriptorView {
   //
   // WARNING: the file descriptor must be valid and the file must be opened.
   Offset MovePos(Offset offset) const;
+
+  // Returns the size of the file.
+  Offset Size() const {
+    Offset pos = GetPos();
+    Offset size = SetPosFromEnd(0);
+    SetPos(pos);
+    return size;
+  }
 
   // Reads `count` bytes from the file at the current position to `dst`.
   //

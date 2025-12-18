@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
@@ -51,7 +51,7 @@ class CpuTransferManager : public GenericTransferManager {
 
   bool CanBufferBeAccessedNow(
       se::StreamExecutor* executor,
-      const se::DeviceMemoryBase& device_buffer) const override {
+      const se::DeviceAddressBase& device_buffer) const override {
     return true;
   }
 

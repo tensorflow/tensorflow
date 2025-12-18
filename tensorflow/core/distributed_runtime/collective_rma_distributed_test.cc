@@ -50,14 +50,16 @@ namespace {
 
 class FakeAllocator : public Allocator {
  public:
-  string Name() override { return "fake"; }
+  std::string Name() override { return "fake"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
+    return tsl::port::AlignedMalloc(num_bytes,
+                                    static_cast<std::align_val_t>(alignment));
   }
   void DeallocateRaw(void* ptr) override { return port::AlignedFree(ptr); }
 };
 
-static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
+static std::unique_ptr<Device> NewDevice(const std::string& type,
+                                         const std::string& name,
                                          Allocator* allocator) {
   class FakeDevice : public Device {
    public:
@@ -81,7 +83,7 @@ static int64_t kStepId = 123;
 
 class FakeWorker : public TestWorkerInterface {
  public:
-  FakeWorker(const string& name, DeviceMgr* dev_mgr,
+  FakeWorker(const std::string& name, DeviceMgr* dev_mgr,
              DeviceResolverDistributed* dres, bool is_failed,
              bool set_tensor_in_extra)
       : name_(name),
@@ -144,7 +146,7 @@ class FakeWorker : public TestWorkerInterface {
               // Since this is not really RDMA into pre-allocated memory send
               // the bytes in the response.
               RecvBufRespExtra extra;
-              extra.add_tensor_content(string(
+              extra.add_tensor_content(std::string(
                   reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
                   num_bytes));
               response->mutable_transport_options()->PackFrom(extra);
@@ -164,7 +166,7 @@ class FakeWorker : public TestWorkerInterface {
   }
 
  private:
-  string name_;
+  std::string name_;
   DeviceMgr* device_mgr_;
   DeviceResolverDistributed* device_resolver_;
   BufRendezvous buf_rendezvous_;
@@ -176,15 +178,16 @@ class FakeCache : public TestWorkerCache {
  public:
   // Override the Locality methods to actually pass through to the
   // worker.
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     return false;
   }
 
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
-    string task_name;
-    string dev_part;
+    std::string task_name;
+    std::string dev_part;
     if (!DeviceNameUtils::SplitDeviceName(device, &task_name, &dev_part)) {
       done(errors::Internal("failed to parse device name"));
       return;
@@ -246,10 +249,10 @@ class CollRMADistTest
   void SetUp() override {
     const int num_workers = 2;
     const int num_devices = 1;
-    string device_type = "CPU";
-    string dev0_worker_name;
+    std::string device_type = "CPU";
+    std::string dev0_worker_name;
     for (int w = 0; w < num_workers; ++w) {
-      string name = absl::StrCat("/job:worker/replica:0/task:", w);
+      std::string name = absl::StrCat("/job:worker/replica:0/task:", w);
       if (w == 0) {
         dev0_worker_name = name;
       }
@@ -288,8 +291,9 @@ class CollRMADistTest
     }
   }
 
-  void DefineWorker(const string& worker_name, const string& device_type,
-                    int num_devices, bool is_failed = false) {
+  void DefineWorker(const std::string& worker_name,
+                    const std::string& device_type, int num_devices,
+                    bool is_failed = false) {
     std::vector<std::unique_ptr<Device>> devices;
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
@@ -316,8 +320,9 @@ class CollRMADistTest
     wc_.AddWorker(worker_name, fw);
   }
 
-  void RestartWorker(const string& worker_name, const string& device_type,
-                     int num_devices, bool is_failed = false) {
+  void RestartWorker(const std::string& worker_name,
+                     const std::string& device_type, int num_devices,
+                     bool is_failed = false) {
     auto it = dev_resolvers_.find(worker_name);
     if (it != dev_resolvers_.end()) {
       delete it->second;
@@ -354,8 +359,8 @@ class CollRMADistTest
   FakeCache wc_;
   CancellationManager cm_;
   std::vector<DeviceMgr*> device_mgrs_;
-  std::unordered_map<string, DeviceResolverDistributed*> dev_resolvers_;
-  std::unordered_map<string, std::vector<DeviceAttributes>> dev_by_task_;
+  std::unordered_map<std::string, DeviceResolverDistributed*> dev_resolvers_;
+  std::unordered_map<std::string, std::vector<DeviceAttributes>> dev_by_task_;
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
@@ -379,7 +384,7 @@ TEST_P(CollRMADistTest, ProdFirstOK) {
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
-  const string kBufKey = "fake_buf_key";
+  const std::string kBufKey = "fake_buf_key";
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
@@ -389,7 +394,7 @@ TEST_P(CollRMADistTest, ProdFirstOK) {
       },
       nullptr /*cancellation_manager*/);
   Device* dst_device = nullptr;
-  string dev_name = "CPU:0";
+  std::string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   DeviceContext* to_device_ctx = nullptr;
   MaybeSetGPUDevice(dst_device);
@@ -418,9 +423,9 @@ TEST_P(CollRMADistTest, ConsFirstOK) {
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
-  const string kBufKey = "fake_buf_key";
+  const std::string kBufKey = "fake_buf_key";
   Device* dst_device = nullptr;
-  string dev_name = "CPU:0";
+  std::string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;
@@ -454,9 +459,9 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
   ResolveDeviceAttributes();
   absl::Notification consumer_note;
   absl::Status consumer_status;
-  const string kBufKey = "fake_buf_key";
+  const std::string kBufKey = "fake_buf_key";
   Device* dst_device = nullptr;
-  string dev_name = "CPU:0";
+  std::string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;
@@ -483,7 +488,7 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
-  const string kBufKey = "fake_buf_key";
+  const std::string kBufKey = "fake_buf_key";
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &large_response_,
       AllocatorAttributes(),
@@ -493,7 +498,7 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
       },
       nullptr /*cancellation_manager*/);
   Device* dst_device = nullptr;
-  string dev_name = "CPU:0";
+  std::string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   DeviceContext* to_device_ctx = nullptr;
   MaybeSetGPUDevice(dst_device);
@@ -523,9 +528,9 @@ TEST_P(CollRMADistTest, WorkerRestart) {
   absl::Status consumer_status;
   absl::Status producer_status;
   FakeWorker* wi = workers_[1];
-  const string buf_key = "fake_buf_key";
+  const std::string buf_key = "fake_buf_key";
   Device* dst_device = nullptr;
-  string dev_name = "CPU:0";
+  std::string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
   MaybeSetGPUDevice(dst_device);
   DeviceContext* to_device_ctx = nullptr;

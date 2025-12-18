@@ -21,25 +21,26 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 absl::Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::DeviceMemoryBase dest_data =
-      params.buffer_allocations->GetDeviceAddress(dest_);
+  se::DeviceAddressBase dest_data =
+      params.buffer_allocations->GetDeviceAddress(dest_.slice);
   return params.stream->MemZero(&dest_data, dest_data.size());
 }
 
 absl::StatusOr<std::unique_ptr<MemzeroThunk>> MemzeroThunk::FromProto(
     ThunkInfo thunk_info, const MemzeroThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest,
-                      BufferAllocation::Slice::FromProto(
-                          thunk_proto.dest_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      ShapedSlice dest,
+      ShapedSlice::FromProto(thunk_proto.dest_buffer(), buffer_allocations));
   return std::make_unique<MemzeroThunk>(std::move(thunk_info), dest);
 }
 
@@ -55,7 +56,7 @@ absl::StatusOr<ThunkProto> MemzeroThunk::ToProto() const {
 
 absl::Status Memset32BitValueThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase dest_data =
+  se::DeviceAddressBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   return params.stream->Memset32(&dest_data, value_, dest_data.size());
 }

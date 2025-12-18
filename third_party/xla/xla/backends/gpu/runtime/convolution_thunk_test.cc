@@ -108,9 +108,42 @@ TEST(ConvolutionThunkTest, ProtoRoundTrip) {
           output_spatial_dimensions: [ 2, 3 ]
         }
       }
-      operand_buffers { offset: 0 size: 4 buffer_allocation_index: 0 }
-      operand_buffers { offset: 0 size: 4 buffer_allocation_index: 1 }
-      result_buffers { offset: 0 size: 4 buffer_allocation_index: 2 }
+      operand_buffers {
+        slice { offset: 0 size: 4 buffer_allocation_index: 0 }
+        shape {
+          element_type: F32
+          dimensions: [ 1, 1, 1, 1 ]
+          layout {
+            minor_to_major: [ 3, 2, 1, 0 ]
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: [ false, false, false, false ]
+        }
+      }
+      operand_buffers {
+        slice { offset: 0 size: 4 buffer_allocation_index: 1 }
+        shape {
+          element_type: F32
+          dimensions: [ 1, 1, 1, 1 ]
+          layout {
+            minor_to_major: [ 3, 2, 1, 0 ]
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: [ false, false, false, false ]
+        }
+      }
+      result_buffers {
+        slice { offset: 0 size: 4 buffer_allocation_index: 2 }
+        shape {
+          element_type: F32
+          dimensions: [ 1, 1, 1, 1 ]
+          layout {
+            minor_to_major: [ 3, 2, 1, 0 ]
+            tail_padding_alignment_in_elements: 1
+          }
+          is_dynamic_dimension: [ false, false, false, false ]
+        }
+      }
       scratch_buffer { offset: 0 size: 1024 buffer_allocation_index: 3 }
     }
   )pb");

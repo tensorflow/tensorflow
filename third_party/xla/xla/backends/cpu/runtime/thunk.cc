@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/collectives/in_process_collectives.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
 #include "xla/executable_run_options.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/global_device_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -42,11 +42,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -91,8 +86,6 @@ absl::string_view Thunk::KindToString(Kind kind) {
       return "topk";
     case Kind::kWhile:
       return "while";
-    case Kind::kXnnFusion:
-      return "xnn-fusion";
     case Kind::kYnnFusion:
       return "ynn-fusion";
     case Kind::kOneDnnFusion:
@@ -165,17 +158,6 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
-absl::StatusOr<Thunk::XnnParams> Thunk::XnnParams::Create(
-    const ExecutableRunOptions* run_options) {
-  TF_ASSIGN_OR_RETURN(XnnThreadpool threadpool,
-                      CreateXnnThreadpool(run_options->intra_op_thread_pool()));
-  return XnnParams(std::move(threadpool));
-}
-
-Thunk::XnnParams::XnnParams(XnnThreadpool threadpool)
-    : threadpool(std::move(threadpool)) {}
-
-#ifdef XLA_YNNPACK
 absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
     const ExecutableRunOptions* run_options) {
   TF_ASSIGN_OR_RETURN(YnnThreadpool threadpool,
@@ -185,7 +167,6 @@ absl::StatusOr<Thunk::YnnParams> Thunk::YnnParams::Create(
 
 Thunk::YnnParams::YnnParams(YnnThreadpool threadpool)
     : threadpool(std::move(threadpool)) {}
-#endif  // XLA_YNNPACK
 
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)

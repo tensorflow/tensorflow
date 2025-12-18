@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -71,8 +71,6 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 namespace m = match;
 namespace op = xla::testing::opcode_matchers;
 
@@ -13048,6 +13046,48 @@ ENTRY main {
   TF_EXPECT_OK(VerifyHloModule(m.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/true));
+}
+
+TEST_F(AlgebraicSimplifierTest, ConditionalWithConvert) {
+  const char* kModuleStr = R"(
+    HloModule test
+    branch_false {
+      p0 = f32[] parameter(0)
+      ROOT r0 = f32[] copy(p0)
+    }
+    branch_true {
+      p1 = f32[] parameter(0)
+      ROOT r1 = f32[] copy(p1)
+    }
+    ENTRY main {
+      %p = pred[] parameter(0)
+      cond_val = s32[] convert(%p)
+      val_false = f32[] constant(10.0)
+      val_true = f32[] constant(20.0)
+
+      ROOT conditional = f32[] conditional(cond_val, val_false, val_true),
+        branch_computations={branch_false, branch_true}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_conditional_simplification(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  // The simplified Boolean Conditional should be:
+  // conditional(pred, true_arg, false_arg)
+  //
+  // We expect:
+  // True Arg  -> val_true (20.0)  [Originally Index 1]
+  // False Arg -> val_false (10.0) [Originally Index 0]
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Conditional(
+                  m::Parameter(0),
+                  m::ConstantEffectiveScalar(20.0),  // Expected True Slot
+                  m::ConstantEffectiveScalar(10.0)   // Expected False Slot
+                  )));
 }
 
 }  // namespace

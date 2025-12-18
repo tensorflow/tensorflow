@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/backends/cpu/runtime/convolution_thunk.h"
 
 #include <cstdint>
@@ -22,13 +23,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/convolution_lib.h"
-#include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
+#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -76,13 +78,13 @@ ConvolutionThunk::ConvolutionThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase input_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.input_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase kernel_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase kernel_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.kernel_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.output_buffer));
 
@@ -101,12 +103,6 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
                                 convolution_slices_.output_buffer.ToString(),
                                 output_data.opaque());
 
-  if (options_.multi_threaded && params.intra_op_threadpool == nullptr) {
-    return Internal(
-        "Intra-op threadpool must be provided for ConvolutionThunk in "
-        "multi-threaded mode.");
-  }
-
   // Eigen convolution
   if (convolution_canonical_dims_.convolution_rank() == 2) {
     return HandleEigen2DConvolution(params, input_data, kernel_data,
@@ -119,16 +115,17 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
 ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
-                                           se::DeviceMemoryBase input,
-                                           se::DeviceMemoryBase kernel,
-                                           se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      tsl::CountDownAsyncValueRef<ExecuteEvent> count_down) {
-    using scalar_type = decltype(type_tag);
+                                           se::DeviceAddressBase input,
+                                           se::DeviceAddressBase kernel,
+                                           se::DeviceAddressBase output) {
+  auto dispatch = [&](auto type_tag) {
+    auto execute_event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
+
+    using ScalarType = decltype(type_tag);
     internal::EigenConv2D(
-        eigen_device, static_cast<scalar_type*>(output.opaque()),
-        static_cast<scalar_type*>(input.opaque()),
-        static_cast<scalar_type*>(kernel.opaque()),
+        params.intra_op_threadpool, static_cast<ScalarType*>(output.opaque()),
+        static_cast<const ScalarType*>(input.opaque()),
+        static_cast<const ScalarType*>(kernel.opaque()),
         convolution_canonical_dims_.input_batch,
         convolution_canonical_dims_.input_dims.x,
         convolution_canonical_dims_.input_dims.y,
@@ -149,49 +146,38 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
         convolution_canonical_dims_.base_dilation.y,
         convolution_canonical_dims_.window_dilation.x,
         convolution_canonical_dims_.window_dilation.y,
-        convolution_canonical_dims_.feature_group_count, std::move(count_down),
-        /*use_thunk_runtime=*/true);
+        convolution_canonical_dims_.feature_group_count,
+        [execute_event] { execute_event.SetStateConcrete(); });
+
+    return execute_event;
   };
 
   PrimitiveType input_type = convolution_slices_.input_shape.element_type();
 
-  // Execute convolution in the intra-op threadpool.
-  if (options_.multi_threaded) {
-    tsl::CountDownAsyncValueRef<ExecuteEvent> count_down(
-        convolution_canonical_dims_.feature_group_count);
-    auto execute_event = count_down.AsRef();
-
-    if (input_type == PrimitiveType::F16) {
-      dispatch(Eigen::half{}, *params.intra_op_threadpool,
-               std::move(count_down));
-    } else {
-      dispatch(float{}, *params.intra_op_threadpool, std::move(count_down));
-    }
-    return execute_event;
+  switch (input_type) {
+    case PrimitiveType::F16:
+      return dispatch(Eigen::half{});
+    case PrimitiveType::F32:
+      return dispatch(float{});
+    default:
+      return Internal("Unsupported Conv2D input type: %s",
+                      primitive_util::LowercasePrimitiveTypeName(input_type));
   }
-
-  // Execute convolution in the caller thread.
-  if (input_type == PrimitiveType::F16) {
-    dispatch(Eigen::half{}, Eigen::DefaultDevice(), /*count_down=*/{});
-  } else {
-    dispatch(float{}, Eigen::DefaultDevice(), /*count_down=*/{});
-  }
-
-  return OkExecuteEvent();
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
 ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
-                                           se::DeviceMemoryBase input,
-                                           se::DeviceMemoryBase kernel,
-                                           se::DeviceMemoryBase output) {
-  auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      tsl::CountDownAsyncValueRef<ExecuteEvent> count_down) {
-    using scalar_type = decltype(type_tag);
+                                           se::DeviceAddressBase input,
+                                           se::DeviceAddressBase kernel,
+                                           se::DeviceAddressBase output) {
+  auto dispatch = [&](auto type_tag) {
+    auto execute_event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
+
+    using ScalarType = decltype(type_tag);
     internal::EigenConv3D(
-        eigen_device, static_cast<scalar_type*>(output.opaque()),
-        static_cast<scalar_type*>(input.opaque()),
-        static_cast<scalar_type*>(kernel.opaque()),
+        params.intra_op_threadpool, static_cast<ScalarType*>(output.opaque()),
+        static_cast<const ScalarType*>(input.opaque()),
+        static_cast<const ScalarType*>(kernel.opaque()),
         convolution_canonical_dims_.input_batch,
         convolution_canonical_dims_.input_dims.x,
         convolution_canonical_dims_.input_dims.y,
@@ -220,33 +206,23 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
         convolution_canonical_dims_.window_dilation.x,
         convolution_canonical_dims_.window_dilation.y,
         convolution_canonical_dims_.window_dilation.z,
-        convolution_canonical_dims_.feature_group_count, std::move(count_down));
+        convolution_canonical_dims_.feature_group_count,
+        [execute_event] { execute_event.SetStateConcrete(); });
+
+    return execute_event;
   };
 
   PrimitiveType input_type = convolution_slices_.input_shape.element_type();
 
-  // Execute convolution in the intra-op threadpool.
-  if (options_.multi_threaded) {
-    tsl::CountDownAsyncValueRef<ExecuteEvent> count_down(
-        convolution_canonical_dims_.feature_group_count);
-    auto execute_event = count_down.AsRef();
-
-    if (input_type == PrimitiveType::F16) {
-      dispatch(Eigen::half{}, *params.intra_op_threadpool,
-               std::move(count_down));
-    } else {
-      dispatch(float{}, *params.intra_op_threadpool, std::move(count_down));
-    }
-    return execute_event;
+  switch (input_type) {
+    case PrimitiveType::F16:
+      return dispatch(Eigen::half{});
+    case PrimitiveType::F32:
+      return dispatch(float{});
+    default:
+      return Internal("Unsupported Conv3D input type: %s",
+                      primitive_util::LowercasePrimitiveTypeName(input_type));
   }
-
-  // Execute convolution in the caller thread.
-  if (input_type == PrimitiveType::F16) {
-    dispatch(Eigen::half{}, Eigen::DefaultDevice(), /*count_down=*/{});
-  } else {
-    dispatch(float{}, Eigen::DefaultDevice(), /*count_down=*/{});
-  }
-  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

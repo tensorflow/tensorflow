@@ -30,6 +30,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -90,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TF {
@@ -3643,9 +3645,8 @@ void WhileRegionOp::getSuccessorRegions(
       // For compatibility with older code, we allow the "yield" in a condition
       // to only yield a single boolean. In that case we can't forward any args.
       regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(RegionSuccessor(
-          point.getTerminatorPredecessorOrNull()
-              ->getParentRegion()));  // branch back to parent, no args
+      regions.push_back(
+          RegionSuccessor(getOperation(), getResults().take_front(0)));
     }
   } else if (!point.isParent() &&
              (point.getTerminatorPredecessorOrNull() &&

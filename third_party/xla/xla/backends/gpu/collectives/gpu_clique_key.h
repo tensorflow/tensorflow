@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/xla_data.pb.h"
 
@@ -61,6 +61,8 @@ class GpuCliqueKey : public CliqueKey {
   GpuCliqueKey& operator=(GpuCliqueKey&&) = default;
 
   CollectiveStreamId stream_id() const;
+
+  std::vector<std::vector<GlobalDeviceId>> ParticipantGroups() const;
 
   // Device generating the unique id for this key
   GlobalDeviceId root_device() const;

@@ -57,7 +57,7 @@ absl::Status SetOutputToSizedImage(InferenceContext* c,
           DataTypeString(size_tensor->dtype()), " for input #", size_input_idx,
           " in ", c->DebugString());
     }
-    auto vec = size_tensor->vec<int32>();
+    auto vec = size_tensor->vec<int32_t>();
     height = c->MakeDim(vec(0));
     width = c->MakeDim(vec(1));
   }
@@ -415,7 +415,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
         TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->UnknownDim(), &input));
         TF_RETURN_IF_ERROR(c->ReplaceDim(input, 2, c->UnknownDim(), &input));
       } else {
-        auto size_vec = size->vec<int32>();
+        auto size_vec = size->vec<int32_t>();
         TF_RETURN_IF_ERROR(
             c->ReplaceDim(input, 1, c->MakeDim(size_vec(0)), &input));
         TF_RETURN_IF_ERROR(
@@ -516,7 +516,7 @@ REGISTER_OP("DecodeAndCropJpeg")
 
       const Tensor* crop_window = c->input_tensor(1);
       if (crop_window != nullptr) {
-        auto crop_window_vec = crop_window->vec<int32>();
+        auto crop_window_vec = crop_window->vec<int32_t>();
         h = c->MakeDim(crop_window_vec(2));
         w = c->MakeDim(crop_window_vec(3));
       }
@@ -861,7 +861,7 @@ REGISTER_OP("ExtractGlimpse")
 
       bool uniform_noise = false;
       TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
-      string noise;
+      std::string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(
@@ -895,7 +895,7 @@ REGISTER_OP("ExtractGlimpseV2")
 
       bool uniform_noise = false;
       TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
-      string noise;
+      std::string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(

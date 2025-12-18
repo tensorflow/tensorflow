@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -66,12 +68,14 @@ TEST_F(KernelArgumentsTest, GetArgumentBufferSlices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   // Three allocations: one for each parameter, plus one for the output.
   EXPECT_THAT(assignment->Allocations(), SizeIs(3));
@@ -119,6 +123,8 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -127,7 +133,7 @@ ENTRY main {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
           &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -137,7 +143,8 @@ ENTRY main {
   // Test 1: Create regular (non-interleaved) arguments for baseline
   TF_ASSERT_OK_AND_ASSIGN(
       KernelArguments regular_args,
-      KernelArguments::Create(*buffer_assignment, buffer_alignment, root, {}));
+      KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
+                              absl::Span<const int32_t>{}));
 
   // Test 2: Create interleaved arguments
   // Expected order: input0, output0, input1, output1
@@ -184,12 +191,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -199,7 +208,8 @@ ENTRY main {
   // Test 1: Create regular (non-interleaved) arguments for baseline
   TF_ASSERT_OK_AND_ASSIGN(
       KernelArguments regular_args,
-      KernelArguments::Create(*buffer_assignment, buffer_alignment, root, {}));
+      KernelArguments::Create(*buffer_assignment, buffer_alignment, root,
+                              absl::Span<const int32_t>{}));
 
   // Test 2: Create interleaved arguments - output at beginning (position 0)
   // Expected order: output0, input0 (instead of input0, output0)
@@ -251,12 +261,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -289,12 +301,14 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
 
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
           &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          std::move(opts)));
 
   KernelArguments::BufferAlignment buffer_alignment;
   buffer_alignment.entry_parameter_align_bytes = 1;
@@ -312,6 +326,61 @@ ENTRY main {
   // Should succeed and create arguments in regular order: inputs first, then
   // outputs
   ASSERT_EQ(kernel_args.args().size(), 3);  // 2 inputs + 1 output
+}
+
+TEST_F(KernelArgumentsTest, UnmanagedArguments) {
+  constexpr absl::string_view kHloString = R"(
+    HloModule module
+
+    ENTRY entry {
+      param.0 = f32[1,2,3]{2,1,0} parameter(0)
+      param.1 = f32[1,2,3]{2,1,0} parameter(1)
+      ROOT add = f32[1,2,3]{2,1,0} add(param.0, param.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(
+          module.get(), std::make_unique<DependencyHloOrdering>(module.get()),
+          &BufferSizeBytes, &alias_info, [](LogicalBuffer::Color) { return 0; },
+          std::move(opts)));
+  // Input and output buffers are managed.
+  EXPECT_THAT(assignment->Allocations(), SizeIs(3));
+  auto unmanaged_arguments = std::vector{
+      ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(U32, {}),
+      ShapeUtil::MakeShape(F32, {24}), ShapeUtil::MakeShape(F32, {65536})};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto kernel_arguments,
+      KernelArguments::Create(*assignment, gpu::GetDefaultBufferAlignment(),
+                              module->entry_computation()->root_instruction(),
+                              unmanaged_arguments));
+  // 3 managed arguments + 4 unmanaged arguments.
+  ASSERT_THAT(kernel_arguments.args(), SizeIs(7));
+
+  constexpr size_t kExpectedBufferSize = 1 * 2 * 3 * sizeof(float);
+  EXPECT_THAT(
+      kernel_arguments.GetArgumentBufferSlices(),
+      ElementsAre(BufferAllocation::Slice(&assignment->Allocations()[1],
+                                          /*offset=*/0, kExpectedBufferSize),
+                  BufferAllocation::Slice(&assignment->Allocations()[2],
+                                          /*offset=*/0, kExpectedBufferSize),
+                  // The output is last in KernelArguments.
+                  BufferAllocation::Slice(&assignment->Allocations()[0],
+                                          /*offset=*/0, kExpectedBufferSize),
+                  BufferAllocation::Slice(), BufferAllocation::Slice(),
+                  BufferAllocation::Slice(), BufferAllocation::Slice()));
+  constexpr auto kManaged = KernelArgument::Kind::kManaged;
+  constexpr auto kUnmanaged = KernelArgument::Kind::kUnmanaged;
+  EXPECT_THAT(kernel_arguments.GetArgumentKinds(),
+              ElementsAre(kManaged, kManaged, kManaged, kUnmanaged, kUnmanaged,
+                          kUnmanaged, kUnmanaged));
 }
 
 }  // namespace

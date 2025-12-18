@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/transforms/region_to_functional/impl.h"
 
 #include <cassert>
-#include <cctype>
 #include <optional>
 #include <string>
 #include <tuple>

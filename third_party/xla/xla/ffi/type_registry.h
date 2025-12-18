@@ -17,13 +17,18 @@ limitations under the License.
 #define XLA_FFI_TYPE_REGISTRY_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <type_traits>
 
 #include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "xla/util.h"
 
 namespace xla::ffi {
 
@@ -61,9 +66,31 @@ class TypeRegistry {
   // Pointers to functions that allow XLA runtime to manipulate external types.
   struct TypeInfo {
     using Deleter = void (*)(void*);
+    using Serializer = absl::StatusOr<std::string> (*)(const void*);
+    using Deserializer =
+        absl::StatusOr<std::unique_ptr<void, Deleter>> (*)(absl::string_view);
 
     Deleter deleter = nullptr;
+    Serializer serializer = nullptr;
+    Deserializer deserializer = nullptr;
   };
+
+  // To declare a type `T` as serializable and deserializable, define a
+  // specialization of `TypeSerDes<T>` with `Serialize` and `Deserialize` apis.
+  //
+  //   template <>
+  //   struct TypeSerDes<T> : public std::true_type {
+  //     static absl::StatusOr<std::string> Serialize(const T& value);
+  //     static absl::StatusOr<std::unique_ptr<T>> Deserialize(
+  //       absl::string_view data);
+  // };
+  //
+  template <typename T>
+  struct SerDes : public std::false_type {};
+
+  // Returns type name for a given type id. Returns an error if type id is not
+  // registered. Works for both external and internal type ids.
+  static absl::StatusOr<absl::string_view> GetTypeName(TypeId type_id);
 
   // Returns type id for a given type name. Returns an error if type is
   // not registered. Works for both external and internal type ids.
@@ -97,6 +124,14 @@ class TypeRegistry {
   template <typename T>
   static TypeInfo GetTypeInfo();
 
+  // Serializes a value of a given type. For internal type ids only.
+  template <typename T>
+  static absl::StatusOr<std::string> Serialize(const T& value);
+
+  // Deserializes a value of a given type. For internal type ids only.
+  template <typename T>
+  static absl::StatusOr<std::unique_ptr<T>> Deserialize(absl::string_view data);
+
  private:
   static TypeId GetNextTypeId();
 };
@@ -117,9 +152,53 @@ TypeRegistry::TypeId TypeRegistry::GetTypeId() {
 
 template <typename T>
 TypeRegistry::TypeInfo TypeRegistry::GetTypeInfo() {
-  return TypeInfo{
-      [](void* state) { delete tsl::safe_reinterpret_cast<T*>(state); },
-  };
+  // Define deleter as a static member, because it's always available for the
+  // internal types.
+  static TypeInfo::Deleter deleter =
+      +[](void* state) { delete tsl::safe_reinterpret_cast<T*>(state); };
+
+  // Serializer and deserializer are defined only if `T` opts in to the
+  // serializable via the `SerDes` specialization.
+  TypeInfo::Serializer serializer = nullptr;
+  TypeInfo::Deserializer deserializer = nullptr;
+
+  if constexpr (SerDes<T>::value) {
+    serializer = +[](const void* value) {
+      return SerDes<T>::Serialize(*tsl::safe_reinterpret_cast<const T*>(value));
+    };
+
+    deserializer = +[](absl::string_view data)
+        -> absl::StatusOr<std::unique_ptr<void, TypeInfo::Deleter>> {
+      TF_ASSIGN_OR_RETURN(auto value, SerDes<T>::Deserialize(data));
+      return std::unique_ptr<void, TypeInfo::Deleter>(value.release(), deleter);
+    };
+  }
+
+  return TypeInfo{deleter, serializer, deserializer};
+}
+
+template <typename T>
+absl::StatusOr<std::string> TypeRegistry::Serialize(const T& value) {
+  TypeInfo type_info = GetTypeInfo<T>();
+  if (type_info.serializer == nullptr) {
+    return FailedPrecondition(
+        "Type is not serializable. Did you forget to specialize "
+        "TypeRegistry::SerDes<T>?");
+  }
+  return type_info.serializer(&value);
+}
+
+template <typename T>
+absl::StatusOr<std::unique_ptr<T>> TypeRegistry::Deserialize(
+    absl::string_view data) {
+  TypeInfo type_info = GetTypeInfo<T>();
+  if (type_info.deserializer == nullptr) {
+    return FailedPrecondition(
+        "Type is not deserializable. Did you forget to specialize "
+        "TypeRegistry::SerDes<T>?");
+  }
+  TF_ASSIGN_OR_RETURN(auto ptr, type_info.deserializer(data));
+  return std::unique_ptr<T>(tsl::safe_reinterpret_cast<T*>(ptr.release()));
 }
 
 }  // namespace xla::ffi

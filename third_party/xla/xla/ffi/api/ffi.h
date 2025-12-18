@@ -1172,24 +1172,6 @@ inline XLA_FFI_Error* CreateError(const XLA_FFI_Api* api, const Error& error) {
   return api->XLA_FFI_Error_Create(&args);
 }
 
-inline void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
-  XLA_FFI_Error_Destroy_Args args;
-  args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.error = error;
-  api->XLA_FFI_Error_Destroy(&args);
-}
-
-inline const char* GetErrorMessage(const XLA_FFI_Api* api,
-                                   XLA_FFI_Error* error) {
-  XLA_FFI_Error_GetMessage_Args args;
-  args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.error = error;
-  api->XLA_FFI_Error_GetMessage(&args);
-  return args.message;
-}
-
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -1230,7 +1212,6 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
       args.ctx = ctx;
       args.type_id = &T::id;
       args.state = state.value().release();
-      args.deleter = +[](void* state) { delete reinterpret_cast<T*>(state); };
       return api->XLA_FFI_State_Set(&args);
     }
 
@@ -1515,7 +1496,7 @@ inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-inline constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
+constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
   return XLA_FFI_TypeInfo{
       XLA_FFI_TypeInfo_STRUCT_SIZE,
       /*extension_start=*/nullptr,
@@ -1528,7 +1509,7 @@ inline constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)
 #define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)              \
-  XLA_FFI_ATTRIBUTE_UNUSED static const XLA_FFI_Error*                         \
+  [[maybe_unused]] static const XLA_FFI_Error*                                 \
       xla_ffi_type_##N##_registered_ = [] {                                    \
         return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
       }()

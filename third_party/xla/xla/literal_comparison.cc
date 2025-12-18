@@ -965,7 +965,7 @@ absl::Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
 }
 
 std::string ToStringTruncated(const LiteralSlice& literal) {
-  return RecursiveElementCount(literal.shape()) < 1000
+  return VLOG_IS_ON(2) || RecursiveElementCount(literal.shape()) < 1000
              ? literal.ToString()
              : "[TRUNCATED, Literal with more than 1000 values]";
 }

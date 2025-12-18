@@ -63,6 +63,8 @@ cc_library(
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -181,7 +183,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:any_cc_proto",

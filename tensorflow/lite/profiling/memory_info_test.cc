@@ -74,26 +74,30 @@ TEST(MemoryUsage, GetMemoryUsage) {
   }
 
   EXPECT_GE(result.mem_footprint_kb, size / 1024);
-#if !defined(__linux__) ||                                        \
-    (!defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
-     !defined(THREAD_SANITIZER))
+#if (defined(__linux__) && !defined(ADDRESS_SANITIZER) &&         \
+     !defined(MEMORY_SANITIZER) && !defined(THREAD_SANITIZER)) || \
+    (defined(__APPLE__) && !defined(THREAD_SANITIZER)) || defined(_WIN32)
   EXPECT_GE(result.total_allocated_bytes, size);
+  EXPECT_NE(result.total_allocated_bytes, -1);
   EXPECT_GE(result.in_use_allocated_bytes, size);
+  EXPECT_NE(result.in_use_allocated_bytes, -1);
 #else
   // The mallinfo() function, which is used on Linux, returns invalid
   // results when address/memory/thread sanitizer is enabled, e.g.
   // <https://github.com/google/sanitizers/issues/1845>, so the
   // *_allocated_bytes fields are not supported in those cases,
   // and should be set to either -1 or kValueNotSet(0).
+  // For Apple platforms, the mstats() function returns invalid results when
+  // thread sanitizer is enabled.
   if (result.total_allocated_bytes != -1) {
     EXPECT_EQ(result.total_allocated_bytes, MemoryUsage::kValueNotSet);
   }
   if (result.in_use_allocated_bytes != -1) {
     EXPECT_EQ(result.in_use_allocated_bytes, MemoryUsage::kValueNotSet);
   }
-#endif  // !defined(__linux__) ||                                        \
-        // (!defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
-        //  !defined(THREAD_SANITIZER))
+#endif  // (defined(__linux__) && !defined(ADDRESS_SANITIZER) && \
+        // !defined(MEMORY_SANITIZER) && !defined(THREAD_SANITIZER)) || \
+        // (defined(__APPLE__) && !defined(THREAD_SANITIZER)) || defined(_WIN32)
   EXPECT_GE(result.private_footprint_bytes, size);
 #endif  // defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
 }

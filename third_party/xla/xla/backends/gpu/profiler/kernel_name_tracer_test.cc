@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/kernel.h"
@@ -82,20 +82,20 @@ class KernelNameTracerTest : public ::testing::Test {
 void LaunchAddI32Kernels(stream_executor::StreamExecutor* executor,
                          stream_executor::Stream* stream) {
   using AddI32Kernel =
-      stream_executor::TypedKernel<stream_executor::DeviceMemory<int>,
-                                   stream_executor::DeviceMemory<int>,
-                                   stream_executor::DeviceMemory<int>>;
+      stream_executor::TypedKernel<stream_executor::DeviceAddress<int>,
+                                   stream_executor::DeviceAddress<int>,
+                                   stream_executor::DeviceAddress<int>>;
   TF_ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
                           stream_executor::gpu::LoadAddI32TestKernel(executor));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kLengthInBytes = sizeof(int32_t) * kLength;
 
-  stream_executor::DeviceMemory<int32_t> a =
+  stream_executor::DeviceAddress<int32_t> a =
       executor->AllocateArray<int32_t>(kLength, 0);
-  stream_executor::DeviceMemory<int32_t> b =
+  stream_executor::DeviceAddress<int32_t> b =
       executor->AllocateArray<int32_t>(kLength, 0);
-  stream_executor::DeviceMemory<int32_t> c =
+  stream_executor::DeviceAddress<int32_t> c =
       executor->AllocateArray<int32_t>(kLength, 0);
 
   ASSERT_THAT(stream->Memset32(&a, 1, kLengthInBytes), IsOk());
@@ -121,20 +121,20 @@ void LaunchAddI32Kernels(stream_executor::StreamExecutor* executor,
 void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
                               stream_executor::Stream* stream) {
   using AddI32Kernel =
-      stream_executor::TypedKernel<stream_executor::DeviceMemory<int>,
-                                   stream_executor::DeviceMemory<int>,
-                                   stream_executor::DeviceMemory<int>>;
+      stream_executor::TypedKernel<stream_executor::DeviceAddress<int>,
+                                   stream_executor::DeviceAddress<int>,
+                                   stream_executor::DeviceAddress<int>>;
   TF_ASSERT_OK_AND_ASSIGN(AddI32Kernel add,
                           stream_executor::gpu::LoadAddI32TestKernel(executor));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kLengthInBytes = sizeof(int32_t) * kLength;
 
-  stream_executor::DeviceMemory<int32_t> a =
+  stream_executor::DeviceAddress<int32_t> a =
       executor->AllocateArray<int32_t>(kLength, 0);
-  stream_executor::DeviceMemory<int32_t> b =
+  stream_executor::DeviceAddress<int32_t> b =
       executor->AllocateArray<int32_t>(kLength, 0);
-  stream_executor::DeviceMemory<int32_t> c =
+  stream_executor::DeviceAddress<int32_t> c =
       executor->AllocateArray<int32_t>(kLength, 0);
 
   ASSERT_THAT(stream->Memset32(&a, 1, kLengthInBytes), IsOk());
@@ -172,7 +172,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  stream_executor::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(

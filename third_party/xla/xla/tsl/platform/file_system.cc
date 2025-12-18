@@ -42,7 +42,8 @@ limitations under the License.
 
 namespace tsl {
 
-bool FileSystem::Match(const string& filename, const string& pattern) {
+bool FileSystem::Match(const std::string& filename,
+                       const std::string& pattern) {
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
     defined(PLATFORM_GOOGLE)
   // We avoid relying on RE2 on mobile platforms, because it incurs a
@@ -61,7 +62,7 @@ bool FileSystem::Match(const string& filename, const string& pattern) {
         // defined(PLATFORM_GOOGLE)
 }
 
-string FileSystem::TranslateName(const string& name) const {
+std::string FileSystem::TranslateName(const std::string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
   if (name.empty()) return name;
@@ -76,7 +77,7 @@ string FileSystem::TranslateName(const string& name) const {
   return this->CleanPath(path);
 }
 
-absl::Status FileSystem::IsDirectory(const string& name,
+absl::Status FileSystem::IsDirectory(const std::string& name,
                                      TransactionToken* token) {
   // Check if path exists.
   // TODO(sami):Forward token to other methods once migration is complete.
@@ -89,7 +90,7 @@ absl::Status FileSystem::IsDirectory(const string& name,
   return absl::Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
-absl::Status FileSystem::HasAtomicMove(const string& path,
+absl::Status FileSystem::HasAtomicMove(const std::string& path,
                                        bool* has_atomic_move) {
   *has_atomic_move = true;
   return absl::OkStatus();
@@ -97,7 +98,7 @@ absl::Status FileSystem::HasAtomicMove(const string& path,
 
 void FileSystem::FlushCaches(TransactionToken* token) {}
 
-bool FileSystem::FilesExist(const std::vector<string>& files,
+bool FileSystem::FilesExist(const std::vector<std::string>& files,
                             TransactionToken* token,
                             std::vector<absl::Status>* status) {
   bool result = true;
@@ -114,7 +115,7 @@ bool FileSystem::FilesExist(const std::vector<string>& files,
   return result;
 }
 
-absl::Status FileSystem::DeleteRecursively(const string& dirname,
+absl::Status FileSystem::DeleteRecursively(const std::string& dirname,
                                            TransactionToken* token,
                                            int64_t* undeleted_files,
                                            int64_t* undeleted_dirs) {
@@ -137,18 +138,18 @@ absl::Status FileSystem::DeleteRecursively(const string& dirname,
     return delete_root_status;
   }
 
-  std::deque<string> dir_q;      // Queue for the BFS
-  std::vector<string> dir_list;  // List of all dirs discovered
+  std::deque<std::string> dir_q;      // Queue for the BFS
+  std::vector<std::string> dir_list;  // List of all dirs discovered
   dir_q.push_back(dirname);
   absl::Status ret;  // Status to be returned.
   // Do a BFS on the directory to discover all the sub-directories. Remove all
   // children that are files along the way. Then cleanup and remove the
   // directories in reverse order.;
   while (!dir_q.empty()) {
-    string dir = dir_q.front();
+    std::string dir = dir_q.front();
     dir_q.pop_front();
     dir_list.push_back(dir);
-    std::vector<string> children;
+    std::vector<std::string> children;
     // GetChildren might fail if we don't have appropriate permissions.
     absl::Status s = GetChildren(dir, &children);
     ret.Update(s);
@@ -156,8 +157,8 @@ absl::Status FileSystem::DeleteRecursively(const string& dirname,
       (*undeleted_dirs)++;
       continue;
     }
-    for (const string& child : children) {
-      const string child_path = this->JoinPath(dir, child);
+    for (const std::string& child : children) {
+      const std::string child_path = this->JoinPath(dir, child);
       // If the child is a directory add it to the queue, otherwise delete it.
       if (IsDirectory(child_path).ok()) {
         dir_q.push_back(child_path);
@@ -175,7 +176,7 @@ absl::Status FileSystem::DeleteRecursively(const string& dirname,
   // Now reverse the list of directories and delete them. The BFS ensures that
   // we can delete the directories in this order.
   std::reverse(dir_list.begin(), dir_list.end());
-  for (const string& dir : dir_list) {
+  for (const std::string& dir : dir_list) {
     // Delete dir might fail because of permissions issues or might be
     // unimplemented.
     absl::Status s = DeleteDir(dir);
@@ -187,7 +188,7 @@ absl::Status FileSystem::DeleteRecursively(const string& dirname,
   return ret;
 }
 
-absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
+absl::Status FileSystem::RecursivelyCreateDir(const std::string& dirname,
                                               TransactionToken* token) {
   absl::string_view scheme, host, remaining_dir;
   this->ParseURI(dirname, &scheme, &host, &remaining_dir);
@@ -205,7 +206,8 @@ absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
       } else if (directory_status.code() == absl::StatusCode::kUnimplemented) {
         return directory_status;
       } else {
-        return errors::FailedPrecondition(remaining_dir, " is not a directory");
+        return absl::FailedPreconditionError(
+            absl::StrCat(remaining_dir, " is not a directory"));
       }
     }
     if (exists_status.code() != error::Code::NOT_FOUND) {
@@ -222,7 +224,7 @@ absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
   std::reverse(sub_dirs.begin(), sub_dirs.end());
 
   // Now create the directories.
-  string built_path(remaining_dir);
+  std::string built_path(remaining_dir);
   for (const absl::string_view sub_dir : sub_dirs) {
     built_path = this->JoinPath(built_path, sub_dir);
     absl::Status status = CreateDir(this->CreateURI(scheme, host, built_path));
@@ -233,22 +235,23 @@ absl::Status FileSystem::RecursivelyCreateDir(const string& dirname,
   return absl::OkStatus();
 }
 
-absl::Status FileSystem::CopyFile(const string& src, const string& target,
+absl::Status FileSystem::CopyFile(const std::string& src,
+                                  const std::string& target,
                                   TransactionToken* token) {
   return FileSystemCopyFile(this, src, this, target);
 }
 
 char FileSystem::Separator() const { return '/'; }
 
-string FileSystem::JoinPathImpl(
+std::string FileSystem::JoinPathImpl(
     std::initializer_list<absl::string_view> paths) {
-  string result;
+  std::string result;
 
   for (absl::string_view path : paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
-      result = string(path);
+      result = std::string(path);
       continue;
     }
 
@@ -367,10 +370,10 @@ absl::string_view FileSystem::Extension(absl::string_view path) const {
   }
 }
 
-string FileSystem::CleanPath(absl::string_view unclean_path) const {
-  string path(unclean_path);
+std::string FileSystem::CleanPath(absl::string_view unclean_path) const {
+  std::string path(unclean_path);
   const char* src = path.c_str();
-  string::iterator dst = path.begin();
+  std::string::iterator dst = path.begin();
 
   // Check for absolute path and determine initial backtrack limit.
   const bool is_absolute_path = *src == '/';
@@ -378,7 +381,7 @@ string FileSystem::CleanPath(absl::string_view unclean_path) const {
     *dst++ = *src++;
     while (*src == '/') ++src;
   }
-  string::const_iterator backtrack_limit = dst;
+  std::string::const_iterator backtrack_limit = dst;
 
   // Process all parts
   while (*src) {
@@ -434,7 +437,7 @@ string FileSystem::CleanPath(absl::string_view unclean_path) const {
   }
 
   // Calculate and check the length of the cleaned path.
-  string::difference_type path_length = dst - path.begin();
+  std::string::difference_type path_length = dst - path.begin();
   if (path_length != 0) {
     // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
     if (path_length > 1 && path[path_length - 1] == '/') {
@@ -480,10 +483,11 @@ void FileSystem::ParseURI(absl::string_view remaining,
   *path = remaining;
 }
 
-string FileSystem::CreateURI(absl::string_view scheme, absl::string_view host,
-                             absl::string_view path) const {
+std::string FileSystem::CreateURI(absl::string_view scheme,
+                                  absl::string_view host,
+                                  absl::string_view path) const {
   if (scheme.empty()) {
-    return string(path);
+    return std::string(path);
   }
   return absl::StrCat(scheme, "://", host, path);
 }

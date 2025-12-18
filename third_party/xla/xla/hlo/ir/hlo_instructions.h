@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 #define XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -51,7 +50,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -650,10 +648,19 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
 class HloCollectiveInstruction : public HloChannelInstruction {
  public:
   const std::vector<ReplicaGroup>& replica_groups() const {
-    return device_list_.replica_groups();
+    return device_list_->replica_groups();
   }
 
-  const CollectiveDeviceList& device_list() const { return device_list_; }
+  const CollectiveDeviceList& device_list() const {
+    const CollectiveDeviceList* device_list_v1 =
+        dynamic_cast<const CollectiveDeviceList*>(device_list_.get());
+    // TODO(b/468442352): After XLA codebase is genericized to utilize
+    // CollectiveDeviceListBase instead of CollectiveDeviceList remove this
+    // check and return CollectiveDeviceListBase instead.
+    CHECK(device_list_v1 != nullptr)
+        << "Failed to cast device_list_ to CollectiveDeviceList";
+    return *device_list_v1;
+  }
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
@@ -688,7 +695,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
-  CollectiveDeviceList device_list_;
+  std::shared_ptr<CollectiveDeviceListBase> device_list_;
   bool constrain_layout_;
 };
 
@@ -1590,6 +1597,10 @@ class HloFusionInstruction : public HloCallableInstruction {
   // If multiple operands are the same instruction, keeps only one of them.
   absl::Status DeduplicateFusionOperands();
 
+  // Permutes the operands computation according to the provided permutation.
+  // The fusion computation is also adjusted accordingly.
+  absl::Status PermuteFusionOperands(absl::Span<const int64_t> permutation);
+
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion;
   }
@@ -1827,7 +1838,7 @@ class HloInfeedInstruction : public HloInstruction {
   // as the shape of the infeed instruction which produces a tuple containing
   // the infeed data shape and a TOKEN.
   const Shape& infeed_shape() const {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
     return ShapeUtil::GetSubshape(shape(), {0});
   }
   // Returns a serialized representation of this instruction.
@@ -2930,6 +2941,8 @@ inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
 inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
 inline constexpr absl::string_view kCreateBufferCustomCallTarget =
     "CreateBuffer";
+inline constexpr absl::string_view kCollectiveMetadataCustomCallTarget =
+    "CollectiveMetadata";
 
 }  // namespace xla
 

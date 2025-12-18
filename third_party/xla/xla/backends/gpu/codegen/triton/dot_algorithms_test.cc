@@ -27,7 +27,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -81,16 +80,6 @@ class AlgorithmTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);
-    // TODO(b/393299275): remove when these flags are on by default.
-    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION);
-    debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES);
     return debug_options;
   }
 
@@ -927,8 +916,6 @@ TEST_F(TritonAlgorithmTest, Dot_BF16_X6_WithConst) {
         kind=kCustom,
         calls=triton_fusion_dot,
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "fusion_backend_config":{
             "kind":"__triton_nested_gemm_fusion",
             "block_level_fusion_config":{
@@ -2099,7 +2086,11 @@ INSTANTIATE_TEST_SUITE_P(
     PrecisionTests, PrecisionTests,
     Combine(Values(PC::ALG_DOT_TF32_TF32_F32, PC::ALG_DOT_TF32_TF32_F32_X3,
                    PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
-                   PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_BF16_BF16_F32_X9,
+                   PC::ALG_DOT_BF16_BF16_F32_X6,
+                   // TODO(basioli): re-enable this algorithm testing once the
+                   // attribute
+                   // importer supports the conversion.
+                   //  PC::ALG_DOT_BF16_BF16_F32_X9,
                    PC::ALG_DOT_F32_F32_F32),
             Values(Backend::kTriton, Backend::kBlas)),
     AlgorithmAndBackendTestParamToString);

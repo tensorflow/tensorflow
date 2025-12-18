@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -65,7 +65,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
 
   for (OutfeedBuffer& outfeed_buffer : outfeed_buffers_) {
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase outfeed_data,
+        se::DeviceAddressBase outfeed_data,
         params.buffer_allocations->GetDeviceAddress(outfeed_buffer.slice));
 
     VLOG(3) << absl::StreamFormat(
@@ -99,7 +99,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> OutfeedThunk::Execute(
 OutfeedThunk::BufferUses OutfeedThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const OutfeedBuffer& outfeed_buffer : outfeed_buffers_) {
-    buffer_uses.emplace_back(BufferUse::Read(outfeed_buffer.slice));
+    buffer_uses.emplace_back(
+        BufferUse::Read(outfeed_buffer.slice, outfeed_buffer.shape));
   }
   return buffer_uses;
 }

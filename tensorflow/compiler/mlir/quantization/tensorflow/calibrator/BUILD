@@ -221,9 +221,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )

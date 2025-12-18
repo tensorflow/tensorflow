@@ -18,16 +18,15 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <functional>
-#include <numeric>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/philox_random_test_utils.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/random.h"
 
 namespace tsl {
 namespace random {
@@ -152,7 +151,7 @@ void UniformMomentsTest(int count, int max_moments,
   auto uniform_moments = [](int n) -> double { return 1. / (n + 1); };
 
   std::vector<T> v1(count);
-  uint64 seed = GetTestSeed();
+  uint64_t seed = GetTestSeed();
   PhiloxRandom gen(seed);
   FillRandoms<UniformDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
   for (int stride : strides) {
@@ -171,19 +170,18 @@ void NormalMomentsTest(int count, int max_moments,
     if (n % 2 == 1) {
       // For an odd order, the moment of a unit normal distribution is zero.
       return 0.;
-    } else {
-      // For an even order, the moment of a unit normal distribution is.
-      // (n-1)!!
-      double v = 1.;
-      for (int i = n - 1; i >= 1; i -= 2) {
-        v *= i;
-      }
-      return v;
     }
+    // For an even order, the moment of a unit normal distribution is.
+    // (n-1)!!
+    double v = 1.;
+    for (int i = n - 1; i >= 1; i -= 2) {
+      v *= i;
+    }
+    return v;
   };
 
   std::vector<T> v1(count);
-  uint64 seed = GetTestSeed();
+  uint64_t seed = GetTestSeed();
   PhiloxRandom gen(seed);
   FillRandoms<NormalDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
 
@@ -243,7 +241,7 @@ template <typename T>
 void RandomParametersMomentsTest(int count, int max_moments,
                                  const std::vector<int>& strides, T z_limit) {
   std::vector<T> v1(count);
-  uint64 seed = GetTestSeed();
+  uint64_t seed = GetTestSeed();
   PhiloxRandom gen(seed);
   FillRandomsWithSingles<
       TruncatedNormalDistribution<SingleSampleAdapter<PhiloxRandom>, T> >(
@@ -304,9 +302,9 @@ TEST(PhiloxRandomTest, RandomParametersDoubleMomentsTest) {
 
 class MockGenerator {
  public:
-  explicit MockGenerator(uint64 seed) : counter_(seed) {}
-  using ResultType = std::vector<uint32>;
-  using ResultElementType = uint32;
+  explicit MockGenerator(uint64_t seed) : counter_(seed) {}
+  using ResultType = std::vector<uint32_t>;
+  using ResultElementType = uint32_t;
   static constexpr int kResultElementCount = 1;
   ResultType operator()() {
     ResultType result;
@@ -315,20 +313,20 @@ class MockGenerator {
   }
 
  private:
-  uint32 counter_;
+  uint32_t counter_;
 };
 
 template <typename T>
 void SingleSampleAdapterSkipTest() {
-  std::vector<uint64> skips(10);
-  std::vector<uint64> skip_afters(10);
-  std::iota(skips.begin(), skips.end(), 0);
-  std::iota(skip_afters.begin(), skip_afters.end(), 0);
-  uint64 total_samples = 100;
-  uint64 seed = GetTestSeed();
+  std::vector<uint64_t> skips(10);
+  std::vector<uint64_t> skip_afters(10);
+  absl::c_iota(skips, 0);
+  absl::c_iota(skip_afters, 0);
+  uint64_t total_samples = 100;
+  uint64_t seed = GetTestSeed();
 
-  for (uint64 skip : skips) {
-    for (uint64 skip_after : skip_afters) {
+  for (uint64_t skip : skips) {
+    for (uint64_t skip_after : skip_afters) {
       // Baseline rngs.
       T parent_gen(seed);
       SingleSampleAdapter<T> gen(&parent_gen);

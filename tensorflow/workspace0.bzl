@@ -8,6 +8,7 @@ load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependenci
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@local_config_android//:android.bzl", "android_workspace")
 load("@rules_foreign_cc//foreign_cc:repositories.bzl", "rules_foreign_cc_dependencies")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/googleapis:repository_rules.bzl", "config_googleapis")
 
 def _tf_bind():
@@ -79,14 +80,13 @@ def workspace():
     # Note: We add this to fix Kokoro builds.
     # The rules below call into `rules_proto` but the hash has changed and
     # Bazel refuses to continue. So, we add our own mirror.
-    http_archive(
+    tf_http_archive(
         name = "rules_proto",
         sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
         strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+        urls = tf_mirror_urls(
             "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
-        ],
+        ),
     )
 
     # Now, finally use the rules
@@ -106,13 +106,13 @@ def workspace():
 
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
-    http_archive(
+    tf_http_archive(
         name = "rules_ml_toolchain",
-        sha256 = "38f1954af9336c3d020a3b807a3585fdaefa8e9bee725664663279cc4309b8c6",
-        strip_prefix = "rules_ml_toolchain-71d74ee1f7ad0e74c50b3c546d21872d42676e37",
-        urls = [
-            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/71d74ee1f7ad0e74c50b3c546d21872d42676e37.tar.gz",
-        ],
+        sha256 = "53905ede50e3eebc782266e20e9b9ac1d7166ef68b877bea593d3600dcfe03e6",
+        strip_prefix = "rules_ml_toolchain-a1ff84835e407b41eef5fd1a865a23748c294db6",
+        urls = tf_mirror_urls(
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/a1ff84835e407b41eef5fd1a865a23748c294db6.tar.gz",
+        ),
     )
 
 # Alias so it can be loaded without assigning to a different symbol to prevent

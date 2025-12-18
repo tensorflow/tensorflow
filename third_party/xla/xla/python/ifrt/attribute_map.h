@@ -24,12 +24,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -38,6 +39,8 @@ namespace xla {
 namespace ifrt {
 
 // Attribute map that contains UTF-8 keys and variant values.
+//
+// This class is thread-safe.
 class AttributeMap {
  public:
   // Supported value types for `AttributeMap`. Modeled after
@@ -89,19 +92,22 @@ class AttributeMap {
 
   explicit AttributeMap(Map map) : map_(std::move(map)) {}
 
-  const Map& map() const { return map_; }
-
   template <typename T>
   absl::StatusOr<T> Get(const std::string& key) const {
-    if constexpr (std::is_same_v<T, std::string> ||
-                  std::is_same_v<T, absl::string_view>) {
+    absl::ReaderMutexLock lock(mu_);
+    if constexpr (std::is_same_v<T, Value>) {
+      auto it = map_.find(key);
+      if (it == map_.end()) {
+        return absl::NotFoundError(absl::StrCat("Key not found: ", key));
+      }
+      return it->second;
+    } else if constexpr (std::is_same_v<T, std::string>) {
       return Get<T, StringValue>(key);
     } else if constexpr (std::is_same_v<T, bool>) {
       return Get<T, BoolValue>(key);
     } else if constexpr (std::is_same_v<T, int64_t>) {
       return Get<T, Int64Value>(key);
-    } else if constexpr (std::is_same_v<T, std::vector<int64_t>> ||
-                         std::is_same_v<T, absl::Span<const int64_t>>) {
+    } else if constexpr (std::is_same_v<T, std::vector<int64_t>>) {
       return Get<T, Int64ListValue>(key);
     } else if constexpr (std::is_same_v<T, float>) {
       return Get<T, FloatValue>(key);
@@ -110,12 +116,42 @@ class AttributeMap {
     }
   }
 
+  template <typename T>
+  absl::Status Set(const std::string& key, T value) {
+    absl::MutexLock lock(mu_);
+    using ValueType = std::decay_t<T>;
+    if constexpr (std::is_same_v<ValueType, std::string> ||
+                  std::is_same_v<ValueType, const char*> ||
+                  std::is_convertible_v<ValueType, std::string>) {
+      map_.insert_or_assign(key, StringValue(std::move(value)));
+    } else if constexpr (std::is_same_v<ValueType, bool>) {
+      map_.insert_or_assign(key, BoolValue(std::move(value)));
+    } else if constexpr (std::is_same_v<ValueType, int64_t>) {
+      map_.insert_or_assign(key, Int64Value(std::move(value)));
+    } else if constexpr (std::is_same_v<ValueType, std::vector<int64_t>>) {
+      map_.insert_or_assign(key, Int64ListValue(std::move(value)));
+    } else if constexpr (std::is_same_v<ValueType, float>) {
+      map_.insert_or_assign(key, FloatValue(std::move(value)));
+    } else {
+      static_assert(false, "Unsupported type for AttributeMap::Set");
+    }
+    return absl::OkStatus();
+  }
+
   // Deserializes `AttributeMapProto` into `AttributeMap`.
   static absl::StatusOr<AttributeMap> FromProto(const AttributeMapProto& proto);
 
-  // Serializes `AttributeMap` into `AttributeMapProto`.
-  AttributeMapProto ToProto(
+  // Converts the attribute map to a protobuf.
+  void ToProto(
+      AttributeMapProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  AttributeMapProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    AttributeMapProto proto;
+    ToProto(proto, version);
+    return proto;
+  }
 
   std::string DebugString(size_t max_string_length = 64,
                           size_t max_int64_list_size = 16) const;
@@ -125,9 +161,65 @@ class AttributeMap {
     sink.Append(attribute_map.DebugString());
   }
 
+  bool IsEmpty() const {
+    absl::ReaderMutexLock lock(mu_);
+    return map_.empty();
+  }
+
+  // Invokes `f` for each key-value pair in the attribute map.
+  void ForEach(
+      absl::FunctionRef<void(const std::string&, const Value&)> f) const {
+    absl::ReaderMutexLock lock(mu_);
+    for (const auto& [key, value] : map_) {
+      f(key, value);
+    }
+  }
+
+  bool operator==(const AttributeMap& other) const {
+    absl::ReaderMutexLock lock1(mu_);
+    absl::ReaderMutexLock lock2(other.mu_);
+    return map_ == other.map_;
+  }
+
+  size_t size() const {
+    absl::ReaderMutexLock lock(mu_);
+    return map_.size();
+  }
+
+  // Copyable and movable.
+  AttributeMap(const AttributeMap& other) {
+    absl::ReaderMutexLock lock(other.mu_);
+    map_ = other.map_;
+  }
+  AttributeMap& operator=(const AttributeMap& other) {
+    Map map;
+    {
+      absl::ReaderMutexLock lock(other.mu_);
+      map = other.map_;
+    }
+    absl::MutexLock lock(mu_);
+    map_ = std::move(map);
+    return *this;
+  }
+  AttributeMap(AttributeMap&& other) {
+    absl::MutexLock lock(other.mu_);
+    map_ = std::move(other.map_);
+  }
+  AttributeMap& operator=(AttributeMap&& other) {
+    Map map;
+    {
+      absl::MutexLock lock(other.mu_);
+      map = std::move(other.map_);
+    }
+    absl::MutexLock lock(mu_);
+    map_ = std::move(map);
+    return *this;
+  }
+
  private:
   template <typename T, typename V>
-  absl::StatusOr<T> Get(const std::string& key) const {
+  absl::StatusOr<T> Get(const std::string& key) const
+      ABSL_SHARED_LOCKS_REQUIRED(mu_) {
     auto it = map_.find(key);
     if (it == map_.end()) {
       return absl::NotFoundError(absl::StrCat("Key not found: ", key));
@@ -140,7 +232,8 @@ class AttributeMap {
     return value->value;
   }
 
-  Map map_;
+  mutable absl::Mutex mu_;
+  Map map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace ifrt

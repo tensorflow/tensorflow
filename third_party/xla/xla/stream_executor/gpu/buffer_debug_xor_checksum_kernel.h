@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -30,9 +30,9 @@ namespace stream_executor::gpu {
 // This kernel MUST execute on a single thread block.
 struct BufferDebugXorChecksumKernel {
   using KernelType =
-      TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceMemory<uint8_t>,
-                  uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                  DeviceMemory<xla::gpu::BufferDebugLogEntry>>;
+      TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceAddress<uint8_t>,
+                  uint64_t, DeviceAddress<xla::gpu::BufferDebugLogHeader>,
+                  DeviceAddress<xla::gpu::BufferDebugLogEntry>>;
 };
 
 }  // namespace stream_executor::gpu

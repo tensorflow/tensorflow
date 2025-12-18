@@ -6511,6 +6511,9 @@ func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAt
 type ComplexAbsAttr func(optionalAttr)
 
 // ComplexAbsTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 	return func(m optionalAttr) {
@@ -20905,6 +20908,9 @@ func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []t
 type ImagAttr func(optionalAttr)
 
 // ImagTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ImagTout(value tf.DataType) ImagAttr {
 	return func(m optionalAttr) {

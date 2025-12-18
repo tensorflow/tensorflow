@@ -30,19 +30,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/Parser/Parser.h"
-#include "stablehlo/dialect/Register.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -70,7 +64,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -87,7 +80,7 @@ static absl::StatusOr<std::string> AotCompileCpuExecutable(
 
 static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::optional<Compiler::TargetConfig> target_config,
+    std::optional<Compiler::GpuTargetConfig> target_config,
     CompilationResult& result) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
@@ -101,7 +94,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   if (aot) {
     AotCompilationOptions aot_options(platform->id());
-    aot_options.set_target_config(*target_config);
+    aot_options.set_gpu_target_config(*target_config);
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
 
@@ -119,7 +112,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
   compile_options.device_allocator = allocator.get();
 
@@ -133,7 +126,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
-    std::optional<Compiler::TargetConfig> target_config,
+    std::optional<Compiler::GpuTargetConfig> target_config,
     CompilationResult& result) {
   if (backend == BackendType::kCpu) {
     return AotCompileCpuExecutable(std::move(hlo_module));
@@ -176,18 +169,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(
       tsl::Env::Default(), std::string(module_path), &module_string));
 
-  mlir::DialectRegistry dialects;
-  // TODO(b/248362914): Register all required dialects.
-  dialects.insert<mlir::arith::ArithDialect>();
-  dialects.insert<mlir::mhlo::MhloDialect>();
-  dialects.insert<mlir::func::FuncDialect>();
-  mlir::stablehlo::registerAllDialects(dialects);
-
   // Parse MHLO module.
   auto threading = mlir::MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<mlir::MLIRContext>(dialects, threading);
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
+  auto ctx = std::make_unique<mlir::MLIRContext>(threading);
+
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseMlirModuleString(module_string, *ctx));
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
@@ -218,7 +205,7 @@ ReadModuleFromSymbolRepo(absl::string_view symbol_repo,
   return mod;
 }
 
-static std::unique_ptr<Compiler::TargetConfig> ReadTargetConfigFromModule(
+static std::unique_ptr<Compiler::GpuTargetConfig> ReadTargetConfigFromModule(
     HloModuleAndMetadata* mod, BackendType backend) {
   if (backend == BackendType::kGpu) {
     if (auto* data = static_cast<gpu::GpuBackendSpecificData*>(
@@ -253,7 +240,7 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
 
 absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   std::unique_ptr<HloModule> hlo_module;
-  std::unique_ptr<Compiler::TargetConfig> target_config;
+  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   if (options.platform != "cpu" && options.platform != "gpu") {
     return absl::UnimplementedError(
         absl::StrCat("platform", options.platform, " is not supported"));
@@ -306,7 +293,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     }
   });
   // Run AOT compilation.
-  std::optional<Compiler::TargetConfig> cfg = std::nullopt;
+  std::optional<Compiler::GpuTargetConfig> cfg = std::nullopt;
   if (backend == BackendType::kGpu) {
     if (absl::string_view gpu_target_config_path =
             options.gpu_options.gpu_target_config_path;
@@ -324,9 +311,9 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
       }
 
       TF_ASSIGN_OR_RETURN(
-          Compiler::TargetConfig parsed_target_config,
-          Compiler::TargetConfig::FromProto(gpu_target_config_proto));
-      target_config = std::make_unique<Compiler::TargetConfig>(
+          Compiler::GpuTargetConfig parsed_target_config,
+          Compiler::GpuTargetConfig::FromProto(gpu_target_config_proto));
+      target_config = std::make_unique<Compiler::GpuTargetConfig>(
           std::move(parsed_target_config));
 
       if (absl::string_view autotune_results_path =

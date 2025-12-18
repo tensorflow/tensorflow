@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/float_support.h"
@@ -38,8 +39,9 @@ namespace xla {
 // changed made by this pass.
 class BFloat16ConversionFolding : public HloModulePass {
  public:
-  explicit BFloat16ConversionFolding(const FloatSupport* bfloat16_support)
-      : bfloat16_support_(bfloat16_support) {
+  BFloat16ConversionFolding(const FloatSupport* bfloat16_support,
+                            const AliasInfo* alias_info)
+      : bfloat16_support_(bfloat16_support), alias_info_(alias_info) {
     DCHECK(bfloat16_support->LowPrecisionType() == BF16);
   }
 
@@ -55,6 +57,7 @@ class BFloat16ConversionFolding : public HloModulePass {
 
  private:
   const FloatSupport* bfloat16_support_;
+  const AliasInfo* alias_info_;
 };
 
 }  // namespace xla

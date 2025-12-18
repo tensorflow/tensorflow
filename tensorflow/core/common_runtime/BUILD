@@ -1111,6 +1111,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -1349,10 +1350,7 @@ cc_library(
     srcs = ["lower_functional_ops.cc"],
     hdrs = ["lower_functional_ops.h"],
     copts = tf_copts(),
-    visibility = default_package_visibility + [
-        "//platforms/performance/autograppler:__subpackages__",
-        "//platforms/performance/tf_sim:__subpackages__",
-    ],
+    visibility = default_package_visibility + ["//platforms/performance/tf_sim:__subpackages__"],
     deps = [
         ":device_propagation",
         ":function_utils",

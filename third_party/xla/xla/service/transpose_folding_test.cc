@@ -33,19 +33,17 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/literal_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tsl::testing::IsOkAndHolds;
 
 using TransposeFoldingTest = HloHardwareIndependentTestBase;
 

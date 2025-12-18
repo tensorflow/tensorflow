@@ -53,14 +53,13 @@ absl::StatusOr<CustomLayoutRef> Layout::FromProto(
                              /*options=*/nullptr);
 }
 
-absl::StatusOr<LayoutProto> Layout::ToProto(SerDesVersion version) const {
-  LayoutProto layout_proto;
+absl::Status Layout::ToProto(LayoutProto& layout_proto,
+                             SerDesVersion version) const {
   // `LayoutProto` does not store its own version. It delegates the details to
   // SerDes of the `Layout` subclasses.
   auto options = std::make_unique<SerializeOptions>(version);
-  TF_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
-                      Serialize(*this, std::move(options)));
-  return layout_proto;
+  return Serialize(*this, std::move(options),
+                   *layout_proto.mutable_serialized_layout());
 }
 
 absl::StatusOr<absl_nonnull std::unique_ptr<CompactLayout>>

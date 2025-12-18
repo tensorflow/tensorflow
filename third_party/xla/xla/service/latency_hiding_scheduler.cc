@@ -43,7 +43,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -67,7 +66,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -163,6 +161,11 @@ int GetCustomCallForceDelayPriority(const HloInstruction* instr) {
     return out;
   }
   return 0;
+}
+
+bool HasForceDelayAsyncAttribute(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_hint");
+  return attr.has_value() && attr.value() == "force_delay_async";
 }
 
 absl::flat_hash_map<int64_t, int64_t>
@@ -1278,10 +1281,13 @@ class ReadySetLt {
     HloGraphNode* bn = b.node;
     // Schedule according to ForceEarly.
     CMP_PROPERTY(GetForceEarly(), "kForceEarly");
-    // Schedule according to highest ForceDelay first.
+    // Schedule according to ForceDelay, if exactly one of the two instructions
+    // has ForceDelay set.
+    CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
+    // Schedule according to highest ForceDelay first, if both instructions
+    // have ForceDelay set.
     CMP_EXPLICIT(-an->GetForceDelayPriority(), -bn->GetForceDelayPriority(),
                  "kForceDelayPriority");
-    CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
     // Use the preference value (comes from a heuristic) to choose between
     // the two candidates. If two preferences are the same regular LHS logic
     // will run as usual, we take advantage of this fact when initializing
@@ -1305,7 +1311,7 @@ class ReadySetLt {
 
     std::pair<int64_t, int64_t> a_increase = {0, 0};
     std::pair<int64_t, int64_t> b_increase = {0, 0};
-    bool computed_memory_increases = true;
+    bool computed_memory_increases = false;
     if (config_has_memory_limit_ &&
         sched_state_.memory_pressure_tracker->memory_usage() >
             (config_memory_limit_ / 2)) {
@@ -1479,7 +1485,13 @@ class ReadySetLt {
       static_assert(
           std::is_trivially_copyable_v<DefaultSchedulerCore::ScheduleCandidate>,
           "ScheduleCandidate should be is_trivially_copyable");
-      memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      if (VLOG_IS_ON(2)) {
+        DefaultSchedulerCore::ScheduleCandidate tmp = b;
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+        memcpy(&a, &tmp, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      } else {
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      }
     }
     return result;
   }
@@ -1611,7 +1623,9 @@ class ReadySetLt {
             cand_node->GetResources());
     int64_t num_conflicting_resources = 0;
     for (int64_t resource : resources) {
-      if (!sched_state_.resource_occupiers_in_flight.count(resource)) continue;
+      if (!sched_state_.resource_occupiers_in_flight.count(resource)) {
+        continue;
+      }
       num_conflicting_resources +=
           sched_state_.resource_occupiers_in_flight.at(resource).size();
     }
@@ -1661,9 +1675,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
                         early_target_scheduling_rule_};
     // Construct a schedule candidate for caching.
     ScheduleCandidate ready_chosen;
-    ScheduleCandidate ready_chosen_orig;
     bool ready_chosen_valid = false;
-    ScheduleCandidate ready_candidate_orig;
     auto chosen_it = sched_state.ready_set.end();
 
     // Try to pick nodes from the ready set first that are the ones that cause
@@ -1740,10 +1752,6 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
         continue;
       }
 
-      if (ABSL_PREDICT_FALSE(vlog_2)) {
-        ready_chosen_orig = ready_chosen;
-        ready_candidate_orig = ready_candidate;
-      }
       const char* reason;
       bool new_candidate_selected =
           ready_lt.MaybeUpdate(ready_candidate, ready_chosen, &reason);
@@ -1756,21 +1764,11 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
               return std::string("N/A");
             };
         VLOG(2) << "Choosing from ready ("
-                << (new_candidate_selected
-                        ? ready_candidate_orig.node->GetInstr().name()
-                        : ready_chosen_orig.node->GetInstr().name())
-                << ") vs ("
-                << (new_candidate_selected
-                        ? ready_chosen_orig.node->GetInstr().name()
-                        : ready_candidate_orig.node->GetInstr().name())
+                << ready_chosen.node->GetInstr().name() << ") vs ("
+                << ready_candidate.node->GetInstr().name()
                 << ") Reason: " << reason << " mem pressure chosen "
-                << print_pressure_change(new_candidate_selected
-                                             ? ready_candidate_orig
-                                             : ready_chosen_orig)
-                << " mem pressure other "
-                << print_pressure_change(new_candidate_selected
-                                             ? ready_chosen_orig
-                                             : ready_candidate_orig);
+                << print_pressure_change(ready_chosen) << " mem pressure other "
+                << print_pressure_change(ready_candidate);
       }
 
       if (new_candidate_selected) {
@@ -1823,8 +1821,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
           sched_state.ongoing_annotation = -1;
         }
         // Remove this annotation from ready_annotations if it's there.
-        auto it = std::find(sched_state.ready_annotations.begin(),
-                            sched_state.ready_annotations.end(), annotation);
+        auto it = absl::c_find(sched_state.ready_annotations, annotation);
         if (it != sched_state.ready_annotations.end()) {
           sched_state.ready_annotations.erase(it);
         }
@@ -2168,8 +2165,7 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       continue;
     }
     // Delete the node from the ready set.
-    auto node_it = std::find(sched_state->ready_set.begin(),
-                             sched_state->ready_set.end(), node);
+    auto node_it = absl::c_find(sched_state->ready_set, node);
     TF_RET_CHECK(node_it != sched_state->ready_set.end())
         << "Couldn't find the annotated node in ready set: "
         << node->GetInstr().name();
@@ -2183,9 +2179,26 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     VLOG(2) << "Scheduled annotated node (" << num_scheduled << "/"
             << annotation_size << "): " << node->GetInstr().name();
   }
-  // Check that we scheduled all the nodes in the annotation.
-  TF_RET_CHECK(num_scheduled == annotation_size - non_ready_instr)
-      << "Couldn't schedule all annotated nodes in one go.";
+  // If for some reason we could not schedule all the instructions in the
+  // annotation in one go, we clear the annotation for the remaining
+  // instruction. Currently this should only happen for async-start
+  // instructions.
+  if (num_scheduled < annotation_size - non_ready_instr) {
+    for (auto* inst :
+         annotation_tracker_->GetInstructions(computation, annotation)) {
+      HloGraphNode& node = sched_state->sched_graph.GetNode(inst);
+      if (!node.IsScheduled()) {
+        TF_RET_CHECK(
+            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
+                node.GetInstr()));
+        VLOG(2) << "Could not schedule all annotated nodes with annotation ID "
+                << annotation << " in one go; clearing annotation for "
+                << node.GetInstr().name();
+        node.ClearAnnotation();
+        sched_state->nodes_holding_annotations.insert(&node);
+      }
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -2240,8 +2253,7 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   // was there.
   if (sched_state->config.enable_selective_resources &&
       n->ReleasesSelectiveResource()) {
-    auto it = std::find(sched_state->selective_resource_releasers.begin(),
-                        sched_state->selective_resource_releasers.end(), n);
+    auto it = absl::c_find(sched_state->selective_resource_releasers, n);
     // Perform sanity check node was in selective_resources_releasers.
     if (it == sched_state->selective_resource_releasers.end()) {
       LOG(WARNING) << "Selective resource releasers list does not contain node "
@@ -2615,6 +2627,9 @@ HloScheduleGraph::HloScheduleGraph(
       n->SetForceDelay(true);
       n->SetForceDelayPriority(GetCustomCallForceDelayPriority(instr));
     }
+    if (n->IsSupportedAsyncStart() && HasForceDelayAsyncAttribute(instr)) {
+      n->SetForceDelay(true);
+    }
   }
 
   // num_predecessors[i]: number of predecessors for instruction number "i"
@@ -2962,7 +2977,7 @@ void HloScheduleGraph::AnnotateGraph(
     for (const HloInstruction* instr :
          annotation_tracker->GetInstructions(comp, annotation)) {
       HloGraphNode& node = GetNode(instr);
-      TF_CHECK_OK(node.SetAnnotation(annotation));
+      CHECK_OK(node.SetAnnotation(annotation));
     }
   }
 }
@@ -2994,6 +3009,8 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
               continue;
             }
             if (count > it->second) {
+              VLOG(5) << "Cross overlap limit for resource: " << resource
+                      << " count: " << count << " limit: " << it->second;
               return true;
             }
           }
@@ -3046,8 +3063,7 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
         // assuming maximum overlapping, where the resources used by the
         // async-done ops need to be accumulated.
         const HloInstruction* start = instr->operand(0);
-        if (std::find(instrs.begin(), instrs.end(), start) == instrs.end() ||
-            get_max_resources) {
+        if (absl::c_find(instrs, start) == instrs.end() || get_max_resources) {
           num_resources_needed[resource] += usage;
           continue;
         }
@@ -3229,9 +3245,9 @@ DefaultSchedulerCore::ScheduleComputation(
     XLA_VLOG_LINES(2, [&sched_state]() {
       struct LogFormatter {
         void operator()(std::string* out, const HloGraphNode* n) const {
-          out->append(absl::StrCat("\t", n->GetInstr().name(),
-                                   " Ready time: ", n->GetReadyTime(),
-                                   " Depth: ", n->GetGraphDepth()));
+          absl::StrAppend(out, "\t", n->GetInstr().name(),
+                          " Ready time: ", n->GetReadyTime(),
+                          " Depth: ", n->GetGraphDepth());
         }
       };
       return absl::StrJoin(sched_state->ready_set, "\n", LogFormatter());
@@ -3622,7 +3638,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::RunImpl(
       if (scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
               *instr) ||
           scheduling_context_->GetAsyncTracker()->IsSupportedAsyncDone(
-              *instr)) {
+              *instr) ||
+          IsCustomCallWithForceDelayAttribute(instr)) {
         computations_to_schedule_.push_back(computation);
         break;
       }

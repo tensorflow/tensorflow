@@ -173,14 +173,14 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   }
 }
 
-DTypeProto DType::ToProto(SerDesVersion version) const {
+void DType::ToProto(DTypeProto& dtype_proto, SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for DType serialization";
 
-  DTypeProto dtype_proto;
+  dtype_proto.Clear();
   dtype_proto.set_version_number(SerDesVersionNumber(0).value());
 
   switch (kind()) {
@@ -232,7 +232,6 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
       dtype_proto.set_kind(DTypeProto::KIND_UNSPECIFIED);
       break;
   }
-  return dtype_proto;
 }
 
 std::string DType::DebugString() const {

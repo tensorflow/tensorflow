@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 
@@ -200,6 +201,7 @@ mlir::Type Type::to_ir_type(mlir::MLIRContext& context) const {
 
 Type Type::TypeFromIrType(mlir::Type type) {
   if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(type)) {
+    CHECK_EQ(vec_type.getRank(), 1) << "Expected rank 1 for vector type.";
     return Type(ConvertMlirTypeToPrimitiveType(vec_type.getElementType()),
                 vec_type.getShape().front());
   }

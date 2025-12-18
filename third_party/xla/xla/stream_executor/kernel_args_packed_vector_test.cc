@@ -34,6 +34,7 @@ TEST(KernelArgsPackedVectorTest, StoresSharedMemoryBytes) {
   KernelArgsPackedVector args(std::vector<std::vector<char>>(),
                               /*shared_memory_bytes=*/42);
   EXPECT_EQ(args.number_of_shared_bytes(), 42);
+  EXPECT_EQ(args.number_of_arguments(), 1);
 }
 
 TEST(KernelArgsPackedVectorTest, StoresArgumentAddresses) {
@@ -62,6 +63,15 @@ TEST(KernelArgsPackedVectorTest, StoresArgumentAddresses) {
       absl::Span<const char>(
           absl::bit_cast<const char*>(args.argument_addresses().at(2)), 3),
       ElementsAre(30, 31, 32));
+}
+
+TEST(KernelArgsPackedVectorTest,
+     ConsidersSharedMemoryBytesInNumberOfArguments) {
+  KernelArgsPackedVector args({{}, {}},
+                              /*shared_memory_bytes=*/42);
+
+  // Two arguments and one shared memory argument.
+  EXPECT_EQ(args.number_of_arguments(), 3);
 }
 
 }  // namespace

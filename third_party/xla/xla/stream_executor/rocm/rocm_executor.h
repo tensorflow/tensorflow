@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -80,23 +80,23 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
-  absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) const override;
-  void Deallocate(DeviceMemoryBase* mem) override;
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
+  absl::StatusOr<DeviceAddressBase> GetMemoryRange(
+      const DeviceAddressBase& location) const override;
+  void Deallocate(DeviceAddressBase* mem) override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       Stream* stream, bool use_delay_kernel) override;
-  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+  absl::StatusOr<DeviceAddressBase> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override;
-  absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
+                                 const DeviceAddressBase& gpu_src,
                                  uint64_t size) override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
@@ -113,7 +113,7 @@ class RocmExecutor : public GpuExecutor {
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
 
-  absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -131,7 +131,7 @@ class RocmExecutor : public GpuExecutor {
   // associated with this executor. Otherwise a NotFound error is returned.
   absl::StatusOr<const RocmKernel*> GetRocmKernel(const Kernel* kernel);
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
   int GetGpuStreamPriority(StreamPriority priority) override;
 
@@ -159,7 +159,7 @@ class RocmExecutor : public GpuExecutor {
   // On-device constants that can be shared between multiple executables. A
   // pointer for a given constant will expire when no executables require use
   // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
+  std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.

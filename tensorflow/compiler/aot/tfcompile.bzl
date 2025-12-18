@@ -63,6 +63,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      "--xla_cpu_experimental_ynn_fusion_type= " +
                       additional_xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
@@ -321,10 +322,11 @@ def _tf_library(
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
             "//third_party/absl/log:check",
+            "//third_party/absl/synchronization",
+            "//tensorflow/core:framework_lite",
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
             "@local_xla//xla:types",
             "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
-            "//tensorflow/core:framework_lite",
             "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
@@ -335,12 +337,11 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "@local_xla//xla/service/cpu:runtime_conv2d",
-            "@local_xla//xla/service/cpu:runtime_custom_call_status",
-            "@local_xla//xla/service/cpu:runtime_key_value_sort",
+            "@local_xla//xla/backends/cpu/runtime:dot_lib",
+            "@local_xla//xla/backends/cpu/runtime:sort_lib",
+            "@local_xla//xla/backends/cpu/runtime:topk_lib",
+            "@local_xla//xla/backends/cpu/runtime:convolution_lib",
             "@local_xla//xla/service/cpu:runtime_matmul",
-            "@local_xla//xla/service/cpu:runtime_topk",
-            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
             "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
         ] or []) + (use_xla_nanort_runtime and [

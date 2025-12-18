@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 
 namespace stream_executor {
 
@@ -40,7 +40,14 @@ class KernelArgsPackedVector : public KernelArgsPackedArrayBase {
     }
   }
 
-  size_t number_of_arguments() const final { return argument_storage_.size(); }
+  size_t number_of_arguments() const final {
+    // We need to add 1 to the number of arguments if the kernel is using shared
+    // memory because we treat the number of shared memory bytes like an
+    // additional argument in the StreamExecutor kernel launch API. Note that
+    // shared memory doesn't appear in
+    // KernelArgsPackedVector::argument_addresses().
+    return argument_storage_.size() + (shared_memory_bytes_ > 0);
+  }
 
   // Returns the number of bytes that need to be allocated in shared memory for
   // this kernel. This value is treated like an additional argument in the CUDA

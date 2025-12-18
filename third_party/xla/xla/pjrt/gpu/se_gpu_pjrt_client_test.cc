@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
@@ -33,6 +32,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -89,11 +92,12 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -109,7 +113,6 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -143,7 +146,9 @@ absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
   auto literal_or = result_buffers[0]->ToLiteralSync();
-  if (!literal_or.status().ok()) return literal_or.status();
+  if (!literal_or.status().ok()) {
+    return literal_or.status();
+  }
   return *literal_or;
 }
 
@@ -393,11 +398,11 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
                             std::unique_ptr<CopyToDeviceStream> stream) {
         auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
 
         auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
         return absl::OkStatus();
       }};
@@ -505,7 +510,7 @@ static absl::Status MemsetFromValue(
   uint32_t pattern;
   std::memcpy(&pattern, &memset_value->value, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->device_memory();
+  se::DeviceAddressBase base = result->device_memory();
   return stream->Memset32(&base, pattern, base.size());
 }
 
@@ -554,7 +559,7 @@ static absl::Status MemsetFromAttr(
   uint32_t pattern;
   std::memcpy(&pattern, &attr, sizeof(pattern));
 
-  se::DeviceMemoryBase base = result->device_memory();
+  se::DeviceAddressBase base = result->device_memory();
   return stream->Memset32(&base, pattern, base.size());
 }
 
@@ -791,7 +796,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -863,7 +868,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -1145,7 +1150,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   std::vector<Shape> src_shapes;
   for (int i = 0; i < 4; ++i) {
     std::vector<float> data(i + 1);
-    std::iota(data.begin(), data.end(), static_cast<float>(i + 10));
+    absl::c_iota(data, static_cast<float>(i + 10));
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
@@ -1248,7 +1253,7 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
 
   for (auto device : client->addressable_devices()) {
     const xla::Literal literal = xla::LiteralUtil::CreateR0<int32_t>(0);
-    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space())
+    TF_ASSERT_OK_AND_ASSIGN(auto* memory_space, device->default_memory_space());
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostLiteral(literal, memory_space));
@@ -2496,11 +2501,11 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
                             std::unique_ptr<CopyToDeviceStream> stream) {
         auto chunk0 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk0.data()) = 5.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk0)).Await());
 
         auto chunk1 = PjRtChunk::AllocateDefault(sizeof(float));
         *reinterpret_cast<float*>(chunk1.data()) = 6.0f;
-        TF_CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
+        CHECK_OK(stream->AddChunk(std::move(chunk1)).Await());
 
         return absl::OkStatus();
       }};
@@ -2598,13 +2603,17 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       tensorflow::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
   size_t dma_size = 1024;
   size_t alignment = 4096;
-  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
-  EXPECT_FALSE(client->IsDmaMapped(
-      reinterpret_cast<char*>(host_dma_ptr.get()) + 5, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
+  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr_cleanup =
+      absl::Cleanup([host_dma_ptr, dma_size, alignment] {
+        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+      });
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
+  EXPECT_FALSE(
+      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
+  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
@@ -2612,7 +2621,7 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
                           GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->devices().size(), 2);
 
-  size_t test_length = 0.5l * 1024 * 1024;
+  size_t test_length = 512 * 1024;
   std::vector<int32_t> data(test_length);
   for (int32_t i = 0; i < test_length; ++i) {
     data[i] = i;
@@ -2632,10 +2641,14 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
-  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
+  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr_cleanup =
+      absl::Cleanup([host_dma_ptr, dma_size, alignment] {
+        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+      });
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
-  auto result = first_buffer->CopyRawToHost(host_dma_ptr.get(), 0, size);
+  auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
   TF_EXPECT_OK(result.Await());
 
   PjRtDevice* const second_device = client->addressable_devices()[1];
@@ -2646,12 +2659,12 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
   TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-      0, host_dma_ptr.get(), 0, size, true, []() {}));
+      0, host_dma_ptr, 0, size, true, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
 TEST(StreamExecutorGpuClientTest, RawBuffer) {
@@ -2659,7 +2672,7 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
                           GetStreamExecutorGpuClient(DefaultOptions()));
 
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 10);
+  absl::c_iota(data, 10);
 
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   auto buffer =
@@ -2680,7 +2693,7 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
-  std::iota(data2.begin(), data2.end(), 47);
+  absl::c_iota(data2, 47);
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
@@ -2740,9 +2753,13 @@ ENTRY main.5 {
 
   size_t dma_size = 4 * 1024;
   size_t alignment = 1024;
-  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
-  memset(host_dma_ptr.get(), 0, dma_size);
+  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr_deleter =
+      absl::Cleanup([host_dma_ptr, dma_size, alignment] {
+        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+      });
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  memset(host_dma_ptr, 0, dma_size);
   Shape shape =
       ShapeUtil::MakeShape(S32, {static_cast<int64_t>(dma_size * 1024)});
 
@@ -2766,11 +2783,10 @@ ENTRY main.5 {
     }
     last_opaque_ptr = opaque_ptr;
 
-    memcpy(host_dma_ptr.get(), &i, sizeof(int32_t));
+    memcpy(host_dma_ptr, &i, sizeof(int32_t));
     absl::Notification done;
     TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-        0, host_dma_ptr.get(), 0, dma_size, true,
-        [&done]() { done.Notify(); }));
+        0, host_dma_ptr, 0, dma_size, true, [&done]() { done.Notify(); }));
     done.WaitForNotification();
 
     std::vector<std::vector<xla::PjRtBuffer*>> input_ptrs = {
@@ -2797,7 +2813,7 @@ ENTRY main.5 {
 
   EXPECT_TRUE(clobbered);
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
 }
 
 TEST(StreamExecutorGpuClientTest, EventCaching) {
@@ -2858,9 +2874,9 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
   TF_ASSERT_OK_AND_ASSIGN(std::tie(promise, event),
                           client->CreateLinkedEventPromise(memory_space, ""));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer,
-      client->DefineBuffer(device_shape, raw_buffer, {std::move(event)},
-                           /*raw_buffer_is_mutable=*/true));
+      auto buffer, client->DefineBuffer(device_shape, memory_space, raw_buffer,
+                                        {std::move(event)},
+                                        /*raw_buffer_is_mutable=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto definition_event,
@@ -2881,7 +2897,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
 
   // Create a buffer to try to send.
   std::vector<int32_t> data(256);
-  std::iota(data.begin(), data.end(), 1);
+  absl::c_iota(data, 1);
 
   Shape shape = ShapeUtil::MakeShape(S32, {256});
 
@@ -2915,6 +2931,51 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
           ::testing::StrEq("CrossHostSendBuffers: buffers, "
                            "dst_global_device_ids, and transfer_keys "
                            "must have the same length, but got 1, 1, and 2.")));
+}
+
+TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
+  // Create the client.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  // Create a buffer to try to send.
+  std::vector<int32_t> data(256);
+  absl::c_iota(data, 1);
+
+  Shape shape = ShapeUtil::MakeShape(S32, {256});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          *client->addressable_devices()[0]->default_memory_space(),
+          /*device_layout=*/nullptr));
+
+  // Try to transfer some data between two addressable devices.
+  EXPECT_THAT(
+      client->CrossHostSendBuffers({buffer.get()}, {PjRtGlobalDeviceId(1)},
+                                   {CrossHostTransferKey(0)}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::StrEq(
+              "CrossHostSendBuffers: destination device for buffer 0 is "
+              "addressable (global device id 1), but cross-host transfers must "
+              "be between an addressable and a non-addressable device.")));
+
+  EXPECT_THAT(
+      client->CrossHostReceiveBuffers(
+          /*device=*/client->addressable_devices()[0],
+          /*shapes=*/{shape},
+          /*src_global_device_ids=*/{PjRtGlobalDeviceId(1)},
+          /*transfer_keys=*/{CrossHostTransferKey(0)}),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::StrEq(
+              "CrossHostReceiveBuffers: source device for buffer 0 is "
+              "addressable (global device id 1), but cross-host transfers must "
+              "be between an addressable and a non-addressable device.")));
 }
 
 TEST(StreamExecutorGpuClientTest, FailedCrossHostReceiveArgsSizeMismatch) {
@@ -2965,6 +3026,8 @@ static std::string SuccessfulCrossHostTransferTestName(
   return absl::StrFormat("num_arrays_%d", info.param);
 }
 
+static const char* test_binary_name;
+
 class SuccessfulCrossHostTransferTest : public ::testing::TestWithParam<int> {};
 
 TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
@@ -2974,22 +3037,24 @@ TEST_P(SuccessfulCrossHostTransferTest, SuccessfulCrossHostTransfer) {
   tsl::SubProcess receiver;
 
   std::vector<std::string> sender_argv;
+  sender_argv.push_back(test_binary_name);
   sender_argv.push_back("successful_cross_host_transfer_test");
   sender_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
   sender_argv.push_back("--cross_host_test_role=sender");
   sender_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
   std::vector<std::string> receiver_argv;
+  receiver_argv.push_back(test_binary_name);
   receiver_argv.push_back("successful_cross_host_transfer_test");
   receiver_argv.push_back("--test_to_run=SuccessfulCrossHostTransferHelper");
   receiver_argv.push_back("--cross_host_test_role=receiver");
   receiver_argv.push_back(absl::StrFormat("--num_arrays=%d", num_arrays));
 
-  sender.SetProgram("/proc/self/exe", sender_argv);
+  sender.SetProgram(test_binary_name, sender_argv);
   sender.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   sender.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
 
-  receiver.SetProgram("/proc/self/exe", receiver_argv);
+  receiver.SetProgram(test_binary_name, receiver_argv);
   receiver.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   receiver.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
 
@@ -3061,13 +3126,14 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   // Sender logic.
   if (is_sender) {
     LOG(INFO) << log_prefix << ": creating buffers";
-    std::vector<int32_t> data(256);
-    std::iota(data.begin(), data.end(), 1);
-    Shape shape = ShapeUtil::MakeShape(S32, {256});
 
     // Create the data to send.
+    Shape shape = ShapeUtil::MakeShape(S32, {256});
     std::vector<std::unique_ptr<PjRtBuffer>> buffers;
     for (int i = 0; i < num_arrays; ++i) {
+      std::vector<int32_t> data(256);
+      absl::c_iota(data, 1000 * i);
+
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<PjRtBuffer> buffer,
           client->BufferFromHostBuffer(
@@ -3106,12 +3172,6 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     }
   } else {
     // Receiver logic.
-    // Expected data to receive.
-    std::vector<int32_t> expected_data(256);
-    std::iota(expected_data.begin(), expected_data.end(), 1);
-    auto expected_literal = LiteralUtil::CreateR1<int32_t>(expected_data);
-
-    // Receive some data.
     std::vector<Shape> shapes;
     std::vector<PjRtGlobalDeviceId> src_device_ids;
     std::vector<CrossHostTransferKey> transfer_keys;
@@ -3134,6 +3194,10 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     EXPECT_EQ(receive_buffers.size(), num_arrays);
 
     for (int i = 0; i < num_arrays; ++i) {
+      std::vector<int32_t> expected_data(256);
+      absl::c_iota(expected_data, 1000 * i);
+      auto expected_literal = LiteralUtil::CreateR1<int32_t>(expected_data);
+
       LOG(INFO) << log_prefix << ": waiting for receive " << i
                 << " to complete";
       TF_RETURN_IF_ERROR(receive_buffers[i]->GetReadyFuture().Await());
@@ -3187,7 +3251,8 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
     tsl::SubProcess child[kNumNodes];
     for (int node_id = 0; node_id < kNumNodes; ++node_id) {
       std::vector<std::string> argv;
-      argv.reserve(6);
+      argv.reserve(7);
+      argv.push_back(test_binary_name);
       argv.push_back("sharded_autotuning_test");
       argv.push_back("--test_to_run=ShardedAutotuningWorksHelper");
       argv.push_back(absl::StrFormat("--node_id=%d", node_id));
@@ -3203,7 +3268,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
         argv.push_back("--vmodule=gemm_fusion_autotuner=1");
         argv.push_back("--logtostderr");
       }
-      child[node_id].SetProgram("/proc/self/exe", argv);
+      child[node_id].SetProgram(test_binary_name, argv);
       child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
       child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
       ASSERT_TRUE(child[node_id].Start()) << "node " << node_id;
@@ -3250,7 +3315,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
         service,
         xla::GetDistributedRuntimeService(
             "[::]:12345", xla::CoordinationServiceImpl::Options{
-                              .num_nodes = ShardedAutotuningTest::kNumNodes}));
+                              /*num_nodes=*/ShardedAutotuningTest::kNumNodes}));
   }
 
   xla::DistributedRuntimeClient::Options distributed_options;
@@ -3292,8 +3357,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   debug_options.set_xla_gpu_cublas_fallback(false);
 
   if (node_id < num_nodes_using_cache) {
-    debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(
-        std::string(cache_dir));
+    debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
   }
 
   mlir::MLIRContext context;
@@ -3349,6 +3413,7 @@ int main(int argc, char* argv[]) {
   // empty. If empty, all tests are run. Otherwise, the test body for
   // 'ShardedAutotuningWorks' or 'SuccessfulCrossHostTransfer' will be run.
   std::string test_to_run;
+  xla::test_binary_name = argv[0];
 
   // Variables used by ShardedAutotuningWorks.
   int node_id = -1;

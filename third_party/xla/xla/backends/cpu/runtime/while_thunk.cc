@@ -36,9 +36,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -49,16 +52,23 @@ absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::Create(
                       ThunkExecutor::Create(std::move(cond_sequence)));
   TF_ASSIGN_OR_RETURN(ThunkExecutor body_executor,
                       ThunkExecutor::Create(std::move(body_sequence)));
-  return absl::WrapUnique(new WhileThunk(std::move(info), cond_buffer,
-                                         std::move(cond_executor),
-                                         std::move(body_executor), trip_count));
+
+  if (cond_buffer.size() != sizeof(bool)) {
+    return Internal("Unsupported cond buffer size %d", cond_buffer.size());
+  }
+
+  return absl::WrapUnique(new WhileThunk(
+      std::move(info), cond_buffer, ShapeUtil::MakeShape(PRED, {1}),
+      std::move(cond_executor), std::move(body_executor), trip_count));
 }
 
 WhileThunk::WhileThunk(Info info, BufferAllocation::Slice cond_buffer,
-                       ThunkExecutor cond_executor, ThunkExecutor body_executor,
+                       Shape cond_buffer_shape, ThunkExecutor cond_executor,
+                       ThunkExecutor body_executor,
                        std::optional<int64_t> trip_count)
     : Thunk(Kind::kWhile, std::move(info)),
       cond_buffer_(cond_buffer),
+      cond_buffer_shape_(cond_buffer_shape),
       cond_executor_(std::move(cond_executor)),
       body_executor_(std::move(body_executor)),
       trip_count_(trip_count) {}
@@ -76,7 +86,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> WhileThunk::Execute(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  se::DeviceMemoryBase cond_data;
+  se::DeviceAddressBase cond_data;
   if (ShouldCheckBufferSlices()) {
     TF_ASSIGN_OR_RETURN(cond_data, allocations->GetDeviceAddress(cond_buffer_));
   } else {
@@ -273,7 +283,7 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
 }
 
 WhileThunk::BufferUses WhileThunk::buffer_uses() const {
-  BufferUses buffer_uses = {BufferUse::Write(cond_buffer_)};
+  BufferUses buffer_uses = {BufferUse::Write(cond_buffer_, cond_buffer_shape_)};
 
   BufferUses cond_uses = cond_executor_.buffer_uses();
   buffer_uses.insert(buffer_uses.end(), cond_uses.begin(), cond_uses.end());

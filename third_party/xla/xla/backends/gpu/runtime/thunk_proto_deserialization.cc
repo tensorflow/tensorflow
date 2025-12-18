@@ -28,6 +28,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
+#include "xla/backends/gpu/runtime/all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/all_reduce_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
@@ -35,14 +38,18 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
+#include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -52,9 +59,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
+namespace {
 
 static std::optional<absl::string_view> GetStoredThunkTypeName(
     const ThunkProto& proto) {
@@ -74,17 +84,22 @@ static std::optional<absl::string_view> GetStoredThunkTypeName(
   return field_descriptor->name();
 }
 
-absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
+absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     const ThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    const HloModule* absl_nullable hlo_module,
-    absl::string_view platform_name) {
+    const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    HostExecuteAsyncEventsMap& host_executable_async_events_map,
+    HostSendRecvAsyncEventsMap& host_send_recv_async_events_map,
+    CollectiveThunk::AsyncEventsMap& collective_async_events_map,
+    const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver) {
   TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                       Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
-  auto deserializer = [&buffer_allocations, &hlo_module,
-                       &platform_name](const ThunkProto& thunk_proto) {
-    return DeserializeThunkProto(thunk_proto, buffer_allocations, hlo_module,
-                                 platform_name);
+  auto deserializer = [&](const ThunkProto& thunk_proto) {
+    return DeserializeThunkProtoImpl(
+        thunk_proto, buffer_allocations, hlo_module, platform_name,
+        host_executable_async_events_map, host_send_recv_async_events_map,
+        collective_async_events_map, symbol_resolver);
   };
 
   switch (thunk_proto.impl_case()) {
@@ -173,11 +188,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
           buffer_allocations);
     case ThunkProto::kDynamicSliceThunk: {
       auto deserializer =
-          [hlo_module, platform_name](
-              const ThunkProto& thunk_proto,
+          [&](const ThunkProto& thunk_proto,
               absl::Span<const BufferAllocation> custom_allocations) {
-            return DeserializeThunkProto(thunk_proto, custom_allocations,
-                                         hlo_module, platform_name);
+            return DeserializeThunkProtoImpl(
+                thunk_proto, custom_allocations, hlo_module, platform_name,
+                host_executable_async_events_map,
+                host_send_recv_async_events_map, collective_async_events_map,
+                symbol_resolver);
           };
       return DynamicSliceThunk::FromProto(std::move(thunk_info),
                                           thunk_proto.dynamic_slice_thunk(),
@@ -191,6 +208,50 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
       return CubSortThunk::FromProto(std::move(thunk_info),
                                      thunk_proto.cub_sort_thunk(),
                                      buffer_allocations, platform_name);
+    case ThunkProto::kHostExecuteStartThunk:
+      return HostExecuteStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
+          buffer_allocations, host_executable_async_events_map);
+    case ThunkProto::kHostExecuteDoneThunk:
+      return HostExecuteDoneThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
+          buffer_allocations, host_executable_async_events_map);
+    case ThunkProto::kHostSendThunk:
+      return HostSendThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_send_thunk(),
+          buffer_allocations, host_send_recv_async_events_map);
+    case ThunkProto::kHostSendDoneThunk:
+      return HostSendDoneThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_send_done_thunk(),
+          buffer_allocations, host_send_recv_async_events_map);
+    case ThunkProto::kHostRecvThunk:
+      return HostRecvThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_recv_thunk(),
+          buffer_allocations, host_send_recv_async_events_map);
+    case ThunkProto::kHostRecvDoneThunk:
+      return HostRecvDoneThunk::FromProto(
+          std::move(thunk_info), thunk_proto.host_recv_done_thunk(),
+          buffer_allocations, host_send_recv_async_events_map);
+    case ThunkProto::kOutfeedThunk:
+      return OutfeedThunk::FromProto(std::move(thunk_info),
+                                     thunk_proto.outfeed_thunk(),
+                                     buffer_allocations);
+    case ThunkProto::kCustomKernelThunk:
+      return CustomKernelThunk::FromProto(std::move(thunk_info),
+                                          thunk_proto.custom_kernel_thunk(),
+                                          buffer_allocations, symbol_resolver);
+    case ThunkProto::kCollectiveDoneThunk:
+      return CollectiveDoneThunk::FromProto(std::move(thunk_info),
+                                            thunk_proto.collective_done_thunk(),
+                                            collective_async_events_map);
+    case ThunkProto::kAllGatherStartThunk:
+      return AllGatherStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.all_gather_start_thunk(),
+          buffer_allocations, collective_async_events_map);
+    case ThunkProto::kAllReduceStartThunk:
+      return AllReduceStartThunk::FromProto(
+          std::move(thunk_info), thunk_proto.all_reduce_start_thunk(),
+          buffer_allocations, collective_async_events_map);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);
@@ -206,6 +267,23 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
           "Thunk deserialization of thunks of type %s is not yet supported.",
           GetStoredThunkTypeName(thunk_proto).value()));
   }
+}
+
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
+    const ThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver) {
+  HostExecuteAsyncEventsMap host_executable_async_events_map;
+  HostSendRecvAsyncEventsMap host_send_recv_async_events_map;
+  CollectiveThunk::AsyncEventsMap collective_async_events_map;
+  return DeserializeThunkProtoImpl(
+      thunk_proto, buffer_allocations, hlo_module, platform_name,
+      host_executable_async_events_map, host_send_recv_async_events_map,
+      collective_async_events_map, symbol_resolver);
 }
 
 }  // namespace xla::gpu

@@ -256,7 +256,7 @@ absl::Status UseGradientAccumulation(const OptimizationParameters& params,
     }
     case GradientAccumulationSupport::kNotSupported: {
       if (raw_gradient_accumulation_status) {
-        return errors::InvalidArgument(strings::Printf(
+        return errors::InvalidArgument(absl::StrFormat(
             "Optimization algorithm %s does not support gradient accumulation "
             "but parameters specify it.",
             GetOptimizationAlgorithmName(params.parameters_case()).c_str()));

@@ -24,14 +24,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime_api.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/context_map.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 
 namespace stream_executor::gpu {
 
@@ -40,7 +39,7 @@ namespace {
 // Returns the current context or dies if it fails.
 hipCtx_t CurrentContextOrDie() {
   hipCtx_t current = nullptr;
-  TF_CHECK_OK(
+  CHECK_OK(
       ToStatus(hipCtxGetCurrent(&current), "Failed to query current context"));
   return current;
 }
@@ -134,7 +133,7 @@ RocmContext::~RocmContext() {
 }
 
 void RocmContext::SetActive() {
-  TF_CHECK_OK(
+  CHECK_OK(
       ToStatus(wrap::hipCtxSetCurrent(context_), "Failed setting context"));
 }
 

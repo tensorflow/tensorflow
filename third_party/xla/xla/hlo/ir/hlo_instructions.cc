@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -922,7 +921,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     const CollectiveDeviceList& device_list, bool constrain_layout,
     const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      device_list_(device_list),
+      device_list_(std::make_shared<CollectiveDeviceList>(device_list)),
       constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -931,7 +930,23 @@ HloCollectiveInstruction::HloCollectiveInstruction(
 
 HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
-  *proto.mutable_collective_device_list() = device_list_.ToProto();
+
+  if (const CollectiveDeviceList* device_list_v1 =
+          dynamic_cast<const CollectiveDeviceList*>(device_list_.get())) {
+    *proto.mutable_collective_device_list() = device_list_v1->ToProto();
+  } else if (const IotaReplicaGroupList* device_list_v2 =
+                 dynamic_cast<const IotaReplicaGroupList*>(
+                     device_list_.get())) {
+    *proto.mutable_iota_collective_device_list() = device_list_v2->ToProto();
+  } else if (const MeshAxesReplicaGroupList* device_list_v3 =
+                 dynamic_cast<const MeshAxesReplicaGroupList*>(
+                     device_list_.get())) {
+    *proto.mutable_mesh_axes_replica_group_list() = device_list_v3->ToProto();
+  } else {
+    LOG(FATAL) << "Unknown or missing CollectiveDeviceList type in "
+                  "HloCollectiveInstruction";
+  }
+
   proto.set_constrain_layout(constrain_layout_);
   return proto;
 }
@@ -941,10 +956,10 @@ void HloCollectiveInstruction::PrintExtraAttributesImpl(
   HloChannelInstruction::PrintExtraAttributesImpl(printer, options);
   printer.Next([this, &options](Printer* printer) {
     VLOG(4) << name() << " replica_groups="
-            << device_list_.ToString(options.print_full_replica_group_list());
+            << device_list_->ToString(options.print_full_replica_group_list());
 
     printer->Append("replica_groups=");
-    device_list_.Print(printer, options.print_full_replica_group_list());
+    device_list_->Print(printer, options.print_full_replica_group_list());
   });
   if (constrain_layout_) {
     printer.Next(
@@ -2010,11 +2025,11 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         // the clone.
         HloInstruction* called_computation_parameter =
             called_computation_parameters[operand_num];
-        TF_CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
+        CHECK_OK(called_computation_parameter->ReplaceAllUsesWith(clone));
 
         // Remove the corresponding called computation parameter and operand
         // from their respective vectors.
-        TF_CHECK_OK(called_computation()->RemoveParameter(operand_num));
+        CHECK_OK(called_computation()->RemoveParameter(operand_num));
         RemoveOperandAt(operand_num);
         break;
       }
@@ -2061,7 +2076,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       // original value is saved in the corresponding argument.
       called_computation_parameter = AddCallOperand(operand);
     }
-    TF_CHECK_OK(
+    CHECK_OK(
         clone->ReplaceOperandWith(operand_num, called_computation_parameter));
   }
 
@@ -2082,7 +2097,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         if (root->operand(i) == clone) {
           HloInstruction* new_gte = AddInstruction(
               HloInstruction::CreateGetTupleElement(clone->shape(), this, i));
-          TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+          CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
           return clone;
         }
       }
@@ -2125,7 +2140,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     // be valid after we change the shape. So clear the sharding.
     clear_sharding();
     if (root->opcode() == HloOpcode::kTuple) {
-      TF_CHECK_OK(called_computation()->RemoveInstruction(root));
+      CHECK_OK(called_computation()->RemoveInstruction(root));
     }
 
     // If this is a newly created multioutput instruction, we need to update
@@ -2133,7 +2148,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     if (newly_created_tuple_instr) {
       HloInstruction* new_instr = AddInstruction(
           HloInstruction::CreateGetTupleElement(root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
+      CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64_t index = tuple_elements.size();
     if (do_not_clone) {
@@ -2148,17 +2163,17 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
         HloInstruction* new_gte =
             AddInstruction(HloInstruction::CreateGetTupleElement(
                 old_gte->shape(), this, index + old_tuple_index));
-        TF_CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
+        CHECK_OK(old_gte->ReplaceAllUsesWith(new_gte));
         to_be_removed.push_back(old_gte);
       }
       for (auto old_gte : to_be_removed) {
-        TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
+        CHECK_OK(parent()->RemoveInstruction(old_gte));
       }
     } else {
       HloInstruction* new_gte =
           AddInstruction(HloInstruction::CreateGetTupleElement(
               clone->shape(), this, index - 1));
-      TF_CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
+      CHECK_OK(instruction_to_append->ReplaceAllUsesWith(new_gte));
     }
   }
 
@@ -2339,7 +2354,7 @@ void HloFusionInstruction::MergeFusionInstruction(
        fused_it != fused_instructions.rend(); ++fused_it) {
     auto fused_instruction = *fused_it;
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
-      TF_CHECK_OK(
+      CHECK_OK(
           fused_instruction->ReplaceAllUsesWith(cloned_fusion->mutable_operand(
               fused_instruction->parameter_number())));
     } else {
@@ -2360,7 +2375,7 @@ void HloFusionInstruction::MergeFusionInstruction(
   CHECK(unfused_root == cloned_fusion->fused_expression_root() ||
         unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
+  CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
 
   // Build a dummy root for the cloned fusion as we may remove the original
   // root in the fusion process.
@@ -2378,11 +2393,11 @@ void HloFusionInstruction::MergeFusionInstruction(
   // decide if a side-effectful instruction is fusible).
   for (auto& instruction : unfused_instructions) {
     auto* fused = FuseInstruction(instruction);
-    TF_CHECK_OK(instruction->ReplaceAllUsesWith(fused));
-    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    CHECK_OK(instruction->ReplaceAllUsesWith(fused));
+    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
-  TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(
+  CHECK_OK(GetModule()->RemoveEmbeddedComputation(
       cloned_fusion->fused_instructions_computation()));
 }
 
@@ -2456,8 +2471,8 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
       for (HloInstruction* gte : instruction_to_merge->users()) {
         if (gte->opcode() == HloOpcode::kGetTupleElement &&
             gte->tuple_index() == tuple_index) {
-          TF_CHECK_OK(gte->ReplaceAllUsesWith(new_root));
-          TF_CHECK_OK(gte->parent()->RemoveInstruction(gte));
+          CHECK_OK(gte->ReplaceAllUsesWith(new_root));
+          CHECK_OK(gte->parent()->RemoveInstruction(gte));
         }
       }
     }
@@ -2473,12 +2488,12 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
                       ->parameter_number())
             : unfused_instructions.back();
     new_roots.insert(unfused_root);
-    TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
+    CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
   }
-  TF_CHECK_OK(
+  CHECK_OK(
       instruction_to_merge->parent()->RemoveInstruction(instruction_to_merge));
   if (GetModule()) {
-    TF_CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
+    CHECK_OK(GetModule()->RemoveEmbeddedComputation(computation_to_merge));
   }
   for (int64_t i = unfused_instructions.size() - 1; i >= 0; --i) {
     HloInstruction* instruction = unfused_instructions[i];
@@ -2487,7 +2502,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     } else {
       FuseInstruction(instruction);
     }
-    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
+    CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
 }
 
@@ -2595,6 +2610,33 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   TF_RETURN_IF_ERROR(fused_instructions_computation()
                          ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
+  return absl::OkStatus();
+}
+
+absl::Status HloFusionInstruction::PermuteFusionOperands(
+    absl::Span<const int64_t> permutation) {
+  if (permutation.size() != operand_count()) {
+    return absl::InvalidArgumentError(
+        "Permutation size must match the number of operands.");
+  }
+  std::vector<bool> seen(permutation.size(), false);
+  for (int64_t i = 0; i < permutation.size(); ++i) {
+    if (permutation[i] < 0 || permutation[i] >= operand_count() ||
+        seen[permutation[i]]) {
+      return absl::InvalidArgumentError(
+          "Argument is not a permutation of operand indices.");
+    }
+    seen[permutation[i]] = true;
+  }
+
+  TF_RETURN_IF_ERROR(
+      fused_instructions_computation()->PermuteParameters(permutation));
+  InstructionVector new_operands(operand_count());
+  for (int64_t i = 0; i < operand_count(); ++i) {
+    new_operands[permutation[i]] = mutable_operand(i);
+  }
+  RemoveAllOperands();
+  AppendOperands(new_operands);
   return absl::OkStatus();
 }
 

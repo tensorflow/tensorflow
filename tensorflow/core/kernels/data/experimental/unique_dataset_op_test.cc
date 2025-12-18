@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/unique_dataset_op.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -47,8 +47,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 class HloShardingTest
     : public testing::TestWithParam<test_util::DeviceTestParam> {
@@ -860,6 +858,20 @@ TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
   }
 }
 
+TEST_P(HloShardingTest, IndexDomainsWithUnreduced) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  auto xla_hlo_sharding = xla::HloSharding::Unreduced();
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(
+      sharding->IndexDomains(shape).status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Unreduced sharding does not support IndexDomains")));
+}
+
 TEST_P(HloShardingTest, IndexDomainsWithManual) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   auto xla_hlo_sharding = xla::HloSharding::Manual();
@@ -950,7 +962,8 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
 
 TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   auto device_list = GetDevices({0, 1});
-  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2}));
+  auto xla_hlo_sharding =
+      xla::HloSharding::Tile(xla::TileAssignment(absl::Span<const int64_t>{2}));
   std::shared_ptr<const HloSharding> sharding =
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 

@@ -54,6 +54,19 @@ module {
 // -----
 
 module {
+  // CHECK-LABEL: @trunc
+  func.func @trunc_vector(%input: vector<8xf32>) -> vector<8xbf16> {
+    // CHECK-SAME: (%[[ARG:.*]]: vector<8xf32>) -> vector<8xbf16>
+    // CHECK: %[[TRUNC_CALL:.*]] = call @local_xla.fptrunc.v8f32.to.v8bf16(%[[ARG]])
+    %truncated = arith.truncf %input : vector<8xf32> to vector<8xbf16>
+    // CHECK: return %[[TRUNC_CALL]]
+    func.return %truncated : vector<8xbf16>
+  }
+}
+
+// -----
+
+module {
   func.func @erf32(%arg0: f32) -> f32 {
     %ret = math.erf %arg0 : f32
     return %ret : f32
@@ -63,6 +76,20 @@ module {
 // CHECK-LABEL: @erf32
 // CHECK-NOT: math.erf
 // CHECK: %[[ERF_CALL:.*]] = call @local_xla.erf.f32
+// CHECK: return %[[ERF_CALL]]
+
+// -----
+
+module {
+  func.func @erf32_vector(%arg0: vector<4xf32>) -> vector<4xf32> {
+    %ret = math.erf %arg0 : vector<4xf32>
+    return %ret : vector<4xf32>
+  }
+}
+
+// CHECK-LABEL: @erf32_vector
+// CHECK-NOT: math.erf
+// CHECK: %[[ERF_CALL:.*]] = call @local_xla.erf.v4f32
 // CHECK: return %[[ERF_CALL]]
 
 // -----
@@ -79,6 +106,19 @@ module {
 // CHECK: %[[ERF_CALL:.*]] = call @erf
 // CHECK: return %[[ERF_CALL]]
 
+
+// -----
+
+module {
+  func.func @erf64_vector(%arg0: vector<4xf64>) -> vector<4xf64> {
+    %ret = math.erf %arg0 : vector<4xf64>
+    return %ret : vector<4xf64>
+  }
+}
+
+// CHECK-LABEL: @erf64_vector
+// CHECK-NOT: math.erf
+// CHECK-COUNT-4: call @erf
 
 // -----
 
@@ -107,3 +147,19 @@ module {
 // CHECK-NOT: math.rsqrt
 // CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f64
 // CHECK: return %[[RSQRT_CALL]]
+
+// -----
+
+// Use a vector length of 3 as we know that will never be supported.
+func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> {
+  // CHECK: %[[IN0:.*]] = vector.extract %arg0[0]
+  // CHECK: %[[RSQRT0:.*]] = call @local_xla.rsqrt.f32(%[[IN0]])
+  // CHECK: %[[IN1:.*]] = vector.extract %arg0[1]
+  // CHECK: %[[RSQRT1:.*]] = call @local_xla.rsqrt.f32(%[[IN1]])
+  // CHECK: %[[IN2:.*]] = vector.extract %arg0[2]
+  // CHECK: %[[RSQRT2:.*]] = call @local_xla.rsqrt.f32(%[[IN2]])
+  // CHECK: %[[RESULT:.*]] = vector.from_elements %[[RSQRT0]], %[[RSQRT1]], %[[RSQRT2]]
+  %ret = math.rsqrt %arg0 : vector<3xf32>
+  // CHECK: return %[[RESULT]]
+  return %ret : vector<3xf32>
+}

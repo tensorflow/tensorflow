@@ -49,8 +49,8 @@ namespace wrap {
   auto hipSymbolName(Args... args) -> decltype(::hipSymbolName(args...)) {  \
     using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;     \
     static FuncPtrT loaded = []() -> FuncPtrT {                             \
-      static const char *kName = TO_STR(hipSymbolName);                     \
-      void *f;                                                              \
+      static const char* kName = TO_STR(hipSymbolName);                     \
+      void* f;                                                              \
       auto s = tsl::Env::Default()->GetSymbolFromLibrary(                   \
           tsl::internal::CachedDsoLoader::GetHipDsoHandle().value(), kName, \
           &f);                                                              \
@@ -100,6 +100,7 @@ namespace wrap {
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \
   __macro(hipGetErrorString)                        \
+  __macro(hipGetLastError)                          \
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
   __macro(hipGraphAddEmptyNode)                     \

@@ -51,16 +51,13 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+)
+
+cc_library(
+    name = "pjrt_c_api_tpu_topology_extension_hdrs",
+    hdrs = ["pjrt_c_api_tpu_topology_extension.h"],
+    deps = [":pjrt_c_api_hdrs"],
 )
 
 cc_library(
@@ -87,7 +84,6 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_registry",
         "//xla/ffi/api:c_api",
-        "//xla/ffi/api:ffi",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -283,8 +279,8 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:global_device_id",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
@@ -421,7 +417,11 @@ cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
     hdrs = ["pjrt_c_api_gpu_internal.h"],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    local_defines = (
+        if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+            "TENSORFLOW_USE_ROCM=1",
+        ])
+    ),
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
@@ -466,7 +466,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
@@ -531,7 +533,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -564,7 +566,6 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:util",
         "//xla/client:client_library",
         "//xla/ffi:execution_context",
         "//xla/ffi:ffi_api",
@@ -579,9 +580,8 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -638,7 +638,6 @@ cc_library(
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
-        ":pjrt_c_api_memory_descriptions_extension_hdrs",
         ":pjrt_c_api_test_base",
         "//xla:future",
         "//xla:literal",
@@ -655,7 +654,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

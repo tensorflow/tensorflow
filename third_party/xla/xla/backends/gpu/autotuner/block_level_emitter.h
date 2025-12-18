@@ -46,7 +46,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
       const DebugOptions* absl_nonnull debug_options,
       Compiler* absl_nonnull compiler,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const Compiler::TargetConfig* target_config,
+      const Compiler::GpuTargetConfig* target_config,
       bool use_default_config = false)
       : GpuCodegenBackend("BlockLevelEmitter", debug_options, compiler,
                           target_config),
@@ -67,7 +67,7 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
                            const BackendConfig& config) override;
 
   // Determines whether the given HLO instruction is supported by this backend.
-  bool IsSupported(const HloInstruction& instr);
+  bool IsSupported(const HloInstruction& instr) override;
 
   // We don't want to use the Triton emitter as a reference because it can
   // produce wrong results.

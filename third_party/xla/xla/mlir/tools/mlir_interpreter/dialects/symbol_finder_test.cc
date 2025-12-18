@@ -19,8 +19,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace mlir::interpreter {
 
@@ -28,8 +26,6 @@ namespace mlir::interpreter {
 
 namespace {
 using ::testing::NotNull;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(SymbolFinderTest, FindSymbolInProcess) {
   // `malloc` should be available on every platform

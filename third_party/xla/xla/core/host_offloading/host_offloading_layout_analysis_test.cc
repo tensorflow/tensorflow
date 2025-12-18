@@ -24,12 +24,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-using tsl::testing::IsOkAndHolds;
 
 class NeedsLayoutConversionTest : public HloHardwareIndependentTestBase {};
 

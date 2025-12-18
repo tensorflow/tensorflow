@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "dnnl.hpp"  // NOLINT: for DNNL_MAX_NDIMS
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"

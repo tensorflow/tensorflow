@@ -26,6 +26,8 @@ limitations under the License.
 #include <random>
 #include <unordered_set>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
@@ -97,6 +99,40 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   return true;
 }
 
+// Manages the set of ports that have been chosen by PickUnusedPort().
+// This class is a singleton and is thread-safe.
+class ChosenPorts {
+ public:
+  static ChosenPorts& GetChosenPorts() {
+    static ChosenPorts chosen_ports;
+    return chosen_ports;
+  }
+
+  // Returns true if the port is in the chosen set.
+  bool Contains(int port) {
+    absl::MutexLock l(mu_);
+    return ports_.count(port) > 0;
+  }
+
+  // If the port is not in the chosen set, inserts it and returns true.
+  // Otherwise, returns false.
+  bool Insert(int port) {
+    absl::MutexLock l(mu_);
+    return ports_.insert(port).second;
+  }
+
+  // Erases the port from the chosen set. Returns true if the port was present.
+  bool Erase(int port) {
+    absl::MutexLock l(mu_);
+    return ports_.erase(port) > 0;
+  }
+
+ private:
+  ChosenPorts() = default;
+  absl::Mutex mu_;
+  std::unordered_set<int> ports_ ABSL_GUARDED_BY(mu_);
+};
+
 const int kNumRandomPortsToPick = 100;
 const int kMaximumTrials = 1000;
 
@@ -109,7 +145,6 @@ int PickUnusedPortOrDie() {
 }
 
 int PickUnusedPort() {
-  static std::unordered_set<int> chosen_ports;
   // Type of port to first pick in the next iteration.
   bool is_tcp = true;
   int trial = 0;
@@ -132,7 +167,7 @@ int PickUnusedPort() {
       port = 0;
     }
 
-    if (chosen_ports.find(port) != chosen_ports.end()) {
+    if (ChosenPorts::GetChosenPorts().Contains(port)) {
       continue;
     }
     if (!IsPortAvailable(&port, is_tcp)) {
@@ -146,12 +181,22 @@ int PickUnusedPort() {
       continue;
     }
 
-    chosen_ports.insert(port);
-    return port;
+    if (ChosenPorts::GetChosenPorts().Insert(port)) {
+      return port;
+    }
   }
 
   return -1;
 }
 
+void RecycleUnusedPort(int port) {
+  if (port <= 0 || !ChosenPorts::GetChosenPorts().Erase(port)) {
+    LOG(FATAL)
+        << "Port " << port
+        << " is not a valid port to be recycled. It must be a positive "
+           "number that was previously returned by PickUnusedPort[OrDie](), "
+           "and not yet recycled.";
+  }
+}
 }  // namespace internal
 }  // namespace tsl

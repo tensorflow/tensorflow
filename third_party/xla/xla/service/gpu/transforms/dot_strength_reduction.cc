@@ -45,20 +45,22 @@ namespace gpu {
 
 namespace {
 
-HloInstruction* ConvertTo(HloInstruction* instruction, PrimitiveType type) {
+HloInstruction* ConvertTo(HloInstruction* instruction, PrimitiveType type,
+                          const OpMetadata* metadata) {
   if (instruction->shape().element_type() == type) {
     return instruction;
   }
   Shape new_shape = instruction->shape();
   new_shape.set_element_type(type);
   return instruction->parent()->AddInstruction(
-      HloInstruction::CreateConvert(new_shape, instruction));
+      HloInstruction::CreateConvert(new_shape, instruction), metadata);
 }
 
 // Transposes the dot operand to make dimensions in "batch, non-contracting,
 // contracting" order, sorted by index within each category.
 HloInstruction* PermuteDotOperandDimensions(HloInstruction* operand,
-                                            DotOperandDims* dims) {
+                                            DotOperandDims* dims,
+                                            const OpMetadata* metadata) {
   std::vector<int64_t> permutation;
   for (auto kind : {DotOperandDims::kBatch, DotOperandDims::kNonContracting,
                     DotOperandDims::kContracting}) {
@@ -71,14 +73,16 @@ HloInstruction* PermuteDotOperandDimensions(HloInstruction* operand,
   }
   Shape new_shape = ShapeUtil::PermuteDimensions(permutation, operand->shape());
   operand = operand->parent()->AddInstruction(
-      HloInstruction::CreateTranspose(new_shape, operand, permutation));
+      HloInstruction::CreateTranspose(new_shape, operand, permutation),
+      metadata);
   dims->Permute(permutation);
   return operand;
 }
 
-HloInstruction* BroadcastDimensions(
-    HloInstruction* operand, int64_t insert_before,
-    absl::Span<const int64_t> bounds_to_insert) {
+HloInstruction* BroadcastDimensions(HloInstruction* operand,
+                                    int64_t insert_before,
+                                    absl::Span<const int64_t> bounds_to_insert,
+                                    const OpMetadata* metadata) {
   if (bounds_to_insert.empty()) {
     return operand;
   }
@@ -93,8 +97,9 @@ HloInstruction* BroadcastDimensions(
 
   Shape new_shape = ShapeUtil::InsertDimensionsAtIndex(
       operand->shape(), insert_before, bounds_to_insert);
-  return operand->parent()->AddInstruction(HloInstruction::CreateBroadcast(
-      new_shape, operand, broadcast_dimensions));
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateBroadcast(new_shape, operand, broadcast_dimensions),
+      metadata);
 }
 
 HloComputation* CreateScalarAddComputation(HloModule* module,
@@ -113,7 +118,8 @@ HloComputation* CreateScalarAddComputation(HloModule* module,
 // Reduces the last `num_dims_to_reduce` dimensions of `instruction`.
 HloInstruction* ReduceDimensions(HloInstruction* instruction,
                                  size_t num_dims_to_reduce,
-                                 PrimitiveType accumulator_type) {
+                                 PrimitiveType accumulator_type,
+                                 const OpMetadata* metadata) {
   if (num_dims_to_reduce == 0) {
     return instruction;
   }
@@ -134,9 +140,11 @@ HloInstruction* ReduceDimensions(HloInstruction* instruction,
   HloComputation* add_computation =
       CreateScalarAddComputation(computation->parent(), accumulator_type);
 
-  return computation->AddInstruction(HloInstruction::CreateReduce(
-      reduce_shape, ConvertTo(instruction, accumulator_type), zero, reduce_dims,
-      add_computation));
+  return computation->AddInstruction(
+      HloInstruction::CreateReduce(
+          reduce_shape, ConvertTo(instruction, accumulator_type, metadata),
+          zero, reduce_dims, add_computation),
+      metadata);
 }
 
 }  // namespace
@@ -144,6 +152,7 @@ HloInstruction* ReduceDimensions(HloInstruction* instruction,
 absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     HloInstruction* instruction) {
   HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
+  const OpMetadata* metadata = &dot->metadata();
   TF_ASSIGN_OR_RETURN(auto dot_dims, DotOperandDims::FromDot(dot));
 
   std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
@@ -152,9 +161,9 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
     DotOperandDims& our_dims = dot_dims[i];
     DotOperandDims& other_dims = dot_dims[1 - i];
     // Convert operands to the dot resulting type.
-    operands[i] = ConvertTo(operands[i], dot->shape().element_type());
+    operands[i] = ConvertTo(operands[i], dot->shape().element_type(), metadata);
     // Ensure dimensions are in "batch, non-contracting, contracting" order.
-    operands[i] = PermuteDotOperandDimensions(operands[i], &our_dims);
+    operands[i] = PermuteDotOperandDimensions(operands[i], &our_dims, metadata);
 
     // Both lhs and rhs will have [batch, lhs non-contracting, rhs
     // non-contracting, contracting] dimensions.
@@ -167,7 +176,7 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
 
     operands[i] = BroadcastDimensions(
         operands[i], insert_before,
-        other_dims.DimensionSizes(DotOperandDims::kNonContracting));
+        other_dims.DimensionSizes(DotOperandDims::kNonContracting), metadata);
   }
 
   // At this point, both operands have the same shape. Elementwise multiply.
@@ -176,16 +185,17 @@ absl::StatusOr<HloInstruction*> DotStrengthReduction::ExpandInstruction(
       HloInstruction * flow,
       MakeMultiplyForDotPrecisionAlgorithm(
           operands[0], operands[1], dot->precision_config().algorithm()));
+  flow->set_metadata(*metadata);
 
   // If there were any contracting dims, we need to reduce them.
   flow = ReduceDimensions(
       flow, dot_dims[0].DimensionCount(DotOperandDims::kContracting),
-      GetGemmAccumulatorType(dot));
+      GetGemmAccumulatorType(dot), metadata);
 
   // If the output type is different from what it was before (either because
   // reduction used a different accumulator type, or because types of operand
   // differed the output type for multiply), convert to the output type.
-  flow = ConvertTo(flow, dot->shape().element_type());
+  flow = ConvertTo(flow, dot->shape().element_type(), metadata);
   return flow;
 }
 

@@ -515,7 +515,7 @@ TEST_F(PatternMatcherTest, CommutativeInputs) {
 
   absl::Status status;
   std::vector<string> commutative_ops = {"Mul", "Add", "AddV2"};
-  for (string op : commutative_ops) {
+  for (std::string op : commutative_ops) {
     for (bool should_swap : {false, true}) {
       std::vector<string> commutative_operands =
           (should_swap ? std::vector<string>{"d", "c"}

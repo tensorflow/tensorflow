@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/support/module_parsing.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -43,7 +43,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::testing::Not;
-using ::tsl::testing::StatusIs;
 
 std::string PrintModule(mlir::ModuleOp module) {
   std::string module_str;

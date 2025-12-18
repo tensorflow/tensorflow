@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -44,14 +46,29 @@ class ConvolutionThunk : public Thunk {
   // operand_slices should be in the same order as cudnn_call->operands().
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(
       ThunkInfo thunk_info, GpuConvDescriptor descriptor,
-      std::vector<BufferAllocation::Slice> operand_slices,
-      std::vector<BufferAllocation::Slice> result_slices,
+      std::vector<ShapedSlice> operand_slices,
+      std::vector<ShapedSlice> result_slices,
       BufferAllocation::Slice scratch_slice);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(operand_buffers_.size() + result_buffers_.size() + 1);
+
+    for (const ShapedSlice& slice : operand_buffers_) {
+      res.push_back(BufferUse::Read(slice.slice, slice.shape));
+    }
+    for (const ShapedSlice& slice : result_buffers_) {
+      res.push_back(BufferUse::Write(slice.slice, slice.shape));
+    }
+    res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
+                     BufferUse::ContentValidity::kUndefined);
+    return res;
+  }
 
   static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(
       ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
@@ -62,12 +79,12 @@ class ConvolutionThunk : public Thunk {
  private:
   ConvolutionThunk(ThunkInfo thunk_info, GpuConvDescriptor descriptor,
                    GpuConvConfig config,
-                   std::vector<BufferAllocation::Slice> operand_slices,
-                   std::vector<BufferAllocation::Slice> result_slices,
+                   std::vector<ShapedSlice> operand_slices,
+                   std::vector<ShapedSlice> result_slices,
                    BufferAllocation::Slice scratch_slice);
 
-  std::vector<BufferAllocation::Slice> operand_buffers_;
-  std::vector<BufferAllocation::Slice> result_buffers_;
+  std::vector<ShapedSlice> operand_buffers_;
+  std::vector<ShapedSlice> result_buffers_;
   BufferAllocation::Slice scratch_buffer_;
   GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream,
                                        bool* runner_created);

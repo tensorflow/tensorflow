@@ -109,6 +109,9 @@ message GemmBackendConfig {
   bool damax_output = 18;
 
   reserved 19;
+
+  // The workspace size used during autotuning when the algorithm was selected.
+  int64 autotune_workspace_size = 20;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -134,6 +137,11 @@ message CollectiveBackendConfig {
   }
   CollectiveBackend backend = 5;
   reserved 2, 4;
+}
+
+// Backend config for collective metadata operation.
+message CollectiveMetadataBackendConfig {
+  CollectiveDeviceListProto collective_devices = 1;
 }
 
 // Backend config for cost model estimates.
@@ -177,7 +185,7 @@ message CuDnnFusionConfig {
     CONV_WGRAD = 1;
     CONV_DGRAD = 2;
   }
-  Kind kind = 2;
+  optional Kind kind = 2;
 }
 
 // Output tile sizes for a fusion root.
@@ -361,7 +369,7 @@ enum DeviceType {
 }
 
 // Generic backend config for XLA:GPU
-// Next-Id: 16
+// Next-Id: 17
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -395,6 +403,8 @@ message GpuBackendConfig {
     BlockScaledDotBackendConfig block_scaled_dot_backend_config = 13;
 
     NativeEmitterBackendConfig native_emitter_backend_config = 15;
+
+    CollectiveMetadataBackendConfig collective_metadata_backend_config = 16;
   }
 
   // This attribute instructs the latency-hiding scheduler to

@@ -25,12 +25,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -64,8 +64,7 @@ class ScatterFusion : public EmitterBase {
  public:
   explicit ScatterFusion(const HloFusionAnalysis& analysis,
                          const ScatterDescription& description,
-                         int64_t vector_size,
-                         SymbolicExprContext* symbolic_expr_context);
+                         int64_t vector_size, mlir::MLIRContext* mlir_context);
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -78,14 +77,14 @@ class ScatterFusion : public EmitterBase {
   }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const override {
+      int64_t root_index, mlir::MLIRContext* ctx) const override {
     // Since the access pattern to the output is not statically known, we cannot
     // compute the output->input indexing map.
     return std::nullopt;
   }
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* ctx) const override;
 
  protected:
   virtual absl::Status EmitEntryFunctionImpl(
@@ -94,17 +93,16 @@ class ScatterFusion : public EmitterBase {
       mlir::ValueRange thread_and_block_ids,
       mlir::Value output_tensor) const = 0;
 
-  virtual void ComputeIndexing(SymbolicExprContext* ctx,
-                               IndexingMap* updates_map,
+  virtual void ComputeIndexing(mlir::MLIRContext* ctx, IndexingMap* updates_map,
                                IndexingMap* indices_map) const = 0;
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      SymbolicExprContext* symbolic_expr_context) const final;
+      mlir::MLIRContext* mlir_context) const final;
 
   const HloFusionAnalysis& analysis_;
   ScatterDescription description_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 
   // The grid is {num_warps_ * WarpSize(), 1, 1, num_blocks_, 1, 1}.
   int64_t warp_size_;
@@ -122,9 +120,10 @@ class ScatterFusion : public EmitterBase {
 // index to scatter an element(s) of the update.
 class ScatterWithDistributedUpdates : public ScatterFusion {
  public:
-  explicit ScatterWithDistributedUpdates(
-      const HloFusionAnalysis& analysis, const ScatterDescription& description,
-      int64_t vector_size, SymbolicExprContext* symbolic_expr_context);
+  explicit ScatterWithDistributedUpdates(const HloFusionAnalysis& analysis,
+                                         const ScatterDescription& description,
+                                         int64_t vector_size,
+                                         mlir::MLIRContext* mlir_context);
 
  protected:
   absl::Status EmitEntryFunctionImpl(mlir::ImplicitLocOpBuilder& b,
@@ -134,7 +133,7 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
                                      mlir::ValueRange thread_and_block_ids,
                                      mlir::Value output_tensor) const override;
 
-  void ComputeIndexing(SymbolicExprContext* symbolic_expr_context,
+  void ComputeIndexing(mlir::MLIRContext* mlir_context,
                        IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 };
@@ -187,14 +186,16 @@ class ScatterWithDistributedUpdates : public ScatterFusion {
 */
 class ScatterWithDistributedIndices : public ScatterFusion {
  public:
-  explicit ScatterWithDistributedIndices(
-      const HloFusionAnalysis& analysis, const ScatterDescription& description,
-      int64_t vector_size, int64_t num_warps_per_slice,
-      int64_t num_indices_per_warp, int64_t indices_vector_size,
-      SymbolicExprContext* symbolic_expr_context);
+  explicit ScatterWithDistributedIndices(const HloFusionAnalysis& analysis,
+                                         const ScatterDescription& description,
+                                         int64_t vector_size,
+                                         int64_t num_warps_per_slice,
+                                         int64_t num_indices_per_warp,
+                                         int64_t indices_vector_size,
+                                         mlir::MLIRContext* mlir_context);
 
  protected:
-  void ComputeIndexing(SymbolicExprContext* symbolic_expr_context,
+  void ComputeIndexing(mlir::MLIRContext* mlir_context,
                        IndexingMap* updates_map,
                        IndexingMap* indices_map) const override;
 
@@ -219,8 +220,7 @@ class ScatterWithDistributedIndices : public ScatterFusion {
 };
 
 std::unique_ptr<ScatterFusion> CreateScatterFusion(
-    const HloFusionAnalysis& analysis,
-    SymbolicExprContext* symbolic_expr_context);
+    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

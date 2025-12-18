@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 

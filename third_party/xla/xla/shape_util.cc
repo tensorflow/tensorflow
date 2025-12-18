@@ -1264,7 +1264,7 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
 }
 
-/* static */ Shape ShapeUtil::PermuteDimensions(
+/* static */ Shape ShapeUtil::PermuteDimensionsIgnoringLayout(
     absl::Span<const int64_t> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
@@ -1274,7 +1274,12 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
   for (int i = 0; i < permuted_dims.size(); ++i) {
     new_shape.add_dimensions(permuted_dims[i], permuted_dynamic_dims[i]);
   }
+  return new_shape;
+}
 
+/* static */ Shape ShapeUtil::PermuteDimensions(
+    absl::Span<const int64_t> permutation, const Shape& shape) {
+  Shape new_shape = PermuteDimensionsIgnoringLayout(permutation, shape);
   // If `shape` has a layout, by contract we choose a new layout such that the
   // transpose defined by this permutation is a bitcast.
   //
@@ -2329,6 +2334,107 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
       subshape->mutable_layout()->set_element_size_in_bits(element_size);
     }
   });
+}
+
+namespace {
+
+// Returns the indices of the first elements of all consecutive subarrays of the
+// given array. For example:
+// ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
+absl::InlinedVector<size_t, 3> ConsecutiveSegments(
+    absl::Span<const int64_t> xs) {
+  absl::InlinedVector<size_t, 3> is = {0};
+  for (size_t i = 1; i < xs.size(); ++i) {
+    if (1 != xs[i] - xs[i - 1]) {
+      is.push_back(i);
+    }
+  }
+  return is;
+}
+
+// Merges the sequences of dimensions of the given shape which start at the
+// given indices `segs`.
+Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
+  std::vector<int64_t> dimensions;
+  const auto size = segs.size();
+  dimensions.reserve(size);
+  for (size_t i = 1; i <= size; ++i) {
+    dimensions.push_back(std::accumulate(
+        shape.dimensions().begin() + segs[i - 1],
+        shape.dimensions().begin() +
+            (segs.size() == i ? shape.dimensions().size() : segs[i]),
+        int64_t{1}, std::multiplies<int64_t>()));
+  }
+  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
+                                                  dimensions);
+}
+
+absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
+    const Shape& output_shape, absl::Span<int64_t const> output_to_input,
+    absl::InlinedVector<int64_t, 3>& permutation) {
+  absl::InlinedVector<size_t, 3> segments =
+      ConsecutiveSegments(output_to_input);
+  Shape normalized_shape = MergeDimensions(segments, output_shape);
+  absl::InlinedVector<int64_t, 3> normalized_dims(
+      normalized_shape.dimensions().begin(),
+      normalized_shape.dimensions().end());
+  if (segments.size() == 1) {
+    return normalized_dims;
+  }
+  // Derive the permutation from the segments.
+  std::vector<int64_t> segment_to_normalized_dim(
+      output_shape.dimensions().size(), -1);
+  for (size_t segment : segments) {
+    segment_to_normalized_dim[output_to_input[segment]] = 0;
+  }
+  int64_t normalized_dim = 0;
+  for (int64_t i = 0; i < segment_to_normalized_dim.size(); ++i) {
+    if (segment_to_normalized_dim[i] >= 0) {
+      segment_to_normalized_dim[i] = normalized_dim++;
+    }
+  }
+  permutation.reserve(segments.size());
+  for (int64_t i = 0; i < segments.size(); ++i) {
+    permutation.push_back(
+        segment_to_normalized_dim[output_to_input[segments[i]]]);
+  }
+  return normalized_dims;
+}
+
+}  // namespace
+
+/*static*/ absl::StatusOr<absl::InlinedVector<int64_t, 3>>
+ShapeUtil::GetNormalizedLogicalTransposeShape(
+    const Shape& input_shape, const Shape& output_shape,
+    absl::Span<int64_t const> dimensions,
+    absl::InlinedVector<int64_t, 3>& permutation) {
+  if (!LayoutUtil::IsMonotonicWithDim0Major(input_shape.layout()) ||
+      !LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
+    return FailedPrecondition(
+        "Transpose normalization requires monotonic layouts. Layout "
+        "normalization should have assigned the default layout.");
+  }
+
+  permutation.clear();
+  // Drop degenerate dimensions.
+  absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions().size() + 1,
+                                        0);
+  for (int i = 0; i < output_shape.dimensions().size(); ++i) {
+    delta[i + 1] = delta[i];
+    if (input_shape.dimensions(i) == static_cast<int64_t>(1)) {
+      ++delta[i + 1];
+    }
+  }
+  absl::InlinedVector<int64_t, 3> new_dimensions;
+  for (int i = 0; i < dimensions.size(); i++) {
+    if (output_shape.dimensions(i) != 1) {
+      new_dimensions.push_back(dimensions[i] - delta[dimensions[i]]);
+    }
+  }
+
+  return GetNormalizedTransposeShapeHelper(
+      ShapeUtil::DropDegenerateDimensions(output_shape), new_dimensions,
+      permutation);
 }
 
 /*static*/ void ShapeUtil::FlattenTupleShape(

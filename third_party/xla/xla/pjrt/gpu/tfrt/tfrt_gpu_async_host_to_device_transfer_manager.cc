@@ -40,11 +40,11 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -54,12 +54,11 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -232,8 +231,8 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
         buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
     auto stream = device_->stream();
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
-                                                               shaped_buffer));
+    CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
+                                                            shaped_buffer));
 
     absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "Finish transfer h2d for literal with shape "
@@ -276,7 +275,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
     staging_buffer = host_memory_allocator->Allocate(transfer_size);
   }
 
-  se::DeviceMemoryBase sub_buffer;
+  se::DeviceAddressBase sub_buffer;
   {
     absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffer_ptrs_.size());
@@ -332,7 +331,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
       VLOG(3) << "H2D copy: " << host_data_ptr << " -> " << sub_buffer.opaque()
               << " (" << transfer_size << " bytes) on device "
               << device_->DebugString();
-      TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
+      CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
           << "Failed to copy data to GPU";
 
       absl::Status status = BlockHostUntilDoneWithHostCallback(stream);

@@ -649,7 +649,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
         HloInstruction::CreateGetTupleElement(array_s32, param, 1));
     HloInstruction* sharded_gte_1 = builder.AddInstruction(
         HloInstruction::CreateCustomCall(array_s32, {gte_1}, "Sharding"));
-    sharded_gte_1->set_sharding(HloSharding::Tile1D(array_s32, 4));
+    sharded_gte_1->set_sharding(HloSharding::IotaTile({4}));
     HloInstruction* manually_sharded_gte_1 =
         builder.AddInstruction(HloInstruction::CreateCustomCall(
             array_s32, {sharded_gte_1}, "SPMDFullToShardShape"));
@@ -664,7 +664,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
     HloInstruction* sharded_add_result =
         builder.AddInstruction(HloInstruction::CreateCustomCall(
             array_s32, {manually_sharded_add_result}, "SPMDShardShapeToFull"));
-    sharded_add_result->set_sharding(HloSharding::Tile1D(array_s32, 4));
+    sharded_add_result->set_sharding(HloSharding::IotaTile({4}));
     builder.AddInstruction(
         HloInstruction::CreateTuple({gte_0, gte_1, sharded_add_result}));
 

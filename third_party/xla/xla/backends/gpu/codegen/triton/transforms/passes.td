@@ -246,11 +246,30 @@ def TritonXLAMathToLibdevicePass
   ];
 }
 
-def TritonXLAConvert0DTensorToScalarPass
-    : Pass<"triton-xla-convert-0d-tensor-to-scalar", "mlir::ModuleOp"> {
-  let summary = "Lowers 0D tensors to scalars.";
+def XTileLowerToTritonPass
+    : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
+  let summary = "Lowers XTile operations to their Triton equivalent.";
   let dependentDialects = [
+    "::mlir::triton::TritonDialect",
     "::xla::xtile::XTileDialect",
+  ];
+  let constructor = "CreateXTileLowerToTritonPass()";
+}
+
+def ArithFP8ConversionToTritonPass
+    : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
+  let summary =
+    "Converts arith extf and truncf operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::triton::TritonDialect",
+  ];
+}
+def UnsupportedElementwiseToTritonPass
+    : Pass<"unsupported-elementwise-to-triton"> {
+  let summary =
+    "Converts unsupported elementwise operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
   ];
 }
 

@@ -286,6 +286,36 @@ module @propagate_to_inputs {
 
 // -----
 
+!array_unspecified = !ifrt.array<tensor<2x2xi32>,
+                                 #ifrt.sharding_unspecified, [0]>
+// CHECK-LABEL: @propagate_single_device
+module @propagate_single_device {
+  func.func @main(%arg0: !array_unspecified)
+      -> !array_unspecified attributes {ifrt.function} {
+    // CHECK: %[[OUT:.+]], %{{.+}} = ifrt.CallLoadedExecutable @[[CALLEE:.+]](%arg0)
+    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+    // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+    %0, %ctrl_0 = ifrt.Call @add_one_0::@main(%arg0) on devices [0]
+        {ifrt.module_type = "xla"} : (!array_unspecified) -> !array_unspecified
+    return %0 : !array_unspecified
+  }
+
+  // CHECK: ifrt.LoadedExecutable @[[CALLEE]]
+  // CHECK-SAME: on devices [0]
+  // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+  // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+  module @add_one_0 attributes {sym_visibility = "private"} {
+    func.func @main(%arg0: tensor<2x2xi32>) -> (tensor<2x2xi32>) {
+      %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+      %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+      return %1 : tensor<2x2xi32>
+    }
+  }
+
+}
+
+// -----
+
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
 !array_unspecified = !ifrt.array<tensor<2x2xi32>,

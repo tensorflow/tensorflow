@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -146,12 +146,12 @@ absl::Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       &fft_plan_cache_, params.stream, buffer_allocations.memory_allocator());
 }
 
-absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
-                    se::DeviceMemoryBase output, const Shape& output_shape,
+absl::Status RunFft(se::DeviceAddressBase input, const Shape& input_shape,
+                    se::DeviceAddressBase output, const Shape& output_shape,
                     se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
                     int device_ordinal, FftPlanCache* fft_plan_cache,
                     se::Stream* stream,
-                    se::DeviceMemoryAllocator* memory_allocator) {
+                    se::DeviceAddressAllocator* memory_allocator) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
@@ -209,20 +209,20 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
   bool launch_ok;
   switch (fft_type) {
     case se::fft::Type::kC2CForward: {
-      se::DeviceMemory<complex64> input_data(input);
-      se::DeviceMemory<complex64> output_data(output);
+      se::DeviceAddress<complex64> input_data(input);
+      se::DeviceAddress<complex64> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kZ2ZForward: {
-      se::DeviceMemory<complex128> input_data(input);
-      se::DeviceMemory<complex128> output_data(output);
+      se::DeviceAddress<complex128> input_data(input);
+      se::DeviceAddress<complex128> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kC2CInverse: {
-      se::DeviceMemory<complex64> input_data(input);
-      se::DeviceMemory<complex64> output_data(output);
+      se::DeviceAddress<complex64> input_data(input);
+      se::DeviceAddress<complex64> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
         TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
@@ -233,8 +233,8 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       break;
     }
     case se::fft::Type::kZ2ZInverse: {
-      se::DeviceMemory<complex128> input_data(input);
-      se::DeviceMemory<complex128> output_data(output);
+      se::DeviceAddress<complex128> input_data(input);
+      se::DeviceAddress<complex128> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
         TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
@@ -245,20 +245,20 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       break;
     }
     case se::fft::Type::kR2C: {
-      se::DeviceMemory<float> input_data(input);
-      se::DeviceMemory<complex64> output_data(output);
+      se::DeviceAddress<float> input_data(input);
+      se::DeviceAddress<complex64> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kD2Z: {
-      se::DeviceMemory<double> input_data(input);
-      se::DeviceMemory<complex128> output_data(output);
+      se::DeviceAddress<double> input_data(input);
+      se::DeviceAddress<complex128> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       break;
     }
     case se::fft::Type::kC2R: {
-      se::DeviceMemory<complex64> input_data(input);
-      se::DeviceMemory<float> output_data(output);
+      se::DeviceAddress<complex64> input_data(input);
+      se::DeviceAddress<float> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
         TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));
@@ -269,8 +269,8 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       break;
     }
     case se::fft::Type::kZ2D: {
-      se::DeviceMemory<complex128> input_data(input);
-      se::DeviceMemory<double> output_data(output);
+      se::DeviceAddress<complex128> input_data(input);
+      se::DeviceAddress<double> output_data(output);
       launch_ok = fft->DoFft(stream, fft_plan.get(), input_data, &output_data);
       if (launch_ok) {
         TF_ASSIGN_OR_RETURN(auto blas, GetBlas(stream));

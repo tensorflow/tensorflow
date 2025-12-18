@@ -1,3 +1,4 @@
+#include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +28,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -36,15 +36,18 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
     const se::DeviceDescription& device_description) {
   auto pipeline = std::make_unique<HloPassPipeline>("cublas_rewriter_pipeline");
+  pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
   pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
@@ -62,11 +65,10 @@ std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, symbolic_expr_context));
+      debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<CublasLtBackend>(
@@ -79,15 +81,14 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
 std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<CublasBackend>(stream_executor, debug_options, compiler,
                                       target_config),
       GetCublasRewriterPipeline(target_config->device_description),
-      symbolic_expr_context));
+      mlir_context));
   return backends;
 }
 

@@ -80,7 +80,7 @@ absl::Status SnappyOutputBuffer::Write(absl::string_view data) {
 
   // If there is sufficient free space in input_buffer_ to fit data we
   // add it there and return.
-  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
+  if (static_cast<int32_t>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return absl::OkStatus();
   }
@@ -91,7 +91,7 @@ absl::Status SnappyOutputBuffer::Write(absl::string_view data) {
   TF_RETURN_IF_ERROR(DeflateBuffered());
 
   // input_buffer_ should be empty at this point.
-  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
+  if (static_cast<int32_t>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return absl::OkStatus();
   }
@@ -117,7 +117,7 @@ absl::Status SnappyOutputBuffer::Flush() {
   return absl::OkStatus();
 }
 
-int32 SnappyOutputBuffer::AvailableInputSpace() const {
+int32_t SnappyOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - avail_in_;
 }
 
@@ -148,7 +148,7 @@ void SnappyOutputBuffer::AddToInputBuffer(absl::string_view data) {
   const int32_t free_tail_bytes =
       input_buffer_capacity_ - (read_bytes + unread_bytes);
 
-  if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
+  if (static_cast<int32_t>(bytes_to_write) > free_tail_bytes) {
     memmove(input_buffer_.get(), next_in_, avail_in_);
     next_in_ = input_buffer_.get();
   }
@@ -197,9 +197,9 @@ absl::Status SnappyOutputBuffer::Deflate() {
   if (avail_in_ == 0) {
     return absl::OkStatus();
   }
-  string output;
+  std::string output;
   if (!port::Snappy_Compress(next_in_, avail_in_, &output)) {
-    return errors::DataLoss("Snappy_Compress failed");
+    return absl::DataLossError("Snappy_Compress failed");
   }
 
   // Write length of compressed block to output buffer.

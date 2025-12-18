@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -201,6 +202,19 @@ TEST_F(PtxCompilerTest, CancelsOnRegSpill) {
                             /*disable_gpuasm_optimizations=*/true,
                             /*cancel_if_reg_spill=*/false),
               absl_testing::IsOk());
+}
+
+TEST_F(PtxCompilerTest, RecordsRegisterSpillStats) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::cuda::Assembly assembly,
+      CompileGpuAsmUsingLibNvPtxCompiler(
+          kDefaultComputeCapability, kSpillingPtx,
+          stream_executor::GpuAsmOpts(/*disable_gpuasm_optimizations=*/true),
+          /*cancel_if_reg_spill=*/false, /*dump_compilation_log=*/false));
+  ASSERT_EQ(assembly.module_stats.size(), 1);
+  KernelStats kernel_stats = assembly.module_stats.begin()->second;
+  EXPECT_GT(kernel_stats.store_bytes_spilled, 0);
+  EXPECT_GT(kernel_stats.load_bytes_spilled, 0);
 }
 
 TEST_F(PtxCompilerTest, AcceptsExtraArguments) {

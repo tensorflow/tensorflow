@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Math/IR/Math.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"  // IWYU pragma: keep
@@ -33,12 +34,14 @@ namespace xla::cpu {
 #define GEN_PASS_DECL
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateElementalTensorToVectorPass();
+std::unique_ptr<mlir::Pass> CreateLinalgElementwiseToVectorPass();
 std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass();
 std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
-std::unique_ptr<mlir::Pass> CreateXTileToVectorPass();
-std::unique_ptr<mlir::Pass> CreateTensorOpsToVectorPass();
-std::unique_ptr<mlir::Pass> CreateRewriteDynamicVectorExtractPass();
+std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass();
+std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
+std::unique_ptr<mlir::Pass> CreateFuseElementwisePass();
+std::unique_ptr<mlir::Pass> CreateVectorToScalarPass();
+std::unique_ptr<mlir::Pass> CreateUnpackSubByteVectorWritePass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"

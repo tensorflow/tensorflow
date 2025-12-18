@@ -51,16 +51,16 @@ class ComplexUnaryOpTest
   template <typename T, size_t index, typename... Types>
   std::vector<T> get_column(const std::vector<std::tuple<Types...>>& table) {
     std::vector<T> column;
-    std::transform(
-        table.cbegin(), table.cend(), std::back_inserter(column),
-        [](const auto& item) { return static_cast<T>(std::get<index>(item)); });
+    absl::c_transform(table, std::back_inserter(column), [](const auto& item) {
+      return static_cast<T>(std::get<index>(item));
+    });
     return column;
   }
 
   template <typename T, typename S>
   void scale_column(std::vector<T>& column, const std::vector<S>& scales) {
-    std::transform(column.begin(), column.end(), scales.begin(), column.begin(),
-                   [](const T& lhs, const S& rhs) { return lhs * rhs; });
+    absl::c_transform(column, scales, column.begin(),
+                      [](const T& lhs, const S& rhs) { return lhs * rhs; });
   }
 
   template <typename C>
@@ -135,6 +135,13 @@ TEST_F(ComplexUnaryOpTest, AsinhTest) {
       [](XlaOp x) { return Asinh(x); });
   UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(
       [](XlaOp x) { return Asinh(x); });
+}
+
+TEST_F(ComplexUnaryOpTest, ExpTest) {
+  UnaryTestHelper<complex_unary_op_samples::Exp<float>>(
+      [](XlaOp x) { return Exp(x); });
+  UnaryTestHelper<complex_unary_op_samples::Exp<double>>(
+      [](XlaOp x) { return Exp(x); });
 }
 
 }  // namespace

@@ -27,8 +27,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -51,19 +51,20 @@ class MockStream : public Stream {
   MOCK_METHOD(absl::Status, WaitFor, (Event * event), (override));
   MOCK_METHOD(absl::Status, RecordEvent, (Event * event), (override));
   MOCK_METHOD(absl::Status, Memcpy,
-              (void *host_dst, const DeviceMemoryBase &gpu_src, uint64_t size),
+              (void* host_dst, const DeviceAddressBase& gpu_src, uint64_t size),
               (override));
   MOCK_METHOD(absl::Status, Memcpy,
-              (DeviceMemoryBase * gpu_dst, const void *host_src, uint64_t size),
+              (DeviceAddressBase * gpu_dst, const void* host_src,
+               uint64_t size),
               (override));
   MOCK_METHOD(absl::Status, Memcpy,
-              (DeviceMemoryBase * gpu_dst, const DeviceMemoryBase &gpu_src,
+              (DeviceAddressBase * gpu_dst, const DeviceAddressBase& gpu_src,
                uint64_t size),
               (override));
   MOCK_METHOD(absl::Status, MemZero,
-              (DeviceMemoryBase * location, uint64_t size), (override));
+              (DeviceAddressBase * location, uint64_t size), (override));
   MOCK_METHOD(absl::Status, Memset32,
-              (DeviceMemoryBase * location, uint32_t pattern, uint64_t size),
+              (DeviceAddressBase * location, uint32_t pattern, uint64_t size),
               (override));
   MOCK_METHOD(absl::Status, BlockHostUntilDone, (), (override));
   MOCK_METHOD(absl::Status, DoHostCallbackWithStatus,

@@ -169,7 +169,7 @@ sum {
 
 ENTRY main {
   p0 = f32[4, 8] parameter(0)
-  // Tn this mode, the participants are the given replicas across all partitions.
+  // In this mode, the participants are the given replicas across all partitions.
   // Here, we have 2 replicas and 2 partitions, so 4 total shards.
   ROOT rs = f32[4, 2] reduce-scatter(p0), replica_groups={{0, 1}}, channel_id=1, dimensions={1}, to_apply=sum
 }
@@ -193,7 +193,7 @@ sum {
 
 ENTRY main {
   p0 = f32[4, 8] parameter(0)
-  // Tn this mode, the participants are the given replicas across all partitions.
+  // In this mode, the participants are the given replicas across all partitions.
   // Here, we have 1 replicas and 2 partitions, so 2 total shards.
   ROOT rs = f32[4, 4] reduce-scatter(p0), frontend_attributes={_scheduling_group_id="1"}, replica_groups={{0}}, channel_id=1, dimensions={1}, to_apply=sum
 }

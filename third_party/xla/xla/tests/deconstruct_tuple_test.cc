@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
@@ -25,10 +26,13 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -45,7 +49,7 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
     XlaComputation computation = builder->Build().value();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_).value();
-    TF_CHECK_OK(client_->Transfer(*global_data).status());
+    CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }
 };

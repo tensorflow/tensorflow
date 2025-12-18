@@ -230,10 +230,9 @@ class IfrtServingExecutable {
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  tsl::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
-      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes,
-      absl::Span<const int> variable_arg_indices);
+  absl::StatusOr<tsl::Future<SharedCachedExecutableBundle>>
+  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes,
+                           absl::Span<const int> variable_arg_indices);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
@@ -248,8 +247,7 @@ class IfrtServingExecutable {
   std::vector<xla::ifrt::Shape> GetArgShape(
       int arg_index, const CachedExecutableBundle& entry);
 
-  bool UsePortableExecution(
-      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata);
+  bool UsePortableExecution();
 };
 
 }  // namespace ifrt_serving

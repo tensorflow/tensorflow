@@ -39,7 +39,7 @@ TEST(StreamExecutorAllocatorTest, NoMemoryReturnsNullptr) {
       });
 
   StreamExecutorAllocator stream_executor_allocator(
-      std::move(allocator), MemoryType::kHost, /*index=*/0,
+      std::move(allocator), MemorySpace::kHost, /*index=*/0,
       /*alloc_visitors=*/{},
       /*free_visitors=*/{});
   size_t bytes_received = 0;
@@ -55,7 +55,7 @@ TEST(StreamExecutorAllocatorTest, DoesntSupportCoalescing) {
         return absl::InternalError("Failed to allocate memory");
       });
   StreamExecutorAllocator stream_executor_allocator(
-      std::move(allocator), MemoryType::kHost, /*index=*/0,
+      std::move(allocator), MemorySpace::kHost, /*index=*/0,
       /*alloc_visitors=*/{},
       /*free_visitors=*/{});
   EXPECT_FALSE(stream_executor_allocator.SupportsCoalescing());
@@ -67,20 +67,20 @@ TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsHostPinnedForHostMemory) {
         return absl::InternalError("Failed to allocate memory");
       });
   StreamExecutorAllocator stream_executor_allocator(
-      std::move(allocator), MemoryType::kHost, /*index=*/0,
+      std::move(allocator), MemorySpace::kHost, /*index=*/0,
       /*alloc_visitors=*/{},
       /*free_visitors=*/{});
   EXPECT_EQ(tsl::AllocatorMemoryType::kHostPinned,
             stream_executor_allocator.GetMemoryType());
 }
 
-TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsDeviceForDeviceMemory) {
+TEST(StreamExecutorAllocatorTest, GetMemoryTypeReturnsDeviceForDeviceAddress) {
   auto allocator = std::make_unique<GenericMemoryAllocator>(
       [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
         return absl::InternalError("Failed to allocate memory");
       });
   StreamExecutorAllocator stream_executor_allocator(
-      std::move(allocator), MemoryType::kDevice, /*index=*/0,
+      std::move(allocator), MemorySpace::kDevice, /*index=*/0,
       /*alloc_visitors=*/{},
       /*free_visitors=*/{});
   EXPECT_EQ(tsl::AllocatorMemoryType::kDevice,
@@ -122,7 +122,7 @@ TEST(StreamExecutorAllocatorTest,
     free_visitor_called = true;
   };
   StreamExecutorAllocator stream_executor_allocator(
-      std::move(allocator), MemoryType::kDevice, /*index=*/0, {alloc_visitor},
+      std::move(allocator), MemorySpace::kDevice, /*index=*/0, {alloc_visitor},
       {free_visitor});
   EXPECT_FALSE(free_visitor_called);
   EXPECT_FALSE(alloc_visitor_called);

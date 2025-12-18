@@ -46,20 +46,22 @@ limitations under the License.
 #include "xla/literal_comparison.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/prepare_reference_module.h"
 #include "xla/tools/run_hlo_module.pb.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -115,8 +117,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
     text_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".txt"));
   }
 
-  TF_CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
-  TF_CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
+  CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
+  CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
   LOG(ERROR) << "wrote Literal to " << name << " binary: " << binary_filename
              << " text: " << text_filename;
 }
@@ -518,7 +520,7 @@ absl::Status RunAndCompare(
           true));
   TF_RETURN_IF_ERROR(verifier.Run(test_module.get()).status());
   if (compilation_env_modifier_hook) {
-    TF_CHECK_OK(compilation_env_modifier_hook(options, *test_module))
+    CHECK_OK(compilation_env_modifier_hook(options, *test_module))
         << "Could not adjust the compilation environment for user provided "
            "hlo module.";
   }

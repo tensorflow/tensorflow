@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tools/matmul_perf_table_gen.h"
 
 #include <cstdint>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/permutation_util.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
@@ -53,11 +53,11 @@ TEST(PermutationUtilTest, IsIdentityPermutation_TrueCases) {
 
 TEST(PermutationUtilTest, IsIdentityPermutation_FalseCases) {
   std::vector<int> v{0, 1, 2, 3};
-  std::next_permutation(v.begin(), v.end());
+  absl::c_next_permutation(v);
 
   do {
     EXPECT_FALSE(IsIdentityPermutation(v));
-  } while (std::next_permutation(v.begin(), v.end()));
+  } while (absl::c_next_permutation(v));
 }
 
 TEST(PermutationUtilTest, PermuteInverse) {
@@ -90,7 +90,7 @@ TEST(PermutationUtilTest, ComposeAndInversePermutations) {
 
   do {
     EXPECT_EQ(ComposePermutations(InversePermutation(p), p), id);
-  } while (std::next_permutation(p.begin(), p.end()));
+  } while (absl::c_next_permutation(p));
 }
 
 }  // namespace

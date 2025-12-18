@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -490,6 +489,45 @@ DiffSummaryProto DiffSummary::ToProto() const {
     }
   }
   return proto;
+}
+
+DiffSummary DiffSummary::FromProto(const DiffSummaryProto& proto,
+                                   const HloModule& left_module,
+                                   const HloModule& right_module) {
+  DiffSummary summary;
+  absl::flat_hash_map<std::string, const HloComputation*> left_computation_map;
+  for (const HloComputation* computation : left_module.computations()) {
+    left_computation_map[computation->name()] = computation;
+  }
+  absl::flat_hash_map<std::string, const HloComputation*> right_computation_map;
+  for (const HloComputation* computation : right_module.computations()) {
+    right_computation_map[computation->name()] = computation;
+  }
+
+  for (const auto& diff_pattern_proto : proto.computation_diff_patterns()) {
+    ComputationDiffPattern diff_pattern;
+    diff_pattern.fingerprint = diff_pattern_proto.fingerprint();
+    diff_pattern.diff_metrics.changed_instruction_count =
+        diff_pattern_proto.changed_instruction_count();
+    diff_pattern.diff_metrics.left_unmatched_instruction_count =
+        diff_pattern_proto.left_unmatched_instruction_count();
+    diff_pattern.diff_metrics.right_unmatched_instruction_count =
+        diff_pattern_proto.right_unmatched_instruction_count();
+    for (const auto& group_proto : diff_pattern_proto.computation_group()) {
+      ComputationGroup group;
+      for (const auto& computation_details : group_proto.left_computations()) {
+        group.left_computations.push_back(
+            left_computation_map.at(computation_details.name()));
+      }
+      for (const auto& computation_details : group_proto.right_computations()) {
+        group.right_computations.push_back(
+            right_computation_map.at(computation_details.name()));
+      }
+      diff_pattern.computation_groups.push_back(group);
+    }
+    summary.computation_diff_patterns.push_back(diff_pattern);
+  }
+  return summary;
 }
 
 }  // namespace hlo_diff

@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -57,8 +58,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -75,6 +75,7 @@ limitations under the License.
 #define gpuMemcpy cudaMemcpy
 #define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
 #define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
+#define gpuStream CUstream
 #elif TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
 #define gpuMemcpyAsync hipMemcpyAsync
@@ -82,6 +83,7 @@ limitations under the License.
 #define gpuMemcpy hipMemcpy
 #define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define gpuMemcpyHostToDevice hipMemcpyHostToDevice
+#define gpuStream hipStream_t
 #endif
 
 namespace xla {
@@ -122,8 +124,8 @@ struct TokenTestCase {
   std::string opaque;
 };
 
-void Callback_Tokens(se::gpu::GpuStreamHandle stream, void** buffers,
-                     const char* opaque, size_t opaque_len) {
+void Callback_Tokens(gpuStream stream, void** buffers, const char* opaque,
+                     size_t opaque_len) {
   for (int i = 0; i < opaque_len; ++i) {
     char c = opaque[i];
     ASSERT_TRUE(c == 'A' || c == 'T');
@@ -189,9 +191,8 @@ class CustomCallTokensTest
   }
 };
 
-void Callback_WithStatusSucceeded(se::gpu::GpuStreamHandle /*stream*/,
-                                  void** /*buffers*/, const char* /*opaque*/,
-                                  size_t /*opaque_len*/,
+void Callback_WithStatusSucceeded(gpuStream /*stream*/, void** /*buffers*/,
+                                  const char* /*opaque*/, size_t /*opaque_len*/,
                                   XlaCustomCallStatus* status) {
   XlaCustomCallStatusSetSuccess(status);
 }
@@ -209,9 +210,8 @@ TEST_F(CustomCallTest, WithStatusSucceeded) {
   TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
-void Callback_WithStatusFailed(se::gpu::GpuStreamHandle /*stream*/,
-                               void** /*buffers*/, const char* /*opaque*/,
-                               size_t /*opaque_len*/,
+void Callback_WithStatusFailed(gpuStream /*stream*/, void** /*buffers*/,
+                               const char* /*opaque*/, size_t /*opaque_len*/,
                                XlaCustomCallStatus* status) {
   XlaCustomCallStatusSetFailure(status, "Failed", 6);
 }
@@ -279,8 +279,8 @@ TEST_F(CustomCallTest, PassAttributesByBackendConfig) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  se::DeviceMemoryBase dst_mem = dst->device_memory();
-  se::DeviceMemoryBase src_mem = src.device_memory();
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
@@ -874,8 +874,8 @@ TEST_F(CustomCallTest, AsyncCustomCalls) {
 
 class CustomCallHloTest : public HloTestBase {};
 
-void CallBack_AddOne(se::gpu::GpuStreamHandle stream, void** buffers,
-                     const char* /*opaque*/, size_t /*opaque_len*/) {
+void CallBack_AddOne(gpuStream stream, void** buffers, const char* /*opaque*/,
+                     size_t /*opaque_len*/) {
   // Expect that the input and output buffers are the same.
   if (buffers[0] != buffers[1]) {
     return;

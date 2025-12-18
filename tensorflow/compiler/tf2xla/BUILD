@@ -375,6 +375,7 @@ cc_library(
 #         "@local_tsl//tsl/platform:context",
 #         "@local_tsl//tsl/platform:cord",
 #         "@local_tsl//tsl/platform:env_time",
+#         "@local_tsl//tsl/platform:refcount",
 #         "@local_tsl//tsl/platform:ml_dtypes",
 #         "@local_tsl//tsl/platform:logging",
 #         "@local_tsl//tsl/platform:macros",

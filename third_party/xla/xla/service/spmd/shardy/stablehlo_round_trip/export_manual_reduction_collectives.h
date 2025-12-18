@@ -23,11 +23,10 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// TODO(tomnatan): mention reduce-scatter and how collectives are marked.
-// TODO(tomnatan): mention if the shard map is fully manual or not.
-
-// Exports `sdy.all_reduce`, that originate from user defined shardings with
-// unreduced axes, to `stablehlo.all_reduce` inside an `sdy.manual_computation`.
+// Exports `sdy.all_reduce`, `sdy.reduce_scatter`, `sdy.sharded_to_unreduced`
+// and `sdy.replicated_to_unreduced` that originate from user-defined shardings
+// with unreduced axes. The exported ops are inside a full manual
+// `sdy.manual_computation`.
 std::unique_ptr<mlir::Pass>
 createStablehloExportManualReductionCollectivesPass();
 

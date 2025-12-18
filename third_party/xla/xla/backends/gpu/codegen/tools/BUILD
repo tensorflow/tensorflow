@@ -32,7 +32,6 @@ cc_library(
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusions",
         "//xla/backends/gpu/codegen/emitters:emitter_base",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -55,7 +54,6 @@ xla_cc_binary(
     deps = [
         ":test_lib",
         "//xla/codegen/tools:test_lib",
-        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
@@ -85,6 +83,7 @@ xla_cc_binary(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "//xla/codegen/tools:test_lib",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:shape_util",
@@ -109,7 +108,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = [":codegen_tests"],
+    visibility = ["//visibility:private"],
     deps = [
         "//xla/codegen/tools:test_lib",
         "//xla/tsl/platform:statusor",

@@ -32,10 +32,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -117,7 +116,7 @@ class BuffersDebugChecksumThunkTest : public ::testing::Test {
 
 TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   static constexpr size_t kLogSize =
-      BufferDebugLog::RequiredSizeForEntries(10, sizeof(BufferDebugLogEntry));
+      BufferDebugLog<BufferDebugLogEntry>::RequiredSizeForEntries(10);
   static constexpr size_t kInputSize = 1024;
   static constexpr size_t kInputCount = 2;
   static constexpr size_t kTotalDeviceMemoryBytes =
@@ -135,13 +134,13 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   BufferAllocations allocations(
       {executor_->AllocateArray<uint8_t>(kTotalDeviceMemoryBytes)},
       executor_->device_ordinal(), allocator_.get());
-  se::DeviceMemoryBase log_mem = allocations.GetDeviceAddress(log_slice);
-  se::DeviceMemoryBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
-  se::DeviceMemoryBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
+  se::DeviceAddressBase log_mem = allocations.GetDeviceAddress(log_slice);
+  se::DeviceAddressBase inputs0_mem = allocations.GetDeviceAddress(inputs[0]);
+  se::DeviceAddressBase inputs1_mem = allocations.GetDeviceAddress(inputs[1]);
   // Initialize the log in device memory
-  TF_ASSERT_OK_AND_ASSIGN(BufferDebugLog device_log,
-                          BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
-                              *stream_, se::DeviceMemory<uint8_t>(log_mem)));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_log,
+                          BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
+                              *stream_, se::DeviceAddress<uint8_t>(log_mem)));
   // Fill inputs with some data
   std::vector<uint32_t> zeros(1024, 0);
   zeros[123] = 12341234;  // expected checksum for inputs_mem[0]
@@ -152,7 +151,6 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   Thunk::InitializeParams init_params;
   init_params.executor = executor_;
   init_params.stream = stream_.get();
-  ResourceRequests resource_requests;
   auto execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
@@ -165,11 +163,10 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       /*runs_before_checked_thunk=*/true, metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
-  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}, resource_requests));
+  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<BufferDebugLogEntry> entries,
-      device_log.ReadFromDevice<BufferDebugLogEntry>(*stream_));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugLogEntry> entries,
+                          device_log.ReadFromDevice(*stream_));
 
   // BuffersDebugChecksumThunk launches a kernel for each input buffer, they may
   // complete in any order.

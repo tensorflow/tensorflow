@@ -28,6 +28,7 @@
 #include "absl/time/time.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/text_format.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
@@ -46,9 +47,6 @@
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -61,8 +59,6 @@ using ::testing::Invoke;
 using ::testing::Optional;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT

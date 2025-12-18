@@ -54,11 +54,11 @@ mlir::TypeAttr getConvAccTypeAttr(PatternRewriter& rewriter,
   // in case of quantized types: get base element types
   if (auto qtype =
           llvm::dyn_cast<mlir::quant::UniformQuantizedType>(input_etype))
-    input_etype = qtype.getStorageType();
+    input_etype = tosa::getStorageElementTypeFromQuantized(qtype);
 
   if (auto qtype =
           llvm::dyn_cast<mlir::quant::UniformQuantizedType>(output_etype))
-    output_etype = qtype.getStorageType();
+    output_etype = tosa::getStorageElementTypeFromQuantized(qtype);
 
   // special cases: input_etype and output_etype are both f16 or bf16: use
   // acc_type=f32
@@ -355,8 +355,19 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    int32_t scale_multiplier, int32_t scale_shift,
                    int64_t input_zp, int64_t output_zp, tosa::RoundingMode rounding_mode,
                    bool scale32) {
-  bool input_unsigned = input_val.getType().isUnsignedInteger();
-  bool output_unsigned = output_type.isUnsignedInteger();
+  bool input_unsigned, output_unsigned;
+  if (auto qtype = dyn_cast<mlir::quant::QuantizedType>(
+          cast<ShapedType>(input_val.getType()).getElementType())) {
+    input_unsigned = !qtype.isSigned();
+  } else {
+    input_unsigned = input_val.getType().isUnsignedInteger();
+  }
+  if (auto qtype =
+          dyn_cast<mlir::quant::QuantizedType>(output_type.getElementType())) {
+    output_unsigned = !qtype.isSigned();
+  } else {
+    output_unsigned = output_type.isUnsignedInteger();
+  }
   auto loc = op->getLoc();
   Value multiplier_val =
       buildRescaleMultiplier(scale32, rewriter, loc, {scale_multiplier});
@@ -486,8 +497,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
       rewriter.getContext(), rounding_mode);
 
-  bool input_unsigned = input_qtype.isUnsignedInteger();
-  bool output_unsigned = output_qtype.isUnsignedInteger();
+  bool input_unsigned = !input_qtype.isSigned();
+  bool output_unsigned = !output_qtype.isSigned();
 
   auto loc = op->getLoc();
   const Value empty_output_val = rewriter.create<tensor::EmptyOp>(
@@ -664,7 +675,7 @@ Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256}, getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -718,7 +729,8 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256},
+      tosa::getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -756,7 +768,7 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256}, tosa::getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -880,7 +892,7 @@ void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {513}, element_qtype.getStorageType());
+      {513}, tosa::getStorageElementTypeFromQuantized(element_qtype));
 
   auto first_const_attr =
       DenseElementsAttr::get(storage_type, llvm::ArrayRef(first_table));
@@ -977,15 +989,6 @@ Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
   auto const_op =
       builder.create<tosa::ConstOp>(builder.getLoc(), const_type, const_attr);
   return const_op.getResult();
-}
-
-Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
-                        llvm::ArrayRef<int64_t> values) {
-  auto attr = rewriter.getIndexTensorAttr(values);
-  auto type =
-      tosa::shapeType::get(rewriter.getContext(), /* rank = */ values.size());
-  return CreateOpAndInfer<tosa::ConstShapeOp>(rewriter, op->getLoc(), type,
-                                              attr);
 }
 
 // Create a vector from a 32-bit value tensor.  Returns the size of
@@ -1409,7 +1412,7 @@ Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
     auto element_qtype = dyn_cast<quant::QuantizedType>(element_type);
     if (element_qtype) {
       storage_type = tensorflow::GetTypeFromTFTensorShape(
-          {1}, element_qtype.getStorageType());
+          {1}, tosa::getStorageElementTypeFromQuantized(element_qtype));
     }
 
     DenseElementsAttr const_attr;

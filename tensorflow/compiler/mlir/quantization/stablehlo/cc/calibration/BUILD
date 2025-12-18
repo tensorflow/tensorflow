@@ -109,9 +109,9 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 

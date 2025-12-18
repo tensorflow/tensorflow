@@ -1,6 +1,6 @@
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");;
+Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -388,7 +388,7 @@ void DefineMetricsModule(py::module main_module) {
       "CalculateFileSize",
       [](const char* filename) {
         Env* env = Env::Default();
-        uint64 filesize = 0;
+        uint64_t filesize = 0;
         if (!env->GetFileSize(filename, &filesize).ok()) {
           return (int64_t)-1;
         }
@@ -417,7 +417,7 @@ void DefineMetricsModule(py::module main_module) {
 
   m.def(
       "GetCheckpointSize",
-      [](const char* api_label, uint64 filesize) {
+      [](const char* api_label, uint64_t filesize) {
         return metrics::CheckpointSize(api_label, filesize).value();
       },
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),

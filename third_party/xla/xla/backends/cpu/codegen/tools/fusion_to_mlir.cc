@@ -21,8 +21,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/tools/test_lib.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/tsl/platform/statusor.h"
@@ -32,14 +32,13 @@ namespace xla::cpu {
 
 absl::Status Run(const std::string& filename) {
   auto mlir_context = FusionCompiler::CreateContext();
-  auto expr_context = std::make_unique<SymbolicExprContext>(mlir_context.get());
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
   auto fusion = DynCast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
   fusion->SetAndSanitizeName("main");
   TF_ASSIGN_OR_RETURN(
       KernelDefinition kernel_definition,
-      EmitFusionKernel(*mlir_context, *expr_context, *fusion, nullptr, false));
+      EmitFusionKernel(*mlir_context, *fusion, nullptr, false, false));
   llvm::outs() << kernel_definition.source().ToString();
   return absl::OkStatus();
 }

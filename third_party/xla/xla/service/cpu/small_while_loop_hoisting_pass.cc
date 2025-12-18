@@ -49,6 +49,8 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFft:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kReplicaId:
       return true;
     default:
       return IsCollective(instr);

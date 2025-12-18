@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -58,7 +57,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      SymbolicExprContext* symbolic_expr_context)
+      mlir::MLIRContext* mlir_context)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -69,7 +68,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*min_latencies_seconds=*/{},
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   // Returns the launch dimensions for the given tiled HLO computation.
   static LaunchDimensions GetLaunchDimensionsForTiledFusion(
@@ -134,7 +133,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   HloFusionAnalysisCache* fusion_analysis_cache_;
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   GpuHloCostAnalysis cost_analysis_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

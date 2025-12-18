@@ -78,7 +78,7 @@ absl::StatusOr<bool> UnstableReductionDetector::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (module->config().debug_options().xla_detect_unstable_reductions() ==
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
+      DebugOptions::DETECTION_MODE_NONE) {
     return false;
   }
   std::vector<const HloInstruction*> unstable_reductions =
@@ -94,7 +94,7 @@ absl::StatusOr<bool> UnstableReductionDetector::RunImpl(
     LOG(WARNING) << "Unstable reduction: " << reduction->ToString();
   }
   if (module->config().debug_options().xla_detect_unstable_reductions() ==
-      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL) {
+      DebugOptions::DETECTION_MODE_FAIL) {
     std::string reduction_ops_string =
         UniqueReductionOpsAsString(unstable_reductions);
     return absl::FailedPreconditionError(absl::StrFormat(

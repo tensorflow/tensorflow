@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -43,7 +43,6 @@ namespace {
 using LegalizeSchedulingAnnotationsTest = HloHardwareIndependentTestBase;
 using SchedulingAnnotationPropagationTest = HloHardwareIndependentTestBase;
 using RemoveLoopIterationAnnotationTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   constexpr absl::string_view hlo_string = R"(

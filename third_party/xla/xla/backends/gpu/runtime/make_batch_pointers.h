@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -50,9 +50,9 @@ namespace xla::gpu {
 //    need to allocate the host memory as pinned, one alloc per stream.  Then
 //    we'd need to manage this memory without leaks.  This becomes complex!
 absl::Status MakeBatchPointers(se::Stream* stream,
-                               se::DeviceMemoryBase base_ptr,
+                               se::DeviceAddressBase base_ptr,
                                size_t stride_bytes, size_t n,
-                               se::DeviceMemoryBase ptrs_out);
+                               se::DeviceAddressBase ptrs_out);
 
 }  // namespace xla::gpu
 

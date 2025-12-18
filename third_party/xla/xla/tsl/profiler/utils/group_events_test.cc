@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/test.h"
@@ -26,11 +27,13 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/preprocess_xplane.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -734,19 +737,20 @@ TEST(GroupTPUEventsTest, TpuProgramCallbackTest) {
 
 TEST(GroupTPUEventsTest, ModuleRootEventTest) {
   tensorflow::profiler::XSpace space;
-  tensorflow::profiler::XPlane* device_plane = space.add_planes();
+  tensorflow::profiler::XPlane* device_plane =
+      GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
   XPlaneBuilder device_plane_builder(device_plane);
-  device_plane_builder.ReserveLines(1);
+  device_plane_builder.ReserveLines(3);
   auto step_line = device_plane_builder.GetOrCreateLine(0);
   step_line.SetName("Steps");
   CreateXEvent(&device_plane_builder, &step_line, "1", 100, 200,
                {{StatType::kStepNum, int64_t{1}}});
   auto module_line = device_plane_builder.GetOrCreateLine(1);
   module_line.SetName("XLA Modules");
-  CreateXEvent(&device_plane_builder, &module_line, "module", 105, 199,
+  CreateXEvent(&device_plane_builder, &module_line, "module", 105, 194,
                {{StatType::kRunId, int64_t{123}},
                 {StatType::kQueueId, int64_t{0}},
-                {StatType::kDeviceOrdinal, int64_t{1}}});
+                {StatType::kDeviceOrdinal, int64_t{0}}});
   auto hlo_line = device_plane_builder.GetOrCreateLine(2);
   hlo_line.SetName("XLA Ops");
   CreateXEvent(&device_plane_builder, &hlo_line, "matmul", 110, 190, {});
@@ -771,19 +775,23 @@ TEST(GroupTPUEventsTest, MergeHostStepsTest) {
   CreateXEvent(
       &host_plane_builder, &main_thread, "train", 100, 10,
       {{StatType::kStepNum, int64_t{1}}, {StatType::kIsRoot, int64_t{1}}});
-  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 100, 1,
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kDoEnqueueProgram, 100, 1,
                {{StatType::kRunId, int64_t{2}},
                 {StatType::kQueueId, int64_t{0}},
                 {StatType::kDeviceOrdinal, int64_t{0}}});
-  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 101, 2,
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kDoEnqueueProgram, 101, 2,
                {{StatType::kRunId, int64_t{3}},
                 {StatType::kQueueId, int64_t{0}},
                 {StatType::kDeviceOrdinal, int64_t{0}}});
-  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 103, 2,
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kDoEnqueueProgram, 103, 2,
                {{StatType::kRunId, int64_t{4}},
                 {StatType::kQueueId, int64_t{0}},
                 {StatType::kDeviceOrdinal, int64_t{0}}});
-  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 105, 4,
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kDoEnqueueProgram, 105, 4,
                {{StatType::kRunId, int64_t{5}},
                 {StatType::kQueueId, int64_t{0}},
                 {StatType::kDeviceOrdinal, int64_t{0}}});
@@ -796,13 +804,13 @@ TEST(GroupTPUEventsTest, MergeHostStepsTest) {
       &device_plane_builder, &module_line, "jit_something(1)", 1000, 10,
       {{StatType::kRunId, int64_t{2}}, {StatType::kQueueId, int64_t{0}}});
   CreateXEvent(
-      &device_plane_builder, &module_line, "jit_something(2)", 1015, 100,
+      &device_plane_builder, &module_line, "jit_something(1)", 1015, 100,
       {{StatType::kRunId, int64_t{3}}, {StatType::kQueueId, int64_t{0}}});
   CreateXEvent(
-      &device_plane_builder, &module_line, "jit_something(3)", 1125, 50,
+      &device_plane_builder, &module_line, "jit_something(1)", 1125, 50,
       {{StatType::kRunId, int64_t{4}}, {StatType::kQueueId, int64_t{0}}});
   CreateXEvent(
-      &device_plane_builder, &module_line, "jit_something(4)", 1180, 25,
+      &device_plane_builder, &module_line, "jit_something(1)", 1180, 25,
       {{StatType::kRunId, int64_t{5}}, {StatType::kQueueId, int64_t{0}}});
   auto step_line = device_plane_builder.GetOrCreateLine(1);
   step_line.SetName(kStepLineName);
@@ -818,11 +826,97 @@ TEST(GroupTPUEventsTest, MergeHostStepsTest) {
   CreateXEvent(&device_plane_builder, &step_line, "3", 1180, 25,
                {{StatType::kDeviceOffsetPs, int64_t{1180}},
                 {StatType::kDeviceDurationPs, int64_t{25}}});
+  auto op_line = device_plane_builder.GetOrCreateLine(2);
+  op_line.SetName(kXlaOpLineName);
+  CreateXEvent(&device_plane_builder, &op_line, "offload.start.1", 1000, 5,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{0}},
+                {StatType::kProducerId, int64_t{1}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.done.1", 1005, 5, {});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.start.1", 1015, 5,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{1}},
+                {StatType::kProducerId, int64_t{2}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.done.1", 1020, 95, {});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.start.1", 1125, 5,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{2}},
+                {StatType::kProducerId, int64_t{3}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.done.1", 1130, 45, {});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.start.1", 1180, 5,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{3}},
+                {StatType::kProducerId, int64_t{4}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&device_plane_builder, &op_line, "offload.done.1", 1185, 20, {});
+
+  // TPU SparseCore Plane (device_id 0, core_type 1)
+  XPlane* sparsecore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0, 0);
+  XPlaneBuilder sc_plane_builder(sparsecore_plane);
+  sc_plane_builder.ReserveLines(3);
+
+  auto sc_module_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1001, 8,
+               {
+                   {StatType::kTcOffloadStartId, int64_t{1}},
+               });
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1016, 98,
+               {
+                   {StatType::kTcOffloadStartId, int64_t{1}},
+               });
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1126, 48,
+               {
+                   {StatType::kTcOffloadStartId, int64_t{1}},
+               });
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1181, 23,
+               {
+                   {StatType::kTcOffloadStartId, int64_t{1}},
+               });
+
+  auto sc_step_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_step_line.SetName(kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 0", 1000, 10, {});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 1", 1015, 100, {});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 2", 1125, 50, {});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 3", 1180, 25, {});
+
+  auto sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_1", 1001, 8,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{1}}});
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_1", 1016, 98,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{2}}});
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_1", 1126, 48,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{3}}});
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_1", 1181, 23,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{4}}});
+
   // Make sure to preprocess so that the Runtime events have a Producer/Consumer
   // event set created.
   PreprocessXSpace(&space);
   EventForest event_forest;
-  GroupTpuEventsOSS(&space, {device_plane}, &event_forest);
+  GroupTpuEventsOSS(&space, {device_plane, sparsecore_plane}, &event_forest);
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
   auto visitor = CreateTfXPlaneVisitor(device_plane);
   bool step_line_found = false;
   visitor.ForEachLine([&](const XLineVisitor& line) {
@@ -838,6 +932,414 @@ TEST(GroupTPUEventsTest, MergeHostStepsTest) {
     EXPECT_EQ(GetDeviceEventTimespan(step_event).end_ps(), 1205);
   });
   EXPECT_TRUE(step_line_found);
+
+  auto sc_visitor = CreateTfXPlaneVisitor(sparsecore_plane);
+  bool sc_step_line_found = false;
+  sc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    if (line.Name() != kSparseCoreStepLineName) {
+      return;
+    }
+    sc_step_line_found = true;
+    EXPECT_EQ(line.NumEvents(), 1);
+    auto step_event = line.GetFirstEvent();
+    EXPECT_EQ(step_event.GetTimespan().begin_ps(), 1000);
+    EXPECT_EQ(step_event.GetTimespan().end_ps(), 1205);
+    EXPECT_EQ(GetDeviceEventTimespan(step_event).begin_ps(), 1000);
+    EXPECT_EQ(GetDeviceEventTimespan(step_event).end_ps(), 1205);
+  });
+  EXPECT_TRUE(sc_step_line_found);
+}
+
+TEST(GroupTPUEventsTest, MergeOffloadedScSteps) {
+  tensorflow::profiler::XSpace space;
+  // No host plane in this test.
+
+  // TPU TensorCore Plane (device_id 0)
+  XPlane* tensorcore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
+  XPlaneBuilder tc_plane_builder(tensorcore_plane);
+  tc_plane_builder.ReserveLines(3);
+
+  auto tc_module_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_module_line.SetName(kXlaModuleLineName);
+  // The module event is strictly within the step event (1000-2000).
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "jit_tc_module", 1010, 980,
+               {{StatType::kRunId, int64_t{1}}});
+
+  auto tc_step_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_step_line.SetName(kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "tc step 0", 1000, 1000,
+               {{StatType::kDeviceOffsetPs, int64_t{1000}},
+                {StatType::kDeviceDurationPs, int64_t{1000}}});
+
+  auto tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  // First offload
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload.start.1", 1050, 50,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{0}},
+                {StatType::kProducerId, int64_t{1}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload.done.1", 1100, 400, {});
+  // Second offload
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload.start.1", 1550, 50,
+               {{StatType::kTcOffloadStartId, int64_t{1}},
+                {StatType::kOffloadCoreId, int64_t{0}},
+                {StatType::kOffloadExecutionIndex, int64_t{1}},
+                {StatType::kProducerId, int64_t{2}},
+                {StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kScOffload)}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload.done.1", 1600, 400, {});
+
+  // TPU SparseCore Plane (device_id 0, core_type 1)
+  XPlane* sparsecore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0, 1);
+  XPlaneBuilder sc_plane_builder(sparsecore_plane);
+  sc_plane_builder.ReserveLines(3);
+
+  auto sc_module_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  // These module events are strictly within their respective step events.
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1101, 398,
+               {{StatType::kTcOffloadStartId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(1)", 1601, 398,
+               {{StatType::kTcOffloadStartId, int64_t{1}}});
+
+  auto sc_step_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_step_line.SetName(kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 0", 1100, 400, {});
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 1", 1600, 400, {});
+
+  auto sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_1a", 1110, 100,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{1}}});
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "sc_op_2a", 1610, 100,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{2}}});
+
+  // Make sure to preprocess so that the Runtime events have a Producer/Consumer
+  // event set created.
+  PreprocessXSpace(&space);
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {tensorcore_plane, sparsecore_plane},
+                    &event_forest);
+
+  // We expect only one group as all events are linked.
+  const GroupMetadataMap& group_metadata_map =
+      event_forest.GetGroupMetadataMap();
+  EXPECT_EQ(group_metadata_map.size(), 1);
+  const int64_t expected_group_id = group_metadata_map.begin()->first;
+
+  // Check the merged TensorCore step event.
+  auto tc_visitor = CreateTfXPlaneVisitor(tensorcore_plane);
+  tc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(tensorcore_plane->name(), ": ", line.Name(),
+                                " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntOrUintValue(), expected_group_id);
+    });
+  });
+
+  // Check the merged SparseCore step event.
+  auto sc_visitor = CreateTfXPlaneVisitor(sparsecore_plane);
+  sc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(sparsecore_plane->name(), ": ", line.Name(),
+                                " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntOrUintValue(), expected_group_id);
+    });
+    if (line.Name() == kSparseCoreStepLineName) {
+      EXPECT_EQ(line.NumEvents(), 1);
+      auto step_event = line.GetFirstEvent();
+      EXPECT_EQ(step_event.GetTimespan().begin_ps(), 1100);
+      EXPECT_EQ(step_event.GetTimespan().end_ps(), 2000);
+    }
+  });
+}
+
+TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesHostLoopTest) {
+  tensorflow::profiler::XSpace space;
+  tensorflow::profiler::XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(1);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  main_thread.SetName("main");
+
+  CreateXEvent(&host_plane_builder, &main_thread, "host step 0", 0, 200,
+               {{StatType::kIsRoot, int64_t{1}}});
+  // Host event for TensorCore.
+  CreateXEvent(&host_plane_builder, &main_thread, "DoEnqueueProgram", 100, 10,
+               {{StatType::kRunId, int64_t{1}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kReplicaId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}},
+                {StatType::kCoreType, int64_t{0}}});  // kTpuTensorCore
+
+  // TPU TensorCore Plane (device_id 0)
+  XPlane* tensorcore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
+  XPlaneBuilder tc_plane_builder(tensorcore_plane);
+  tc_plane_builder.ReserveLines(3);
+
+  auto tc_module_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_module_line.SetName(kXlaModuleLineName);
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "jit(123)", 1000, 1000,
+               {{StatType::kRunId, int64_t{1}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kReplicaId, int64_t{0}},
+                {StatType::kCoreType, int64_t{0}}});
+
+  auto tc_step_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_step_line.SetName(kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "tc step 0", 1000, 1000, {});
+
+  auto tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  CreateXEvent(
+      &tc_plane_builder, &tc_op_line, "offload_start", 1050, 100,
+      {{StatType::kTcOffloadStartId, int64_t{123}},
+       {StatType::kOffloadCoreId, int64_t{0}},
+       {StatType::kOffloadExecutionIndex, int64_t{0}},
+       {StatType::kProducerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kProducerId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload_done", 1200, 750, {});
+
+  // TPU SparseCore Plane (device_id 1)
+  XPlane* sparsecore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0, 0);
+  XPlaneBuilder sc_plane_builder(sparsecore_plane);
+  sc_plane_builder.ReserveLines(3);
+
+  auto sc_module_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(123)", 1100, 800,
+               {{StatType::kTcOffloadStartId, int64_t{123}}});
+
+  auto sc_step_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_step_line.SetName(kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 0", 1100, 800, {});
+
+  auto sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "offloaded_start.copy", 1100, 10,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "offloaded_done.copy", 1120, 180,
+               {});
+
+  // Preprocess to create Producer/Consumer events.
+  PreprocessXSpace(&space);
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {tensorcore_plane, sparsecore_plane},
+                    &event_forest);
+
+  // We expect one group, where all events are grouped under the same group.
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
+  const int64_t expected_group_id =
+      event_forest.GetGroupMetadataMap().begin()->first;
+
+  // Check Host events.
+  XPlaneVisitor host_visitor = CreateTfXPlaneVisitor(host_plane);
+  int host_event_idx = 0;
+  host_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(host_plane->name(), ": ", line.Name(), " ",
+                                event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntValue(), expected_group_id);
+      host_event_idx++;
+    });
+  });
+  EXPECT_EQ(host_event_idx, 2);
+
+  // Check TensorCore events.
+  XPlaneVisitor tc_visitor = CreateTfXPlaneVisitor(tensorcore_plane);
+  tc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(tensorcore_plane->name(), ": ",
+
+                                line.Name(), " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      // TensorCore events are associated with run_id 1, likely getting group_id
+      // 0.
+      EXPECT_EQ(group_id_stat->IntValue(), expected_group_id);
+    });
+  });
+
+  // Check SparseCore events.
+  XPlaneVisitor sc_visitor = CreateTfXPlaneVisitor(sparsecore_plane);
+  sc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(
+          absl::StrCat(sparsecore_plane->name(), ": ",
+                       ParseDeviceOrdinal(sparsecore_plane->name()).value(),
+                       " ", line.Name(), " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      // SparseCore events are associated with run_id 2, likely getting
+      // group_id 1.
+      EXPECT_EQ(group_id_stat->IntValue(), expected_group_id);
+    });
+  });
+}
+
+TEST(GroupTPUEventsTest, GroupOffloadedSparseCoreModulesDeviceLoopTest) {
+  tensorflow::profiler::XSpace space;
+  tensorflow::profiler::XPlane* host_plane = GetOrCreateHostXPlane(&space);
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.ReserveLines(2);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  main_thread.SetName("main");
+
+  // Tf Loop event
+  CreateXEvent(
+      &host_plane_builder, &main_thread, HostEventType::kExecutorStateProcess,
+      100, 10,
+      {{StatType::kStepId, int64_t{1}}, {StatType::kIterNum, int64_t{99}}});
+  CreateXEvent(&host_plane_builder, &main_thread,
+               HostEventType::kTpuSystemExecute, 100, 9,
+               {{StatType::kProducerType,
+                 static_cast<int64_t>(ContextType::kTfrtTpuRuntime)},
+                {StatType::kProducerId, int64_t{1}}});
+
+  auto enqueue_thread = host_plane_builder.GetOrCreateLine(1);
+  enqueue_thread.SetName("tf_enqueue");
+  CreateXEvent(&host_plane_builder, &enqueue_thread,
+               "tpu::System::Execute=>IssueSequencedEvent", 102, 10,
+               {{StatType::kConsumerType,
+                 static_cast<int64_t>(ContextType::kTfrtTpuRuntime)},
+                {StatType::kConsumerId, int64_t{1}}});
+  CreateXEvent(&host_plane_builder, &enqueue_thread,
+               HostEventType::kDoEnqueueProgram, 103, 8,
+               {{StatType::kRunId, int64_t{1}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kCoreType, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{0}}});
+
+  // TPU TensorCore Plane (device_id 0)
+  XPlane* tensorcore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0);
+  XPlaneBuilder tc_plane_builder(tensorcore_plane);
+  tc_plane_builder.ReserveLines(3);
+
+  auto tc_module_line = tc_plane_builder.GetOrCreateLine(0);
+  tc_module_line.SetName(kXlaModuleLineName);
+  // The module event encompasses the step event's time range (1000-2000).
+  CreateXEvent(&tc_plane_builder, &tc_module_line, "jit(123)", 900, 1200,
+               {{StatType::kRunId, int64_t{1}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kReplicaId, int64_t{0}},
+                {StatType::kCoreType, int64_t{0}}});
+
+  auto tc_step_line = tc_plane_builder.GetOrCreateLine(1);
+  tc_step_line.SetName(kStepLineName);
+  CreateXEvent(&tc_plane_builder, &tc_step_line, "tc step 0", 1000, 1000, {});
+
+  auto tc_op_line = tc_plane_builder.GetOrCreateLine(2);
+  tc_op_line.SetName(kXlaOpLineName);
+  CreateXEvent(
+      &tc_plane_builder, &tc_op_line, "offload_start", 1050, 100,
+      {{StatType::kTcOffloadStartId, int64_t{123}},
+       {StatType::kOffloadCoreId, int64_t{0}},
+       {StatType::kOffloadExecutionIndex, int64_t{0}},
+       {StatType::kProducerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kProducerId, int64_t{1}}});
+  CreateXEvent(&tc_plane_builder, &tc_op_line, "offload_done", 1200, 750, {});
+
+  // TPU SparseCore Plane (device_id 1)
+  XPlane* sparsecore_plane = GetOrCreateTpuXPlane(&space, 0, "TPUv4", 0, 0, 0);
+  XPlaneBuilder sc_plane_builder(sparsecore_plane);
+  sc_plane_builder.ReserveLines(3);
+
+  auto sc_module_line = sc_plane_builder.GetOrCreateLine(0);
+  sc_module_line.SetName(kSparseCoreModuleLineName);
+  CreateXEvent(&sc_plane_builder, &sc_module_line, "offloaded(123)", 1100, 800,
+               {{StatType::kTcOffloadStartId, int64_t{123}}});
+
+  auto sc_step_line = sc_plane_builder.GetOrCreateLine(1);
+  sc_step_line.SetName(kSparseCoreStepLineName);
+  CreateXEvent(&sc_plane_builder, &sc_step_line, "sc step 0", 1100, 800, {});
+
+  auto sc_op_line = sc_plane_builder.GetOrCreateLine(2);
+  sc_op_line.SetName(kSparseCoreOpLineName);
+  CreateXEvent(
+      &sc_plane_builder, &sc_op_line, "offloaded_start.copy", 1100, 100,
+      {{StatType::kConsumerType, static_cast<int64_t>(ContextType::kScOffload)},
+       {StatType::kConsumerId, int64_t{1}}});
+  CreateXEvent(&sc_plane_builder, &sc_op_line, "offloaded_done.copy", 1300, 100,
+               {});
+
+  // Preprocess to create Producer/Consumer events.
+  PreprocessXSpace(&space);
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {tensorcore_plane, sparsecore_plane},
+                    &event_forest);
+
+  // We expect two groups, one for the host events and one for the device
+  // events.
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 2);
+
+  // Check Host events.
+  XPlaneVisitor host_visitor = CreateTfXPlaneVisitor(host_plane);
+  int host_event_idx = 0;
+  host_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(absl::StrCat(host_plane->name(), ": ", line.Name(), " ",
+                                event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntValue(), 0);
+      host_event_idx++;
+    });
+  });
+  EXPECT_EQ(host_event_idx, 4);
+
+  // Check TensorCore events.
+  XPlaneVisitor tc_visitor = CreateTfXPlaneVisitor(tensorcore_plane);
+  tc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (line.Name() == kXlaModuleLineName) {
+        // The module event encompasses multiple steps, so it cannot be grouped.
+        return;
+      }
+      SCOPED_TRACE(absl::StrCat(tensorcore_plane->name(), ": ",
+
+                                line.Name(), " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntValue(), 1);
+    });
+  });
+
+  // Check SparseCore events.
+  XPlaneVisitor sc_visitor = CreateTfXPlaneVisitor(sparsecore_plane);
+  sc_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      SCOPED_TRACE(
+          absl::StrCat(sparsecore_plane->name(), ": ",
+                       ParseDeviceOrdinal(sparsecore_plane->name()).value(),
+                       " ", line.Name(), " ", event.Name()));
+      std::optional<XStatVisitor> group_id_stat =
+          event.GetStat(StatType::kGroupId);
+      ASSERT_TRUE(group_id_stat.has_value());
+      EXPECT_EQ(group_id_stat->IntValue(), 1);
+    });
+  });
 }
 
 }  // namespace

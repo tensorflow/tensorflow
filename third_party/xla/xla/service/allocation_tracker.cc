@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -212,13 +212,13 @@ AllocationTracker::ResolveInternal(const GlobalDataHandle& data) const {
 }
 
 void AllocationTracker::AddAllocationOrIncrementRefCount(
-    se::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceAddressBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
     allocation_map[device_memory.opaque()] = {
-        se::OwningDeviceMemory(device_memory, device_ordinal,
-                               backend_->memory_allocator()),
+        se::ScopedDeviceAddress<uint8_t>(device_memory, device_ordinal,
+                                         backend_->memory_allocator()),
         /*ref_count=*/1};
   } else {
     it->second.ref_count++;
@@ -226,7 +226,7 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
 }
 
 absl::Status AllocationTracker::DecrementRefCount(
-    se::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceAddressBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());

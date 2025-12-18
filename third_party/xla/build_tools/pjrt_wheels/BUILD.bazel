@@ -1,6 +1,8 @@
 load("@cuda_cudart//:version.bzl", cuda_major_version = "VERSION")
 load("@nightly_timestamp//:timestamp.bzl", "XLA_NIGHTLY_TIMESTAMP")
 load("@rc_number//:rc_number.bzl", "XLA_RC_NUMBER")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 
 # This ensures we can only build plugins for selected CUDA versions.
@@ -35,6 +37,21 @@ genrule(
     cmd = "cp $< $@",
 )
 
+# The wheels have the same C API header, but we need to give each their own copy
+genrule(
+    name = "pjrt_c_api_hdr_cuda",
+    srcs = ["//xla/pjrt/c:pjrt_c_api.h"],
+    outs = ["xla_plugins/xla_" + cuda_label + "_pjrt/include/pjrt_c_api.h"],
+    cmd = "cp $< $@",
+)
+
+genrule(
+    name = "pjrt_c_api_hdr_cpu",
+    srcs = ["//xla/pjrt/c:pjrt_c_api.h"],
+    outs = ["xla_plugins/xla_cpu_pjrt/include/pjrt_c_api.h"],
+    cmd = "cp $< $@",
+)
+
 # GPU-specific files
 cc_binary(
     name = "xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
@@ -65,8 +82,9 @@ py_wheel(
     summary = "XLA PJRT Plugin",
     version = wheel_version,
     deps = [
-        ":xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
         ":init_file_" + cuda_label,
+        ":pjrt_c_api_hdr_cuda",
+        ":xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
     ],
 )
 
@@ -106,6 +124,49 @@ py_wheel(
     version = wheel_version,
     deps = [
         ":init_file_cpu",
+        ":pjrt_c_api_hdr_cpu",
         ":xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
+    ],
+)
+
+# Tests
+cc_test(
+    name = "cpu_smoke_test",
+    srcs = ["smoke_test.cc"],
+    data = [":xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so"],
+    env = {
+        "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_cpu_pjrt/xla_cpu_pjrt.so",
+    },
+    linkopts = ["-ldl"],
+    tags = ["no_windows"],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+)
+
+cc_test(
+    name = cuda_label + "_smoke_test",
+    srcs = ["smoke_test.cc"],
+    data = [":xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so"],
+    env = {
+        "PJRT_PLUGIN_PATH": "build_tools/pjrt_wheels/xla_plugins/xla_" + cuda_label + "_pjrt/xla_gpu_pjrt.so",
+    },
+    linkopts = ["-ldl"],
+    tags = ["no_windows"],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
+)
+
+# The CPU and CUDA test suites are run in CI's build script
+test_suite(
+    name = "cpu_test_suite",
+    tags = ["no_windows"],
+    tests = [
+        ":cpu_smoke_test",
+    ],
+)
+
+test_suite(
+    name = "cuda_test_suite",
+    tags = ["no_windows"],
+    tests = [
+        ":" + cuda_label + "_smoke_test",
     ],
 )

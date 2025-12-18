@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -58,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -181,8 +179,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
-                                        /*default_val=*/false, &is_enabled));
+    CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                     /*default_val=*/false, &is_enabled));
     if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
         instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
         !is_enabled) {
@@ -562,18 +560,36 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     } else if (HloPredicateIsOp<HloOpcode::kBitcastConvert>(instruction)) {
       Shape operand_shape = instruction->operand(0)->shape();
       Shape output_shape = instruction->shape();
-      // Make the added or removed dimension the minor most to give the
-      // operation a chance to become a no-op (bitcast).
+
+      // Sets the layouts of the operand and output shapes to make the bitcast a
+      // no-op. The changed dimension is moved to be the most minor one in the
+      // layout of the larger shape, and the layout of the smaller shape is
+      // derived from the larger one.
+      auto assign_layouts = [](Shape* larger_shape, Shape* smaller_shape) {
+        const int changed_dim = larger_shape->dimensions().size() - 1;
+        *larger_shape->mutable_layout() =
+            LayoutUtil::MoveDimToMinor(larger_shape->layout(), changed_dim);
+        *smaller_shape->mutable_layout() =
+            ShapeUtil::DeleteDimension(changed_dim, *larger_shape).layout();
+      };
+
+      bool ranks_differ = true;
       if (operand_shape.dimensions().size() >
           output_shape.dimensions().size()) {
-        *operand_shape.mutable_layout() = LayoutUtil::MoveDimToMinor(
-            operand_shape.layout(), operand_shape.dimensions().size() - 1);
-        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
+        assign_layouts(&operand_shape, &output_shape);
       } else if (operand_shape.dimensions().size() <
                  output_shape.dimensions().size()) {
-        *output_shape.mutable_layout() = LayoutUtil::MoveDimToMinor(
-            output_shape.layout(), output_shape.dimensions().size() - 1);
-        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+        assign_layouts(&output_shape, &operand_shape);
+      } else {
+        ranks_differ = false;
+      }
+
+      if (ranks_differ) {
+        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction,
+                                            /*operand_no=*/0,
+                                            /*mandatory=*/true));
+        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction,
+                                                /*mandatory=*/true));
       }
     } else if (HloPredicateIsOp<HloOpcode::kTriangularSolve>(instruction)) {
       // TODO(phawkins): Ideally we would relax this constraint. What we

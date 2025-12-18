@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
@@ -81,7 +80,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -111,7 +109,8 @@ absl::StatusOr<Literal> Compare(const Shape& shape, Comparison comparison,
     // If layout is the same, we can use linear indexing into the literals.
     const Layout& lhs_layout = lhs_literal.shape().layout();
     const Layout& rhs_layout = rhs_literal.shape().layout();
-    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout);
+    bool same_layout = LayoutUtil::Equal(lhs_layout, rhs_layout) &&
+                       LayoutUtil::Equal(lhs_layout, shape.layout());
 
     if (same_layout) {
       TF_RETURN_IF_ERROR(result.PopulateLinearParallel<bool>(
@@ -1173,20 +1172,20 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
   // If the parent computation has multiple callers, we cannot determine from
   // which caller the arguments are passed.
   if (computation_callers.size() != 1) {
-    return tsl::errors::FailedPrecondition(
-        "The computation ", parent_computation->name(), " is called by ",
-        computation_callers.size(),
-        " callers and thus its argument value "
-        "cannot be determined statically.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("The computation ", parent_computation->name(),
+                     " is called by ", computation_callers.size(),
+                     " callers and thus its argument value "
+                     "cannot be determined statically."));
   }
   const HloInstruction* computation_caller = computation_callers[0];
   const HloInstruction* caller_operand = computation_caller->operand(0);
   if (computation_caller->opcode() != HloOpcode::kWhile &&
       computation_caller->opcode() != HloOpcode::kCall) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "The computation ", parent_computation->name(), " is called by ",
         "instruction ", computation_caller->name(),
-        ", which is not yet supported.");
+        ", which is not yet supported."));
   }
   if (computation_caller->opcode() == HloOpcode::kWhile) {
     if (!analyses.tuple_points_to && !tuple_points_to_analysis_cache_) {
@@ -1433,7 +1432,7 @@ absl::Status HloEvaluator::HandleSetDimensionSize(
 absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
   if (!IsAlreadyEvaluated(parameter, visitor_shape_index_)) {
     if (!enable_partial_evaluation_) {
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Failed to evaluate instruction since its operands are unknown "
           "or undetermined and partial evaluation is not enabled.");
     }
@@ -1467,7 +1466,7 @@ absl::Status HloEvaluator::HandleParameter(const HloInstruction* parameter) {
 
 absl::Status HloEvaluator::HandleInfeed(const HloInstruction* infeed) {
   if (!enable_partial_evaluation_) {
-    return tsl::errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to evaluate instruction since its operands are unknown "
         "or undetermined and partial evaluation is not enabled.");
   }
@@ -2331,7 +2330,7 @@ class FftTransform {
     }
 
     // Check input-related values.
-    TF_CHECK_OK(ShapeUtil::ValidateShape(input_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(input_shape));
     if (!input_shape.IsArray()) {
       return Unimplemented("Only array input shapes are supported.");
     }
@@ -2350,7 +2349,7 @@ class FftTransform {
     }
 
     // Check output-related values.
-    TF_CHECK_OK(ShapeUtil::ValidateShape(output_shape));
+    CHECK_OK(ShapeUtil::ValidateShape(output_shape));
     if (!output_shape.IsArray()) {
       return Unimplemented("Only array output shapes are supported.");
     }
@@ -3618,8 +3617,8 @@ absl::Status HloEvaluator::HandleDynamicUpdateSlice(const HloInstruction* dus) {
   std::vector<int64_t> result_index(rank, 0);
 
   auto func = [&](absl::Span<const int64_t> update_index) {
-    std::transform(update_index.begin(), update_index.end(), start.begin(),
-                   result_index.begin(), std::plus<int64_t>());
+    absl::c_transform(update_index, start, result_index.begin(),
+                      std::plus<int64_t>());
     result.CopyElementFrom(update_literal, update_index, result_index);
     return true;
   };
@@ -3675,7 +3674,7 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
   std::optional<ParsedWhileLoop> parsed_while_loop =
       PatternMatchParseWhileLoop(while_hlo, /*precomputed_analyses=*/{});
   if (!parsed_while_loop.has_value() || parsed_while_loop->is_dynamic()) {
-    return FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot evaluate a while loop's induction variable since the loop "
         "does not match a known loop pattern or the loop is not static.");
   }
@@ -4637,7 +4636,7 @@ absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   if (is_tuple) {
     Literal tuple_result(inferred_return_shape);
     for (int64_t i = 0; i < num_args; ++i) {
-      TF_CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
+      CHECK_OK(tuple_result.MoveFrom(std::move(results[i]), {i}));
     }
     SetEvaluatedLiteralFor(reduce, std::move(tuple_result));
   } else {

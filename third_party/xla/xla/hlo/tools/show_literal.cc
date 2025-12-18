@@ -22,13 +22,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/literal.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 int main(int argc, char **argv) {
   tsl::port::InitMain(argv[0], &argc, &argv);
@@ -39,8 +38,7 @@ int main(int argc, char **argv) {
   }
 
   xla::LiteralProto literal_proto;
-  TF_CHECK_OK(
-      tsl::ReadBinaryProto(tsl::Env::Default(), argv[1], &literal_proto));
+  CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), argv[1], &literal_proto));
   xla::Literal literal = xla::Literal::CreateFromProto(literal_proto).value();
   LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
   fprintf(stderr, "%s\n", literal.ToString().c_str());

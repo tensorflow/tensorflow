@@ -43,9 +43,9 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -112,7 +112,7 @@ struct CompileOptions {
       std::vector<std::pair<std::string, OptionOverride>>;
   EnvironmentOptionOverrides env_option_overrides;
 
-  std::optional<xla::Compiler::TargetConfig> target_config;
+  std::optional<xla::Compiler::GpuTargetConfig> gpu_target_config;
 
   // Allow to modify the input MLIR / XLA program.
   // This is used to run passes on the MLIR parameter without having to clone it
@@ -121,7 +121,6 @@ struct CompileOptions {
   bool allow_in_place_mlir_modification = false;
 
   // Used to indicate the precision configuration.
-  // TODO(b/450278657): Not serialized into the proto. Should it be?
   PrecisionConfig::Precision matrix_unit_operand_precision =
       PrecisionConfig::DEFAULT;
 
@@ -215,14 +214,6 @@ struct RecvCallback {
 };
 
 struct ExecuteOptions {
-  // If true, the client must pass a single PjRtBuffer which contains all of
-  // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true. This field is
-  // deprecated.
-  bool arguments_are_tupled = false;
-  // TODO(b/430587318): Remove this deprecated field.
-  bool untuple_result = true;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,

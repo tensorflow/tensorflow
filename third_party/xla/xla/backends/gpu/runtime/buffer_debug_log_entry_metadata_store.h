@@ -58,6 +58,12 @@ class BufferDebugLogEntryMetadataStore {
     // The type of check that produced this entry.
     BufferDebugLogEntryProto::CheckType check_type;
 
+    // Profile annotation of the HLO instruction that produced this entry.
+    // This is used to identify the HLO instruction in HloModule that was under
+    // the check. We need that to be able to log the HLO instruction when
+    // a non-zero number of infs or nans were found.
+    std::string profile_annotation;
+
     std::string ToString() const {
       return absl::StrCat(
           "thunk_id: ", thunk_id.value(), ", buffer_idx: ", buffer_idx,
@@ -78,6 +84,12 @@ class BufferDebugLogEntryMetadataStore {
   // Returns the metadata for the entry with `entry_id` previously returned by
   // `AssignId`, or `std::nullopt` if the ID is invalid.
   std::optional<Metadata> GetEntryMetadata(BufferDebugLogEntryId entry_id)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
+  // Returns the metadata for the entries with `entry_ids` previously
+  // returned by `AssignId`, or `std::nullopt` if the ID is invalid.
+  std::vector<std::optional<Metadata>> GetEntryMetadataBatch(
+      absl::Span<const BufferDebugLogEntryId> entry_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Converts a list of `entries` with IDs assigned by this store to a

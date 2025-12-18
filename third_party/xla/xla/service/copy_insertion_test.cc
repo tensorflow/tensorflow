@@ -46,10 +46,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -804,9 +802,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), dual_init));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 
@@ -863,9 +861,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), outer_param));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 
@@ -930,9 +928,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), dual_init));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 

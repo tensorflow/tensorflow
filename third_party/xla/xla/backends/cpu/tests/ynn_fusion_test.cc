@@ -61,16 +61,16 @@ TEST_P(YnnFusionTest, AddAndMultiply) {
     HloModule add_and_multiply
 
     ynn_fusion {
-      %lhs = $dtype[4] parameter(0)
-      %rhs = $dtype[4] parameter(1)
-      %add = $dtype[4] add(%lhs, %rhs)
-      ROOT %mul = $in_dtype[4] multiply(%add, %add)
+      %lhs = $dtype[100] parameter(0)
+      %rhs = $dtype[100] parameter(1)
+      %add = $dtype[100] add(%lhs, %rhs)
+      ROOT %mul = $in_dtype[100] multiply(%add, %add)
     }
 
     ENTRY entry {
-      %p0 = $dtype[4] parameter(0)
-      %p1 = $dtype[4] parameter(1)
-      ROOT %fusion = $dtype[4] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
+      %p0 = $dtype[100] parameter(0)
+      %p1 = $dtype[100] parameter(1)
+      ROOT %fusion = $dtype[100] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 

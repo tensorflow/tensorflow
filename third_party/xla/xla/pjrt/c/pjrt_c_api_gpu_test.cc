@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -30,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -69,10 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 #include "tsl/platform/mem.h"
 
 namespace pjrt {
@@ -100,7 +97,7 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   // Prepares a device memory ptr on GPU.
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
   device_buffer_ptr_args.struct_size =
       PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
@@ -171,10 +168,10 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   ASSERT_EQ(to_host_error, nullptr);
   xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
-  TF_CHECK_OK(transfer_to_host.Await());
+  CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
@@ -208,15 +205,15 @@ class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
 
   size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = 0;
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -224,8 +221,9 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
-  tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
-                              size);
+  tsl::port::AlignedSizedFree(
+      args.dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
@@ -234,8 +232,8 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer_.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = size + 1;  // offset is invalid
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -379,13 +377,19 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   size_t dma_size = 1024 * 1024;
   size_t alignment = 1024 * 1024;
-  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  void* host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
+  auto host_dma_ptr_deleter =
+      absl::Cleanup([host_dma_ptr, dma_size, alignment] {
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
+      });
 
   PJRT_Client_DmaMap_Args dma_args;
   dma_args.struct_size = PJRT_Client_DmaMap_Args_STRUCT_SIZE;
   dma_args.extension_start = nullptr;
   dma_args.client = client_;
-  dma_args.data = host_dma_ptr.get();
+  dma_args.data = host_dma_ptr;
   dma_args.size = dma_size;
   PJRT_Error* dma_error = api_->PJRT_Client_DmaMap(&dma_args);
   ASSERT_EQ(dma_error, nullptr);
@@ -395,7 +399,7 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   unmap_args.struct_size = PJRT_Client_DmaUnmap_Args_STRUCT_SIZE;
   unmap_args.extension_start = nullptr;
   unmap_args.client = client_;
-  unmap_args.data = host_dma_ptr.get();
+  unmap_args.data = host_dma_ptr;
   PJRT_Error* unmap_error = api_->PJRT_Client_DmaUnmap(&unmap_args);
   ASSERT_EQ(unmap_error, nullptr);
   MakeErrorDeleter(api_)(unmap_error);
@@ -467,7 +471,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
           &set_buffer_error_args);
   ASSERT_EQ(set_buffer_error_error, nullptr);
 
-  EXPECT_THAT(buffer_out->buffer->ToLiteralSync(),
+  EXPECT_THAT(buffer_out->buffer->ToLiteral().Await(),
               absl_testing::StatusIs(absl::StatusCode::kInternal,
                                      HasSubstr(error_message)));
 
@@ -537,7 +541,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
       transfer_args.done_with_h2d_transfer, MakeEventDeleter(api_));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                          buffer_out->buffer->ToLiteralSync());
+                          buffer_out->buffer->ToLiteral().Await());
   EXPECT_EQ(literal->element_count(), 8);
   EXPECT_THAT(literal->data<uint32_t>(), ElementsAreArray(data));
 

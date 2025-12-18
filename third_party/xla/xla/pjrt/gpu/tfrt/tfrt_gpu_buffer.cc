@@ -41,10 +41,10 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -57,9 +57,9 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
@@ -384,7 +384,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
                 primitive_util::ByteWidth(on_device_shape.element_type());
             options.dims = on_device_shape.dimensions();
             options.permutation = permutation;
-            options.input_layout = TransposePlan::Striding{byte_strides};
+            options.input_striding = TransposePlan::Striding{byte_strides};
             {
               absl::MutexLock lock(client->transpose_mu_);
               absl::StatusOr<std::shared_ptr<TransposePlan>> t =
@@ -460,6 +460,13 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
 
             auto d2h_stream = device->d2h_stream();
 
+            // If we do not have a CudaEvent, we need to fall back to the host
+            // event to check readiness.
+            // TODO: Remove this once cuda events are always set/not nullptr.
+            if (device_buffer->GetCudaEvent() == nullptr) {
+              tsl::BlockUntilReady(device_buffer->ready_event());
+            }
+
             absl::Status cuda_event_wait_status =
                 WaitForEventOnStream(d2h_stream, device_buffer->GetCudaEvent());
             if (!cuda_event_wait_status.ok()) {
@@ -498,7 +505,8 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
             int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
             if (transpose != nullptr) {
               buffer = tsl::port::AlignedMalloc(
-                  unpacked_size, tsl::Allocator::kAllocatorAlignment);
+                  unpacked_size, static_cast<std::align_val_t>(
+                                     tsl::Allocator::kAllocatorAlignment));
             } else {
               buffer = literal->untyped_data();
             }
@@ -521,7 +529,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(Future<MutableLiteralBase*> literal) {
           }
           if (on_device_shape.IsArray() && !should_unpack &&
               transpose == nullptr) {
-            std::memcpy(literal->untyped_data(), buffer, byte_size);
+            std::memcpy(literal->untyped_data(), buffer, literal->size_bytes());
           }
           promise.Set(absl::OkStatus());
         });
@@ -576,7 +584,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
       promise.Set(device_buffer->definition_event().GetError());
       return;
     }
-    se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
+    se::DeviceAddressBase device_memory = device_buffer->buffer()->buffer();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
       LOG(ERROR) << "Copy raw buffer called on buffer size "
@@ -589,7 +597,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
       return;
     }
 
-    se::DeviceMemoryBase sub_buffer;
+    se::DeviceAddressBase sub_buffer;
     if (transfer_size < device_memory.size()) {
       sub_buffer = device_memory.GetByteSlice(offset, transfer_size);
     } else {
@@ -740,7 +748,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                        PjRtBuffer::ToLiteral().Await());
     // Avoid use-after-free on `literal` due to unsequenced move and use.
     Literal* literal_pointer = literal.get();
     absl::InlinedVector<int64_t, 4> byte_strides(
@@ -788,11 +797,23 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
        src_device(gpu_src_device), dst_device(gpu_dst_device),
        src_usage_event(src_usage_event.CopyRef()),
        dst_usage_event(dst_usage_event.CopyRef())]() {
+        MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
+        MarkGpuEventReadyOnExit ready_on_exit_dst(std::move(dst_usage_event));
+
+        // If the source buffer has an error, propagate it to the destination
+        // buffer.
+        if (const absl::Status* error =
+                src_definition_event.GetErrorIfPresent()) {
+          dst_definition_event.SetError(*error);
+          return;
+        }
+
         VLOG(3) << "Request to transfer D2D from "
                 << src_buffer->buffer().opaque() << " on device "
                 << src_device->id() << " to "
                 << allocated_dst_buffer->buffer().opaque() << " on device "
                 << dst_device->id();
+
         tsl::profiler::TraceMe trace([&] {
           return tsl::profiler::TraceMeEncode(
               "CopyToMemorySpace::D2D_copy",
@@ -803,26 +824,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
               });
         });
 
-        MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
-        MarkGpuEventReadyOnExit ready_on_exit_dst(std::move(dst_usage_event));
-
-        if (const absl::Status* error =
-                dst_definition_event.GetErrorIfPresent()) {
-          allocated_dst_buffer.SetError(*error);
-          dst_definition_event.SetError(*error);
-          return;
-        }
-
-        if (const absl::Status* error =
-                src_definition_event.GetErrorIfPresent()) {
-          allocated_dst_buffer.SetError(*error);
-          dst_definition_event.SetError(*error);
-          return;
-        }
-
         auto stream = dst_device->stream();
 
-        se::DeviceMemoryBase dst(allocated_dst_buffer->buffer());
+        se::DeviceAddressBase dst(allocated_dst_buffer->buffer());
         VLOG(3) << "D2D copy: " << src_buffer->buffer().opaque() << " -> "
                 << dst.opaque() << " (" << src_buffer->buffer().size()
                 << " bytes)";

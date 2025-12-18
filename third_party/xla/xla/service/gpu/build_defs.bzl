@@ -2,6 +2,7 @@
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
@@ -11,6 +12,7 @@ def get_cub_sort_kernel_types(name = ""):
     """ List of supported types for CUB sort kernels.
     """
     return [
+        "bf16",
         "f16",
         "f32",
         "f64",
@@ -26,6 +28,7 @@ def get_cub_sort_kernel_types(name = ""):
         "u16_b32",
         "u16_b64",
         "u32_b16",
+        "s32_b32",
         "u32_b32",
         "u32_b64",
         "u64_b16",
@@ -145,7 +148,7 @@ def gen_gpu_hlo_compile_tests(
         ]
 
         for backend in backends:
-            native.sh_test(
+            sh_test(
                 name = "gpu_compile_%s_%s_hlo_test" % (filename, backend),
                 srcs = [name + "_gensh"],
                 args = [

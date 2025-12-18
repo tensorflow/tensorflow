@@ -20,19 +20,20 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
 namespace tsl {
 
-TSL_LIB_GTL_DEFINE_INT_TYPE(Int8_IT, int8);
-TSL_LIB_GTL_DEFINE_INT_TYPE(UInt8_IT, uint8);
-TSL_LIB_GTL_DEFINE_INT_TYPE(Int16_IT, int16);
-TSL_LIB_GTL_DEFINE_INT_TYPE(UInt16_IT, uint16);
-TSL_LIB_GTL_DEFINE_INT_TYPE(Int32_IT, int32);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int8_IT, int8_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt8_IT, uint8_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int16_IT, int16_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt16_IT, uint16_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(Int32_IT, int32_t);
 TSL_LIB_GTL_DEFINE_INT_TYPE(Int64_IT, int64_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(UInt32_IT, uint32);
-TSL_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt32_IT, uint32_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(UInt64_IT, uint64_t);
 TSL_LIB_GTL_DEFINE_INT_TYPE(Long_IT, long);  // NOLINT
 
 template <typename IntType_Type>
@@ -252,12 +253,12 @@ TYPED_TEST(IntTypeTest, TestValueAccessor) {
   // as this code is part of a template class.  Weird syntax though.  Good news
   // is that only int_type.value<int>() is needed in most code.
   EXPECT_EQ(static_cast<int>(i), int_type.template value<int>());
-  EXPECT_EQ(static_cast<int8>(i), int_type.template value<int8>());
-  EXPECT_EQ(static_cast<int16>(i), int_type.template value<int16>());
-  EXPECT_EQ(static_cast<int32>(i), int_type.template value<int32>());
-  EXPECT_EQ(static_cast<uint32>(i), int_type.template value<uint32>());
+  EXPECT_EQ(static_cast<int8_t>(i), int_type.template value<int8_t>());
+  EXPECT_EQ(static_cast<int16_t>(i), int_type.template value<int16_t>());
+  EXPECT_EQ(static_cast<int32_t>(i), int_type.template value<int32_t>());
+  EXPECT_EQ(static_cast<uint32_t>(i), int_type.template value<uint32_t>());
   EXPECT_EQ(static_cast<int64_t>(i), int_type.template value<int64_t>());
-  EXPECT_EQ(static_cast<uint64>(i), int_type.template value<uint64>());
+  EXPECT_EQ(static_cast<uint64_t>(i), int_type.template value<uint64_t>());
   EXPECT_EQ(static_cast<long>(i), int_type.template value<long>());  // NOLINT
   static_assert(int_type.template value<int>() == static_cast<int>(i),
                 "value<Value>() failed");
@@ -289,6 +290,12 @@ TYPED_TEST(IntTypeTest, TestMove) {
   foo = NotCopyable::Make(321);
   EXPECT_EQ(321, foo.inttype);
   EXPECT_EQ(321, *foo.ptr);
+}
+
+TYPED_TEST(IntTypeTest, TestAbslStringify) {
+  TypeParam a(1);
+
+  EXPECT_EQ(absl::StrCat(a), absl::StrCat(a.value()));
 }
 
 }  // namespace tsl

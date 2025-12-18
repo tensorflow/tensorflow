@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/prefix_sum_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -63,12 +63,12 @@ class CubPrefixSumKernelCudaTest
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
   }
 
   template <typename T>
-  absl::StatusOr<se::DeviceMemory<T>> CheckNotNull(
-      se::DeviceMemory<T> device_memory, absl::string_view name) {
+  absl::StatusOr<se::DeviceAddress<T>> CheckNotNull(
+      se::DeviceAddress<T> device_memory, absl::string_view name) {
     if (device_memory.is_null()) {
       return absl::InternalError(
           absl::StrFormat("Device memory for %s is null", name));
@@ -87,9 +87,9 @@ class CubPrefixSumKernelCudaTest
 
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemory<T> device_input,
+        se::DeviceAddress<T> device_input,
         CheckNotNull(executor_->AllocateArray<T>(input.size()), "input"));
-    se::DeviceMemory<T> device_output;
+    se::DeviceAddress<T> device_output;
     if (in_place) {
       device_output = device_input;
     } else {
@@ -106,8 +106,10 @@ class CubPrefixSumKernelCudaTest
 
     TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
                                        input.size() * sizeof(input[0])));
+    // For large number of items, limit the number of threads per block to 512
+    // to avoid running out of shared memory.
     size_t num_threads_per_block =
-        std::min(size_t{1024}, absl::bit_ceil(num_items));
+        std::min(size_t{512}, absl::bit_ceil(num_items));
     // Call kernel
     TF_RETURN_IF_ERROR(
         kernel.Launch(stream_executor::ThreadDim(num_threads_per_block, 1, 1),
@@ -130,7 +132,7 @@ class CubPrefixSumKernelCudaTest
       for (int j = 0; j < num_items; ++j) {
         // We use only small values, otherwise we will get precision problems
         // with small data types.
-        input[i * num_items + j] = static_cast<T>((i + j) % 8);
+        input[i * num_items + j] = static_cast<T>((i + j) % 5);
         expected.push_back(input[i * num_items + j]);
         if (j > 0) {
           expected.back() += expected[expected.size() - 2];
@@ -146,13 +148,21 @@ class CubPrefixSumKernelCudaTest
   se::Platform* platform_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
-  std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_P(CubPrefixSumKernelCudaTest, TestPrefixSum) {
   absl::Status status;
   const auto& [primitive_type, num_rows, num_items, in_place] = GetParam();
   switch (primitive_type) {
+    case xla::BF16:
+      if (num_items > 128) {
+        GTEST_SKIP() << "Rounding errors";
+      }
+      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumBF16Kernel,
+                                             xla::bfloat16>(num_rows, num_items,
+                                                            in_place);
+      break;
     case xla::F16:
       status =
           CheckComputePrefixSumOnDevice<gpu::PrefixSumF16Kernel, xla::half>(
@@ -216,12 +226,12 @@ std::string ParametersToString(
 
 INSTANTIATE_TEST_SUITE_P(
     CubPrefixSumKernelCudaTestInstance, CubPrefixSumKernelCudaTest,
-    ::testing::Combine(::testing::ValuesIn({xla::F16, xla::F32, xla::F64,
-                                            xla::S8, xla::S16, xla::S32,
-                                            xla::S64, xla::U8, xla::U16,
-                                            xla::U32, xla::U64}),
+    ::testing::Combine(::testing::ValuesIn({xla::BF16, xla::F16, xla::F32,
+                                            xla::F64, xla::S8, xla::S16,
+                                            xla::S32, xla::S64, xla::U8,
+                                            xla::U16, xla::U32, xla::U64}),
                        ::testing::ValuesIn({1, 2, 3, 128, 511, 512}),
-                       ::testing::ValuesIn({1, 2, 3, 128, 511, 512}),
+                       ::testing::ValuesIn({1, 2, 3, 128, 511, 513}),
                        ::testing::ValuesIn({false, true})),
     ParametersToString);
 

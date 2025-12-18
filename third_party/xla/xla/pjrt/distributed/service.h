@@ -27,7 +27,7 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server_builder.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
@@ -72,7 +72,7 @@ class CoordinationServiceImpl {
 
  private:
   tsl::Env* env_ = nullptr;  // Not owned.
-  std::unique_ptr<tsl::CoordinationService> coord_service_;
+  std::unique_ptr<CoordinationService> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;

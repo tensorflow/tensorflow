@@ -59,9 +59,9 @@ Value ConvertToF32(Value v, mlir::ImplicitLocOpBuilder& b) {
     return v;
   }
   if (v.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
-    return b.create<ma::ExtFOp>(f32_ty, v);
+    return ma::ExtFOp::create(b, f32_ty, v);
   }
-  return b.create<ma::TruncFOp>(f32_ty, v);
+  return ma::TruncFOp::create(b, f32_ty, v);
 }
 
 struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
@@ -104,15 +104,15 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
         value.getType() == b.getF16Type()) {
       // Fast path for truncating F16 type.
       Value vec =
-          b.create<ml::UndefOp>(mlir::VectorType::get(2, value.getType()));
-      vec = b.create<ml::InsertElementOp>(vec, value,
-                                          b.create<ma::ConstantIntOp>(0, 8));
+          ml::UndefOp::create(b, mlir::VectorType::get(2, value.getType()));
+      vec = ml::InsertElementOp::create(b, vec, value,
+                                        ma::ConstantIntOp::create(b, 0, 8));
       const std::string cvtIntr = llvm::isa<mlir::Float8E4M3FNType>(to_ty)
                                       ? "llvm.nvvm.f16x2.to.e4m3x2.rn"
                                       : "llvm.nvvm.f16x2.to.e5m2x2.rn";
-      cvtOp = b.create<ml::CallIntrinsicOp>(b.getIntegerType(16),
-                                            b.getStringAttr(cvtIntr),
-                                            mlir::ValueRange{vec});
+      cvtOp = ml::CallIntrinsicOp::create(b, b.getIntegerType(16),
+                                          b.getStringAttr(cvtIntr),
+                                          mlir::ValueRange{vec});
     } else {
       // Other FP types get converted to F32 first.
       value = ConvertToF32(value, b);
@@ -121,16 +121,16 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
                                   : llvm::isa<mlir::Float8E4M3FNType>(to_ty)
                                       ? "llvm.nvvm.ff.to.e4m3x2.rn"
                                       : "llvm.nvvm.ff.to.e5m2x2.rn";
-      cvtOp = b.create<ml::CallIntrinsicOp>(b.getIntegerType(16),
-                                            b.getStringAttr(cvtIntr),
-                                            mlir::ValueRange{value, value});
+      cvtOp = ml::CallIntrinsicOp::create(b, b.getIntegerType(16),
+                                          b.getStringAttr(cvtIntr),
+                                          mlir::ValueRange{value, value});
     }
 
-    Value res = b.create<ml::TruncOp>(
-        b.getIntegerType(to_ty.getIntOrFloatBitWidth()), cvtOp.getResults());
+    Value res = ml::TruncOp::create(
+        b, b.getIntegerType(to_ty.getIntOrFloatBitWidth()), cvtOp.getResults());
 
     if (llvm::isa<mlir::Float4E2M1FNType>(to_ty)) {
-      return b.create<ma::BitcastOp>(to_ty, res);
+      return ma::BitcastOp::create(b, to_ty, res);
     }
 
     // Downcasting to float8 saturates the value (uses "satfinite" modifier).
@@ -138,7 +138,7 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     mlir::Type src_int_ty =
         b.getIntegerType(value.getType().getIntOrFloatBitWidth());
     return FixInfinityConversionValue(
-        b.create<ma::BitcastOp>(src_int_ty, value),
+        ma::BitcastOp::create(b, src_int_ty, value),
         mlir::cast<mlir::FloatType>(value.getType()), res, to_ty, b);
   }
 
@@ -152,11 +152,12 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
                                           mlir::ImplicitLocOpBuilder& b) {
     // Extract and discard sign bit.
     auto make_const = [&](int64_t c) {
-      return b.create<ma::ConstantIntOp>(src.getType(), c);
+      return ma::ConstantIntOp::create(b, src.getType(), c);
     };
     int sign_pos = src.getType().getIntOrFloatBitWidth() - 1;
-    Value sign_bit = b.create<ma::ShRUIOp>(src, make_const(sign_pos));
-    Value input = b.create<ma::AndIOp>(src, make_const((1ull << sign_pos) - 1));
+    Value sign_bit = ma::ShRUIOp::create(b, src, make_const(sign_pos));
+    Value input =
+        ma::AndIOp::create(b, src, make_const((1ull << sign_pos) - 1));
 
     // Values in the interval that contains all the values above the largest
     // representable in the destination type, as well as the infinity (source),
@@ -165,23 +166,25 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     int64_t upper = llvm::APFloat::getInf(src_type.getFloatSemantics())
                         .bitcastToAPInt()
                         .getZExtValue();
-    Value is_inf = b.create<ma::AndIOp>(
-        b.create<ma::CmpIOp>(ma::CmpIPredicate::ugt, input, make_const(lower)),
-        b.create<ma::CmpIOp>(ma::CmpIPredicate::ule, input, make_const(upper)));
+    Value is_inf = ma::AndIOp::create(
+        b,
+        ma::CmpIOp::create(b, ma::CmpIPredicate::ugt, input, make_const(lower)),
+        ma::CmpIOp::create(b, ma::CmpIPredicate::ule, input,
+                           make_const(upper)));
 
     // Build signed infinity result value.
     int64_t inf_val = llvm::APFloat::getInf(dst_type.getFloatSemantics())
                           .bitcastToAPInt()
                           .getZExtValue();
     Value sign_dst =
-        b.create<ma::ShLIOp>(b.create<ml::TruncOp>(dst.getType(), sign_bit),
-                             b.create<ma::ConstantIntOp>(dst.getType(), 7));
-    Value inf = b.create<ma::OrIOp>(
-        b.create<ma::ConstantIntOp>(dst.getType(), inf_val), sign_dst);
+        ma::ShLIOp::create(b, ml::TruncOp::create(b, dst.getType(), sign_bit),
+                           ma::ConstantIntOp::create(b, dst.getType(), 7));
+    Value inf = ma::OrIOp::create(
+        b, ma::ConstantIntOp::create(b, dst.getType(), inf_val), sign_dst);
 
     // Select result based on the predicate.
-    Value res = b.create<ma::SelectOp>(is_inf, inf, dst);
-    return b.create<ma::BitcastOp>(dst_type, res);
+    Value res = ma::SelectOp::create(b, is_inf, inf, dst);
+    return ma::BitcastOp::create(b, dst_type, res);
   }
 
   // Calculate the minimum raw value (represented as an integer) that would
@@ -253,24 +256,25 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
         : llvm::isa<mlir::Float8E4M3FNType>(value.getType())
             ? "llvm.nvvm.e4m3x2.to.f16x2.rn"
             : "llvm.nvvm.e5m2x2.to.f16x2.rn";
-    Value input = b.create<ml::ZExtOp>(
-        b.getIntegerType(16),
-        b.create<ma::BitcastOp>(
-            b.getIntegerType(value.getType().getIntOrFloatBitWidth()), value));
+    Value input = ml::ZExtOp::create(
+        b, b.getIntegerType(16),
+        ma::BitcastOp::create(
+            b, b.getIntegerType(value.getType().getIntOrFloatBitWidth()),
+            value));
 
     mlir::FloatType f16_ty = b.getF16Type();
-    auto cvtOp = b.create<ml::CallIntrinsicOp>(mlir::VectorType::get(2, f16_ty),
-                                               b.getStringAttr(cvtIntr),
-                                               mlir::ValueRange{input});
-    Value res = b.create<ml::ExtractElementOp>(
-        cvtOp.getResults(), b.create<ma::ConstantIntOp>(0, 8));
+    auto cvtOp = ml::CallIntrinsicOp::create(
+        b, mlir::VectorType::get(2, f16_ty), b.getStringAttr(cvtIntr),
+        mlir::ValueRange{input});
+    Value res = ml::ExtractElementOp::create(
+        b, cvtOp.getResults(), ma::ConstantIntOp::create(b, 0, 8));
     if (to_ty.getWidth() > f16_ty.getWidth()) {
-      res = b.create<ma::ExtFOp>(to_ty, res);
+      res = ma::ExtFOp::create(b, to_ty, res);
     } else if (to_ty != f16_ty) {
       if (to_ty == b.getBF16Type()) {
-        res = b.create<ma::ExtFOp>(b.getF32Type(), res);
+        res = ma::ExtFOp::create(b, b.getF32Type(), res);
       }
-      res = b.create<ma::TruncFOp>(to_ty, res);
+      res = ma::TruncFOp::create(b, to_ty, res);
     }
     return res;
   }

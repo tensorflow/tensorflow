@@ -50,7 +50,7 @@ XlaCompiledCpuFunctionThunks::XlaCompiledCpuFunctionThunks(
   TF_CHECK_OK(aot_compilation_result.status());
   // NO_CDC: aot_compilation_result is checked to be OK above.
   auto cpu_executable = std::move(*aot_compilation_result.value())
-                            .LoadExecutable(nullptr, nullptr);
+                            .LoadExecutable(/*stream_exec=*/nullptr);
 
   TF_CHECK_OK(cpu_executable.status());
   auto executable_or_err =

@@ -81,7 +81,8 @@ TEST_F(CpuNoAliasTest, Concat) {
       hlo_module.get(),
       std::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(), &alias_info,
-      [](LogicalBuffer::Color) { return /*alignment=*/1; });
+      [](LogicalBuffer::Color) { return /*alignment=*/1; },
+      BufferAssigner::Options{});
   ASSERT_EQ(status_or_buffer_assn.status(), absl::OkStatus());
 
   llvm::LLVMContext context;

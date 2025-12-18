@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -141,7 +142,7 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64 KeyHash(const absl::string_view& k) {
+uint64_t KeyHash(const absl::string_view& k) {
   return Hash64(k.data(), k.size());
 }
 }  // namespace
@@ -149,7 +150,7 @@ uint64 KeyHash(const absl::string_view& k) {
 absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
                                    const Rendezvous::Args& send_args,
                                    const Tensor& val, const bool is_dead) {
-  uint64 key_hash = KeyHash(key.FullKey());
+  uint64_t key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
 
   if (is_dead) {
@@ -158,7 +159,7 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
         "The number of dead values sent between a pair of devices.",
         "send_device", "recv_device");
     rendezvous_dead_values_sent
-        ->GetCell(string(key.src_device), string(key.dst_device))
+        ->GetCell(std::string(key.src_device), std::string(key.dst_device))
         ->IncrementBy(1);
   }
 
@@ -229,7 +230,7 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
 void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                                 const Rendezvous::Args& recv_args,
                                 Rendezvous::DoneCallback done) {
-  uint64 key_hash = KeyHash(key.FullKey());
+  uint64_t key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
   tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
 
@@ -404,8 +405,13 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     mutex_lock l(mu_);
     status_.Update(status);
   }
-  LOG_EVERY_POW_2(INFO) << "Local rendezvous is aborting with status: "
-                        << status;
+
+  // OUT_OF_RANGE implies a normal end of sequence (e.g. for tf.data),
+  // so we suppress the warning to avoid log noise.
+  if (status.code() != absl::StatusCode::kOutOfRange) {
+    LOG_EVERY_POW_2(WARNING)
+        << "Local rendezvous is aborting with status: " << status;
+  }
 
   // Keeps one Item to make sure the current rendezvous won't be destructed.
   std::unique_ptr<Item> to_delete;

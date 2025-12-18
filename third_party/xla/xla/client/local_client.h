@@ -34,12 +34,12 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/local_service.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -183,7 +183,7 @@ class LocalClient : public Client {
   // device is used.
   absl::StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const LiteralSlice& literal, int device_ordinal,
-      se::DeviceMemoryAllocator* allocator = nullptr);
+      se::DeviceAddressAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
   absl::StatusOr<GlobalDataHandle> TransferToLocalServer(
@@ -249,7 +249,7 @@ class LocalClient : public Client {
   LocalService* local_service_;
 
   absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
-      std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
       const ExecutableBuildOptions& options);
 };
 

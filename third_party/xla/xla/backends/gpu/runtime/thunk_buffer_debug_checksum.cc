@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
@@ -50,7 +52,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -146,44 +150,24 @@ absl::Status DumpBufferDebugChecksumLog(
   CHECK(hlo_module != nullptr);
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
-  se::gpu::BufferDebugLog buffer_debug_log =
-      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(
+  auto buffer_debug_log =
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_buffer.device_memory());
-  TF_ASSIGN_OR_RETURN(
-      std::vector<BufferDebugLogEntry> log_entries,
-      buffer_debug_log.ReadFromDevice<BufferDebugLogEntry>(*stream));
+  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> log_entries,
+                      buffer_debug_log.ReadFromDevice(*stream));
   BufferDebugLogProto buffer_debug_log_proto =
       metadata_store->EntriesToProto(log_entries);
 
   VLOG(1) << "read " << buffer_debug_log_proto.entries_size() << " entries";
   DumpPerExecutionProtobufToFile(*hlo_module, buffer_debug_log_proto,
                                  debug_options, "buffer_debug_log", nullptr);
-  int non_zero_float_check_modules_count = 0;
-  for (const auto& entry : buffer_debug_log_proto.entries()) {
-    if (entry.check_type() ==
-            BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS &&
-        entry.checksum() > 0) {
-      LOG(ERROR) << "Found entry with non zero float check count "
-                 << entry.checksum() << " for thunk " << entry.thunk_id()
-                 << " and execution " << entry.execution_id()
-                 << " for module: \n"
-                 << hlo_module->ToString();
-      non_zero_float_check_modules_count++;
-    }
-  }
-  if (non_zero_float_check_modules_count > 0 &&
-      hlo_module->config().debug_options().xla_gpu_detect_nan() ==
-          DebugOptions::NAN_CHECK_DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Found " << non_zero_float_check_modules_count
-               << " modules with non zero float check count";
-  }
   return absl::OkStatus();
 }
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugChecksumLogInitHandler,
     [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
-      return se::gpu::BufferDebugLog::CreateOnDevice<BufferDebugLogEntry>(
+      return se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(
                  *stream, log_buffer.device_memory())
           .status();
     },
@@ -248,16 +232,17 @@ absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
       CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
-    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-      return thunk;
-    }
-    VLOG(1) << "Wrapping with checksum thunk";
-    return WrapWithChecksumThunk(std::move(thunk), log_slice,
-                                 /*predecessor_thunk=*/*buffer_debug_init_thunk,
-                                 /*successor_thunk=*/*buffer_debug_dump_thunk,
-                                 metadata_store);
-  });
+  TF_RETURN_IF_ERROR(
+      root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+          return thunk;
+        }
+        VLOG(1) << "Wrapping with checksum thunk";
+        return WrapWithChecksumThunk(
+            std::move(thunk), log_slice,
+            /*predecessor_thunk=*/*buffer_debug_init_thunk,
+            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
+      }));
 
   ThunkSequence& thunks = root_thunk->thunks();
   thunks.reserve(thunks.size() + 2);

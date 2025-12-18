@@ -111,9 +111,10 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoords) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(1)));
   auto [device_coords, core_id] = std::move(device_core);
   ASSERT_EQ(device_coords, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id, 0);
@@ -127,23 +128,26 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsSingleHostScopedPartition) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core1,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core1,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(1)));
   auto [device_coords1, core_id1] = std::move(device_core1);
   ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id1, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core2,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(6)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core2,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(6)));
   auto [device_coords2, core_id2] = std::move(device_core2);
   ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{1, 0, 2}));
   ASSERT_EQ(core_id2, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core3,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(10)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core3,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(10)));
   auto [device_coords3, core_id3] = std::move(device_core3);
   ASSERT_EQ(device_coords3, (PjRtDeviceDimensions{2, 0, 2}));
   ASSERT_EQ(core_id3, 0);
@@ -157,23 +161,26 @@ TEST(PjRtTopologyUtilsGPUTest, GetDeviceCoordsMultipleHostScopedPartition) {
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core1,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core1,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(1)));
   auto [device_coords1, core_id1] = std::move(device_core1);
   ASSERT_EQ(device_coords1, (PjRtDeviceDimensions{0, 0, 1}));
   ASSERT_EQ(core_id1, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core2,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(6)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core2,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(6)));
   auto [device_coords2, core_id2] = std::move(device_core2);
   ASSERT_EQ(device_coords2, (PjRtDeviceDimensions{0, 1, 2}));
   ASSERT_EQ(core_id2, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto device_core3,
-                          topology_desc.LogicalDeviceOfDefaultTypeForId(
-                              xla::PjRtGlobalDeviceId(10)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_core3,
+      topology_desc.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+          xla::PjRtGlobalDeviceId(10)));
   auto [device_coords3, core_id3] = std::move(device_core3);
   ASSERT_EQ(device_coords3, (PjRtDeviceDimensions{0, 2, 2}));
   ASSERT_EQ(core_id3, 0);

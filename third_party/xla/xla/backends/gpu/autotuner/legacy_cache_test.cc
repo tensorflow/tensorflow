@@ -26,9 +26,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -100,10 +103,24 @@ class LegacyCacheTest : public ::testing::Test {
     return config;
   }
 
+  Config CreateDummyCublasFissionConfig() {
+    Config config;
+    config.codegen_backend_name = "Cublas_fission";
+    config.backend_config.PackFrom(AutotuneResult::GemmKey());
+    return config;
+  }
+
   Config CreateDummyCudnnConfig() {
     Config config;
     config.codegen_backend_name = "Cudnn";
     config.backend_config.PackFrom(stream_executor::dnn::AlgorithmProto());
+    return config;
+  }
+
+  Config CreateDummyCustomKernelFissionConfig() {
+    Config config;
+    config.codegen_backend_name = "CustomKernel_fission";
+    config.backend_config.PackFrom(AutotuneResult::CustomKernelFusionKey());
     return config;
   }
 
@@ -166,6 +183,31 @@ TEST_F(LegacyCacheTest, InsertAndLookupCublas) {
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }
 
+TEST_F(LegacyCacheTest, InsertAndLookupCublasFission) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  constexpr char kHLO[] = R"(
+HloModule test_module
+
+fused_computation {
+  param.0 = f32[] parameter(0)
+  param.1 = f32[] parameter(1)
+  ROOT add.0 = f32[] add(param.0, param.1)
+}
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion.0 = f32[] fusion(p0, p1), kind=kLoop, calls=fused_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
+  auto instr = module->entry_computation()->root_instruction();
+  Config config = CreateDummyCublasFissionConfig();
+
+  TF_ASSERT_OK(cache.Insert(instr, config));
+  EXPECT_THAT(cache.Lookup(instr), Optional(ConfigEq(config)));
+}
+
 TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {
   auto cache = LegacyCache(test_dir_, mode_, device_desc_);
   auto instr = CreateDummyInstr("hlo3");
@@ -175,9 +217,17 @@ TEST_F(LegacyCacheTest, InsertAndLookupCudnn) {
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }
 
-TEST_F(LegacyCacheTest, InsertAndLookupOther) {
+TEST_F(LegacyCacheTest, InsertAndLookupCustomKernelFission) {
   auto cache = LegacyCache(test_dir_, mode_, device_desc_);
   auto instr = CreateDummyInstr("hlo4");
+  Config config = CreateDummyCustomKernelFissionConfig();
+  TF_ASSERT_OK(cache.Insert(instr.get(), config));
+  EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
+}
+
+TEST_F(LegacyCacheTest, InsertAndLookupOther) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  auto instr = CreateDummyInstr("hlo5");
   Config config = CreateDummyBackendConfig();
 
   TF_ASSERT_OK(cache.Insert(instr.get(), config));

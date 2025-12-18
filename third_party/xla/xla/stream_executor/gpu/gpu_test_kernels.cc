@@ -59,6 +59,14 @@ absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
       .FindKernel<internal::AddI32Kernel>(platform_id);
 }
 
+absl::StatusOr<KernelLoaderSpec>
+GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
+    Platform::Id platform_id) {
+  return GpuKernelRegistry::GetGlobalRegistry()
+      .FindKernel<internal::IncrementBy5I32KernelWithCustomArgsPacking>(
+          platform_id);
+}
+
 KernelLoaderSpec GetAddI32PtxKernelSpec() {
   // PTX kernel compiled from:
   //

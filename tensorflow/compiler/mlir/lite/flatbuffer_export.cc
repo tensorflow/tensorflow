@@ -269,7 +269,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 static bool IsConst(Operation* op) {
   return isa<mlir::func::ConstantOp, mlir::arith::ConstantOp, mlir::TF::ConstOp,
              tfl::ConstOp, tfl::QConstOp, tfl::SparseConstOp,
-             tfl::SparseQConstOp, mlir::TFL::NoValueOp,
+             tfl::ExternalConstOp, tfl::SparseQConstOp, mlir::TFL::NoValueOp,
              mlir::stablehlo::ConstantOp, mlir::vhlo::ConstantOpV1>(op);
 }
 
@@ -632,6 +632,12 @@ class Translator {
   std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(
       Value value, bool can_be_deduplicated, int& index);
 
+  // Builds external buffer and external buffer group from the given value. If
+  // the value is not defined by a constant op with external buffer attributes,
+  // returns std::nullopt.
+  std::optional<BufferOffset<tflite::ExternalBuffer>> BuildExternalBuffer(
+      Value value, uint32_t external_buffer_id);
+
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
   std::optional<BufferOffset<tflite::Tensor>> BuildTensorFromType(
@@ -647,6 +653,7 @@ class Translator {
   // corresponding buffer. Emits error and returns std::nullopt on failure.
   std::optional<BufferOffset<tflite::Tensor>> BuildTensor(
       Value value, const std::string& name, unsigned buffer_idx,
+      unsigned external_buffer_id,
       const std::optional<BufferOffset<tflite::QuantizationParameters>>&
           quant_parameters);
 
@@ -858,6 +865,13 @@ class Translator {
   BufferOffset<tflite::Buffer> empty_buffer_;
 
   std::vector<BufferOffset<tflite::Buffer>> buffers_;
+
+  // External buffers
+  std::vector<BufferOffset<tflite::ExternalBuffer>> external_buffers_;
+  std::vector<BufferOffset<tflite::ExternalBufferGroup>>
+      external_buffer_groups_;
+  absl::flat_hash_map<std::string, uint32_t> external_buffer_group_map_;
+
   // Maps subgraph index and tensor name in the graph to the tensor index.
   absl::flat_hash_map<int, absl::flat_hash_map<std::string, int>>
       tensor_index_map_;
@@ -984,6 +998,44 @@ bool Translator::EstimateArithmeticCount(int64_t* count) {
 
 std::string Translator::UniqueName(mlir::Value val) {
   return std::string(name_mapper_.GetUniqueName(val));
+}
+
+std::optional<BufferOffset<tflite::ExternalBuffer>>
+Translator::BuildExternalBuffer(mlir::Value value,
+                                uint32_t external_buffer_id) {
+  if (value.getDefiningOp() == nullptr) {
+    return std::nullopt;
+  }
+  auto inst = mlir::dyn_cast<tfl::ExternalConstOp>(value.getDefiningOp());
+  if (!inst) {
+    return std::nullopt;
+  }
+  auto meta = inst.getExternalBufferAttr();
+  if (!meta) {
+    return std::nullopt;
+  }
+
+  std::string group_name = meta.getGroupName().str();
+  uint64_t offset = meta.getOffset();
+  uint64_t length = meta.getLength();
+  std::string packing = meta.getPacking().str();
+
+  uint32_t group_index = 0;
+  if (auto it = external_buffer_group_map_.find(group_name);
+      it != external_buffer_group_map_.end()) {
+    group_index = it->second;
+  } else {
+    int index = external_buffer_groups_.size();
+    external_buffer_groups_.push_back(tflite::CreateExternalBufferGroup(
+        builder_, builder_.CreateString(group_name)));
+    external_buffer_group_map_[group_name] = index;
+    group_index = index;
+  }
+
+  auto external_buffer = tflite::CreateExternalBuffer(
+      builder_, external_buffer_id, group_index, offset, length,
+      builder_.CreateString(packing));
+  return external_buffer;
 }
 
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
@@ -1241,11 +1293,13 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
       /*buffer=*/0, builder_.CreateString(name), q_params,
       /*is_variable=*/false, /*sparsity=*/0, /*shape_signature=*/0,
       /*has_rank=*/tensor_type.hasRank(),
-      variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
+      variant_params->empty() ? 0 : builder_.CreateVector(*variant_params),
+      /*external_buffer=*/0);
 }
 
 std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     Value value, const std::string& name, unsigned buffer_idx,
+    unsigned external_buffer_id,
     const std::optional<BufferOffset<tflite::QuantizationParameters>>&
         quant_parameters) {
   auto type = mlir::cast<TensorType>(value.getType());
@@ -1371,7 +1425,8 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
         /*is_variable=*/is_variable, s_params, /*shape_signature=*/0,
         /*has_rank=*/has_rank,
-        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params),
+        external_buffer_id);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
@@ -1379,7 +1434,8 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         /*is_variable=*/is_variable, s_params,
         /*shape_signature=*/builder_.CreateVector(shape_signature),
         /*has_rank=*/has_rank,
-        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
+        variant_params->empty() ? 0 : builder_.CreateVector(*variant_params),
+        external_buffer_id);
   }
 }
 
@@ -3292,27 +3348,41 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       }
     }
 
+    // External buffer id is enforced to have MSB set to 1 to distinguish from
+    // buffer index/id, with the assumption that the number of external buffers
+    // are less than 2^31.
+    uint32_t external_buffer_id =
+        (1 << 31) | static_cast<uint32_t>(external_buffers_.size());
     int buffer_index = buffers_.size();
-    // If a constant is returned as subgraph's output, this constant cannot be
-    // deduplicated.
-    const bool not_returned_by_subgraph = llvm::none_of(
-        value.getUsers(),
-        [](Operation* user) { return llvm::isa<mlir::func::ReturnOp>(user); });
+
     // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
     // make the Buffer empty apart from setting the buffer_idx=0 in the
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
-    if (value.getDefiningOp()) {
+    if (auto external_buffer_or =
+            BuildExternalBuffer(value, external_buffer_id);
+        external_buffer_or.has_value()) {
+      buffer_index = 0;
+      external_buffers_.push_back(*external_buffer_or);
+    } else if (value.getDefiningOp()) {
+      // If a constant is returned as subgraph's output, this constant cannot be
+      // deduplicated.
+      const bool not_returned_by_subgraph =
+          llvm::none_of(value.getUsers(), [](Operation* user) {
+            return llvm::isa<mlir::func::ReturnOp>(user);
+          });
       auto buffer_or =
           BuildBuffer(value, not_returned_by_subgraph, buffer_index);
       if (!buffer_or) return false;
+      external_buffer_id = 0;
       buffers_.push_back(*buffer_or);
     } else {
+      external_buffer_id = 0;
       buffers_.push_back(empty_buffer_);
     }
 
-    auto tensor_or =
-        BuildTensor(value, tensor_name, buffer_index, quant_parameters);
+    auto tensor_or = BuildTensor(value, tensor_name, buffer_index,
+                                 external_buffer_id, quant_parameters);
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
 
@@ -4192,11 +4262,15 @@ std::optional<std::string> Translator::TranslateInternal() {
   }
   auto signature_defs = CreateSignatureDefs(signature_defs_vec);
 
-  auto model = tflite::CreateModel(builder_, TFLITE_SCHEMA_VERSION,
-                                   builder_.CreateVector(opcodes_),
-                                   builder_.CreateVector(subgraphs_),
-                                   description, builder_.CreateVector(buffers_),
-                                   metadata_buffer, *metadata, *signature_defs);
+  bool has_external_buffers = !external_buffers_.empty();
+  auto model = tflite::CreateModel(
+      builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(opcodes_),
+      builder_.CreateVector(subgraphs_), description,
+      builder_.CreateVector(buffers_), metadata_buffer, *metadata,
+      *signature_defs,
+      has_external_buffers ? builder_.CreateVector(external_buffer_groups_) : 0,
+      has_external_buffers ? builder_.CreateVector(external_buffers_) : 0);
+
   tflite::FinishModelBuffer(builder_, model);
   // There is a limit of 2GB for a flatbuffer.
   bool flatbuffer_limit_exceeded = builder_.GetSize() > flatbuffer_size_max;

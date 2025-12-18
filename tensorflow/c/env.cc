@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"

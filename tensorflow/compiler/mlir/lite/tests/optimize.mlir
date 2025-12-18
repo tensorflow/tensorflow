@@ -4802,23 +4802,6 @@ func.func @RealDivWithConstDivisor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: return %0 : tensor<2x3xf32>
 }
 
-// When the const tensor cst is very large, `1 / cst` div introduced by
-// div->mul conversion may not be folded and the `1 / cst` div may trigger
-// the div->mul conversion again.
-// This test checks the div->mul conversion will not be done infinitively.
-//
-// CHECK-LABEL: @RealDivWithLargeSizeConstDivisor
-func.func @RealDivWithLargeSizeConstDivisor(%arg0: tensor<1x16x4096x4096xf32>) -> tensor<1x16x4096x4096xf32> {
-  %cst = arith.constant dense<5.000000e+01> : tensor<1x16x4096x4096xf32>
-  %1 = tfl.div %arg0, %cst {fused_activation_function = "NONE"} : tensor<1x16x4096x4096xf32>
-  func.return %1 : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[CST0:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-NEXT: %[[CST1:.*]] = arith.constant dense<5.000000e+01> : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[DIV:.*]] = tfl.div(%[[CST0]], %[[CST1]]) <{fused_activation_function = "NONE"}> : (tensor<f32>, tensor<1x16x4096x4096xf32>) -> tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[DIV]] {fused_activation_function = "NONE"} : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: return %[[MUL]] : tensor<1x16x4096x4096xf32>
-}
-
 //CHECK-LABEL: @PushTransposeThroughSqueezeNoDims
 func.func @PushTransposeThroughSqueezeNoDims(%arg0: tensor<1x1x2x3xf32>) -> (tensor<3x2xf32>) {
   %cst = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>

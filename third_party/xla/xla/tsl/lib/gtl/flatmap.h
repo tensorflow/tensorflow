@@ -133,7 +133,7 @@ class FlatMap {
     iterator(Bucket* b, Bucket* end) : b_(b), end_(end), i_(0) { SkipUnused(); }
 
     // Make iterator pointing exactly at ith element in b, which must exist.
-    iterator(Bucket* b, Bucket* end, uint32 i) : b_(b), end_(end), i_(i) {
+    iterator(Bucket* b, Bucket* end, uint32_t i) : b_(b), end_(end), i_(i) {
       FillValue();
     }
 
@@ -160,7 +160,7 @@ class FlatMap {
     Bucket* b_;
     Bucket* end_;
     char space_ alignas(value_type)[sizeof(value_type)];
-    uint32 i_;
+    uint32_t i_;
 
     pointer val() { return reinterpret_cast<pointer>(space_); }
     void FillValue() { new (space_) value_type(b_->key(i_), b_->val(i_)); }
@@ -192,7 +192,7 @@ class FlatMap {
 
     const_iterator() : rep_() {}
     const_iterator(Bucket* start, Bucket* end) : rep_(start, end) {}
-    const_iterator(Bucket* b, Bucket* end, uint32 i) : rep_(b, end, i) {}
+    const_iterator(Bucket* b, Bucket* end, uint32_t i) : rep_(b, end, i) {}
 
     reference operator*() const { return *rep_.val(); }
     pointer operator->() const { return rep_.val(); }
@@ -321,7 +321,7 @@ class FlatMap {
   // Bucket stores kWidth <marker, key, value> triples.
   // The data is organized as three parallel arrays to reduce padding.
   struct Bucket {
-    uint8 marker[Rep::kWidth];
+    uint8_t marker[Rep::kWidth];
 
     // Wrap keys and values in union to control construction and destruction.
     union Storage {
@@ -333,27 +333,27 @@ class FlatMap {
       ~Storage() {}
     } storage;
 
-    Key& key(uint32 i) {
+    Key& key(uint32_t i) {
       DCHECK_GE(marker[i], 2);
       return storage.key[i];
     }
-    Val& val(uint32 i) {
+    Val& val(uint32_t i) {
       DCHECK_GE(marker[i], 2);
       return storage.val[i];
     }
     template <typename V>
-    void InitVal(uint32 i, V&& v) {
+    void InitVal(uint32_t i, V&& v) {
       new (&storage.val[i]) Val(std::forward<V>(v));
     }
-    void Destroy(uint32 i) {
+    void Destroy(uint32_t i) {
       storage.key[i].Key::~Key();
       storage.val[i].Val::~Val();
     }
-    void MoveFrom(uint32 i, Bucket* src, uint32 src_index) {
+    void MoveFrom(uint32_t i, Bucket* src, uint32_t src_index) {
       new (&storage.key[i]) Key(std::move(src->storage.key[src_index]));
       new (&storage.val[i]) Val(std::move(src->storage.val[src_index]));
     }
-    void CopyFrom(uint32 i, Bucket* src, uint32 src_index) {
+    void CopyFrom(uint32_t i, Bucket* src, uint32_t src_index) {
       new (&storage.key[i]) Key(src->storage.key[src_index]);
       new (&storage.val[i]) Val(src->storage.val[src_index]);
     }

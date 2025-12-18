@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -40,10 +39,6 @@ struct OtherTestTrait {
 struct StaticTestTrait {
   using Type = int;
 };
-
-using tsl::testing::IsOk;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 TEST(PlatformObjectRegistryTest, RegisterObject) {
   PlatformObjectRegistry registry;

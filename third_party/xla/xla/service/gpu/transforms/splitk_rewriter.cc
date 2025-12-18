@@ -56,6 +56,8 @@ struct DotDimensions {
   int64_t m;  // lhs non-contracting dimensions
   int64_t n;  // rhs non-contracting dimensions
   int64_t k;  // contracting dimensions
+  // LHS and RHS element sizes, after going up the chain of elementwise
+  // operations. That approximates what will be fused.
   int64_t lhs_element_bits;
   int64_t rhs_element_bits;
   int64_t acc_element_bits;
@@ -228,14 +230,13 @@ HloInstruction* PadInstruction(HloInstruction* instr, int64_t dimension_idx,
 }
 
 // Returns the padded K dimension so that it is a multiple of split_k and 16B.
-int64_t GetPaddedK(HloInstruction& dot, int64_t k, int64_t split_k) {
+int64_t GetPaddedK(HloInstruction& dot, int64_t split_k) {
+  DotDimensions dims = GetDotDimensions(&dot);
   const int64_t alignment_in_bits = 16 * 8;
-  int64_t min_element_size_in_bits = alignment_in_bits;
-  for (const HloInstruction* p : dot.parent()->parameter_instructions()) {
-    min_element_size_in_bits = std::min(
-        min_element_size_in_bits, ShapeUtil::ElementSizeInBits(p->shape()));
-  }
-  return RoundUpTo(k, split_k * alignment_in_bits / min_element_size_in_bits);
+  int64_t min_element_size_in_bits = std::min(
+      {alignment_in_bits, dims.lhs_element_bits, dims.rhs_element_bits});
+  return RoundUpTo(dims.k,
+                   split_k * alignment_in_bits / min_element_size_in_bits);
 }
 
 // The contracting dimension index becomes new batch (split) dimension, and all
@@ -305,8 +306,7 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
       src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0);
   const int64_t rhs_k_idx =
       src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0);
-  const int64_t padded_k = GetPaddedK(
-      *src_dot, src_dot->operand(0)->shape().dimensions(lhs_k_idx), split_k);
+  const int64_t padded_k = GetPaddedK(*src_dot, split_k);
   // The operands' K dimension are split into [split_k, K/split_k] (shifting
   // right all the dimensions after it).
   HloInstruction* lhs =

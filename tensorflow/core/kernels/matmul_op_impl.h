@@ -51,7 +51,6 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_util.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"

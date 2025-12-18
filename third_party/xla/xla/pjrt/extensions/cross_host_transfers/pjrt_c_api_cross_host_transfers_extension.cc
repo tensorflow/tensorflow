@@ -16,13 +16,16 @@ limitations under the License.
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -110,7 +113,8 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
              absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
     if (!recv_state.ok()) {
       auto error = new PJRT_Error{recv_state.status()};
-      return notifier(error, nullptr, nullptr, 0, user_arg);
+      notifier(error, nullptr, nullptr, 0, user_arg);
+      return;
     }
     auto& descriptors = recv_state->descriptors;
     std::vector<size_t> descriptors_sizes;
@@ -123,11 +127,77 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
       descriptors_sizes.push_back(
           descriptors[i].serialized_descriptors.front().size());
     }
-    return notifier(nullptr, serialized_descriptors.data(),
-                    descriptors_sizes.data(), descriptors.size(), user_arg);
+    notifier(nullptr, serialized_descriptors.data(), descriptors_sizes.data(),
+             descriptors.size(), user_arg);
   };
 }
 }  // namespace
+
+PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
+    const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier) {
+  using CrossHostRecvNotifierFunction =
+      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
+  auto notifier_function = new CrossHostRecvNotifierFunction(
+      [cpp_notifier = std::move(cpp_notifier), c_api](
+          PJRT_Error* error, const char** serialized_descriptors,
+          size_t* descriptors_sizes, size_t num_descriptors) {
+        if (error != nullptr) {
+          absl::Status state = ::pjrt::PjrtErrorToStatus(error, c_api);
+          return cpp_notifier(std::move(state));
+        }
+        xla::PjRtCrossHostRecvState state;
+        state.descriptors.reserve(num_descriptors);
+        for (int i = 0; i < num_descriptors; ++i) {
+          xla::PjRtCrossHostRecvDescriptors descriptors;
+          descriptors.serialized_descriptors.push_back(
+              std::string(serialized_descriptors[i], descriptors_sizes[i]));
+          state.descriptors.push_back(std::move(descriptors));
+        }
+
+        // TODO(emilyaf): Support cancellation.
+        xla::PjRtCrossHostSendCancelNotifier cancel_notifier =
+            [](absl::string_view, absl::Status,
+               std::function<void(absl::Status)>) {
+              LOG(FATAL) << "MakeCrossHostReceiveBuffers: Cancellation is not "
+                            "supported in PJRT C API.";
+            };
+        state.cancel_notifier = cancel_notifier;
+        return cpp_notifier(std::move(state));
+      });
+  return PJRT_Transfers_CrossHostRecvNotifierInfo{
+      /*user_arg=*/notifier_function,
+      /*notifier=*/
+      [](PJRT_Error* error, const char** serialized_descriptors,
+         size_t* descriptors_sizes, size_t num_descriptors, void* user_arg) {
+        CrossHostRecvNotifierFunction* notifier_fn =
+            reinterpret_cast<CrossHostRecvNotifierFunction*>(user_arg);
+        (*notifier_fn)(error, serialized_descriptors, descriptors_sizes,
+                       num_descriptors);
+        delete notifier_fn;
+      }};
+}
+
+PJRT_Transfers_CrossHostRemoteSendCallbackInfo
+CppCrossHostRemoteSendCallbackToC(
+    const PJRT_Api* c_api, xla::PjRtBuffer::RemoteSendCallback cpp_callback) {
+  using RemoteSendCallbackFunction =
+      std::function<void(PJRT_Error * error, bool sends_were_enqueued)>;
+  auto on_done_function = new RemoteSendCallbackFunction(
+      [cpp_callback = std::move(cpp_callback), c_api](
+          PJRT_Error* error, bool sends_were_enqueued) {
+        absl::Status status = ::pjrt::PjrtErrorToStatus(error, c_api);
+        cpp_callback(status, sends_were_enqueued);
+      });
+  return PJRT_Transfers_CrossHostRemoteSendCallbackInfo{
+      /*user_arg=*/on_done_function,
+      /*on_done=*/
+      [](PJRT_Error* error, bool sends_were_enqueued, void* user_arg) {
+        RemoteSendCallbackFunction* on_done_fn =
+            reinterpret_cast<RemoteSendCallbackFunction*>(user_arg);
+        (*on_done_fn)(error, sends_were_enqueued);
+        delete on_done_fn;
+      }};
+}
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args* args) {
@@ -163,9 +233,14 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
       args->serialized_descriptor, args->serialized_descriptor_size);
   xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
 
-  // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
-      [](absl::Status status, bool sends_were_enqueued) { CHECK_OK(status); };
+      [user_arg = args->on_done.user_arg, on_done = args->on_done.on_done](
+          absl::Status status, bool sends_were_enqueued) {
+        auto error = new PJRT_Error{status};
+        on_done(error, sends_were_enqueued, user_arg);
+        delete error;
+      };
+
   args->buffer->buffer->CopyToRemoteDevice(descriptor_future, on_done);
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -59,13 +59,12 @@ class ComputeConstantTest : public ::testing::Test {
     if (client_type == ClientType::kLocal) {
       absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateLocalClient(platform);
-      TF_CHECK_OK(result.status())
-          << "could not create LocalClient for testing";
+      CHECK_OK(result.status()) << "could not create LocalClient for testing";
       return result.value();
     } else if (client_type == ClientType::kCompileOnly) {
       absl::StatusOr<Client*> result =
           ClientLibrary::GetOrCreateCompileOnlyClient(platform);
-      TF_CHECK_OK(result.status())
+      CHECK_OK(result.status())
           << "could not create CompileOnlyClient for testing";
       return result.value();
     }

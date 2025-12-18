@@ -35,9 +35,9 @@ WeightedPicker::WeightedPicker(int N) {
   }
 
   // Initialize the levels
-  level_ = new int32*[num_levels_];
+  level_ = new int32_t*[num_levels_];
   for (int l = 0; l < num_levels_; l++) {
-    level_[l] = new int32[LevelSize(l)];
+    level_[l] = new int32_t[LevelSize(l)];
   }
 
   SetAllWeights(1);
@@ -50,9 +50,9 @@ WeightedPicker::~WeightedPicker() {
   delete[] level_;
 }
 
-static int32 UnbiasedUniform(SimplePhilox* r, int32_t n) {
+static int32_t UnbiasedUniform(SimplePhilox* r, int32_t n) {
   CHECK_LE(0, n);
-  const uint32 range = ~static_cast<uint32>(0);
+  const uint32_t range = ~static_cast<uint32_t>(0);
   if (n == 0) {
     return r->Rand32() * n;
   } else if (0 == (n & (n - 1))) {
@@ -64,8 +64,8 @@ static int32 UnbiasedUniform(SimplePhilox* r, int32_t n) {
     // Rand32's output is uniform in the half-open interval [0, 2^{32}).
     // For any interval [m,n), the number of elements in it is n-m.
 
-    uint32 rem = (range % n) + 1;
-    uint32 rnd;
+    uint32_t rem = (range % n) + 1;
+    uint32_t rnd;
 
     // rem = ((2^{32}-1) \bmod n) + 1
     // 1 <= rem <= n
@@ -145,7 +145,7 @@ void WeightedPicker::set_weight(int index, int32_t weight) {
 
 void WeightedPicker::SetAllWeights(int32_t weight) {
   // Initialize leaves
-  int32* leaves = level_[num_levels_ - 1];
+  int32_t* leaves = level_[num_levels_ - 1];
   for (int i = 0; i < N_; i++) leaves[i] = weight;
   for (int i = N_; i < LevelSize(num_levels_ - 1); i++) leaves[i] = 0;
 
@@ -153,11 +153,11 @@ void WeightedPicker::SetAllWeights(int32_t weight) {
   RebuildTreeWeights();
 }
 
-void WeightedPicker::SetWeightsFromArray(int N, const int32* weights) {
+void WeightedPicker::SetWeightsFromArray(int N, const int32_t* weights) {
   Resize(N);
 
   // Initialize leaves
-  int32* leaves = level_[num_levels_ - 1];
+  int32_t* leaves = level_[num_levels_ - 1];
   for (int i = 0; i < N_; i++) leaves[i] = weights[i];
   for (int i = N_; i < LevelSize(num_levels_ - 1); i++) leaves[i] = 0;
 
@@ -167,8 +167,8 @@ void WeightedPicker::SetWeightsFromArray(int N, const int32* weights) {
 
 void WeightedPicker::RebuildTreeWeights() {
   for (int l = num_levels_ - 2; l >= 0; l--) {
-    int32* level = level_[l];
-    int32* children = level_[l + 1];
+    int32_t* level = level_[l];
+    int32_t* children = level_[l + 1];
     for (int i = 0; i < LevelSize(l); i++) {
       level[i] = children[2 * i] + children[2 * i + 1];
     }
@@ -202,8 +202,8 @@ void WeightedPicker::Resize(int new_size) {
   // O(N) regardless.
   assert(new_size > N_);
   WeightedPicker new_picker(new_size);
-  int32* dst = new_picker.level_[new_picker.num_levels_ - 1];
-  int32* src = this->level_[this->num_levels_ - 1];
+  int32_t* dst = new_picker.level_[new_picker.num_levels_ - 1];
+  int32_t* src = this->level_[this->num_levels_ - 1];
   memcpy(dst, src, sizeof(dst[0]) * N_);
   memset(dst + N_, 0, sizeof(dst[0]) * (new_size - N_));
   new_picker.RebuildTreeWeights();

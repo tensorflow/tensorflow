@@ -24,6 +24,7 @@ cc_binary(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:config",
     ],
 )
 
@@ -39,9 +40,9 @@ bitcode_library(
         "oclc/inc/*.h",
     ]),
     file_specific_flags = {
-        "native_logF.cl": "-fapprox-func",
-        "native_expF.cl": "-fapprox-func",
-        "sqrtF.cl": "-cl-fp32-correctly-rounded-divide-sqrt",
+        "native_logF.cl": ["-fapprox-func"],
+        "native_expF.cl": ["-fapprox-func"],
+        "sqrtF.cl": ["-cl-fp32-correctly-rounded-divide-sqrt"],
     },
 )
 
@@ -57,6 +58,6 @@ bitcode_library(
         "oclc/inc/*.h",
     ]),
     file_specific_flags = {
-        "gaaf.cl": "-munsafe-fp-atomics",
+        "gaaf.cl": ["-munsafe-fp-atomics"],
     },
 )

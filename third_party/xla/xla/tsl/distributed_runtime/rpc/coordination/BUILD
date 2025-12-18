@@ -1,5 +1,4 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -24,11 +23,12 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:protobuf",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 cc_library(
@@ -45,9 +45,9 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/protobuf:coordination_service_cc_grpc_proto",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )

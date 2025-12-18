@@ -401,8 +401,14 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
   auto instr_shape = contraction->shape();
-  int64_t rank_difference =
-      new_shape.dimensions().size() - instr_shape.dimensions().size();
+  int64_t rank_difference = 0;
+  // Since the absl APIs return unsigned dimension sizes, compute the rank
+  // difference only when LHS > RHS. Performing an unconditional subtraction
+  // could cause an unsigned underflow.
+  if (new_shape.dimensions().size() > instr_shape.dimensions().size()) {
+    rank_difference =
+        new_shape.dimensions().size() - instr_shape.dimensions().size();
+  }
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -446,8 +452,8 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   if (operand_dims.size() > instr_dims.size()) {
     return false;
   }
-  int operand_idx = operand_dims.size() - 1;
-  int instr_idx = instr_dims.size() - 1;
+  int operand_idx = static_cast<int>(operand_dims.size()) - 1;
+  int instr_idx = static_cast<int>(instr_dims.size()) - 1;
   for (; operand_idx >= 0; --operand_idx, --instr_idx) {
     if (operand_dims[operand_idx] != 1 &&
         operand_dims[operand_idx] != instr_dims[instr_idx]) {
@@ -536,8 +542,8 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
 
   // Supported contraction is only in one of last two dimensions.
-  if (lhs_dim_k < lhs_shape.dimensions().size() - 2 ||
-      rhs_dim_k < rhs_shape.dimensions().size() - 2) {
+  if (lhs_dim_k + 2 < lhs_shape.dimensions().size() ||
+      rhs_dim_k + 2 < rhs_shape.dimensions().size()) {
     return false;
   }
 
@@ -632,8 +638,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     BackendConfig backend_config;
     OneDnnMatMulConfig* matmul_config =
         backend_config.mutable_onednn_matmul_config();
-    bool transpose_a = (lhs_dim_k != lhs_shape.dimensions().size() - 1);
-    bool transpose_b = (rhs_dim_k != rhs_shape.dimensions().size() - 2);
+    bool transpose_a = (lhs_dim_k + 1 != lhs_shape.dimensions().size());
+    bool transpose_b = (rhs_dim_k + 2 != rhs_shape.dimensions().size());
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));

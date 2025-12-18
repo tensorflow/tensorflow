@@ -39,6 +39,7 @@ Float8e4m3b11fnuz = _create_dtype_wrapper(
 Float8e5m2fnuz = _create_dtype_wrapper(
     "Float8e5m2fnuz", _dtypes.float8_e5m2fnuz
 )
+Float4e2m1fn = _create_dtype_wrapper("Float4e2m1fn", _dtypes.float4_e2m1fn)
 Float16 = _create_dtype_wrapper("Float16", _dtypes.float16)
 Float32 = _create_dtype_wrapper("Float32", _dtypes.float32)
 Float64 = _create_dtype_wrapper("Float64", _dtypes.float64)

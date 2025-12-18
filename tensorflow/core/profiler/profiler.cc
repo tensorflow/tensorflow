@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>

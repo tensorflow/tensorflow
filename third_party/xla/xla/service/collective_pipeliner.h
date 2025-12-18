@@ -67,6 +67,10 @@ class CollectivePipeliner : public HloModulePass {
   // created.
   using HloPostprocessor = std::function<absl::Status(
       HloInstruction* instr, HloInstruction* new_while_instr)>;
+  using WhileLoopPostprocessor =
+      std::function<absl::Status(HloInstruction* while_loop)>;
+  using AdditionalChainStartOpFinder =
+      std::function<std::optional<HloInstruction*>(HloInstruction*)>;
 
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -99,6 +103,11 @@ class CollectivePipeliner : public HloModulePass {
     // pipelined. The control dependencies will be dropped when the operation is
     // pipelined. This is currently only used to support kBackward pipelining.
     bool should_allow_control_dependencies = false;
+    // Function to find an additional operation to start the operand chain from.
+    // If set, this function will be called to discover additional starting
+    // points for the operand chain (e.g., DynamicSlice operations through
+    // formatting ops).
+    AdditionalChainStartOpFinder additional_chain_start_op_finder = nullptr;
     // TODO(b/399476667): Consolidate these postprocessing functions.
     HloPostprocessor postprocess_backward_peeled_op;
     HloPostprocessor postprocess_backward_rotated_op;
@@ -108,7 +117,13 @@ class CollectivePipeliner : public HloModulePass {
     bool should_add_loop_invariant_op_in_chain = false;
     // Postprocessing hook which runs for every successfully pipelined op.
     HloPostprocessor postprocess_pipelined_ops;
-    int64_t collective_size_threshold_to_stop_sinking = INT64_MAX;
+    int64_t collective_size_threshold_to_delay_sinking = INT64_MAX;
+    bool delay_sinking_large_collectives = true;
+    // When cloning collectives, use a unique channel id for each clone.
+    bool unique_channel_id = true;
+    // Postprocessing hook which runs for every successfully transformed while
+    // loop.
+    WhileLoopPostprocessor postprocess_transformed_while_loop;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
@@ -155,7 +170,7 @@ class CollectivePipeliner : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const Config config_;
+  Config config_;
 };
 
 }  // namespace xla

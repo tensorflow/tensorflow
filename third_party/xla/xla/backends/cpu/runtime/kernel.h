@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/runtime/work_group.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 
@@ -41,7 +41,7 @@ class Kernel {
   // A struct to report completion of the kernel execution.
   using LaunchEvent = tsl::Chain;
 
-  using DeviceMemoryBase = stream_executor::DeviceMemoryBase;
+  using DeviceAddressBase = stream_executor::DeviceAddressBase;
 
   // Virtual base class that owns the function behind the host kernel. It can be
   // a function in a jit-compiled LLVM module or simply a pointer to the
@@ -74,7 +74,7 @@ class Kernel {
   // Launches the kernel on the current thread by iterating over all workgroups
   // in `num_workgroups` and calling the kernel function.
   absl::Status Launch(const NumWorkGroups& num_workgroups,
-                      absl::Span<const DeviceMemoryBase> buffers) const;
+                      absl::Span<const DeviceAddressBase> buffers) const;
   absl::Status Launch(const NumWorkGroups& num_workgroups,
                       absl::Span<const XLA_CPU_KernelArg> args) const;
 
@@ -86,7 +86,7 @@ class Kernel {
   // get the number of tasks that are expected to be completed.
   tsl::AsyncValueRef<LaunchEvent> Launch(
       const NumWorkGroups& num_workgroups,
-      absl::Span<const DeviceMemoryBase> buffers,
+      absl::Span<const DeviceAddressBase> buffers,
       const Eigen::ThreadPoolDevice* device) const;
 
   tsl::AsyncValueRef<LaunchEvent> Launch(

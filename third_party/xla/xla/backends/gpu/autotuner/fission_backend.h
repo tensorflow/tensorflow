@@ -23,13 +23,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -44,17 +45,17 @@ namespace xla::gpu {
 class FissionBackend : public GpuCodegenBackend {
  public:
   FissionBackend(const DebugOptions* debug_options, Compiler* compiler,
-                 const Compiler::TargetConfig* target_config,
+                 const Compiler::GpuTargetConfig* target_config,
                  std::unique_ptr<GpuCodegenBackend> backend,
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
-                 SymbolicExprContext* symbolic_expr_context,
+                 mlir::MLIRContext* mlir_context,
                  stream_executor::StreamExecutor* stream_executor = nullptr)
       : GpuCodegenBackend(absl::StrCat(backend->name(), "_fission"),
                           debug_options, compiler, target_config,
                           stream_executor),
         rewriter_pipeline_(std::move(rewriter_pipeline)),
         codegen_backend_(std::move(backend)),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
   ~FissionBackend() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -80,7 +81,7 @@ class FissionBackend : public GpuCodegenBackend {
 
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace xla::gpu

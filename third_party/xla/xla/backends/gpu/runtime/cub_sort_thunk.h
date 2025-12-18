@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -38,11 +38,11 @@ namespace gpu {
 class CubSortRunnerInterface {
  public:
   virtual ~CubSortRunnerInterface() = default;
-  virtual absl::Status Run(se::DeviceMemoryBase input_keys,
-                           se::DeviceMemoryBase input_values,
-                           se::DeviceMemoryBase output_keys,
-                           se::DeviceMemoryBase output_values,
-                           se::DeviceMemoryBase scratch, bool descending,
+  virtual absl::Status Run(se::DeviceAddressBase input_keys,
+                           se::DeviceAddressBase input_values,
+                           se::DeviceAddressBase output_keys,
+                           se::DeviceAddressBase output_values,
+                           se::DeviceAddressBase scratch, bool descending,
                            int64_t batch_size, se::Stream* stream) = 0;
   virtual absl::Status Run(const Thunk::ExecuteParams& params,
                            const class CubSortThunk* thunk) = 0;
@@ -67,6 +67,8 @@ class CubSortThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);
   }
+
+  BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<CubSortThunk>> FromProto(
       ThunkInfo thunk_info, const CubSortThunkProto& proto,

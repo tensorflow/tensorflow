@@ -19,27 +19,29 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/triton.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
+using ::mlir::MLIRContext;
+
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, symbolic_expr_context));
+      debug_options, compiler, target_config, mlir_context));
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor, debug_options, compiler, target_config));
   return backends;
@@ -48,8 +50,7 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForROCm(
 std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForROCm(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::TargetConfig* target_config,
-    SymbolicExprContext* symbolic_expr_context) {
+    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
   return {};
 }
 

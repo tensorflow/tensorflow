@@ -1,0 +1,41 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "absl/base/no_destructor.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
+#include "xla/backends/profiler/gpu/cuda_version_variants.h"
+
+namespace xla {
+namespace profiler {
+namespace cuda_versions {
+
+// Previous impacted version is 12.0, CBid supported here are [701, 782)
+const CbidCategoryMap& GetExtraCallbackIdCategories12080() {
+  if (GetSafeCudaVersion() < 12080) {
+    return EmptyCallbackIdCategories();
+  }
+  static const absl::NoDestructor<CbidCategoryMap> kCbidCategoryMap({
+      {CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode /* 712 */,
+       CbidCategory::kGraphNode},
+      {CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2 /* 723 */,
+       CbidCategory::kGraphNode},
+  });
+  return *kCbidCategoryMap;
+}
+
+}  // namespace cuda_versions
+
+}  // namespace profiler
+}  // namespace xla

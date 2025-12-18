@@ -37,10 +37,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -146,7 +145,7 @@ bool BatchNormExpanderVisitor::Run(HloComputation* computation,
       /*rewrite_training_op=*/rewrite_training_op,
       /*rewrite_inference_op=*/rewrite_inference_op,
       /*rewrite_grad_op=*/rewrite_grad_op);
-  TF_CHECK_OK(computation->Accept(&visitor));
+  CHECK_OK(computation->Accept(&visitor));
   return visitor.changed();
 }
 
@@ -294,7 +293,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     }
     tuple->set_sharding(sharding);
   }
-  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
+  CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
   return absl::OkStatus();
 }
 
@@ -386,7 +385,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     }
     shifted_normalized->set_sharding(sharding);
   }
-  TF_CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
+  CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
   return absl::OkStatus();
 }
 
@@ -576,7 +575,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     tuple->set_sharding(sharding);
   }
 
-  TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
+  CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
 
   return absl::OkStatus();
 }

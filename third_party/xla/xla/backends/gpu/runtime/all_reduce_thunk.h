@@ -17,15 +17,20 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
@@ -37,8 +42,7 @@ struct AllReduceConfig {
   ReductionKind reduction_kind;
 };
 
-template <typename HloInstType>
-AllReduceConfig GetAllReduceConfigInst(HloInstType* inst);
+AllReduceConfig GetAllReduceConfigInst(const HloAllReduceInstructionBase* inst);
 
 // Thunk that performs a NCCL-based All-Reduce or Reduce-Scatter among CUDA
 // GPU-based replicas.
@@ -47,6 +51,10 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
   AllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
                                   AllReduceConfig config,
                                   std::vector<Buffer> buffers, bool is_sync);
+  AllReduceReduceScatterThunkBase(
+      Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
+      std::vector<Buffer> buffers,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   const CollectiveConfig& config() const override { return config_.config; }
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
@@ -64,11 +72,18 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
 
 class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
  public:
-  AllReduceStartThunk(ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-                      std::vector<Buffer> buffers,
-                      bool p2p_memcpy_enabled = false);
+  AllReduceStartThunk(
+      ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
+      std::vector<Buffer> buffers,
+      std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
+      bool p2p_memcpy_enabled = false);
+  AllReduceStartThunk(
+      ThunkInfo thunk_info, const AllReduceConfig& config,
+      std::vector<Buffer> buffers,
+      std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
-  static const char* GetHloOpName() { return "all-reduce-start"; }
+  static absl::string_view GetHloOpName() { return "all-reduce-start"; }
 
   static absl::Status CheckImplementable(const HloAllReduceInstruction* inst,
                                          int64_t replica_count,
@@ -77,17 +92,24 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
 
-  absl::Status Prepare(const PrepareParams& params,
-                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<AllReduceStartThunk>> FromProto(
+      ThunkInfo thunk_info, const AllReduceStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 
  private:
-  CollectiveKernelThunk collective_kernel_thunk_;
+  std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------
@@ -101,7 +123,7 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
                           std::vector<Buffer> buffers,
                           bool p2p_memcpy_enabled = false);
 
-  static const char* GetHloOpName() { return "reduce-scatter-start"; }
+  static absl::string_view GetHloOpName() { return "reduce-scatter-start"; }
 
   static absl::Status CheckImplementable(
       const HloReduceScatterInstruction* inst, int64_t replica_count,
@@ -112,20 +134,21 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 };
 
 // -----------------------------------------------------------------------------
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm,
+                          se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer = false);
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, Communicator* comm,
+                              se::Stream& stream, Communicator& comm,
                               bool use_symmetric_buffer = false);
 
 }  // namespace gpu

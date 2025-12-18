@@ -21,14 +21,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 
 namespace stream_executor {
 namespace {
@@ -53,7 +53,7 @@ absl::StatusOr<ArgumentPackingRelocation::Type> FromProtoType(
 }  // namespace
 
 absl::StatusOr<std::vector<char>> SingleArgumentPackingSpec::BuildArgument(
-    absl::Span<const DeviceMemoryBase> args) const {
+    absl::Span<const DeviceAddressBase> args) const {
   auto argument = storage_;
 
   for (const ArgumentPackingRelocation& relocation : relocations_) {
@@ -71,8 +71,9 @@ absl::StatusOr<std::vector<char>> SingleArgumentPackingSpec::BuildArgument(
                               "at least %d, but got %d)",
                               sizeof(void*), argument.size()));
         }
-        uint64_t ptr = absl::bit_cast<uint64_t>(
-            args.at(relocation.argument_index()).opaque());
+        uint64_t ptr =
+            static_cast<uint64_t>(tsl::safe_reinterpret_cast<uintptr_t>(
+                args.at(relocation.argument_index()).opaque()));
         std::memcpy(argument.data() + relocation.offset(), &ptr, sizeof(ptr));
         break;
       }
@@ -94,7 +95,7 @@ void SingleArgumentPackingSpec::WriteArgumentAddress(int argument_index) {
 
 absl::StatusOr<std::unique_ptr<KernelArgsPackedVector>>
 KernelArgumentsPackingSpec::BuildArguments(
-    absl::Span<const DeviceMemoryBase> thunk_arguments,
+    absl::Span<const DeviceAddressBase> thunk_arguments,
     size_t shared_memory_bytes) const {
   std::vector<std::vector<char>> result;
   result.reserve(kernel_arguments_.size());

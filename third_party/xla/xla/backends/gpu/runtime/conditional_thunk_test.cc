@@ -27,9 +27,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -66,9 +70,8 @@ struct DummyThunk : public Thunk {
 
 std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
     const Thunk::ThunkInfo& thunk_info,
-    const BufferAllocation::Slice& branch_index_buffer_index,
-    std::vector<ThunkSequence> branch_thunk_sequences,
-    bool kBranchIndexIsBool) {
+    const ShapedSlice& branch_index_buffer_index,
+    std::vector<ThunkSequence> branch_thunk_sequences) {
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   for (auto& thunk_sequence : branch_thunk_sequences) {
     branch_thunks.push_back(std::make_unique<SequentialThunk>(
@@ -76,8 +79,7 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
   }
 
   return std::make_unique<ConditionalThunk>(
-      thunk_info, branch_index_buffer_index, std::move(branch_thunks),
-      kBranchIndexIsBool);
+      thunk_info, branch_index_buffer_index, std::move(branch_thunks));
 }
 
 TEST(ConditionalThunkTest, BufferUses) {
@@ -86,7 +88,10 @@ TEST(ConditionalThunkTest, BufferUses) {
   thunk_info.execution_stream_id = 123;
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  constexpr bool kBranchIndexIsBool = true;
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+  Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
   false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
@@ -100,12 +105,11 @@ TEST(ConditionalThunkTest, BufferUses) {
   branch_thunk_sequences.push_back(std::move(false_seq));
   branch_thunk_sequences.push_back(std::move(true_seq));
 
-  constexpr bool kBranchIndexIsBool = true;
   std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
-      thunk_info, slice, std::move(branch_thunk_sequences), kBranchIndexIsBool);
+      thunk_info, {slice, shape}, std::move(branch_thunk_sequences));
 
   EXPECT_EQ(thunk->branch_index_is_bool(), kBranchIndexIsBool);
-  EXPECT_EQ(thunk->branch_index_buffer(), slice);
+  EXPECT_EQ(thunk->branch_index_buffer().slice, slice);
 
   auto thunk_matcher = Pointee(Property(&Thunk::kind, Thunk::Kind::kGemm));
   auto branch_matcher = Pointee(Property(
@@ -121,6 +125,7 @@ TEST(ConditionalThunkTest, ToProto) {
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+  Shape shape = ShapeUtil::MakeShape(PRED, {});
 
   ThunkSequence false_seq;
   false_seq.push_back(std::make_unique<DummyThunk>(Kind::kGemm, thunk_info));
@@ -134,9 +139,8 @@ TEST(ConditionalThunkTest, ToProto) {
   branch_thunk_seq.push_back(std::move(false_seq));
   branch_thunk_seq.push_back(std::move(true_seq));
 
-  constexpr bool kBranchIndexIsBool = true;
   std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
-      thunk_info, slice, std::move(branch_thunk_seq), kBranchIndexIsBool);
+      thunk_info, {slice, shape}, std::move(branch_thunk_seq));
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk->ToProto());
 
   std::string expected = R"pb(
@@ -145,19 +149,11 @@ TEST(ConditionalThunkTest, ToProto) {
       execution_stream_id: 123
     }
     conditional_thunk {
-      branch_index_buffer { size: 256 }
-      branch_thunks {
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
-        }
-        thunks {
-          thunk_info {
-            profile_annotation: "profile_annotation"
-            execution_stream_id: 123
-          }
+      branch_index_buffer {
+        slice { size: 256 }
+        shape {
+          element_type: PRED
+          layout { tail_padding_alignment_in_elements: 1 }
         }
       }
       branch_thunks {
@@ -174,7 +170,20 @@ TEST(ConditionalThunkTest, ToProto) {
           }
         }
       }
-      branch_index_is_bool: true
+      branch_thunks {
+        thunks {
+          thunk_info {
+            profile_annotation: "profile_annotation"
+            execution_stream_id: 123
+          }
+        }
+        thunks {
+          thunk_info {
+            profile_annotation: "profile_annotation"
+            execution_stream_id: 123
+          }
+        }
+      }
     }
   )pb";
   EXPECT_THAT(proto, EqualsProto(expected));
@@ -189,19 +198,11 @@ TEST(ConditionalThunkTest, FromProto) {
           execution_stream_id: 123
         }
         conditional_thunk {
-          branch_index_buffer { offset: 8 size: 256 buffer_allocation_index: 0 }
-          branch_thunks {
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-            }
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
+          branch_index_buffer {
+            slice { offset: 8 size: 256 buffer_allocation_index: 0 }
+            shape {
+              element_type: PRED
+              layout { tail_padding_alignment_in_elements: 1 }
             }
           }
           branch_thunks {
@@ -218,7 +219,20 @@ TEST(ConditionalThunkTest, FromProto) {
               }
             }
           }
-          branch_index_is_bool: true
+          branch_thunks {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+          }
         }
       )pb",
       &proto));
@@ -247,6 +261,8 @@ TEST(ConditionalThunkTest, ToString) {
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice(&alloc, /*offset=*/0, /*size=*/256);
+  Shape bool_shape = ShapeUtil::MakeShape(PRED, {});
+  Shape int_shape = ShapeUtil::MakeShape(S32, {});
 
   auto create_branch_thunk_sequences = [&]() -> std::vector<ThunkSequence> {
     ThunkSequence false_seq;
@@ -263,9 +279,8 @@ TEST(ConditionalThunkTest, ToString) {
   };
 
   ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(
-      CreateConditionalThunk(thunk_info, slice, create_branch_thunk_sequences(),
-                             /*kBranchIndexIsBool=*/true));
+  thunk_sequence.push_back(CreateConditionalThunk(
+      thunk_info, {slice, bool_shape}, create_branch_thunk_sequences()));
   auto sequential_thunk =
       std::make_unique<SequentialThunk>(thunk_info, std::move(thunk_sequence));
   EXPECT_EQ(sequential_thunk->ToString(/*indent=*/0),
@@ -276,9 +291,8 @@ TEST(ConditionalThunkTest, ToString) {
             "    000: kGemm\t\n"
             "    000: kGemm\t\n\n");
 
-  std::unique_ptr<ConditionalThunk> thunk =
-      CreateConditionalThunk(thunk_info, slice, create_branch_thunk_sequences(),
-                             /*kBranchIndexIsBool=*/false);
+  std::unique_ptr<ConditionalThunk> thunk = CreateConditionalThunk(
+      thunk_info, {slice, int_shape}, create_branch_thunk_sequences());
 
   EXPECT_EQ(thunk->ToString(/*indent=*/0),
             "\n"
@@ -291,18 +305,19 @@ TEST(ConditionalThunkTest, ToString) {
 
 TEST(ConditionalThunkTest, TransformAllNestedThunks) {
   BufferAllocation::Slice slice;
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.push_back(
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
   branch_thunks.push_back(
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(), slice, std::move(branch_thunks),
-      /*branch_index_is_bool=*/false);
+      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
 
-  conditional_thunk->TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
-  });
+  }));
 
   EXPECT_THAT(conditional_thunk->branch_thunks(), SizeIs(2));
   EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(), SizeIs(1));

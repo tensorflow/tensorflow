@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -99,7 +100,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   }
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
-  LogicalDeviceOfDefaultTypeForId(
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       xla::PjRtGlobalDeviceId device_id) const override;
 
   absl::StatusOr<std::string> Serialize() const override;
@@ -125,6 +126,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   FromProto(const xla::PjRtTopologyDescriptionProto& proto);
 
  private:
+  std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(
+      int device_id) const;
+
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   std::shared_ptr<const GpuTopology> gpu_topology_;

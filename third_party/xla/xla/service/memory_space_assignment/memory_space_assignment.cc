@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -428,7 +427,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     LOG(INFO) << "Module after memory space assignment: ";
     XLA_LOG_LINES(INFO, module_->ToString());
   }
-  TF_CHECK_OK(module_->schedule().Verify());
+  CHECK_OK(module_->schedule().Verify());
   if (VLOG_IS_ON(1)) {
     TF_ASSIGN_OR_RETURN(AsyncCopyStats stats,
                         CalculateAsyncCopyStats(alias->dataflow_analysis()));
@@ -449,8 +448,9 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
 absl::Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
-  auto algorithm = std::make_unique<MsaAlgorithm>(
-      module_, &allocations_, options_, alias_analysis, hlo_live_range);
+  auto algorithm = std::make_unique<MsaAlgorithm>(module_, &allocations_,
+                                                  options_, alias_analysis,
+                                                  alias_info_, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
@@ -1176,6 +1176,62 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
   return absl::OkStatus();
 }
 
+namespace {
+
+bool IsConcatBitcastCustomCall(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kCustomCall &&
+         instruction->custom_call_target() ==
+             memory_space_assignment::kConcatBitcastCustomCall;
+}
+
+// If a use is a ConcatBitcastCustomCall, we add the uses of the
+// ConcatBitcastCustomCall's output buffer to the list of uses for the
+// current value. Since the instructions that have ConcatBitcastCustomCall as a
+// user are slices, this means we are considering all uses of the concatenated
+// buffer as uses of the original slices.
+std::vector<HloUse> GetUsesAndExtendIfConcatBitcast(
+    const HloValue* value, const HloDataflowAnalysis& dataflow_analysis) {
+  std::vector<HloUse> uses;
+  for (const HloUse& use : value->GetUses()) {
+    if (IsConcatBitcastCustomCall(use.instruction)) {
+      const HloValue& concat_bitcast_value =
+          dataflow_analysis.GetUniqueValueAt(use.instruction);
+      absl::c_copy(concat_bitcast_value.GetUses(), std::back_inserter(uses));
+    } else {
+      uses.push_back(use);
+    }
+  }
+  return uses;
+}
+
+// If a value is used by a ConcatBitcastCustomCall, we extend the time bound to
+// represent the time bound of the concatenated value.
+HloLiveRange::TimeBound GetTimeBoundAndExtendIfConcatBitcast(
+    const HloValue* value, const HloDataflowAnalysis& dataflow_analysis,
+    const HloLiveRange& hlo_live_range) {
+  HloLiveRange::TimeBound time_bound =
+      hlo_live_range.buffer_live_ranges().at(value);
+  for (const HloUse& use : value->GetUses()) {
+    if (IsConcatBitcastCustomCall(use.instruction)) {
+      const HloValue& concat_bitcast_value =
+          dataflow_analysis.GetUniqueValueAt(use.instruction);
+      const HloLiveRange::TimeBound& concat_time_bound =
+          hlo_live_range.buffer_live_ranges().at(&concat_bitcast_value);
+      time_bound.start = std::min(time_bound.start, concat_time_bound.start);
+      time_bound.end = std::max(time_bound.end, concat_time_bound.end);
+      if (hlo_live_range.instruction_schedule().at(
+              time_bound.end_position.instruction) <
+          hlo_live_range.instruction_schedule().at(
+              concat_time_bound.end_position.instruction)) {
+        time_bound.end_position = concat_time_bound.end_position;
+      }
+    }
+  }
+  return time_bound;
+}
+
+}  // namespace
+
 absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
     const HloAliasAnalysis& alias_analysis,
     std::vector<int64_t>* alt_mem_bytes_occupied) {
@@ -1197,6 +1253,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
   auto add_allocation_and_verify = [&](int64_t start_time, int64_t end_time,
                                        const HeapSimulator::Chunk& chunk,
                                        const HloValue* value) -> absl::Status {
+    if (IsConcatBitcastCustomCall(value->instruction())) {
+      return absl::OkStatus();
+    }
     events[std::make_tuple(start_time, /*is_free=*/false, value->id())] =
         std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
     events[std::make_tuple(end_time, /*is_free=*/true, value->id())] =
@@ -1256,10 +1315,13 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
 
     for (const HloValue* value : buffer.values()) {
       const HloLiveRange::TimeBound& time_bound =
-          hlo_live_range->buffer_live_ranges().at(value);
+          GetTimeBoundAndExtendIfConcatBitcast(
+              value, alias_analysis.dataflow_analysis(), *hlo_live_range);
       const HloInstruction* last_use_instruction = nullptr;
       int64_t last_use_time = time_bound.start;
-      for (const HloUse& use : value->GetUses()) {
+      std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
+          value, alias_analysis.dataflow_analysis());
+      for (const HloUse& use : uses) {
         int64_t use_time =
             hlo_live_range->instruction_schedule().at(use.instruction);
         if (use_time > last_use_time) {
@@ -1293,7 +1355,9 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
               std::min(earliest_computation_start_time, computation_start_time);
           int64_t last_use_time = -1;
           const HloInstruction* last_use_instruction = nullptr;
-          for (const HloUse& use : value->GetUses()) {
+          std::vector<HloUse> uses = GetUsesAndExtendIfConcatBitcast(
+              value, alias_analysis.dataflow_analysis());
+          for (const HloUse& use : uses) {
             int64_t use_time =
                 hlo_live_range->instruction_schedule().at(use.instruction);
             if (use.instruction->parent() == called_computation &&

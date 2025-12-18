@@ -37,10 +37,11 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -59,12 +60,12 @@ uint64_t GetOffsetsSize(int64_t batch_size) {
 }
 
 // Copies segment offsets to the device memory.
-absl::Status CopyOffsets(se::Stream* stream, se::DeviceMemoryBase scratch,
+absl::Status CopyOffsets(se::Stream* stream, se::DeviceAddressBase scratch,
                          int64_t batch_size, int64_t segment_size) {
   uint64_t offsets_size = GetOffsetsSize(batch_size);
   char* offsets_buffer =
       static_cast<char*>(scratch.opaque()) + scratch.size() - offsets_size;
-  se::DeviceMemoryBase d_offsets(offsets_buffer, offsets_size);
+  se::DeviceAddressBase d_offsets(offsets_buffer, offsets_size);
   std::vector<int> h_offsets(batch_size + 1);
   for (int i = 0; i <= batch_size; ++i) {
     h_offsets[i] = i * segment_size;
@@ -79,11 +80,11 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
                            PrimitiveType type)
       : sort_keys_fn_(sort_keys_fn), type_(type) {}
 
-  absl::Status Run(se::DeviceMemoryBase input_keys,
-                   se::DeviceMemoryBase input_values,
-                   se::DeviceMemoryBase output_keys,
-                   se::DeviceMemoryBase output_values,
-                   se::DeviceMemoryBase scratch, bool descending,
+  absl::Status Run(se::DeviceAddressBase input_keys,
+                   se::DeviceAddressBase input_values,
+                   se::DeviceAddressBase output_keys,
+                   se::DeviceAddressBase output_values,
+                   se::DeviceAddressBase scratch, bool descending,
                    int64_t batch_size, se::Stream* stream) override;
   absl::Status Run(const Thunk::ExecuteParams& params,
                    const CubSortThunk* thunk) override;
@@ -95,12 +96,13 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
   PrimitiveType type_;
 };
 
-absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
-                                  se::DeviceMemoryBase input_values,
-                                  se::DeviceMemoryBase output_keys,
-                                  se::DeviceMemoryBase output_values,
-                                  se::DeviceMemoryBase scratch, bool descending,
-                                  int64_t batch_size, se::Stream* stream) {
+absl::Status CubSortKeysImpl::Run(se::DeviceAddressBase input_keys,
+                                  se::DeviceAddressBase input_values,
+                                  se::DeviceAddressBase output_keys,
+                                  se::DeviceAddressBase output_values,
+                                  se::DeviceAddressBase scratch,
+                                  bool descending, int64_t batch_size,
+                                  se::Stream* stream) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   CHECK(input_values.is_null());
@@ -135,10 +137,10 @@ absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
 absl::Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
                                   const CubSortThunk* thunk) {
   const BufferAllocations& allocs = *params.buffer_allocations;
-  return Run(allocs.GetDeviceAddress(thunk->operand(0)), se::DeviceMemoryBase(),
-             allocs.GetDeviceAddress(thunk->result(0)), se::DeviceMemoryBase(),
-             allocs.GetDeviceAddress(thunk->scratch()), thunk->descending(),
-             thunk->batch_size(), params.stream);
+  return Run(allocs.GetDeviceAddress(thunk->operand(0)),
+             se::DeviceAddressBase(), allocs.GetDeviceAddress(thunk->result(0)),
+             se::DeviceAddressBase(), allocs.GetDeviceAddress(thunk->scratch()),
+             thunk->descending(), thunk->batch_size(), params.stream);
 }
 
 absl::StatusOr<int64_t> CubSortKeysImpl::GetScratchSize(int64_t num_items,
@@ -166,11 +168,11 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
                             PrimitiveType type)
       : sort_pairs_fn_(sort_pairs_fn), type_(type) {}
 
-  absl::Status Run(se::DeviceMemoryBase input_keys,
-                   se::DeviceMemoryBase input_values,
-                   se::DeviceMemoryBase output_keys,
-                   se::DeviceMemoryBase output_values,
-                   se::DeviceMemoryBase scratch, bool descending,
+  absl::Status Run(se::DeviceAddressBase input_keys,
+                   se::DeviceAddressBase input_values,
+                   se::DeviceAddressBase output_keys,
+                   se::DeviceAddressBase output_values,
+                   se::DeviceAddressBase scratch, bool descending,
                    int64_t batch_size, se::Stream* stream) override;
   absl::Status Run(const Thunk::ExecuteParams& params,
                    const CubSortThunk* thunk) override;
@@ -182,11 +184,11 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
   PrimitiveType type_;
 };
 
-absl::Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
-                                   se::DeviceMemoryBase input_values,
-                                   se::DeviceMemoryBase output_keys,
-                                   se::DeviceMemoryBase output_values,
-                                   se::DeviceMemoryBase scratch,
+absl::Status CubSortPairsImpl::Run(se::DeviceAddressBase input_keys,
+                                   se::DeviceAddressBase input_values,
+                                   se::DeviceAddressBase output_keys,
+                                   se::DeviceAddressBase output_values,
+                                   se::DeviceAddressBase scratch,
                                    bool descending, int64_t batch_size,
                                    se::Stream* stream) {
   size_t temp_bytes = scratch.size();
@@ -320,6 +322,20 @@ CubSortThunk::CubSortThunk(
       value_type_(value_type),
       descending_(descending),
       batch_size_(batch_size) {}
+
+Thunk::BufferUses CubSortThunk::buffer_uses() const {
+  Thunk::BufferUses res;
+  res.reserve(operands_.size() + results_.size() + 1);
+  for (const BufferAllocation::Slice& slice : operands_) {
+    res.push_back(BufferUse::Read(slice));
+  }
+  for (const BufferAllocation::Slice& slice : results_) {
+    res.push_back(BufferUse::Write(slice));
+  }
+  res.emplace_back(scratch_, BufferUse::MemoryAccess::kWrite,
+                   BufferUse::ContentValidity::kUndefined);
+  return res;
+}
 
 absl::StatusOr<std::unique_ptr<CubSortThunk>> CubSortThunk::FromProto(
     ThunkInfo thunk_info, const CubSortThunkProto& proto,

@@ -29,9 +29,11 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,20 +45,19 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compilation_environments.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -222,7 +223,7 @@ TEST(HloModuleTest, CloneGeneral) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
-  TF_CHECK_OK(m1.set_schedule(schedule));
+  CHECK_OK(m1.set_schedule(schedule));
   m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
 
   std::unique_ptr<HloModule> m2 = m1.Clone(kCloneSuffix);
@@ -264,7 +265,7 @@ TEST(HloModuleTest, CloneWithContextGeneral) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
-  TF_CHECK_OK(m1.set_schedule(schedule));
+  CHECK_OK(m1.set_schedule(schedule));
   m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
 
   auto [m2, clone_context] = m1.CloneWithContext(kCloneSuffix);
@@ -1165,6 +1166,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   };
 
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
@@ -1174,7 +1177,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
           /*buffer_size=*/std::move(buffer_size_func),
           /*alias_info=*/&alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          /*options=*/std::move(opts)));
 
   BufferAssignmentProto buffer_assignment_proto = buffer_assignment->ToProto();
   *opt_hlo_module_proto.mutable_buffer_assignment() = buffer_assignment_proto;

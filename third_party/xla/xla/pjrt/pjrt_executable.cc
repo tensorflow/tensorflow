@@ -83,6 +83,7 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
     }
   }
   output.set_allow_in_place_mlir_modification(allow_in_place_mlir_modification);
+  output.set_matrix_unit_operand_precision(matrix_unit_operand_precision);
   output.set_parameter_is_tupled_arguments(parameter_is_tupled_arguments);
   TF_ASSIGN_OR_RETURN(*output.mutable_executable_build_options(),
                       executable_build_options.ToProto());
@@ -100,8 +101,8 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                env_option_override.second);
   }
 
-  if (target_config.has_value()) {
-    *output.mutable_target_config() = target_config->ToProto();
+  if (gpu_target_config.has_value()) {
+    *output.mutable_target_config() = gpu_target_config->ToProto();
   }
   return output;
 }
@@ -126,6 +127,7 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
   }
   output.allow_in_place_mlir_modification =
       proto.allow_in_place_mlir_modification();
+  output.matrix_unit_operand_precision = proto.matrix_unit_operand_precision();
   output.parameter_is_tupled_arguments = proto.parameter_is_tupled_arguments();
   TF_ASSIGN_OR_RETURN(
       ExecutableBuildOptions executable_build_options,
@@ -137,8 +139,9 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
                       LoadEnvOptionOverrides(proto.env_option_overrides()));
 
   if (proto.has_target_config()) {
-    TF_ASSIGN_OR_RETURN(output.target_config, Compiler::TargetConfig::FromProto(
-                                                  proto.target_config()));
+    TF_ASSIGN_OR_RETURN(
+        output.gpu_target_config,
+        Compiler::GpuTargetConfig::FromProto(proto.target_config()));
   }
   return output;
 }
@@ -197,7 +200,6 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
     const ExecuteOptionsProto& proto) {
   ExecuteOptions options;
 
-  options.untuple_result = proto.untuple_result();
   options.launch_id = proto.launch_id();
   options.strict_shape_checking = proto.strict_shape_checking();
   options.use_major_to_minor_data_layout_for_callbacks =

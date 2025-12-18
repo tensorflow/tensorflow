@@ -25,12 +25,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 
@@ -42,7 +42,7 @@ class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
  public:
   CpuScatterFusion(const BufferAssignment& buffer_assignment,
                    const HloFusionInstruction* fusion,
-                   SymbolicExprContext* symbolic_expr_context);
+                   mlir::MLIRContext* mlir_context);
 
   absl::string_view name() const final { return "cpu_scatter_fusion"; }
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
@@ -56,21 +56,21 @@ class CpuScatterFusion final : public KernelEmitter<MlirKernelSource> {
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      SymbolicExprContext* symbolic_expr_context) const;
+      mlir::MLIRContext* mlir_context) const;
 
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
 
   // These two methods do not seem to be used @ecg?
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, SymbolicExprContext* ctx) const;
+      int64_t root_index, mlir::MLIRContext* ctx) const;
 
   std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
       int64_t root_index, int64_t hero_operand_index,
-      SymbolicExprContext* ctx) const;
+      mlir::MLIRContext* ctx) const;
 
   const BufferAssignment& buffer_assignment_;
   const HloFusionInstruction* fusion_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 
   int64_t vector_size_;
   int64_t num_threads_;

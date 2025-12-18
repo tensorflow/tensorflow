@@ -24,12 +24,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -45,8 +46,8 @@ using buffer_assignment::BufferAllocationSliceProto;
 
 absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
     ThunkInfo thunk_info, GpuConvDescriptor descriptor,
-    std::vector<BufferAllocation::Slice> operand_slices,
-    std::vector<BufferAllocation::Slice> result_slices,
+    std::vector<ShapedSlice> operand_slices,
+    std::vector<ShapedSlice> result_slices,
     BufferAllocation::Slice scratch_slice) {
   TF_ASSIGN_OR_RETURN(GpuConvConfig config,
                       GetGpuConvConfig(descriptor, /*inst_as_string=*/""));
@@ -57,11 +58,12 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::Create(
       std::move(operand_slices), std::move(result_slices), scratch_slice));
 }
 
-ConvolutionThunk::ConvolutionThunk(
-    ThunkInfo thunk_info, GpuConvDescriptor descriptor, GpuConvConfig config,
-    std::vector<BufferAllocation::Slice> operand_slices,
-    std::vector<BufferAllocation::Slice> result_slices,
-    BufferAllocation::Slice scratch_slice)
+ConvolutionThunk::ConvolutionThunk(ThunkInfo thunk_info,
+                                   GpuConvDescriptor descriptor,
+                                   GpuConvConfig config,
+                                   std::vector<ShapedSlice> operand_slices,
+                                   std::vector<ShapedSlice> result_slices,
+                                   BufferAllocation::Slice scratch_slice)
     : Thunk(Kind::kConvolution, thunk_info),
       operand_buffers_(std::move(operand_slices)),
       result_buffers_(std::move(result_slices)),
@@ -85,18 +87,20 @@ GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
 absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  std::vector<se::DeviceMemoryBase> operand_se_buffers, result_se_buffers;
+  std::vector<se::DeviceAddressBase> operand_se_buffers, result_se_buffers;
   operand_se_buffers.reserve(operand_buffers_.size());
-  for (BufferAllocation::Slice buffer : operand_buffers_) {
-    operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
+  for (const ShapedSlice& buffer : operand_buffers_) {
+    operand_se_buffers.push_back(
+        buffer_allocations.GetDeviceAddress(buffer.slice));
   }
 
   result_se_buffers.reserve(result_buffers_.size());
-  for (BufferAllocation::Slice buffer : result_buffers_) {
-    result_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
+  for (const ShapedSlice& buffer : result_buffers_) {
+    result_se_buffers.push_back(
+        buffer_allocations.GetDeviceAddress(buffer.slice));
   }
 
-  se::DeviceMemoryBase scratch =
+  se::DeviceAddressBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   bool runner_created = false;
@@ -150,21 +154,20 @@ absl::StatusOr<std::unique_ptr<ConvolutionThunk>> ConvolutionThunk::FromProto(
   TF_ASSIGN_OR_RETURN(GpuConvDescriptor descriptor,
                       GpuConvDescriptor::FromProto(proto.conv_descriptor()));
 
-  std::vector<BufferAllocation::Slice> operand_slices;
+  std::vector<ShapedSlice> operand_slices;
   operand_slices.reserve(proto.operand_buffers_size());
-  for (const BufferAllocationSliceProto& slice_proto :
-       proto.operand_buffers()) {
+  for (const ShapedSliceProto& slice_proto : proto.operand_buffers()) {
     TF_ASSIGN_OR_RETURN(
         operand_slices.emplace_back(),
-        BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
+        ShapedSlice::FromProto(slice_proto, buffer_allocations));
   }
 
-  std::vector<BufferAllocation::Slice> result_slices;
+  std::vector<ShapedSlice> result_slices;
   result_slices.reserve(proto.result_buffers_size());
-  for (const BufferAllocationSliceProto& slice_proto : proto.result_buffers()) {
+  for (const ShapedSliceProto& slice_proto : proto.result_buffers()) {
     TF_ASSIGN_OR_RETURN(
         result_slices.emplace_back(),
-        BufferAllocation::Slice::FromProto(slice_proto, buffer_allocations));
+        ShapedSlice::FromProto(slice_proto, buffer_allocations));
   }
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
@@ -183,10 +186,10 @@ absl::StatusOr<ThunkProto> ConvolutionThunk::ToProto() const {
   ConvolutionThunkProto* conv_proto = proto.mutable_convolution_thunk();
   *conv_proto->mutable_conv_descriptor() = descriptor_.ToProto();
 
-  for (const BufferAllocation::Slice& slice : operand_buffers_) {
+  for (const ShapedSlice& slice : operand_buffers_) {
     TF_ASSIGN_OR_RETURN(*conv_proto->add_operand_buffers(), slice.ToProto());
   }
-  for (const BufferAllocation::Slice& slice : result_buffers_) {
+  for (const ShapedSlice& slice : result_buffers_) {
     TF_ASSIGN_OR_RETURN(*conv_proto->add_result_buffers(), slice.ToProto());
   }
   TF_ASSIGN_OR_RETURN(*conv_proto->mutable_scratch_buffer(),

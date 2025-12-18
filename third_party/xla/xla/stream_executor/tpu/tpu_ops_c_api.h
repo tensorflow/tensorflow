@@ -177,11 +177,11 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   void* priv;
 
   const XLA_TpuProgram* program;
-  SE_DeviceMemoryBase* arguments;
+  SE_DeviceAddressBase* arguments;
   size_t arguments_len;
-  SE_DeviceMemoryBase* result;
+  SE_DeviceAddressBase* result;
   size_t cross_program_prefetch_addrs_len;
-  SE_DeviceMemoryBase* cross_program_prefetch_addrs;
+  SE_DeviceAddressBase* cross_program_prefetch_addrs;
   size_t cross_program_prefetch_offsets_len;
   const uint32_t* cross_program_prefetch_offsets;
   int32_t rng_seed;
@@ -225,11 +225,11 @@ TFTPU_CAPI_EXPORT void TpuExecute_RuntimeInputToPaddedData(
     TpuExecute_RuntimeInputToPaddedData_Params* params);
 
 TFTPU_CAPI_EXPORT void TpuExecute_GetTpuEmbeddingMemoryAllocations(
-    int device_ordinal, SE_DeviceMemoryBase** addrs, size_t* addrs_count,
+    int device_ordinal, SE_DeviceAddressBase** addrs, size_t* addrs_count,
     TF_Status* status);
 
 TFTPU_CAPI_EXPORT void TpuExecute_FreeTpuEmbeddingMemoryAllocations(
-    int device_ordinal, SE_DeviceMemoryBase* addrs);
+    int device_ordinal, SE_DeviceAddressBase* addrs);
 
 typedef struct ConfigureDistributedTpuOp_DoWork_Params {
   int32_t struct_size;

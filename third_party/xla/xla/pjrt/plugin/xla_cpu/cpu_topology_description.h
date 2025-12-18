@@ -96,7 +96,7 @@ class CpuTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<std::string> Serialize() const override;
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
-  LogicalDeviceOfDefaultTypeForId(
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       xla::PjRtGlobalDeviceId device_id) const override;
 
   // Returns vendor specific attributes about the topology.

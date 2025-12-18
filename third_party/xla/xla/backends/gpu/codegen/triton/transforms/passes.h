@@ -52,7 +52,9 @@ std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTensorLowerToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAMathToLibdevicePass(
     absl::string_view libdevice_path, absl::string_view triple);
-std::unique_ptr<mlir::Pass> CreateTritonXLAConvert0DTensorToScalarPass();
+std::unique_ptr<mlir::Pass> CreateXTileLowerToTritonPass();
+std::unique_ptr<mlir::Pass> CreateArithFP8ConversionToTritonPass();
+std::unique_ptr<mlir::Pass> CreateUnsupportedElementwiseToTritonPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

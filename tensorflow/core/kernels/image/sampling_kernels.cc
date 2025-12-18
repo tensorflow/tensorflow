@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace functor {
 
 SamplingKernelType SamplingKernelTypeFromString(const absl::string_view str) {
-  const string lower_case = absl::AsciiStrToLower(str);
+  const std::string lower_case = absl::AsciiStrToLower(str);
   if (lower_case == "lanczos1") return Lanczos1Kernel;
   if (lower_case == "lanczos3") return Lanczos3Kernel;
   if (lower_case == "lanczos5") return Lanczos5Kernel;

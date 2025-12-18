@@ -670,45 +670,36 @@ absl::Status ExtendRewrites(
         " is outside the range of temp sizes: [0,", buffer_infos_size, ")"));
   }
 
-  const bool xla_cpu_multi_thread_eigen =
-      xla::GetDebugOptionsFromFlags().xla_cpu_multi_thread_eigen();
-
   std::vector<std::string> runtime_specific_includes = {R"(
 #include "absl/log/check.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
 #include "xla/types.h")"};
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kDotThunk)) {
-    if (xla_cpu_multi_thread_eigen) {
-      runtime_specific_includes.push_back(
-          R"(#include "xla/service/cpu/runtime_matmul.h")");
-    }
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_single_threaded_matmul.h")");
+        R"(#include "xla/backends/cpu/runtime/dot_lib.h")");
   }
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kConvolutionThunk)) {
-    if (xla_cpu_multi_thread_eigen) {
-      runtime_specific_includes.push_back(
-          R"(#include "xla/service/cpu/runtime_conv2d.h")");
-    }
-
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_single_threaded_conv2d.h")");
+        R"(#include "absl/synchronization/notification.h")");
+    runtime_specific_includes.push_back(
+        R"(#include "xla/backends/cpu/runtime/convolution_lib.h")");
   }
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kSortThunk)) {
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_key_value_sort.h")");
+        R"(#include "xla/backends/cpu/runtime/sort_lib.h")");
   }
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kTopKThunk)) {
     runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_topk.h")");
+        R"(#include "xla/backends/cpu/runtime/topk_lib.h")");
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1215,9 +1206,9 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
       auto aot_thunk_result_temp,
       xla::cpu::CpuAotCompilationResult::FromString(serialized, nullptr));
 
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      std::move(*aot_thunk_result_temp).LoadExecutable(nullptr, nullptr));
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      std::move(*aot_thunk_result_temp)
+                          .LoadExecutable(/*stream_exec=*/nullptr));
 
   xla::cpu::CpuExecutable* cpu_executable =
       tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());

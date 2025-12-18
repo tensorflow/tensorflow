@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/status/status.h"
 #include "xla/tsl/lib/hash/crc32c.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/platform/env.h"
@@ -40,7 +41,7 @@ absl::Status BlockHandle::DecodeFrom(absl::string_view* input) {
   if (core::GetVarint64(input, &offset_) && core::GetVarint64(input, &size_)) {
     return absl::OkStatus();
   } else {
-    return errors::DataLoss("bad block handle");
+    return absl::DataLossError("bad block handle");
   }
 }
 
@@ -63,7 +64,7 @@ absl::Status Footer::DecodeFrom(absl::string_view* input) {
   const uint64_t magic = ((static_cast<uint64_t>(magic_hi) << 32) |
                           (static_cast<uint64_t>(magic_lo)));
   if (magic != kTableMagicNumber) {
-    return errors::DataLoss("not an sstable (bad magic number)");
+    return absl::DataLossError("not an sstable (bad magic number)");
   }
 
   absl::Status result = metaindex_handle_.DecodeFrom(input);
@@ -89,7 +90,7 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   size_t n = static_cast<size_t>(handle.size());
 
   if (kBlockTrailerSize > std::numeric_limits<size_t>::max() - n) {
-    return errors::DataLoss("handle.size() too big");
+    return absl::DataLossError("handle.size() too big");
   }
 
   char* buf = new char[n + kBlockTrailerSize];
@@ -102,7 +103,7 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   }
   if (contents.size() != n + kBlockTrailerSize) {
     delete[] buf;
-    return errors::DataLoss("truncated block read");
+    return absl::DataLossError("truncated block read");
   }
 
   // Check the crc of the type and the block contents
@@ -114,7 +115,7 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
     const uint32_t actual = crc32c::Value(data, n + 1);
     if (actual != crc) {
       delete[] buf;
-      s = errors::DataLoss("block checksum mismatch");
+      s = absl::DataLossError("block checksum mismatch");
       return s;
     }
   }
@@ -141,13 +142,13 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       size_t ulength = 0;
       if (!port::Snappy_GetUncompressedLength(data, n, &ulength)) {
         delete[] buf;
-        return errors::DataLoss("corrupted compressed block contents");
+        return absl::DataLossError("corrupted compressed block contents");
       }
       char* ubuf = new char[ulength];
       if (!port::Snappy_Uncompress(data, n, ubuf)) {
         delete[] buf;
         delete[] ubuf;
-        return errors::DataLoss("corrupted compressed block contents");
+        return absl::DataLossError("corrupted compressed block contents");
       }
       delete[] buf;
       result->data = absl::string_view(ubuf, ulength);
@@ -157,7 +158,7 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
     }
     default:
       delete[] buf;
-      return errors::DataLoss("bad block type");
+      return absl::DataLossError("bad block type");
   }
 
   return absl::OkStatus();

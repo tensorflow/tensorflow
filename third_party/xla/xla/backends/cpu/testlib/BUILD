@@ -24,6 +24,7 @@ cc_library(
     hdrs = ["kernel_runner.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
@@ -41,6 +42,7 @@ cc_library(
         "//xla/codegen/testlib:kernel_runner",
         "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
@@ -157,7 +159,6 @@ tsl_pybind_extension(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
@@ -190,7 +191,6 @@ xla_cc_test(
         "//xla/codegen:llvm_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
@@ -198,7 +198,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 

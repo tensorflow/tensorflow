@@ -40,7 +40,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
@@ -488,7 +490,7 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
   mlir::Operation* defining_op =
       mlir::sdy::getBodyTerminatorOperand(function, res_num).getDefiningOp();
   auto custom_call_op =
-      mlir::dyn_cast_or_null<mlir::mhlo::CustomCallOp>(defining_op);
+      mlir::dyn_cast_or_null<mlir::stablehlo::CustomCallOp>(defining_op);
 
   if (custom_call_op == nullptr ||
       custom_call_op.getCallTargetName() !=
@@ -510,6 +512,24 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
       << "Expected exactly one sharding per FuncResultSharding";
   return CreateOpShardingFromSdySharding(sharding_per_value_attr.getSharding(0),
                                          sdy_meshes, op_frontend_attrs);
+}
+
+mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
+  if (auto attr = op->getAttrOfType<mlir::StringAttr>(xla::kXlaShape)) {
+    return *xla::ParseShape(
+        absl::string_view(attr.getValue().data(), attr.getValue().size()));
+  }
+  std::vector<xla::Shape> subshapes;
+  for (auto [index, result] : llvm::enumerate(op->getResults())) {
+    subshapes.push_back(xla::TypeToShape(result.getType()));
+    if (subshapes.back().element_type() == xla::PRIMITIVE_TYPE_INVALID) {
+      return op->emitError() << "result #" << index << " type is not supported";
+    }
+  }
+  if (subshapes.size() > 1) {
+    return xla::ShapeUtil::MakeTupleShape(subshapes);
+  }
+  return subshapes[0];
 }
 
 }  // namespace xla

@@ -383,9 +383,9 @@ HostExecuteStartThunk::Create(
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
-  auto thunk = absl::WrapUnique(new HostExecuteStartThunk(
+  auto thunk = std::make_unique<HostExecuteStartThunk>(
       std::move(thunk_info), host_offloading_executable_proto, std::move(args),
-      std::move(results)));
+      std::move(results));
   if (host_offloading_executable_proto.has_aot_compilation_result()) {
     TF_RETURN_IF_ERROR(thunk->LoadExecutable());
   }

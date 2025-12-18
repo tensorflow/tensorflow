@@ -13,6 +13,9 @@ arbitrary-dimensional array. For convenience, special cases have more specific
 and familiar names; for example a *vector* is a 1-dimensional array and a
 *matrix* is a 2-dimensional array.
 
+Learn more about the structure of an Op in [*Shapes and layout*](shapes.md) and
+[*Tiled Layout*](tiled_layout.md).
+
 ## Abs
 
 See also
@@ -1206,8 +1209,8 @@ replicas.
 | `channel_id`          | optional `ChannelHandle` | Optional channel ID for   |
 :                       :                          : cross-module              :
 :                       :                          : communication             :
-| `inpace`              | optional `bool`          | flag whether permutation  |
-:                       :                          : should be done inplace    :
+| `inplace`             | optional `bool`          | flag whether permutation  |
+:                       :                          : should be done in place   :
 
 Note that there are the following restrictions on the `source_target_pairs`:
 

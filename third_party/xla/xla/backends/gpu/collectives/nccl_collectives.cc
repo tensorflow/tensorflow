@@ -35,7 +35,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
@@ -48,7 +50,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -60,17 +62,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
-
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
-#else
-#include "third_party/nccl/nccl.h"
-#endif  // TENSORFLOW_USE_ROCM
 
 namespace xla::gpu {
 
@@ -95,7 +86,9 @@ bool NcclCollectives::IsGlobalConfig() const {
 absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
 NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
                                      bool is_local) {
-  if (clique_id_callback != nullptr) return clique_id_callback;
+  if (clique_id_callback != nullptr) {
+    return clique_id_callback;
+  }
 
   TF_RET_CHECK(is_local || IsGlobalConfig())
       << "If non-local devices are taking part of a collective API on "
@@ -157,7 +150,9 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     return InvalidArgument(
         "CliqueIds size must be 1 for NCCL communicator initialization");
   }
-  VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
+  VLOG(1) << "Initialize NCCL (version "
+          << absl::StrCat(NCCL_MAJOR, ".", NCCL_MINOR, ".", NCCL_PATCH)
+          << ") communicator for " << ranks.size() << " devices"
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   const auto& gpu_config =
@@ -339,7 +334,8 @@ class NcclIdStore {
         device_to_node_(std::move(device_to_node)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key) {
+  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key,
+                                           NcclCollectives& nccl_collectives) {
     auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
@@ -358,8 +354,7 @@ class NcclIdStore {
     CliqueId clique_id;
     int primary_node_id = device_to_node_.at(gpu_key->root_device());
     if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(
-          clique_id, gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
+      TF_ASSIGN_OR_RETURN(clique_id, nccl_collectives.CreateUniqueCliqueId());
       TF_RETURN_IF_ERROR(
           kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
     } else {
@@ -395,13 +390,13 @@ absl::Status NcclCollectives::InitializeTopology(
         topology.node_id, topology.device_id_to_node_id,
         std::move(topology.kv_store));
     topology.gpu_executable_run_options->set_clique_id_callback(
-        [nccl_id_store](const CliqueKey& key) {
-          return nccl_id_store->GetNcclUniqueId(key);
+        [nccl_id_store, this](const CliqueKey& key) {
+          return nccl_id_store->GetNcclUniqueId(key, *this);
         });
   }
   return absl::OkStatus();
 }
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,
                          std::make_unique<xla::gpu::NcclCollectives>());

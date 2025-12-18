@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
+#include "google/protobuf/message.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"

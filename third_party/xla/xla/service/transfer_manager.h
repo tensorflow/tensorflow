@@ -26,12 +26,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -163,17 +163,17 @@ class TransferManager {
   // tells the actual implementation to do something special.
   absl::Status TransferArrayToDevice(
       se::Stream* stream, const LiteralSlice& literal,
-      const se::DeviceMemoryBase& dest,
+      const se::DeviceAddressBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
   absl::Status TransferArrayToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
-      const se::DeviceMemoryBase& dest,
+      const se::DeviceAddressBase& dest,
       const TransferMetadata* transfer_metadata = nullptr);
 
   absl::StatusOr<Literal> TransferArrayFromDevice(
       se::Stream* stream, const Shape& shape,
-      const se::DeviceMemoryBase& source,
+      const se::DeviceAddressBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
 
   // Read from a device buffer and update the dynamic dimension sizes of
@@ -215,7 +215,7 @@ class TransferManager {
                                         const ShapedBuffer& device_buffer);
   absl::Status WriteRootTupleIndexTable(
       se::Stream* stream,
-      const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree);
+      const ShapeTree<MaybeOwningDeviceAddress>& buffer_tree);
 
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory
@@ -242,12 +242,12 @@ class TransferManager {
   // shape. The on-device shape may be different as indicated by
   // HostShapeToDeviceShape.
   absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
-      const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
+      const Shape& on_host_shape, se::DeviceAddressAllocator* allocator,
       int device_ordinal, int physical_device_ordinal,
       DeviceShapeRepresentationFn shape_representation_fn = nullptr);
 
   absl::StatusOr<ScopedShapedBuffer> AllocateScopedShapedBuffer(
-      const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
+      const Shape& on_host_shape, se::DeviceAddressAllocator* allocator,
       int device_ordinal,
       DeviceShapeRepresentationFn shape_representation_fn = nullptr) {
     return AllocateScopedShapedBuffer(on_host_shape, allocator, device_ordinal,
@@ -277,7 +277,7 @@ class TransferManager {
   // Equivalent to CanShapedBufferBeAccessedNow but for a single device buffer.
   virtual bool CanBufferBeAccessedNow(
       se::StreamExecutor* executor,
-      const se::DeviceMemoryBase& device_buffer) const {
+      const se::DeviceAddressBase& device_buffer) const {
     return false;
   }
 
@@ -303,8 +303,8 @@ class TransferManager {
   // to construct a tuple index table in the platform-specific tuple
   // representation.
   virtual absl::Status WriteSingleTupleIndexTable(
-      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
-      const Shape& shape, se::DeviceMemoryBase* region) = 0;
+      se::Stream* stream, absl::Span<const se::DeviceAddressBase> elements,
+      const Shape& shape, se::DeviceAddressBase* region) = 0;
 
   // Returns whether subbyte types (types less than 1 byte, e.g. U4) should
   // have multiple values packed into a single byte on the device. Subbyte

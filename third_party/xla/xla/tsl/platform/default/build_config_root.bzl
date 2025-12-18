@@ -5,7 +5,7 @@ be separate to avoid cyclic references.
 """
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
-load("@local_config_rocm//rocm:build_defs.bzl", "is_rocm_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "get_rbe_amdgpu_pool", "is_rocm_configured")
 load("//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
@@ -20,11 +20,11 @@ GPU_TEST_PROPERTIES = {
 }
 
 ROCM_SINGLE_GPU_TEST_PROPERTIES = {
-    "test.Pool": "linux_x64_gpu",
+    "test.Pool": get_rbe_amdgpu_pool(is_single_gpu = True),
 }
 
 ROCM_MULTI_GPU_TEST_PROPERTIES = {
-    "test.Pool": "linux_x64_multigpu",
+    "test.Pool": get_rbe_amdgpu_pool(is_single_gpu = False),
 }
 
 def tf_gpu_tests_tags():

@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -204,6 +205,9 @@ class BufferAllocation {
     PrimitiveType element_type() const { return element_type_; }
 
     bool operator==(const Slice& other) const {
+      if (allocation_ == nullptr) {
+        return other.allocation_ == nullptr;
+      }
       // We don't compare element_type_ because it's not always set, and it's
       // not relevant for the comparison here.
       return index() == other.index() && offset_ == other.offset_ &&
@@ -490,6 +494,9 @@ class BufferAssignment {
   // the slice cannot be determined at compile time then an error is returned.
   absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
       const HloInstruction* instruction, const ShapeIndex& index) const;
+  absl::StatusOr<Shape> GetShapeForUniqueSlice(
+      const HloInstruction* instruction, const ShapeIndex& index) const;
+
   // Like GetUniqueSlice but fixes the index to the top-level of the shape
   // (index = {}).
   absl::StatusOr<BufferAllocation::Slice> GetUniqueTopLevelSlice(
@@ -716,6 +723,30 @@ class BufferAssigner {
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
+  // Options for BufferAssigner::Run.
+  struct Options {
+    // If true, allocate buffers for constant instructions.
+    bool allocate_buffers_for_constants = false;
+
+    // Functor used to assign colors to newly allocated logical buffers.
+    Colorer colorer = DefaultColorer();
+
+    // An optional function that returns true if the given instruction can't
+    // live out of a computation.
+    std::optional<MustNotLiveOut> must_not_live_out;
+
+    // Description of any buffer offsets that are already set by an earlier
+    // pass.
+    std::unique_ptr<memory_space_assignment::PresetAssignments>
+        preset_assignments;
+
+    const PrivateStacks* private_stacks = nullptr;
+    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
+        heap_buffer_interval_compare;
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
+    std::optional<BufferValue::Color> temp_buffer_color;
+  };
+
   static Colorer DefaultColorer() {
     return [](HloAliasAnalysis* alias_analysis, const HloOrdering&) {
       for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
@@ -742,42 +773,18 @@ class BufferAssigner {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-      LogicalBuffer::AlignmentFunction color_alignment,
-      bool allocate_buffers_for_constants = false,
-      Colorer colorer = DefaultColorer(),
-      std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
-      std::unique_ptr<memory_space_assignment::PresetAssignments>
-          preset_assignments = {},
-      const PrivateStacks& private_stacks = {},
-      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          heap_buffer_interval_compare = nullptr,
-      std::optional<BufferAssignment::BufferIsolationOptions>
-          isolation_options = std::nullopt,
-      std::optional<BufferValue::Color> temp_buffer_color = std::nullopt);
+      LogicalBuffer::AlignmentFunction color_alignment, Options options);
 
  private:
-  BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
-                 std::optional<MustNotLiveOut> must_not_live_out,
-                 std::unique_ptr<memory_space_assignment::PresetAssignments>
-                     preset_assignments,
-                 const AliasInfo* alias_info)
-      : allocate_buffers_for_constants_(allocate_buffers_for_constants),
-        colorer_(colorer),
-        must_not_live_out_(must_not_live_out),
-        preset_assignments_(std::move(preset_assignments)),
-        alias_info_(alias_info) {}
+  BufferAssigner(const AliasInfo* alias_info, Options opts)
+      : alias_info_(alias_info), opts_(std::move(opts)) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       BufferValue::SizeFunction buffer_size,
-      LogicalBuffer::AlignmentFunction color_alignment,
-      const PrivateStacks& private_stacks,
-      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-          heap_buffer_interval_compare,
-      std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-      std::optional<BufferValue::Color> temp_buffer_color);
+      LogicalBuffer::AlignmentFunction color_alignment);
 
   // Assigns buffers to the instructions in the given computations. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
@@ -866,21 +873,8 @@ class BufferAssigner {
       absl::Span<const HloComputation* const> private_stack_computations,
       const CallGraph& call_graph) const;
 
-  // If true, allocate buffers for constant instructions.
-  bool allocate_buffers_for_constants_;
-
-  // Functor used to assign colors to newly allocated logical buffers.
-  Colorer colorer_;
-
-  // An optional function that returns true if the given instruction can't live
-  // out of a computation.
-  std::optional<MustNotLiveOut> must_not_live_out_;
-
-  // Description of any buffer offsets that are already set by an earlier pass.
-  std::unique_ptr<memory_space_assignment::PresetAssignments>
-      preset_assignments_;
-
   const AliasInfo* alias_info_;
+  Options opts_;
 
   BufferAssigner(const BufferAssigner&) = delete;
   BufferAssigner& operator=(const BufferAssigner&) = delete;
@@ -888,6 +882,11 @@ class BufferAssigner {
 
 // Computes the peak memory usage through the proto's heap simulator traces.
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
+
+// Computes the total memory allocated by the buffer assignment for a given
+// color.
+int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
+                                    int64_t memory_color);
 
 }  // namespace xla
 

@@ -60,7 +60,9 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   SmallVector<Type> generic_func_params(
       llvm::map_range(func_ty.getParams(), [](Type type) -> Type {
         auto ptr_ty = dyn_cast<LLVM::LLVMPointerType>(type);
-        if (!ptr_ty) return type;
+        if (!ptr_ty) {
+          return type;
+        }
         if (ptr_ty.getAddressSpace() != NVVM::NVVMMemorySpace::Global) {
           return type;
         }
@@ -73,10 +75,11 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
   SmallVector<DictionaryAttr> arg_attrs(llvm::map_range(
       func.getArgAttrsAttr().getValue(),
       [](Attribute attr) { return cast<DictionaryAttr>(attr); }));
-  auto generic_func = rewriter.create<LLVM::LLVMFuncOp>(
-      func.getLoc(), func.getSymName(), generic_func_ty, func.getLinkage(),
-      func.getDsoLocal(), func.getCConv(), /*comdat=*/nullptr,
-      GetExtraAttrs(func), arg_attrs, func.getFunctionEntryCount());
+  auto generic_func = LLVM::LLVMFuncOp::create(
+      rewriter, func.getLoc(), func.getSymName(), generic_func_ty,
+      func.getLinkage(), func.getDsoLocal(), func.getCConv(),
+      /*comdat=*/nullptr, GetExtraAttrs(func), arg_attrs,
+      func.getFunctionEntryCount());
 
   // Convert generic address spaces back to original ones within the function
   // body.
@@ -88,7 +91,7 @@ void StripParameterAddressSpaces(RewriterBase& rewriter,
     Value converted = arg;
     if (arg.getType() != type) {
       converted =
-          rewriter.create<LLVM::AddrSpaceCastOp>(arg.getLoc(), type, arg);
+          LLVM::AddrSpaceCastOp::create(rewriter, arg.getLoc(), type, arg);
     }
     converted_args.push_back(converted);
   }

@@ -37,7 +37,7 @@ namespace tensorflow {
 
 PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
                              SubAllocator* allocator,
-                             RoundUpInterface* size_rounder, string name)
+                             RoundUpInterface* size_rounder, std::string name)
     : name_(std::move(name)),
       has_size_limit_(pool_size_limit > 0),
       auto_resize_(auto_resize),

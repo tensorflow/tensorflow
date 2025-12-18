@@ -102,7 +102,6 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
-        "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:gpu_spmd_pipeline",
@@ -164,6 +163,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
@@ -171,7 +171,6 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_value",
         "//xla/service:change_op_data_type",
@@ -259,18 +258,8 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100_pcie_80.txtpb",
-        "gpu_specs/mi200.txtpb",
+        "//xla/backends/gpu/target_config:all_gpu_specs",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
-
-filegroup(
-    name = "all_gpu_specs",
-    data = glob(["gpu_specs/*.txtpb"]),
-)
-
-exports_files(glob([
-    "gpu_specs/*.txtpb",
-]))

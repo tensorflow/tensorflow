@@ -20,6 +20,7 @@ message CustomCallBackendConfig {
 message FusionBackendConfig {
   string kind = 1;
   oneof custom_fusion_config_oneof {
+    // TODO: b/467367981, this is deprecated and should be removed.
     XnnFusionOptions xnn_fusion_options = 2;
     YnnFusionOptions ynn_fusion_options = 3;
   }

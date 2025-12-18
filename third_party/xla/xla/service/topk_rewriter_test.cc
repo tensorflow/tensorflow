@@ -50,7 +50,6 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tsl::testing::IsOkAndHolds;
 using TopkRewriterTest = HloTestBase;
 
 std::string getComparator() {

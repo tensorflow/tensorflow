@@ -15,7 +15,7 @@ limitations under the License.
 
 #ifndef XLA_CODEGEN_XTILE_IR_XTILE_OPS
 #define XLA_CODEGEN_XTILE_IR_XTILE_OPS
-
+include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
@@ -33,7 +33,14 @@ class XTile_Op<string mnemonic, list<Trait> traits = []> :
       Op<XTileDialect, mnemonic, traits> {
 }
 
-def TiledBufferInterface : OpInterface<"TiledBufferInterface"> {
+def TiledBufferInterface : OpInterface<"TiledBufferInterface",
+    [DeclareOpInterfaceMethods<BufferizableOpInterface,
+      ["bufferizesToMemoryRead",
+       "bufferizesToMemoryWrite",
+       "getAliasingValues",
+       "isWritable",
+       "bufferize"]>
+    ]> {
   let description = [{
 
   }];
@@ -212,6 +219,77 @@ def InsertTileOp : XTile_Op<"insert", [TiledBufferInterface]> {
   let hasVerifier = 1;
 }
 
+def MaskOp : XTile_Op<"mask",
+                      [Pure,
+                       AllTypesMatch<["source", "result"]>,
+                       TypesMatchWith<"mask type matches result element type",
+                          "result", "value", ElementType<"_self">.result>
+                      ]> {
+  let summary = "Mask the values of a tensor.";
+
+  let description = [{
+    Masks out the values of the input tensor that are outside the range of the
+    given mask upper bound. Masked values are set to the provided value.
+  }];
+
+
+  let arguments = (ins
+    AnyRankedTensor:$source,
+    DenseI64ArrayAttr:$bounds,
+    AnyType:$value
+  );
+
+  let results = (outs AnyRankedTensor:$result);
+
+  let assemblyFormat = [{
+    $source `bounds` $bounds `,` $value `:` type($result) attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    // Get the dimensions where the mask bound is smaller than the dimension
+    // size. The returned array is sorted in increasing order.
+    llvm::SmallVector<int64_t> getMaskedDimensions();
+  }];
+
+  let hasVerifier = 1;
+  let hasFolder = 1;
+}
+
+
+//
+// DotScaled Op
+//
+// TODO(basioli): This op was copied from the triton dialect. If we want to use 
+// it more we should probably consider documenting it properly, and including 
+// more checks (e.x. similar to the Triton DotOpInterface).
+def DotScaledOp : XTile_Op<"dot_scaled", [Pure, AttrSizedOperandSegments]> {
+    let summary = "dot_scaled";
+
+    let description = [{
+        $result = matrix_multiply(scale($lhs, $lhs_scale), scale($rhs, $rhs_scale)).
+        Where scale(x, s) is a function that applies the scale per block following microscaling spec.
+    }];
+
+    let arguments = (
+      ins
+      // inputs are floats if we have a type for them, otherwise (fp4),
+      // they are packed in pairs in an I8Tensor
+      RankedTensorOf<[AnyFloat,I8]>:$lhs,
+      RankedTensorOf<[AnyFloat,I8]>:$rhs,
+      Optional<RankedTensorOf<[AnyFloat,I8]>>:$lhs_scale,
+      Optional<RankedTensorOf<[AnyFloat,I8]>>:$rhs_scale,
+      BoolAttr:$fastMath,
+      DefaultValuedAttr<BoolAttr, "true">:$lhs_k_pack,
+      DefaultValuedAttr<BoolAttr, "true">:$rhs_k_pack
+    );
+
+    let results = (outs RankedTensorOf<[AnyFloat]>:$result);
+
+    let assemblyFormat = [{
+      $lhs (`scale` $lhs_scale^)? `,` $rhs (`scale` $rhs_scale^)? attr-dict
+      `:` type($lhs) (`,` type($lhs_scale)^)? `*` type($rhs) (`,` type($rhs_scale)^)? `->` type($result)
+    }];
+}
 
 #endif // XLA_CODEGEN_XTILE_IR_XTILE_OPS
 

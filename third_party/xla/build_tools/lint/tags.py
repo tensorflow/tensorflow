@@ -29,6 +29,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     # Tags that Bazel recognizes
     "local": "https://bazel.build/reference/be/common-definitions",
     "manual": "https://bazel.build/reference/be/common-definitions",
+    "exclusive-if-local": "https://bazel.build/reference/be/common-definitions",
     "large": "Conventional tag for `test_suites` of large tests",
     "__PYTHON_RULES_MIGRATION_DO_NOT_USE_WILL_BREAK__": "Internal bazel tag",
     # Various disable tags (currently recognized by OpenXLA CI)
@@ -47,6 +48,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "nomsan": "Disabled under msan. Not used on OpenXLA CI.",
     "notsan": "Disabled under tsan. Not used on OpenXLA CI",
     "nobuilder": "Not built internally.",
+    "nofixdeps": "Internal tag. Disables build_cleaner.",
     "nozapfhahn": "Internal tag. Disables gathering coverage",
     "optonly": "Should only be tested with -c opt",
     "nodebug": "Should not be tested in debug builds.",

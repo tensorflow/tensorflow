@@ -17,9 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <type_traits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -81,6 +86,60 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
 
   TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
   EXPECT_EQ(data, value);
+}
+
+struct MyState {
+  std::string value;
+};
+
+template <>
+struct TypeRegistry::SerDes<MyState> : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(const MyState& value) {
+    return value.value;
+  }
+  static absl::StatusOr<std::unique_ptr<MyState>> Deserialize(
+      absl::string_view data) {
+    auto state = std::make_unique<MyState>();
+    state->value = data;
+    return state;
+  }
+};
+
+TEST(ExecutionStateTest, Serialization) {
+  TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<MyState>();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TypeRegistry::TypeId type_id,
+      TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
+
+  ExecutionState state;
+  TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionState round_trip,
+                          ExecutionState::FromProto(proto))
+  TF_ASSERT_OK_AND_ASSIGN(void* round_trip_data, round_trip.Get(type_id));
+  EXPECT_EQ(static_cast<MyState*>(round_trip_data)->value, "some_state_data");
+}
+
+TEST(ExecutionStateTest, IsSerializable) {
+  ExecutionState state;
+  // Empty state is serializable (as empty proto).
+  EXPECT_TRUE(state.IsSerializable());
+
+  // State without serializer.
+  struct NoSerializer {
+    int x;
+  };
+  TF_ASSERT_OK(state.Set(std::make_unique<NoSerializer>(NoSerializer{42})));
+  EXPECT_FALSE(state.IsSerializable());
+
+  // State with serializer.
+  ExecutionState serializable_state;
+  TF_ASSERT_OK(
+      serializable_state.Set(std::make_unique<MyState>(MyState{"foo"})));
+  EXPECT_TRUE(serializable_state.IsSerializable());
 }
 
 }  // namespace xla::ffi

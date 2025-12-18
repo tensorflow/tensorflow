@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -47,8 +48,8 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -158,9 +159,9 @@ class GpuBlasLtThunkBuilder {
     return std::make_unique<CublasLtMatmulThunk>(
         std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
         epilogue,
-        /*algorithm_idx*/ 0, slices[0], slices[1],
-        has_matrix_bias ? slices[2] : slices.back(), slices.back(), bias,
-        BufferAllocation::Slice{} /* aux */,
+        /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
+        slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
+        slices.back(), bias, BufferAllocation::Slice{} /* aux */,
         BufferAllocation::Slice{} /* a_scale */,
         BufferAllocation::Slice{} /* b_scale */,
         BufferAllocation::Slice{} /* c_scale */,
@@ -169,7 +170,7 @@ class GpuBlasLtThunkBuilder {
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
-    std::vector<se::DeviceMemoryBase> buffers(mem_buffers_.size());
+    std::vector<se::DeviceAddressBase> buffers(mem_buffers_.size());
     for (size_t i = 0; i < buffers.size(); i++) {
       buffers[i] = *mem_buffers_[i];
     }
@@ -182,7 +183,7 @@ class GpuBlasLtThunkBuilder {
   se::StreamExecutorMemoryAllocator allocator_;
   se::GpuComputeCapability gpu_comp_;
   std::deque<BufferAllocation> allocs_;
-  std::vector<se::OwningDeviceMemory> mem_buffers_;
+  std::vector<se::ScopedDeviceAddress<uint8_t>> mem_buffers_;
 };
 
 void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
@@ -190,12 +191,14 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      RunHloPass(
-          GemmRewriter(gpu_comp(executor),
-                       /*toolkit_version=*/se::SemanticVersion{12, 4, 0}),
-          module.get()));
+      RunHloPass(GemmRewriter(gpu_comp(executor),
+                              /*toolkit_version=*/se::SemanticVersion{12, 4, 0},
+                              options),
+                 module.get()));
   ASSERT_TRUE(changed);
 
   GpuBlasLtThunkBuilder builder(executor, gpu_comp(executor));

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/criticality.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
 #include "tensorflow/core/common_runtime/cost_measurement.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
@@ -112,6 +113,8 @@ class BatchResourceBaseWithPriorityTest
         "/tensorflow/serving/batching/processed_batch_size_v2");
     padding_size_v2_reader_ = std::make_unique<CellReader<Histogram>>(
         "/tensorflow/serving/batching/padding_size_v2");
+    mixed_priority_policy_reader_ = std::make_unique<CellReader<std::string>>(
+        "/tensorflow/serving/batching/mixed_priority_batching_policy");
     // Create device_.
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
                                        "/job:a/replica:0/task:0");
@@ -166,6 +169,7 @@ class BatchResourceBaseWithPriorityTest
 
   std::unique_ptr<CellReader<int64_t>> processed_batch_size_v2_reader_;
   std::unique_ptr<CellReader<Histogram>> padding_size_v2_reader_;
+  std::unique_ptr<CellReader<std::string>> mixed_priority_policy_reader_;
   std::unique_ptr<Device> device_;
   std::unique_ptr<OpKernel> batch_kernel_;
   Tensor input_tensor_;
@@ -279,6 +283,13 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
         /*forced_warmup_batch_size=*/0));
   }
   blocking_counter.Wait();
+
+  TF_ASSERT_OK_AND_ASSIGN(absl::string_view policy_str,
+                          GetMixedPriorityBatchingPolicyString(
+                              GetParam().mixed_priority_batching_policy));
+  EXPECT_EQ(
+      mixed_priority_policy_reader_->Read("my_model_name", "my_batch_node"),
+      policy_str);
 
   for (const auto& [batch_size, expected_count] :
        GetParam().expected_batch_size_count) {

@@ -22,6 +22,14 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 
 namespace tensorflow {
+
+// Returns a string that uniquely identifies the device model based on the
+// device identifier string from the stream executor. There are cases where
+// the same device model may have different identifiers (e.g. different RAM).
+// This function normalizes the identifier to make it comparable to other
+// autotuning results.
+std::string DeviceIdentifierForAutotuning(absl::string_view device_identifier);
+
 // Uniquely identifies a convolution operation that runs on a particular device
 // model.
 //

@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -44,8 +43,9 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 // Helper to validate that an iteration space is compatible with a tile offsets
 // indexing map.
@@ -81,8 +81,7 @@ absl::Status ValidateIterationSpace(const IterationSpace& iteration_space,
 
 absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    SymbolicExprContext* symbolic_expr_context) {
-  mlir::MLIRContext* mlir_context = symbolic_expr_context->GetMLIRContext();
+    MLIRContext* mlir_context) {
   mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
 
   std::vector<int64_t> iteration_space_sizes;
@@ -96,8 +95,8 @@ absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
       mlir::getAffineConstantExpr(0, mlir_context));
 
   for (auto [dim_info, tile_expr] : llvm::zip(
-           iteration_space, DelinearizeIndex(iteration_space_sizes, program_id,
-                                             symbolic_expr_context))) {
+           iteration_space,
+           DelinearizeIndex(iteration_space_sizes, program_id, mlir_context))) {
     tile_exprs[dim_info.dimension_id] = tile_expr;
   }
   std::vector<IndexingMap::Variable> dim_vars{
@@ -126,7 +125,7 @@ CreateMajorToMinorTiledHloSchedule(
 
 absl::StatusOr<IndexingMap> MajorToMinorTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    SymbolicExprContext* ctx) const {
+    MLIRContext* ctx) const {
   TF_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
   return MajorToMinorScheduleImpl(tile_offsets_indexing, iteration_space, ctx);
@@ -207,7 +206,7 @@ TransposedDotTiledHloSchedule::Create(
 
 absl::StatusOr<IndexingMap> TransposedDotTiledHloSchedule::Schedule(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
-    SymbolicExprContext* ctx) const {
+    MLIRContext* ctx) const {
   TF_RETURN_IF_ERROR(
       ValidateIterationSpace(iteration_space, tile_offsets_indexing));
 

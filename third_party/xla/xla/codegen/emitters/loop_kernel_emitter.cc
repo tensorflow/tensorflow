@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -68,14 +68,15 @@ limitations under the License.
 
 namespace xla::emitters {
 
+using ::mlir::MLIRContext;
+
 LoopFusionKernelEmitter::LoopFusionKernelEmitter(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
-    const BufferAssignment* buffer_assignment,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const HloFusionSpec& fusion_spec, const BufferAssignment* buffer_assignment,
     KernelArguments::BufferAlignment buffer_alignment,
     WorkDimensions work_dimensions, absl::string_view entry_function_name,
     BackendKind backend_kind)
-    : symbolic_expr_context_(symbolic_expr_context),
+    : mlir_context_(mlir_context),
       fusion_(fusion),
       fusion_spec_(fusion_spec),
       buffer_assignment_(buffer_assignment),
@@ -86,7 +87,7 @@ LoopFusionKernelEmitter::LoopFusionKernelEmitter(
 
 absl::StatusOr<LoopFusionKernelEmitter::KernelDefinition>
 LoopFusionKernelEmitter::EmitKernelDefinition() {
-  mlir::OpBuilder builder(symbolic_expr_context_.GetMLIRContext());
+  mlir::OpBuilder builder(&mlir_context_);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
       loc, absl::StrCat(fusion_.name(), "_kernel_module"));
@@ -98,12 +99,11 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
-  SetBackendKind(symbolic_expr_context_.GetMLIRContext(), entry_func,
-                 backend_kind_);
+  SetBackendKind(&mlir_context_, entry_func, backend_kind_);
 
   // Loop emitters don't support epilogues.
   emitters::PartitionedComputations computations(
-      fusion_.fused_instructions_computation(), &symbolic_expr_context_);
+      fusion_.fused_instructions_computation(), &mlir_context_);
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              *module, computations));
 
@@ -120,12 +120,12 @@ LoopFusionKernelEmitter::EmitKernelDefinition() {
 
 IndexingMap LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& root_shape,
-    SymbolicExprContext* ctx) {
+    MLIRContext* ctx) {
   return GetDefaultWorkItemIndexingMap(work_dimensions, root_shape, ctx);
 }
 
 IndexingMap LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
-    SymbolicExprContext* ctx) const {
+    MLIRContext* ctx) const {
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_,
                                            GetIndexingShape(fusion_spec_), ctx);
 }
@@ -151,7 +151,7 @@ absl::Status LoopFusionKernelEmitter::EmitEntryFunction(
   auto workgroup_ids =
       EmitWorkGroupIds(builder, work_dimensions_.num_work_groups);
 
-  auto indexing = ComputeWorkItemIdToOutputIndexing(&symbolic_expr_context_);
+  auto indexing = ComputeWorkItemIdToOutputIndexing(&mlir_context_);
 
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   auto output_tensor_args =
@@ -186,8 +186,7 @@ absl::Status LoopFusionKernelEmitter::EmitEntryFunction(
     for (auto [root_shape, tensor, value] :
          llvm::zip(result_shapes, output_tensors, result_scalars)) {
       llvm::SmallVector<mlir::Value> output_indices = emitters::ApplyIndexing(
-          GetBitcastMap(*result_shapes.front(), *root_shape,
-                        &symbolic_expr_context_),
+          GetBitcastMap(*result_shapes.front(), *root_shape, &mlir_context_),
           map_results, {}, nested_b);
       result_tensors.push_back(nested_b.create<mlir::tensor::InsertOp>(
           value, tensor, output_indices));
@@ -216,7 +215,7 @@ absl::Status LoopFusionKernelEmitter::EmitEntryFunction(
       llvm::SmallVector<mlir::OpFoldResult> offsets(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(0));
       llvm::SmallVector<mlir::OpFoldResult> sizes =
-          mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
+          mlir::getAsIndexOpFoldResult(&mlir_context_,
                                        output_tensor.getShape());
       llvm::SmallVector<mlir::OpFoldResult> strides(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(1));
@@ -227,7 +226,7 @@ absl::Status LoopFusionKernelEmitter::EmitEntryFunction(
 
   const NumWorkItems& num_work_items = work_dimensions_.num_work_items;
   llvm::SmallVector<mlir::OpFoldResult> upper_bounds =
-      mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
+      mlir::getAsIndexOpFoldResult(&mlir_context_,
                                    {static_cast<int64_t>(num_work_items.x),
                                     static_cast<int64_t>(num_work_items.y),
                                     static_cast<int64_t>(num_work_items.z)});

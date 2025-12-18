@@ -33,7 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-class SymbolicExprContext;
 class SymbolicExprStorage;
 
 typedef int64_t VariableID;
@@ -63,7 +62,7 @@ class SymbolicExpr {
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
   bool operator<(const SymbolicExpr& other) const;
 
-  SymbolicExprContext* GetContext() const;
+  mlir::MLIRContext* GetContext() const;
   SymbolicExprType GetType() const;
   bool IsBinaryOp() const;
   SymbolicExpr GetLHS() const;
@@ -84,8 +83,7 @@ class SymbolicExpr {
                               int64_t num_dims) const;
   SymbolicExpr ReplaceDimsAndSymbols(
       absl::Span<const SymbolicExpr> dim_replacements,
-      absl::Span<const SymbolicExpr> symbol_replacements,
-      int64_t num_dims) const;
+      absl::Span<const SymbolicExpr> symbol_replacements) const;
 
   SymbolicExpr Canonicalize() const;
 
@@ -153,47 +151,23 @@ H AbslHashValue(H h, const SymbolicExpr& expr) {
   return H::combine(std::move(h), hash_value(expr));
 }
 
-class SymbolicExprContext {
- public:
-  explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
-  SymbolicExpr Parse(absl::string_view expr_str);
-  SymbolicExpr CreateConstant(int64_t value);
-  SymbolicExpr CreateVariable(int64_t var_id);
-  SymbolicExpr CreateBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
-                              SymbolicExpr rhs);
+// This method should be called once permlir::MLIRContext to register the
+// SymbolicExprStorage type with themlir::MLIRContext's uniquifier. It should be
+// called before any SymbolicExprs are created.
+void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context);
 
-  bool operator==(const SymbolicExprContext& other) const;
-  bool operator!=(const SymbolicExprContext& other) const {
-    return !(*this == other);
-  }
-
-  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
-
- private:
-  SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
-                           SymbolicExpr lhs, SymbolicExpr rhs);
-  // TODO(b/446856305): MLIRContext is only used here temporarily while we have
-  // AffineMap <-> SymbolicMap convertors. In the future, we only will need a
-  // StorageUniquer pointer.
-  mlir::MLIRContext* mlir_context_;
-};
-
-// Free function to create a constant SymbolicExpr.
-inline SymbolicExpr GetSymbolicConstantExpr(int64_t constant,
-                                            SymbolicExprContext* context) {
-  return context->CreateConstant(constant);
-}
-
-// Free function to create a vector of constant SymbolicExprs.
-inline llvm::SmallVector<SymbolicExpr> GetSymbolicConstantExprs(
-    llvm::ArrayRef<int64_t> constants, SymbolicExprContext* context) {
-  llvm::SmallVector<SymbolicExpr> exprs;
-  exprs.reserve(constants.size());
-  for (int64_t constant : constants) {
-    exprs.push_back(GetSymbolicConstantExpr(constant, context));
-  }
-  return exprs;
-}
+// Free functions to create SymbolicExpr.
+SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
+                               mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicConstant(int64_t value,
+                                    mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicVariable(int64_t var_id,
+                                    mlir::MLIRContext* mlir_context);
+SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
+                                    SymbolicExpr rhs,
+                                    mlir::MLIRContext* mlir_context);
+llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
+    llvm::ArrayRef<int64_t> constants, mlir::MLIRContext* mlir_context);
 
 }  // namespace xla
 

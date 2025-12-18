@@ -18,7 +18,7 @@ limitations under the License.
 #include "cub/block/block_scan.cuh"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_fp16.h"
-#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/prefix_sum_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -31,8 +31,8 @@ namespace {
 template <unsigned int BLOCK_SIZE, typename ElementT>
 __device__ void RowPrefixSum(const ElementT* data_in, ElementT* data_out,
                              size_t num_items) {
-  // `BLOCK_SIZE` must be a power of 2 no larger than 1024.
-  static_assert(BLOCK_SIZE <= 1024 && (BLOCK_SIZE & (BLOCK_SIZE - 1)) == 0);
+  // `BLOCK_SIZE` must be a power of 2 no larger than 512.
+  static_assert(BLOCK_SIZE <= 512 && (BLOCK_SIZE & (BLOCK_SIZE - 1)) == 0);
   using BlockScan = cub::BlockScan<ElementT, BLOCK_SIZE>;
   __shared__ typename BlockScan::TempStorage temp_storage;
   ElementT total = 0;
@@ -63,12 +63,9 @@ __global__ void PrefixSum(const void* data_in, void* data_out,
   int64_t row_offset = block_idx * num_items;
   // https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/:
   // CUDA architecture limits the numbers of threads per block (1024 threads
-  // per block limit).
+  // per block limit). We need to limit it to 512 to avoid running out of shared
+  // memory with 8 byte data types.
   switch (blockDim.x * blockDim.y * blockDim.z) {
-    case 1024:
-      RowPrefixSum<1024>(data_in_typed + row_offset,
-                         data_out_typed + row_offset, num_items);
-      break;
     case 512:
       RowPrefixSum<512>(data_in_typed + row_offset, data_out_typed + row_offset,
                         num_items);
@@ -124,6 +121,9 @@ __global__ void PrefixSum(const void* data_in, void* data_out,
   }
 
 // Floating point types.
+#ifdef CUB_TYPE_BF16
+XLA_CUB_PREFIX_SUM_KERNEL_SPEC(BF16, __nv_bfloat16)
+#endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_PREFIX_SUM_KERNEL_SPEC(F16, __half)
 #endif
@@ -170,6 +170,9 @@ XLA_CUB_PREFIX_SUM_KERNEL_SPEC(U64, uint64_t)
       se::gpu::PrefixSum##primitive_type##Kernel, kCudaPlatformId, \
       GetPrefixSum##primitive_type##KernelSpec)
 
+#ifdef CUB_TYPE_BF16
+REGISTER_PREFIX_SUM_KERNEL(BF16)
+#endif
 #ifdef CUB_TYPE_F16
 REGISTER_PREFIX_SUM_KERNEL(F16)
 #endif

@@ -29,18 +29,19 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {
 
-llvm::SmallVector<SymbolicExpr> CreateVariableRange(SymbolicExprContext* ctx,
+llvm::SmallVector<SymbolicExpr> CreateVariableRange(mlir::MLIRContext* ctx,
                                                     int64_t n,
                                                     int64_t offset = 0) {
   llvm::SmallVector<SymbolicExpr> replacements;
   replacements.reserve(n);
   for (int64_t i = 0; i < n; ++i) {
-    replacements.push_back(ctx->CreateVariable(offset + i));
+    replacements.push_back(CreateSymbolicVariable(offset + i, ctx));
   }
   return replacements;
 }
@@ -56,7 +57,7 @@ llvm::DenseSet<VariableID> GetUsedVariablesFromExpressions(
 
 }  // namespace
 
-SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
+SymbolicMap::SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols,
                          llvm::SmallVector<SymbolicExpr> exprs)
     : ctx_(ctx),
@@ -64,7 +65,7 @@ SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
       num_symbols_(num_symbols),
       exprs_(std::move(exprs)) {}
 
-/*static*/ SymbolicMap SymbolicMap::Get(SymbolicExprContext* ctx,
+/*static*/ SymbolicMap SymbolicMap::Get(mlir::MLIRContext* ctx,
                                         int64_t num_dimensions,
                                         int64_t num_symbols,
                                         llvm::SmallVector<SymbolicExpr> exprs) {
@@ -137,7 +138,7 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
     absl::c_copy(dim_replacements, std::back_inserter(all_replacements));
   } else {
     for (int i = 0; i < num_dimensions_; ++i) {
-      all_replacements.push_back(ctx_->CreateVariable(i));
+      all_replacements.push_back(CreateSymbolicVariable(i, ctx_));
     }
   }
 
@@ -145,7 +146,8 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
     absl::c_copy(sym_replacements, std::back_inserter(all_replacements));
   } else {
     for (int i = 0; i < num_symbols_; ++i) {
-      all_replacements.push_back(ctx_->CreateVariable(num_dimensions_ + i));
+      all_replacements.push_back(
+          CreateSymbolicVariable(num_dimensions_ + i, ctx_));
     }
   }
 
@@ -212,10 +214,7 @@ SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
-  const bool same_context =
-      (ctx_ == other.ctx_) ||
-      (ctx_ != nullptr && other.ctx_ != nullptr && *ctx_ == *other.ctx_);
-  return (same_context && num_dimensions_ == other.num_dimensions_ &&
+  return (ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
           num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_);
 }
 
@@ -274,7 +273,7 @@ SymbolicMap CompressDims(const SymbolicMap& map,
   for (int i = 0; i < map.GetNumDims(); ++i) {
     if (!unused_dims[i]) {
       dim_replacements[i] =
-          map.GetContext()->CreateVariable(current_new_dim_idx++);
+          CreateSymbolicVariable(current_new_dim_idx++, map.GetContext());
     }
   }
   auto sym_replacements =
@@ -310,8 +309,8 @@ SymbolicMap CompressSymbols(const SymbolicMap& map,
   int64_t current_new_sym_idx = 0;
   for (int i = 0; i < map.GetNumSymbols(); ++i) {
     if (!unused_symbols[i]) {
-      sym_replacements[i] =
-          map.GetContext()->CreateVariable(num_dims + current_new_sym_idx++);
+      sym_replacements[i] = CreateSymbolicVariable(
+          num_dims + current_new_sym_idx++, map.GetContext());
     }
   }
   CHECK_EQ(current_new_sym_idx, new_num_symbols);

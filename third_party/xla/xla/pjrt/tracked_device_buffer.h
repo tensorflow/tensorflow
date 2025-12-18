@@ -39,12 +39,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -53,11 +53,11 @@ namespace xla {
 
 class RawSEDeviceMemory {
  public:
-  explicit RawSEDeviceMemory(se::DeviceMemoryBase value) : value_(value) {}
+  explicit RawSEDeviceMemory(se::DeviceAddressBase value) : value_(value) {}
 
   virtual ~RawSEDeviceMemory() = default;
 
-  const se::DeviceMemoryBase& mem() const { return value_; }
+  const se::DeviceAddressBase& mem() const { return value_; }
 
   void* opaque() const { return value_.opaque(); }
 
@@ -70,10 +70,10 @@ class RawSEDeviceMemory {
                               const Shape& on_device_shape) const;
 
   static tsl::AsyncValueRef<RawSEDeviceMemory> Create(
-      se::DeviceMemoryBase value, LocalDeviceState* local_device,
-      se::DeviceMemoryAllocator* allocator);
+      se::DeviceAddressBase value, LocalDeviceState* local_device,
+      se::DeviceAddressAllocator* allocator);
   static tsl::AsyncValueRef<RawSEDeviceMemory> CreateForeign(
-      se::DeviceMemoryBase value,
+      se::DeviceAddressBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
 
   // Returns a definition event (or nullptr if the definition is known to be in
@@ -84,7 +84,7 @@ class RawSEDeviceMemory {
   }
 
  private:
-  se::DeviceMemoryBase value_;
+  se::DeviceAddressBase value_;
 };
 
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it
@@ -103,17 +103,14 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
     bool reference_held;
   };
 
-  // Builds a ShapedBuffer view onto the buffers of 'tree'.
-  ShapedBuffer AsShapedBuffer(const Shape& on_device_shape) const;
-
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'
   // when passed in is pointing to a sub-tuple of the ExecutionInput whose
   // on_device_shape matches that of the TrackedDeviceBuffer. 'end' is used to
   // check that 'iterator' doesn't run out of bounds.
   void AddToInputAsImmutable(
-      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const;
+      ShapeTree<MaybeOwningDeviceAddress>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceAddress>::iterator& end) const;
 
   // Adds the owned device buffers in order to 'iterator', marking them as
   // available to be donated. If donation succeeds, i.e., execution_input is
@@ -124,14 +121,10 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // that of the TrackedDeviceBuffer. 'end' is used to check that 'iterator'
   // doesn't run out of bounds.
   void AddToInputAsDonated(
-      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+      ShapeTree<MaybeOwningDeviceAddress>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceAddress>::iterator& end,
       ExecutionInput* execution_input,
-      se::DeviceMemoryAllocator* allocator) const;
-
-  const tsl::AsyncValueRef<RawSEDeviceMemory>& device_memory() const {
-    return device_memory_;
-  }
+      se::DeviceAddressAllocator* allocator) const;
 
   const absl::InlinedVector<BufferSequencingEventRef, 2>& definition_events()
       const {
@@ -140,10 +133,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::Span<const StreamAndEvent> usage_events() const {
     return usage_events_;
   }
-
-  // Relinquishes ownership of the buffer's device memory, e.g., after the
-  // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory();
 
   // Only to be called by ScopedHold to mark a successful donation.
   void ConfirmDonation() override;
@@ -167,15 +156,12 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   StreamAndEventContainer LockUseAndTransferUsageEvents();
 
   TrackedDeviceBuffer(
-      PjRtDevice* device, tsl::AsyncValueRef<RawSEDeviceMemory> device_memory,
+      PjRtDevice* device, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::Span<const BufferSequencingEventRef> definition_events);
   ~TrackedDeviceBuffer() override;
 
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
-
-  tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
-      PjRtMemorySpace* memory_space) override;
 
   void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
@@ -199,10 +185,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
  private:
   PjRtDevice* device_;
-
-  // Each host-side buffer may have several buffers on-device.
-  tsl::AsyncValueRef<RawSEDeviceMemory> device_memory_;
-
   // Events that are triggered when the content of one or more buffers is ready
   // during multistream execution. May be nullptr, which is used in the
   // single-stream execution case where events are not necessary for buffer

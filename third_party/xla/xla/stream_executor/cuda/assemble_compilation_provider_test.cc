@@ -21,12 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/cuda_root_path.h"
 #include "tsl/platform/path.h"
@@ -37,7 +37,6 @@ namespace stream_executor::cuda {
 namespace {
 using ::testing::AllOf;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(AssembleCompilationProviderTest, CandidateCudaRootsConsidersCUDA_HOME) {
   const std::string cuda_home = "/my/cuda/home";

@@ -70,11 +70,11 @@ class LLVMCompiler : public Compiler {
   //   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       se::DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceAddressAllocator* device_allocator)
   //   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       se::DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceAddressAllocator* device_allocator)
   using Compiler::Compile;
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;

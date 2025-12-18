@@ -47,7 +47,7 @@ FunctionDef RemoveDebugInfo(const FunctionDef& def) {
 }
 
 bool EqualFunctionDef(const FunctionDef& a, const FunctionDef& b,
-                      string* diff) {
+                      std::string* diff) {
   // TODO(phawkins) use a more sophisticated equality test.
   if (a.DebugString() != b.DebugString()) {
     if (diff) {
@@ -95,7 +95,7 @@ TEST(GraphToFunctionDefTest, Basics) {
       },
       {{"h", "G:sum:0"}});  // return values
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -119,7 +119,7 @@ TEST(GraphToFunctionDefTest, OverrideOutputNames) {
                                 {},             // body
                                 {{"b", "a"}});  // return values
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -168,7 +168,7 @@ TEST(GraphToFunctionDefTest, ArgAttrShape) {
   attrs.mutable_attr()->insert({"_output_shapes", output_shapes});
   (*fdef_expected.mutable_arg_attr())[0] = std::move(attrs);
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -199,7 +199,7 @@ TEST(GraphToFunctionDefTest, ArgAttrPrivateAttr) {
   attrs.mutable_attr()->insert({"_name", private_attr});
   (*fdef_expected.mutable_arg_attr())[0] = std::move(attrs);
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -266,7 +266,7 @@ TEST(GraphToFunctionDefTest, ArgAttrConstInput) {
   (*fdef_expected.mutable_signature()->mutable_description()) =
       "ArgAttrConstInput";
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -374,7 +374,7 @@ TEST(GraphToFunctionDefTest, ControlDependencies) {
       },
       {{"c", "b:y:0"}});  // return values
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 
@@ -395,8 +395,9 @@ TEST(GraphToFunctionDefTest, ControlOutputs) {
   TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
 
   // Add a 'b' node to the control return set.
-  const auto control_ret = [](const Node* n) -> absl::optional<string> {
-    if (n->name() == "b") return absl::make_optional<string>("must_execute");
+  const auto control_ret = [](const Node* n) -> absl::optional<std::string> {
+    if (n->name() == "b")
+      return absl::make_optional<std::string>("must_execute");
     return absl::nullopt;
   };
 
@@ -415,7 +416,7 @@ TEST(GraphToFunctionDefTest, ControlOutputs) {
                                 {{"c", "b:y:0"}},          // return values
                                 {{"must_execute", "b"}});  // control returns
 
-  string diff;
+  std::string diff;
   bool fdefs_equal =
       EqualFunctionDef(fdef_expected, RemoveDebugInfo(fdef), &diff);
 

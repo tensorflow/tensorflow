@@ -189,12 +189,10 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     # format being the same for packed and unpacked fields, and reparse the test
     # message using the packed version of the proto.
     in_bufs = [
-        # Note: float_format='.17g' is necessary to ensure preservation of
-        # doubles and floats in text format.
         text_format.Parse(
-            text_format.MessageToString(
-                value, float_format='.17g'),
-            test_example_pb2.PackedTestValue()).SerializeToString()
+            text_format.MessageToString(value),
+            test_example_pb2.PackedTestValue(),
+        ).SerializeToString()
         for value in case.values
     ]
 

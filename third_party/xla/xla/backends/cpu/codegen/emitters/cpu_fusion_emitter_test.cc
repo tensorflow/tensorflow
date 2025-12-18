@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -59,7 +58,8 @@ class CpuFusionEmitterTest : public HloHardwareIndependentTestBase {
         [](const BufferValue& buffer) {
           return CpuExecutable::ShapeSizeBytes(buffer.shape());
         },
-        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; });
+        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+        BufferAssigner::Options{});
   }
 
   AliasInfo alias_info_;
@@ -116,10 +116,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-  CpuScatterFusion emitter(*buffer_assignment, fusion,
-                           symbolic_expr_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   const auto& mlir_source = kernel_definition.source();
@@ -147,10 +144,7 @@ TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   auto fusion = Cast<HloFusionInstruction>(
       hlo_module->entry_computation()->root_instruction());
   auto mlir_context = FusionCompiler::CreateContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
-  CpuScatterFusion emitter(*buffer_assignment, fusion,
-                           symbolic_expr_context.get());
+  CpuScatterFusion emitter(*buffer_assignment, fusion, mlir_context.get());
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
   FusionCompiler compiler(mlir_context.get(),

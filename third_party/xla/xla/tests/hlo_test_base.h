@@ -48,7 +48,7 @@ static_assert(false,
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
@@ -210,7 +210,7 @@ class ABSL_DEPRECATED(
   static se::Platform* GetTestPlatform();
 
   // Creates or retrieves the allocator.
-  se::DeviceMemoryAllocator* GetAllocator();
+  se::DeviceAddressAllocator* GetAllocator();
 
   ErrorSpec error_spec_{0.0001};
 
@@ -224,7 +224,7 @@ class ABSL_DEPRECATED(
               bool allow_mixed_precision_in_hlo_verifier,
               HloPredicate instruction_can_change_layout_func);
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
 
 }  // namespace xla

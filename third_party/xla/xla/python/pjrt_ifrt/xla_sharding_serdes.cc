@@ -58,7 +58,7 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
     HloShardingProto proto;
     proto.set_version_number(SerDesVersionNumber(0).value());
-    *proto.mutable_devices() = sharding.devices()->ToProto(version);
+    sharding.devices()->ToProto(*proto.mutable_devices(), version);
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }

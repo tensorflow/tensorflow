@@ -92,7 +92,8 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
   absl::flat_hash_set<HloOpcode> ret{HloOpcode::kAbs, HloOpcode::kCopy};
 
   if (element_type != PrimitiveType::F8E5M2 &&
-      element_type != PrimitiveType::F8E4M3FN) {
+      element_type != PrimitiveType::F8E4M3FN &&
+      element_type != PrimitiveType::F8E8M0FNU) {
     ret.insert(HloOpcode::kNegate);
   }
 
@@ -214,6 +215,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     ret.insert(HloOpcode::kAnd);
     ret.insert(HloOpcode::kOr);
     ret.insert(HloOpcode::kXor);
+    ret.insert(HloOpcode::kRemainder);
   }
 
   if (element_type == PrimitiveType::F32 ||
@@ -288,6 +290,31 @@ CodegenDecision CanTritonHandleReduce(
   }
   return CodegenDecision::Forbid(
       "Reduction is not a row-reduction of a single operand.");
+}
+
+CodegenDecision IsTritonSupportedAllReduce(
+    const HloAllReduceInstruction& all_reduce,
+    const se::GpuComputeCapability& gpu_version) {
+  if (all_reduce.replica_groups().empty()) {
+    return CodegenDecision::Forbid("All-reduce does not have replica groups.");
+  }
+  if (all_reduce.shape().element_type() == PrimitiveType::F8E4M3FN ||
+      all_reduce.shape().element_type() == PrimitiveType::F8E5M2 ||
+      all_reduce.shape().element_type() == PrimitiveType::S4) {
+    return CodegenDecision::Forbid(
+        "S4, F8E4M3FN and F8E5M2 are not supported for all-reduces.");
+  }
+
+  bool is_triton_supported_all_reduce_computation = absl::c_all_of(
+      all_reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
+      });
+  if (!is_triton_supported_all_reduce_computation) {
+    return CodegenDecision::Forbid(
+        "Unsupported all-reduce computation by Triton.");
+  }
+
+  return CodegenDecision::Allow();
 }
 
 bool IsInTritonNestedGemmFusion(const HloInstruction& hlo) {
@@ -463,8 +490,12 @@ CodegenDecision IsTritonSupportedDot(
         "Only operands that are fusions are supported.");
   }
 
+  auto types_are = [&](PrimitiveType compare1, PrimitiveType compare2) {
+    return (lhs_type == compare1 && rhs_type == compare2) ||
+           (lhs_type == compare2 && rhs_type == compare1);
+  };
   // TODO(b/393299275): add support tests for mixed types.
-  if (lhs_type != rhs_type) {
+  if (lhs_type != rhs_type && !types_are(F8E5M2, F8E4M3FN)) {
     return CodegenDecision::Forbid(
         "Dot operation only supports same types for lhs and rhs.");
   }
@@ -676,6 +707,12 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kFusion:
       return IsTritonSupportedFusion(*Cast<HloFusionInstruction>(&instr),
                                      gpu_version);
+    case HloOpcode::kAllReduceStart:
+      return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
+                                        gpu_version);
+    case HloOpcode::kAllReduceDone:
+      return IsTritonSupportedAllReduce(
+          *Cast<HloAllReduceInstruction>(instr.operand(0)), gpu_version);
     default:
       // Not all instructions have a special handling.
       break;

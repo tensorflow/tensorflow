@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {
@@ -47,7 +46,6 @@ namespace {
 
 using ::testing::Contains;
 using ::testing::ContainsRegex;
-using ::tsl::testing::IsOkAndHolds;
 
 class NopPass : public mlir::PassWrapper<NopPass, mlir::OperationPass<>> {
  public:

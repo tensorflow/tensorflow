@@ -39,8 +39,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -57,19 +57,19 @@ using ::tsl::MakeConstructedAsyncValueRef;
 
 void* kOpaque = reinterpret_cast<void*>(1234567890);
 
-class TestAllocator : public se::DeviceMemoryAllocator {
+class TestAllocator : public se::DeviceAddressAllocator {
  public:
-  TestAllocator() : DeviceMemoryAllocator(nullptr) {}
+  TestAllocator() : DeviceAddressAllocator(nullptr) {}
 
-  using se::DeviceMemoryAllocator::Allocate;
-  absl::StatusOr<stream_executor::OwningDeviceMemory> Allocate(
+  using se::DeviceAddressAllocator::Allocate;
+  absl::StatusOr<stream_executor::ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
       int64_t memory_space) override {
-    const se::DeviceMemoryBase base(kOpaque, size);
-    return stream_executor::OwningDeviceMemory(base, 0, this);
+    const se::DeviceAddressBase base(kOpaque, size);
+    return stream_executor::ScopedDeviceAddress<uint8_t>(base, 0, this);
   }
   absl::Status Deallocate(int device_ordinal,
-                          se::DeviceMemoryBase mem) override {
+                          se::DeviceAddressBase mem) override {
     return absl::OkStatus();
   }
   absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {

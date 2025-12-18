@@ -1,5 +1,21 @@
 # PJRT C API changelog
 
+## 0.85
+
+* Add `PJRT_Device_PoisonExecution`.
+
+## 0.84
+
+* Add `PJRT_Buffer_CopyRawToHostFuture`.
+
+## 0.83
+
+* Add `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral`.
+
+## 0.82
+
+* Add `PJRT_Client_CreateErrorBuffer`.
+
 ## 0.81
 
 * Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,8 +42,8 @@ class ConcatenateFusionKernelEmitter final
     : public KernelEmitter<MlirKernelSource> {
  public:
   ConcatenateFusionKernelEmitter(
-      SymbolicExprContext& symbolic_expr_context,
-      const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+      const HloFusionSpec& fusion_spec,
       const BufferAssignment* buffer_assignment,
       KernelArguments::BufferAlignment buffer_alignment,
       WorkDimensions work_dimensions, absl::string_view entry_function_name,
@@ -57,7 +57,7 @@ class ConcatenateFusionKernelEmitter final
 
   static IndexingMap ComputeWorkItemIdToOutputIndexing(
       const WorkDimensions& work_dimensions, const Shape& largest_shape,
-      SymbolicExprContext* ctx);
+      mlir::MLIRContext* ctx);
 
   // Get the shape used for indexing.
   // For concatenate, this is the largest shape.
@@ -71,7 +71,7 @@ class ConcatenateFusionKernelEmitter final
                                   int max_unroll_factor);
 
  private:
-  IndexingMap ComputeWorkItemIdToOutputIndexing(SymbolicExprContext* ctx) const;
+  IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
@@ -81,10 +81,10 @@ class ConcatenateFusionKernelEmitter final
 
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
-      SymbolicExprContext* symbolic_expr_context) const;
+      mlir::MLIRContext* mlir_context) const;
 
  private:
-  SymbolicExprContext& symbolic_expr_context_;
+  mlir::MLIRContext& mlir_context_;
   const HloFusionInstruction& fusion_;
   const HloFusionSpec& fusion_spec_;
   const BufferAssignment* buffer_assignment_;

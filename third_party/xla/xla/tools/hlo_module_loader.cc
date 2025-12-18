@@ -23,18 +23,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/raw_ostream.h"
 #include "google/protobuf/text_format.h"
 #include "re2/re2.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/mhlo_to_hlo/translate.h"
+#include "xla/hlo/translate/stablehlo_to_hlo/translate.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/run_hlo_module.pb.h"
@@ -84,6 +90,39 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
+  std::string buffer;
+  if (format == "stablehlo" || format == "mhlo") {
+    llvm::StringRef llvm_data(data.data(), data.size());
+    auto input = llvm::MemoryBuffer::getMemBuffer(
+        llvm_data, /*BufferName=*/"", /*RequiresNullTerminator=*/false);
+    llvm::raw_string_ostream output(buffer);
+    auto status =
+        format == "mhlo"
+            ? xla::MlirHloToHloTextMain(
+                  std::move(input), output,
+                  /*emit_return_tuple=*/false,
+                  /*emit_use_tuple_arg=*/false,
+                  /*print_layouts=*/false,
+                  /*print_large_constants=*/true, /*print_sugar=*/false,
+                  /*via_builder=*/false, /*with_layouts=*/false)
+            : xla::StablehloToHloTextMain(
+                  std::move(input), output,
+                  /*emit_return_tuple=*/false,
+                  /*emit_use_tuple_arg=*/false,
+                  /*print_layouts=*/false,
+                  /*print_large_constants=*/true, /*print_sugar=*/false,
+                  /*via_builder=*/false, /*with_layouts=*/false);
+
+    if (status.failed()) {
+      LOG(QFATAL) << "Failed to translate input " << format
+                  << " program to HLO text";
+    }
+
+    VLOG(1) << "Input " << format << " program translated to HLO text";
+    format = "hlo";
+    data = buffer;
+  }
+
   if (format == "hlo" || format == "txt") {
     std::string hlo_string = StripLogHeaders(data);
     HloModuleConfig config;
@@ -122,8 +161,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
       }
     } else {
       return InvalidArgument(
-          "Invalid format from file extension: '%s'. Expected: hlo, txt, pb, "
-          "or pbtxt",
+          "Invalid format from file extension: '%s'. Expected: hlo, txt, "
+          "stablehlo, mhlo, pb, or pbtxt",
           format);
     }
     TF_ASSIGN_OR_RETURN(HloModuleConfig config,

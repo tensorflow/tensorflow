@@ -260,7 +260,7 @@ class DeviceDescription {
   // configured as shared memory; there is no easy way to query its actual size;
   // also we do not count what occupies cache, but rather claim that what is
   // much smaller than the cache size will likely stay in it.
-  constexpr int64_t l1_cache_size_per_SM() const {
+  int64_t l1_cache_size_per_SM() const {
     if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
       // MI100 and MI200 has 16KB L1 cache per CU.
       if (capability->gfx9_mi100() || capability->gfx9_mi200()) {
@@ -275,7 +275,7 @@ class DeviceDescription {
     return 2 * 1024;
   }
 
-  constexpr int64_t dram_to_l2_transaction_size_bytes() const {
+  int64_t dram_to_l2_transaction_size_bytes() const {
     if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
       // DRAM->L2 bus is 128 Byte width for MI300.
       if (capability->gfx9_mi300_series()) {
@@ -291,7 +291,7 @@ class DeviceDescription {
     return 64;
   }
 
-  constexpr int64_t memory_transactions_per_clock() const {
+  int64_t memory_transactions_per_clock() const {
     if (auto* capability = gpu_compute_capability_.rocm_compute_capability()) {
       // 16 works well on MI300.
       if (capability->gfx9_mi300_series()) {

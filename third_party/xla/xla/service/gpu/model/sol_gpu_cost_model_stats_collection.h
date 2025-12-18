@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_verifier.h"
@@ -32,11 +32,11 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
   explicit SolGpuCostModelStatsCollection(
       const se::DeviceDescription& device_description,
       ShapeSizeFn shape_size_in_bytes_fn, int pointer_size,
-      SymbolicExprContext* symbolic_expr_context)
+      mlir::MLIRContext* mlir_context)
       : device_info_(device_description),
         shape_size_in_bytes_fn_(shape_size_in_bytes_fn),
         pointer_size_(pointer_size),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   absl::string_view name() const override {
     return "sol-gpu-cost-model-stats-collection";
@@ -51,7 +51,7 @@ class SolGpuCostModelStatsCollection : public HloModulePass {
   se::DeviceDescription device_info_;
   ShapeSizeFn shape_size_in_bytes_fn_;
   int pointer_size_;
-  SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace xla::gpu

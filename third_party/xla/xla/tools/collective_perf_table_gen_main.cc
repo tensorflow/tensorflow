@@ -18,23 +18,32 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "google/protobuf/text_format.h"
+#include "xla/service/gpu/model/collective_interpolator_data.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/collective_perf_table_gen.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/path.h"
 
 namespace {
 
@@ -72,6 +81,24 @@ to 4 GPUs.
   (--tensor_size_bytes_spec)
 * AllReduce will run across all 8 devices.
   (--collective_devices_spec, HloShardingV2 format)
+
+This tool can also merge new profiles (either generated or loaded using
+--merge or --merge_path) into the static performance table defined in
+a C++ header file, e.g. `collective_interpolator_data.h`.
+Use `--update_header_path` to specify header file to update in-place.
+
+Example for generating COLLECTIVE_PERMUTE profiles:
+  CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 bazel run --config=cuda  -- \
+    tools:collective_perf_table_gen_main  \
+    --num_nodes=1 --task_id=0 --collectives=COLLECTIVE_PERMUTE \
+    --collective_devices_spec='[1,8]<=[8]' \
+    --tensor_size_bytes_spec='start=1024,stop=2147483648,factor=2' \
+
+Example for merging profiles from `cp_perf_table.pbtxt` into
+`service/gpu/model/collective_interpolator_data.h`:
+  bazel run tools:collective_perf_table_gen_main -- \
+    --merge=cp_perf_table.pbtxt \
+    --update_header_path=service/gpu/model/collective_interpolator_data.h
 )";
 
 constexpr absl::string_view kDefaultCoordinatorAddress = "127.0.0.1:1234";
@@ -109,6 +136,11 @@ std::vector<CollectivePerfTableGen::CollectiveType> ParseCollectives(
     }
     if (token == "ALL_TO_ALL") {
       types.push_back(CollectivePerfTableGen::CollectiveType::ALL_TO_ALL);
+      continue;
+    }
+    if (token == "COLLECTIVE_PERMUTE") {
+      types.push_back(
+          CollectivePerfTableGen::CollectiveType::COLLECTIVE_PERMUTE);
       continue;
     }
   }
@@ -156,6 +188,93 @@ std::string DefaultCollectiveDevicesIfEmpty(
   return collective_devices_spec_unparsed;
 }
 
+// Helper to get full path if running under bazel run.
+std::string GetFullPath(const std::string& path) {
+  if (tsl::io::IsAbsolutePath(path)) {
+    return path;
+  }
+  const char* build_workspace_dir = getenv("BUILD_WORKSPACE_DIRECTORY");
+  if (build_workspace_dir != nullptr) {
+    return tsl::io::JoinPath(build_workspace_dir, path);
+  }
+  return path;  // Fallback to relative path if not in bazel run
+}
+
+// Helper to inject proto string into header by replacing content between
+// R"pb( and )pb tags.
+// Note: this function assumes there is only one R"pb(...)pb" block in the
+// header file, and finds the first opening tag R"pb(\n and last closing tag
+// \n)pb".
+std::string InjectProtoToString(const std::string& header_content,
+                                const std::string& new_proto_string) {
+  const std::string start_str = "R\"pb(\n";
+  const std::string end_str = "\n)pb";
+  size_t start = header_content.find(start_str);
+  size_t end = header_content.rfind(end_str);
+  CHECK(start != std::string::npos && end != std::string::npos);
+  start += start_str.length();
+
+  std::string result = header_content.substr(0, start);
+  result += new_proto_string;
+  result += header_content.substr(end);
+  return result;
+}
+
+absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
+                          const std::string& header_path_flag,
+                          CollectivePerfTableGen* gen) {
+  std::string header_path = GetFullPath(header_path_flag);
+
+  // 1. Parse kDefaultCollectivePTable to get current profiles
+  DeviceHloInstructionProfiles current_profiles_proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
+                                                   &current_profiles_proto));
+  std::string current_profiles_pbtxt;
+  tsl::protobuf::TextFormat::PrintToString(current_profiles_proto,
+                                           &current_profiles_pbtxt);
+
+  // 2. Save current profiles to temp file
+  std::string temp_file_current =
+      tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_current.pbtxt");
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+      tsl::Env::Default(), temp_file_current, current_profiles_pbtxt));
+
+  // 3. Save new profiles to temp file
+  std::string new_profiles_pbtxt;
+  tsl::protobuf::TextFormat::PrintToString(new_profiles, &new_profiles_pbtxt);
+  std::string temp_file_new =
+      tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_new.pbtxt");
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
+                                            new_profiles_pbtxt));
+
+  // 4. Merge
+  std::vector<std::string> files_to_merge = {temp_file_current, temp_file_new};
+  DeviceHloInstructionProfiles merged_profiles = gen->Merge(files_to_merge);
+
+  // 5. Format as text
+  tsl::protobuf::TextFormat::Printer printer;
+  printer.SetInitialIndentLevel(1);
+  std::string merged_profiles_pbtxt;
+  printer.PrintToString(merged_profiles, &merged_profiles_pbtxt);
+  // The printer might add a trailing newline which we don't want inside
+  // R"pb(...)pb" to avoid unnecessary ClangTidy warnings.
+  if (!merged_profiles_pbtxt.empty() && merged_profiles_pbtxt.back() == '\n') {
+    merged_profiles_pbtxt.pop_back();
+  }
+
+  // 6. Update header
+  std::string header_content;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), header_path, &header_content));
+  std::string new_header_content =
+      InjectProtoToString(header_content, merged_profiles_pbtxt);
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), header_path,
+                                            new_header_content));
+
+  LOG(INFO) << "Successfully merged profiles into " << header_path_flag;
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -173,6 +292,7 @@ int main(int argc, char* argv[]) {
   std::string output = std::string(CollectivePerfTableGen::Config::kStdout);
   std::string merge_path;
   std::vector<std::string> merge_files;
+  std::string update_header_path;
 
   // Parse flags.
   std::vector<tsl::Flag> flag_list = {
@@ -186,7 +306,7 @@ int main(int argc, char* argv[]) {
       tsl::Flag("collectives", &collectives_unparsed,
                 "Comma separated list of collectives to generate perf table "
                 "for. Allowed values: ALL_REDUCE, ALL_GATHER, REDUCE_SCATTER, "
-                "ALL_TO_ALL."),
+                "ALL_TO_ALL, COLLECTIVE_PERMUTE."),
       tsl::Flag("tensor_size_bytes_spec", &tensor_size_bytes_spec_unparsed,
                 "Spec for a search sweep over transfer sizes. Format example: "
                 "start=1,stop=8,factor=2 generates {1,2,4,8}."),
@@ -214,6 +334,9 @@ int main(int argc, char* argv[]) {
           "none",
           "Path to individual DeviceHloInstructionProfiles files. If "
           "specified, these files will be merged into a single one."),
+      tsl::Flag(
+          "update_header_path", &update_header_path,
+          "Path to C++ header file to update in-place with new profiles."),
   };
 
   std::string kUsageString =
@@ -243,10 +366,22 @@ int main(int argc, char* argv[]) {
   if (!merge_path.empty()) {
     profiles = gen->Merge(merge_path);
   } else if (!merge_files.empty()) {
-    profiles = gen->Merge(merge_files);
+    std::vector<std::string> full_path_merge_files;
+    full_path_merge_files.reserve(merge_files.size());
+    absl::c_transform(merge_files, std::back_inserter(full_path_merge_files),
+                      GetFullPath);
+    profiles = gen->Merge(full_path_merge_files);
   } else {
     profiles = gen->ComputeTable();
   }
+
+  if (!update_header_path.empty()) {
+    CHECK_OK(UpdateHeader(profiles, update_header_path, gen.get()));
+    if (output == CollectivePerfTableGen::Config::kStdout) {
+      return 0;  // If header is updated, avoid printing to stdout.
+    }
+  }
+
   CHECK_OK(gen->Dump(profiles));
   return 0;
 }
