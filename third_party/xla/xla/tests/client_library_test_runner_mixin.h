@@ -407,6 +407,10 @@ class ClientLibraryTestRunnerMixin : public T {
   DebugOptions* mutable_debug_options() {
     return execution_options_.mutable_debug_options();
   }
+  const ExecutionOptions& execution_options() const {
+    return execution_options_;
+  }
+  ExecutionOptions* mutable_execution_options() { return &execution_options_; }
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> BuildAndVerifyHloModule(

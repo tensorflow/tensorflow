@@ -109,7 +109,7 @@ class CoordinationServiceAgent {
   CoordinationServiceAgent() = default;
 
   virtual ~CoordinationServiceAgent() {
-    absl::Status s = ShutdownInternal();
+    absl::Status s = Shutdown();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
 
@@ -378,7 +378,6 @@ class CoordinationServiceAgent {
  private:
   friend class CoordinationServiceRpcHandler;
 
-  absl::Status ShutdownInternal();
   // Starts sending heartbeats to the coordination service.
   void StartSendingHeartbeats();
   // Use long polling to get error from the coordination service.
