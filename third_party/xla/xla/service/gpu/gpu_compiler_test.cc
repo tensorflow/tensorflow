@@ -2108,7 +2108,7 @@ ENTRY %main {
   EXPECT_CALL(mock_log,
               Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
                   StartsWith("Using fallback sort algorithm")))
-      .Times(2);
+      .Times(1);
 
   // StartCapturingLogs has to be called even if we expect not to capture any
   // logs.

@@ -523,7 +523,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if ((HloPredicateIsOp<HloOpcode::kSort>(instruction) ||
-                IsCubDeviceRadixSort(*instruction)) &&
+                IsCubDeviceRadixSortNoScratchSize(*instruction)) &&
                instruction->operand(0)->shape().dimensions().size() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();
