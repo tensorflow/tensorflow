@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fcntl.h>
 
+#include <atomic>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -24,6 +25,14 @@ limitations under the License.
 
 namespace tflite::xnnpack {
 namespace {
+
+// Returns a path for a temporary file.
+//
+// Each call will return a new path.
+std::string NewTempFilePath() {
+  static std::atomic<int> i = 0;
+  return testing::TempDir() + "test_file_" + std::to_string(i++);
+}
 
 TEST(FileDescriptorTest, DefaultConstructedIsInvalid) {
   FileDescriptor fd;
@@ -54,7 +63,7 @@ TEST(FileDescriptorTest, OpenNullFileFails) {
 }
 
 TEST(FileDescriptorTest, OpenWriteRewindAndReadWorks) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd =
       FileDescriptor::Open(tmp_file.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
   ASSERT_TRUE(fd.IsValid());
@@ -67,7 +76,7 @@ TEST(FileDescriptorTest, OpenWriteRewindAndReadWorks) {
 }
 
 TEST(FileDescriptorTest, WriteFailureReturnsFalse) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_RDONLY, 0644);
   ASSERT_TRUE(fd.IsValid());
@@ -76,7 +85,7 @@ TEST(FileDescriptorTest, WriteFailureReturnsFalse) {
 }
 
 TEST(FileDescriptorTest, ReadFailureReturnsFalse) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
   ASSERT_TRUE(fd.IsValid());
@@ -85,7 +94,7 @@ TEST(FileDescriptorTest, ReadFailureReturnsFalse) {
 }
 
 TEST(FileDescriptorTest, IsFileEmptyReturnTrueForAnEmptyFileThatExists) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
   fd.Close();
@@ -93,20 +102,20 @@ TEST(FileDescriptorTest, IsFileEmptyReturnTrueForAnEmptyFileThatExists) {
 }
 
 TEST(FileDescriptorTest, IsFileEmptyReturnTrueForAnNonExistingFile) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   EXPECT_TRUE(IsFileEmpty(tmp_file.c_str(), FileDescriptor()));
 }
 
 TEST(FileDescriptorTest,
      IsFileEmptyReturnTrueForAnNonExistingFileWithFileDescriptor) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
   EXPECT_TRUE(IsFileEmpty("asdfasdf", FileDescriptor()));
 }
 
 TEST(FileDescriptorTest, IsFileEmptyReturnFalseForAFileThatHasContents) {
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
+  const std::string tmp_file = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
   const std::string src_data = "The quick brown fox jumps over the lazy dog.";
@@ -117,8 +126,8 @@ TEST(FileDescriptorTest, IsFileEmptyReturnFalseForAFileThatHasContents) {
 TEST(FileDescriptorTest, IsFileEmptyPrioritizesTheFileDescriptor) {
   // We open 2 files, put some data only in one and then pass the file name of
   // the one that has data and the file descriptor of the empty one.
-  const std::string tmp_file = testing::TempDir() + __FUNCTION__;
-  const std::string tmp_file2 = testing::TempDir() + __FUNCTION__ + "2";
+  const std::string tmp_file = NewTempFilePath();
+  const std::string tmp_file2 = NewTempFilePath();
   FileDescriptor fd = FileDescriptor::Open(tmp_file.c_str(),
                                            O_CREAT | O_TRUNC | O_WRONLY, 0644);
   FileDescriptor fd2 = FileDescriptor::Open(tmp_file2.c_str(),
