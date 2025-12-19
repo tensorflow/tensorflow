@@ -170,7 +170,7 @@ TEST_F(SortingTest, SortFusionWithIotaOperand) {
 
     ENTRY main {
       p = s32[16384]{0} parameter(0)
-      ROOT fusion = (s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kInput, calls=sort_fusion
+      ROOT fusion = (s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kCustom, calls=sort_fusion
     }
   )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
@@ -200,7 +200,7 @@ TEST_F(SortingTest, SortFusionWithIotaOperandTinySortDim) {
 
     ENTRY main {
       p = s32[2]{0} parameter(0)
-      ROOT fusion = (s32[2]{0}, s32[2]{0}) fusion(p), kind=kInput, calls=sort_fusion
+      ROOT fusion = (s32[2]{0}, s32[2]{0}) fusion(p), kind=kCustom, calls=sort_fusion
     }
   )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));

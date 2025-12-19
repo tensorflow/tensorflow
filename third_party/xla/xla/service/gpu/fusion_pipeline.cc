@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/transforms/multi_output_fusion.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
+#include "xla/service/gpu/transforms/sort_iota_fusion.h"
 #include "xla/service/gpu/transforms/variadic_op_splitter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
@@ -58,6 +59,7 @@ HloPassPipeline FusionPipeline(
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts)),
       "hlo verifier (debug)");
 
+  fusion.AddPass<SortIotaFusion>();
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size_bytes_function,
       /*per_second_rates=*/{},

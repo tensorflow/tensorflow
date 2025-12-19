@@ -1295,12 +1295,12 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
     case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
+    case HloFusionAnalysis::EmitterFusionKind::kSort:
       return HloInstruction::FusionKind::kCustom;
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
-    case HloFusionAnalysis::EmitterFusionKind::kSort:
       return HloInstruction::FusionKind::kInput;
   }
 }
