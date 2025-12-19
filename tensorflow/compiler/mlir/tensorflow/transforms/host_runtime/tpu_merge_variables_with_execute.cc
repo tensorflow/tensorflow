@@ -413,8 +413,8 @@ void ReplaceParallelExecute(
       &output_types, parallel_execute, region_index + 1, num_regions);
 
   builder->setInsertionPoint(parallel_execute);
-  auto new_parallel_execute = builder->create<tf_device::ParallelExecuteOp>(
-      parallel_execute.getLoc(), num_regions, output_types);
+  auto new_parallel_execute = tf_device::ParallelExecuteOp::create(
+      *builder, parallel_execute.getLoc(), num_regions, output_types);
 
   // Replace the uses of the original parallel_execute before region containing
   // merged execute.
@@ -449,8 +449,8 @@ void ReplaceParallelExecute(
   // execute results.
   Operation* old_terminator = execute_region->front().getTerminator();
   builder->setInsertionPointToEnd(&execute_region->front());
-  builder->create<tf_device::ReturnOp>(old_terminator->getLoc(),
-                                       merged_execute_launch.getResults());
+  tf_device::ReturnOp::create(*builder, old_terminator->getLoc(),
+                              merged_execute_launch.getResults());
   old_terminator->erase();
 
   // Remove the original TPUExecute op.
@@ -532,8 +532,8 @@ LogicalResult MergeForOneTPUExecute(
   }
 
   // Create the merged execute and update variables op.
-  auto merged_execute = builder->create<TF::TPUExecuteAndUpdateVariablesOp>(
-      execute_launch.getLoc(), new_output_types,
+  auto merged_execute = TF::TPUExecuteAndUpdateVariablesOp::create(
+      *builder, execute_launch.getLoc(), new_output_types,
       var_access_info.new_operand_values,
       llvm::ArrayRef<NamedAttribute>{
           builder->getNamedAttr(
@@ -544,14 +544,14 @@ LogicalResult MergeForOneTPUExecute(
               builder->getI64ArrayAttr(device_var_updates_indices))});
 
   // Wrap in launch for device assignment.
-  auto merged_execute_launch = builder->create<tf_device::LaunchOp>(
-      merged_execute.getLoc(), execute_launch.getDeviceAttr(),
+  auto merged_execute_launch = tf_device::LaunchOp::create(
+      *builder, merged_execute.getLoc(), execute_launch.getDeviceAttr(),
       merged_execute.getResultTypes());
   merged_execute_launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&merged_execute_launch.GetBody());
-  builder->create<tf_device::ReturnOp>(merged_execute.getLoc(),
-                                       merged_execute.getResults());
+  tf_device::ReturnOp::create(*builder, merged_execute.getLoc(),
+                              merged_execute.getResults());
 
   merged_execute.getOperation()->moveBefore(
       merged_execute_launch.GetBody().getTerminator());

@@ -94,22 +94,23 @@ mlir::TF::SliceOp CreateSliceOp(mlir::OpBuilder* builder,
   auto start_position_type =
       mlir::RankedTensorType::get(shape.dims(), builder->getIntegerType(64));
 
-  auto start_position_op = builder->create<mlir::TF::ConstOp>(
-      input.getLoc(), mlir::DenseIntElementsAttr::get(start_position_type,
-                                                      slice_start_position));
+  auto start_position_op =
+      mlir::TF::ConstOp::create(*builder, input.getLoc(),
+                                mlir::DenseIntElementsAttr::get(
+                                    start_position_type, slice_start_position));
 
-  auto slice_size_op = builder->create<mlir::TF::ConstOp>(
-      input.getLoc(), mlir::DenseIntElementsAttr::get(
-                          mlir::RankedTensorType::get(
-                              shape.dims(), builder->getIntegerType(64)),
-                          slice_size));
+  auto slice_size_op = mlir::TF::ConstOp::create(
+      *builder, input.getLoc(),
+      mlir::DenseIntElementsAttr::get(
+          mlir::RankedTensorType::get(shape.dims(),
+                                      builder->getIntegerType(64)),
+          slice_size));
 
   auto slice_result_type =
       mlir::RankedTensorType::get(slice_size, getElementTypeOrSelf(input));
 
-  return builder->create<mlir::TF::SliceOp>(input.getLoc(), slice_result_type,
-                                            input, start_position_op,
-                                            slice_size_op);
+  return mlir::TF::SliceOp::create(*builder, input.getLoc(), slice_result_type,
+                                   input, start_position_op, slice_size_op);
 }
 
 mlir::TF::PadOp CreatePadOp(mlir::OpBuilder* builder,
@@ -135,15 +136,15 @@ mlir::TF::PadOp CreatePadOp(mlir::OpBuilder* builder,
   auto padding_type =
       mlir::RankedTensorType::get({num_dims, 2}, builder->getIntegerType(64));
   auto paddings = mlir::DenseIntElementsAttr::get(padding_type, padding_values);
-  auto paddings_value = builder->create<mlir::TF::ConstOp>(location, paddings);
+  auto paddings_value = mlir::TF::ConstOp::create(*builder, location, paddings);
   mlir::SmallVector<int64_t, 4> expand_shape(padded_shape.begin(),
                                              padded_shape.end());
 
   auto expand_result_type =
       mlir::RankedTensorType::get(expand_shape, input_type.getElementType());
 
-  return builder->create<mlir::TF::PadOp>(location, expand_result_type,
-                                          src_input, paddings_value);
+  return mlir::TF::PadOp::create(*builder, location, expand_result_type,
+                                 src_input, paddings_value);
 }
 
 // Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
@@ -198,8 +199,8 @@ mlir::LogicalResult CreateSplitOp(
     output_type = input_type;
   }
 
-  auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, split_dim_type, split_dimension_attr);
+  auto split_dimension_op = mlir::TF::ConstOp::create(
+      *builder, location, split_dim_type, split_dimension_attr);
   if (is_ici_weight_dist_spmd) {
     split_dimension_op->setAttr(kICIWeightDistributionMlirBridgeMarker,
                                 builder->getBoolAttr(true));
@@ -207,8 +208,9 @@ mlir::LogicalResult CreateSplitOp(
 
   // Creates a split op that splits |src_input| along |split_dimension|.
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
-  *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.getOutput(), src_input);
+  *split_op =
+      mlir::TF::SplitOp::create(*builder, location, output_types,
+                                split_dimension_op.getOutput(), src_input);
   (*split_op)->setAttr(
       kNumSplitAttr,
       builder->getIntegerAttr(builder->getIntegerType(32), num_split));
@@ -230,8 +232,8 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
   auto concat_dimension_attr =
       mlir::DenseElementsAttr::get(concat_dim_type, concat_dimension);
-  auto concat_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, concat_dim_type, concat_dimension_attr);
+  auto concat_dimension_op = mlir::TF::ConstOp::create(
+      *builder, location, concat_dim_type, concat_dimension_attr);
 
   // Correctly set output shapes of concat op output if output shape is
   // statically known. Since the shape of TPUExecute op must be the same
@@ -253,8 +255,8 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
     output_type = input_type;
   }
 
-  return builder->create<mlir::TF::ConcatOp>(
-      location, output_type, concat_dimension_op.getOutput(), inputs);
+  return mlir::TF::ConcatOp::create(*builder, location, output_type,
+                                    concat_dimension_op.getOutput(), inputs);
 }
 
 mlir::TF::XlaConcatNDOp CreateXlaConcatNDOp(
@@ -292,9 +294,9 @@ mlir::TF::XlaConcatNDOp CreateXlaConcatNDOp(
     output_type = input_slice_type;
   }
 
-  auto op = builder.create<mlir::TF::XlaConcatNDOp>(
-      location, output_type, inputs, builder.getI64ArrayAttr(num_concats),
-      builder.getI64ArrayAttr(paddings));
+  auto op = mlir::TF::XlaConcatNDOp::create(
+      builder, location, output_type, inputs,
+      builder.getI64ArrayAttr(num_concats), builder.getI64ArrayAttr(paddings));
   return op;
 }
 
@@ -338,9 +340,9 @@ mlir::LogicalResult CreateXlaSplitNDOp(const mlir::Location& location,
           << absl::StrJoin(input_shape, ",")
           << ", Padding: " << absl::StrJoin(paddings, ",");
 
-  *xla_split_op = builder->create<mlir::TF::XlaSplitNDOp>(
-      location, output_types, src_input, builder->getI64ArrayAttr(num_splits),
-      builder->getI64ArrayAttr(paddings));
+  *xla_split_op = mlir::TF::XlaSplitNDOp::create(
+      *builder, location, output_types, src_input,
+      builder->getI64ArrayAttr(num_splits), builder->getI64ArrayAttr(paddings));
   if (is_ici_weight_dist_spmd) {
     (*xla_split_op)
         ->setAttr(kICIWeightDistributionMlirBridgeMarker,
