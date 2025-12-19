@@ -127,18 +127,18 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
       async_builder
           .createBlock(&function.getBody(), {}, Untuple(result_types[0]), locs)
           ->getArguments();
-  auto sync_operation = async_builder.create<sync_op>(
-      loc, Untuple(result_types[1]), sync_operand, attributes);
-  async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
+  auto sync_operation = sync_op::create(
+      async_builder, loc, Untuple(result_types[1]), sync_operand, attributes);
+  mlir::func::ReturnOp::create(async_builder, loc,
+                               sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
   function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 
   auto bundle_result_type =
       mlir::mhlo::AsyncBundleType::get(context, result_types);
-  return builder
-      ->create<mlir::mhlo::AsyncStartOp>(loc, bundle_result_type, operands,
-                                         async_attributes)
+  return mlir::mhlo::AsyncStartOp::create(*builder, loc, bundle_result_type,
+                                          operands, async_attributes)
       .getOperation();
 }
 
@@ -166,13 +166,13 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
   auto start_tuple =
       llvm::dyn_cast<mlir::TupleType>(async_bundle.getTypes()[1]);
   if (start_tuple && llvm::isa<mlir::TupleType>(start_tuple.getType(0))) {
-    auto op = builder->create<mlir::mhlo::AsyncDoneOp>(loc, result_type,
-                                                       operands, attributes);
+    auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, result_type,
+                                              operands, attributes);
     return {op};
   }
   if (useBundleResult) result_type = async_bundle.getTypes()[1];
-  auto op = builder->create<mlir::mhlo::AsyncDoneOp>(loc, Untuple(result_type),
-                                                     operands, attributes);
+  auto op = mlir::mhlo::AsyncDoneOp::create(*builder, loc, Untuple(result_type),
+                                            operands, attributes);
   return CreateTupleFromOpResults(builder, loc, op.getOperation(), result_type);
 }
 
@@ -233,9 +233,8 @@ absl::StatusOr<mlir::Operation*> ImportSend(
   if (args.size() == 2 && IsEmptyTuple(args[0].getType())) {
     args = args.drop_front(1);
   }
-  auto send = builder
-                  ->create<mlir::stablehlo::SendOp>(loc, token.getType(), args,
-                                                    attributes)
+  auto send = mlir::stablehlo::SendOp::create(*builder, loc, token.getType(),
+                                              args, attributes)
                   .getOperation();
   if (instruction->has_sharding()) {
     const HloSharding& sharding = instruction->sharding();
@@ -305,8 +304,9 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
 
   // Return recv op for non-pipelined send, skip empty tuple result type
   if (!IsEmptyTuple(result_types[0])) {
-    auto recv = builder->create<mlir::stablehlo::RecvOp>(
-        loc, llvm::SmallVector<mlir::Type>{result_types[0], result_types[2]},
+    auto recv = mlir::stablehlo::RecvOp::create(
+        *builder, loc,
+        llvm::SmallVector<mlir::Type>{result_types[0], result_types[2]},
         operands, attributes);
     if (instruction->has_sharding()) {
       const HloSharding& sharding = instruction->sharding();
@@ -328,14 +328,14 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
 
   // Recv with no result, only token.
   // To keep parity, if op only returns token, wrap in tuple<tuple<>, token>
-  auto recv = builder->create<mlir::stablehlo::RecvOp>(
-      loc, llvm::SmallVector<mlir::Type>{result_types[2]}, operands,
+  auto recv = mlir::stablehlo::RecvOp::create(
+      *builder, loc, llvm::SmallVector<mlir::Type>{result_types[2]}, operands,
       attributes);
-  auto empty_tuple = builder->create<mlir::stablehlo::TupleOp>(
-      loc, llvm::ArrayRef<mlir::Value>{});
+  auto empty_tuple = mlir::stablehlo::TupleOp::create(
+      *builder, loc, llvm::ArrayRef<mlir::Value>{});
 
-  return builder->create<mlir::stablehlo::TupleOp>(
-      loc,
+  return mlir::stablehlo::TupleOp::create(
+      *builder, loc,
       llvm::ArrayRef<mlir::Value>{empty_tuple.getResult(), recv.getResult(0)});
 }
 

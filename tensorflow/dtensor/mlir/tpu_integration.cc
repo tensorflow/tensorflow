@@ -110,8 +110,8 @@ mlir::LogicalResult CreateTPUCluster(
   auto& function_block = function->getCallableRegion()->front();
   builder->setInsertionPointToStart(&function_block);
 
-  auto cluster = builder->create<mlir::tf_device::ClusterOp>(
-      tpu_call.getLoc(), function->getResultTypes());
+  auto cluster = mlir::tf_device::ClusterOp::create(*builder, tpu_call.getLoc(),
+                                                    function->getResultTypes());
   cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();
@@ -121,8 +121,8 @@ mlir::LogicalResult CreateTPUCluster(
 
   builder->setInsertionPointToEnd(&cluster.GetBody());
   mlir::Operation* function_block_terminator = function_block.getTerminator();
-  builder->create<mlir::tf_device::ReturnOp>(
-      tpu_call.getLoc(), function_block_terminator->getOperands());
+  mlir::tf_device::ReturnOp::create(*builder, tpu_call.getLoc(),
+                                    function_block_terminator->getOperands());
 
   function_block_terminator->setOperands(cluster.getResults());
 

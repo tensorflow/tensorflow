@@ -103,9 +103,9 @@ struct OutlineXLAFunc : public RewritePattern {
 
     // The wrapper function will have the same name but with _xla_framework
     // appended and will be annotated with the attribute "xla_entry".
-    auto outline_func = rewriter.create<func::FuncOp>(
-        loc, func.getSymName().str() + "_xla_framework", func_type, attrs,
-        arg_attrs);
+    auto outline_func = func::FuncOp::create(
+        rewriter, loc, func.getSymName().str() + "_xla_framework", func_type,
+        attrs, arg_attrs);
     outline_func->setAttr("outlined", BoolAttr::get(ctx, true));
     outline_func->setAttr("xla_entry", BoolAttr::get(ctx, true));
     auto *b = rewriter.createBlock(&outline_func.getBody(), {},
@@ -114,20 +114,20 @@ struct OutlineXLAFunc : public RewritePattern {
     // Unwrap arguments
     SmallVector<Value> args;
     for (const auto &t : llvm::enumerate(func.getFunctionType().getInputs())) {
-      args.push_back(rewriter.create<xla_framework::XLABufferToMemOp>(
-          loc, t.value(), b->getArgument(t.index())));
+      args.push_back(xla_framework::XLABufferToMemOp::create(
+          rewriter, loc, t.value(), b->getArgument(t.index())));
     }
 
-    auto call = rewriter.create<func::CallOp>(
-        loc, func.getSymName(), func.getFunctionType().getResults(), args);
+    auto call = func::CallOp::create(rewriter, loc, func.getSymName(),
+                                     func.getFunctionType().getResults(), args);
     // Wrap results
     SmallVector<Value> results;
     for (auto t : call.getResults()) {
-      results.push_back(rewriter.create<xla_framework::MemToXLABufferOp>(
-          loc, ::mlir::xla_framework::BufferType::get(ctx), t));
+      results.push_back(xla_framework::MemToXLABufferOp::create(
+          rewriter, loc, ::mlir::xla_framework::BufferType::get(ctx), t));
     }
 
-    rewriter.create<func::ReturnOp>(loc, results);
+    func::ReturnOp::create(rewriter, loc, results);
 
     // Finally, mark the called function as private to prevent users from
     // accidentally trying to use it.

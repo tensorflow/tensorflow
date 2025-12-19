@@ -133,13 +133,13 @@ bool MergeReshardsIgnoringControlDependencies(mlir::func::FuncOp func_op) {
     // order after the merge.
     rewriter.setInsertionPoint(reshards.back());
     auto merged_reshard =
-        rewriter.create<ReshardOp>(rewriter.getFusedLoc(locs),
-                                   /*outputs=*/output_types,
-                                   /*control_output=*/
-                                   IfrtControlType::get(rewriter.getContext()),
-                                   /*inputs=*/inputs,
-                                   /*donated=*/reshards.front().getDonated(),
-                                   /*control_inputs=*/mlir::ValueRange());
+        ReshardOp::create(rewriter, rewriter.getFusedLoc(locs),
+                          /*outputs=*/output_types,
+                          /*control_output=*/
+                          IfrtControlType::get(rewriter.getContext()),
+                          /*inputs=*/inputs,
+                          /*donated=*/reshards.front().getDonated(),
+                          /*control_inputs=*/mlir::ValueRange());
 
     // Replace the original reshards with the new merged reshard.
     for (auto [index, reshard] : llvm::enumerate(reshards)) {

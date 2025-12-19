@@ -98,16 +98,16 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   const mlir::RankedTensorType& output_type =
       mlir::dyn_cast<mlir::RankedTensorType>(reduce_op.getOutput().getType());
 
-  mlir::TF::CastOp upcast = builder.create<mlir::TF::CastOp>(
-      loc,
+  mlir::TF::CastOp upcast = mlir::TF::CastOp::create(
+      builder, loc,
       mlir::RankedTensorType::get(input_type.getShape(), builder.getF32Type()),
       reduce_op.getInput());
   reduce_op->setOperand(0, upcast.getY());
   reduce_op.getOutput().setType(upcast.getY().getType());
 
   builder.setInsertionPointAfter(reduce_op);
-  mlir::TF::CastOp downcast = builder.create<mlir::TF::CastOp>(
-      loc,
+  mlir::TF::CastOp downcast = mlir::TF::CastOp::create(
+      builder, loc,
       mlir::RankedTensorType::get(output_type.getShape(),
                                   output_type.getElementType()),
       reduce_op);

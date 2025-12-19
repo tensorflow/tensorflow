@@ -180,9 +180,9 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
     mlir::ArrayAttr iterator_types = GetIteratorTypes(
         rewriter, iterator_count, lhs_batch.size(), lhs_contracting.size());
 
-    mlir::Value result = rewriter.create<mlir::vector::ContractionOp>(
-        op->getLoc(), lhs_vector, rhs_vector, accumulator, indexing_maps,
-        iterator_types);
+    mlir::Value result = mlir::vector::ContractionOp::create(
+        rewriter, op->getLoc(), lhs_vector, rhs_vector, accumulator,
+        indexing_maps, iterator_types);
 
     rewriter.replaceOp(op, WriteVectorToTensor(rewriter, result));
 
@@ -193,16 +193,16 @@ struct LowerDotGeneral : mlir::OpRewritePattern<mlir::stablehlo::DotGeneralOp> {
   mlir::Value GetAccumulator(mlir::OpBuilder& builder, mlir::Location loc,
                              mlir::RankedTensorType result_type) const {
     mlir::Type element_type = result_type.getElementType();
-    auto zero_const = builder.create<mlir::arith::ConstantOp>(
-        loc, element_type, builder.getZeroAttr(element_type));
+    auto zero_const = mlir::arith::ConstantOp::create(
+        builder, loc, element_type, builder.getZeroAttr(element_type));
 
     if (result_type.getRank() == 0) {
       return zero_const;
     }
 
     auto result_vector_type = GetVectorType(result_type);
-    return builder.create<mlir::vector::BroadcastOp>(loc, result_vector_type,
-                                                     zero_const);
+    return mlir::vector::BroadcastOp::create(builder, loc, result_vector_type,
+                                             zero_const);
   }
 };
 
@@ -215,8 +215,8 @@ struct LowerTranspose : mlir::OpRewritePattern<mlir::stablehlo::TransposeOp> {
     mlir::Value source_vector = ReadTensorToVector(rewriter, op.getOperand());
 
     mlir::TypedValue<mlir::VectorType> dest_vector =
-        rewriter.create<mlir::vector::TransposeOp>(op->getLoc(), source_vector,
-                                                   op.getPermutation());
+        mlir::vector::TransposeOp::create(rewriter, op->getLoc(), source_vector,
+                                          op.getPermutation());
 
     mlir::Value dest_tensor = WriteVectorToTensor(rewriter, dest_vector);
 
@@ -242,8 +242,9 @@ struct LowerReduce : mlir::OpRewritePattern<mlir::stablehlo::ReduceOp> {
     auto result_type =
         mlir::cast<mlir::RankedTensorType>(result_tensor.getType());
 
-    mlir::Value init_value = rewriter.create<mlir::tensor::ExtractOp>(
-        op->getLoc(), result_type.getElementType(), op.getInitValues().front());
+    mlir::Value init_value = mlir::tensor::ExtractOp::create(
+        rewriter, op->getLoc(), result_type.getElementType(),
+        op.getInitValues().front());
 
     // Ensure the reduction dimensions are sorted so we can easily check if the
     // minor dimension is reduced.

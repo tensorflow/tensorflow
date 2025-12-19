@@ -156,13 +156,12 @@ SaveOpSpecs BuildPerDeviceSave(
         shape_and_slice_specs.push_back({});
 
         mlir::Value new_prefix =
-            builder
-                .create<mlir::TF::AddOp>(
-                    prefix.getLoc(),
-                    mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
-                    prefix,
-                    StringScalarConst(builder, prefix.getLoc(),
-                                      DeviceSuffix(device_id, total_devices)))
+            mlir::TF::AddOp::create(
+                builder, prefix.getLoc(),
+                mlir::dyn_cast<mlir::RankedTensorType>(prefix.getType()),
+                prefix,
+                StringScalarConst(builder, prefix.getLoc(),
+                                  DeviceSuffix(device_id, total_devices)))
                 .getZ();
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.

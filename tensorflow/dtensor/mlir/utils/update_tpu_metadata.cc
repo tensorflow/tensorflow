@@ -254,8 +254,8 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
     if (mesh_config.use_xla_spmd()) {
       // Create a new compile op with the appropriate new number of operands.
       builder->setInsertionPointAfter(compile);
-      auto new_compile_op = builder->create<mlir::TF::_TPUCompileMlirOp>(
-          compile.getLoc(), compile.getCompilationStatus().getType(),
+      auto new_compile_op = mlir::TF::_TPUCompileMlirOp::create(
+          *builder, compile.getLoc(), compile.getCompilationStatus().getType(),
           /*program=*/
           llvm::SmallVector<mlir::Type, 8>(
               mesh_config.num_devices(),

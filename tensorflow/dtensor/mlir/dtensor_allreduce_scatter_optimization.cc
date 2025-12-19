@@ -137,14 +137,14 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
         VLOG(2) << "Fuse reduce scatter with scatter_dim: " << scatter_dim;
 
         mlir::OpBuilder builder(all_reduce);
-        auto scatter_dim_const_op = builder.create<mlir::TF::ConstOp>(
-            all_reduce.getLoc(),
+        auto scatter_dim_const_op = mlir::TF::ConstOp::create(
+            builder, all_reduce.getLoc(),
             mlir::DenseIntElementsAttr::get(
                 mlir::RankedTensorType::get({}, builder.getI32Type()),
                 {scatter_dim}));
 
-        auto reduce_scatter = builder.create<mlir::TF::DTensorReduceScatterOp>(
-            all_reduce.getLoc(), all_scatter->getResultTypes(),
+        auto reduce_scatter = mlir::TF::DTensorReduceScatterOp::create(
+            builder, all_reduce.getLoc(), all_scatter->getResultTypes(),
             all_reduce.getOperand(0), all_reduce.getGroupAssignment(),
             scatter_dim_const_op, all_reduce.getReduceOp(),
             all_reduce.getDeviceType());

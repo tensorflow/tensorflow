@@ -74,7 +74,7 @@ mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
   rewriter.setInsertionPointToStart(module_op.getBody());
 
   auto func_decl =
-      rewriter.create<mlir::func::FuncOp>(module_op.getLoc(), name, func_type);
+      mlir::func::FuncOp::create(rewriter, module_op.getLoc(), name, func_type);
   func_decl.setPrivate();
   return func_decl;
 }
@@ -110,14 +110,14 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       mlir::Type f32_type = get_vector_type(b.getF32Type());
 
       mlir::Value input_value =
-          b.create<mlir::arith::ExtFOp>(f32_type, op.getOperand());
+          mlir::arith::ExtFOp::create(b, f32_type, op.getOperand());
 
       auto erf_decl = codegen::intrinsics::Erf::GetOrInsertDeclaration(
           rewriter, module_op_, Type::TypeFromIrType(f32_type));
-      auto call_op = b.create<mlir::func::CallOp>(erf_decl, input_value);
+      auto call_op = mlir::func::CallOp::create(b, erf_decl, input_value);
 
       mlir::Value f32_result = call_op.getResult(0);
-      mlir::Value result = b.create<mlir::arith::TruncFOp>(type, f32_result);
+      mlir::Value result = mlir::arith::TruncFOp::create(b, type, f32_result);
 
       rewriter.replaceOp(op, result);
       return mlir::success();
@@ -129,7 +129,7 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       auto erf_decl = GetErf64Declaration(rewriter);
 
       if (!maybe_vector_type) {
-        auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
+        auto call_op = mlir::func::CallOp::create(b, erf_decl, op.getOperand());
         rewriter.replaceOp(op, call_op->getResults());
         return mlir::success();
       }
@@ -139,7 +139,7 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
         mlir::Value extracted = mlir::vector::ExtractOp::create(
             rewriter, op.getLoc(), op.getOperand(), idx);
         mlir::Value scalar_erf =
-            b.create<mlir::func::CallOp>(erf_decl, extracted).getResult(0);
+            mlir::func::CallOp::create(b, erf_decl, extracted).getResult(0);
         scalar_erf_results.push_back(scalar_erf);
       }
       rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(
@@ -196,7 +196,7 @@ class LowerTruncF32BF16FPattern
         codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
             rewriter, module_op_, src_type, dst_type);
     auto call_op =
-        b.create<mlir::func::CallOp>(f32_to_bf16_decl, op.getOperand());
+        mlir::func::CallOp::create(b, f32_to_bf16_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());
     return mlir::success();
   }
