@@ -348,10 +348,8 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
-  // No dilation for now.
-  if ((window.dimensions(0).window_dilation() != 1) ||
-      (window.dimensions(1).window_dilation() != 1) ||
-      (window.dimensions(0).base_dilation() != 1) ||
+  // No base dilation for now.
+  if ((window.dimensions(0).base_dilation() != 1) ||
       (window.dimensions(1).base_dilation() != 1)) {
     return false;
   }

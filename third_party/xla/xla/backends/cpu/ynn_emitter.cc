@@ -725,7 +725,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnConvolutionSubgraph(
     stencil_axes[i] = conv_dimensions.input_spatial_dimensions(i);
     stencil_dims[i] = conv_window.dimensions(i).size();
     stencil_strides[i] = conv_window.dimensions(i).stride();
-    stencil_dilations[i] = 1;
+    stencil_dilations[i] = conv_window.dimensions(i).window_dilation();
     padding_lows[i] = conv_window.dimensions(i).padding_low();
     padding_highs[i] = conv_window.dimensions(i).padding_high();
   }
