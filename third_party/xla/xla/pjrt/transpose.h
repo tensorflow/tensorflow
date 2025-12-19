@@ -124,6 +124,12 @@ class TransposePlan {
                std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
                    schedule_work = std::nullopt) const;
 
+  // Executes a single chunk of the transposition. To perform a complete
+  // transposition, call ExecuteChunk for each chunk ID from 0 to Parallelism()
+  // - 1. It is legal to call ExecuteChunk for independent chunks in parallel.
+  // This is useful for callers that want to manage their own threading.
+  void ExecuteChunk(int chunk_id, const void* a, void* b) const;
+
   // Returns a human-readable description of the plan.
   std::string ToString() const;
 

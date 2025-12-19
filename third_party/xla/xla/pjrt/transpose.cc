@@ -442,6 +442,49 @@ struct uint128 {
 };
 static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
+void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b) const {
+  if (num_elems_ == 0) {
+    return;
+  }
+  tsl::profiler::TraceMe traceme("Transpose::ExecuteChunk", /*level=*/2);
+
+  absl::Span<Node const> nodes = nodes_[chunk_id];
+  const char* ac = static_cast<const char*>(a) + input_offset_bytes_[chunk_id];
+  char* bc = static_cast<char*>(b) + output_offset_bytes_[chunk_id];
+
+  if (inner_kernel_is_memcpy_) {
+    DCHECK(transformation_ == Transformation::kNone);
+    // Memcpy-based plans all assume element size 1 (i.e., bytes).
+    TransposeConstStride1(ac, bc, nodes.data());
+    return;
+  }
+
+  switch (elem_size_in_bytes_) {
+    case 1:
+      ExecuteTyped<uint8_t, Transformation::kNone>(ac, bc, nodes);
+      break;
+    case 2:
+      ExecuteTyped<uint16_t, Transformation::kNone>(ac, bc, nodes);
+      break;
+    case 4:
+      if (transformation_ == Transformation::kNone) {
+        ExecuteTyped<uint32_t, Transformation::kNone>(ac, bc, nodes);
+      } else {
+        DCHECK(transformation_ == Transformation::kF64ToEf57);
+        ExecuteTyped<uint32_t, Transformation::kF64ToEf57>(ac, bc, nodes);
+      }
+      break;
+    case 8:
+      ExecuteTyped<uint64_t, Transformation::kNone>(ac, bc, nodes);
+      break;
+    case 16:
+      ExecuteTyped<uint128, Transformation::kNone>(ac, bc, nodes);
+      break;
+    default:
+      LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
+  }
+}
+
 void TransposePlan::Execute(
     const void* a, void* b,
     std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
@@ -451,59 +494,19 @@ void TransposePlan::Execute(
   }
   tsl::profiler::TraceMe traceme("Transpose::Execute", /*level=*/2);
 
-  auto execute_by_type = [&](int chunk_id) {
-    const char* ac =
-        static_cast<const char*>(a) + input_offset_bytes_[chunk_id];
-    char* bc = static_cast<char*>(b) + output_offset_bytes_[chunk_id];
-
-    absl::Span<Node const> nodes = nodes_[chunk_id];
-    if (inner_kernel_is_memcpy_) {
-      DCHECK(transformation_ == Transformation::kNone);
-      // Memcpy-based plans all assume element size 1 (i.e., bytes).
-      TransposeConstStride1(ac, bc, nodes.data());
-      return;
-    }
-
-    switch (elem_size_in_bytes_) {
-      case 1:
-        ExecuteTyped<uint8_t, Transformation::kNone>(ac, bc, nodes);
-        break;
-      case 2:
-        ExecuteTyped<uint16_t, Transformation::kNone>(ac, bc, nodes);
-        break;
-      case 4:
-        if (transformation_ == Transformation::kNone) {
-          ExecuteTyped<uint32_t, Transformation::kNone>(ac, bc, nodes);
-        } else {
-          DCHECK(transformation_ == Transformation::kF64ToEf57);
-          ExecuteTyped<uint32_t, Transformation::kF64ToEf57>(ac, bc, nodes);
-        }
-        break;
-      case 8:
-        ExecuteTyped<uint64_t, Transformation::kNone>(ac, bc, nodes);
-        break;
-      case 16:
-        ExecuteTyped<uint128, Transformation::kNone>(ac, bc, nodes);
-        break;
-      default:
-        LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
-    }
-  };
-
-  if (!schedule_work || nodes_.size() <= 1) {
-    for (int i = 0; i < nodes_.size(); ++i) {
-      execute_by_type(i);
+  if (!schedule_work || Parallelism() <= 1) {
+    for (int i = 0; i < Parallelism(); ++i) {
+      ExecuteChunk(i, a, b);
     }
   } else {
-    absl::BlockingCounter counter(nodes_.size() - 1);
-    for (int i = 1; i < nodes_.size(); ++i) {
+    absl::BlockingCounter counter(Parallelism() - 1);
+    for (size_t i = 1; i < nodes_.size(); ++i) {
       (*schedule_work)([&, i]() {
-        execute_by_type(i);
+        ExecuteChunk(i, a, b);
         counter.DecrementCount();
       });
     }
-    // Run the first chunk inline in this thread.
-    execute_by_type(0);
+    ExecuteChunk(0, a, b);
     counter.Wait();
   }
 }
