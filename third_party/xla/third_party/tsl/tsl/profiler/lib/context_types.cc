@@ -54,6 +54,8 @@ const char* GetContextTypeString(ContextType context_type) {
       return "jax_serving";
     case ContextType::kScOffload:
       return "sparsecore_offload";
+    case ContextType::kGenericModelExecutor:
+      return "generic_model_executor";
   }
 }
 

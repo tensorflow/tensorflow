@@ -327,7 +327,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
         return tsl::profiler::TraceMeEncode("RunMlrtFunction",
                                             {{"id", step_id}, {"_r", 1}});
       },
-      tsl::profiler::ContextType::kTfrtExecutor, step_id,
+      tsl::profiler::ContextType::kGenericModelExecutor, step_id,
       tsl::profiler::TraceMeLevel::kInfo);
   auto trace_me_context_id = activity.GetContextId();
 
@@ -354,7 +354,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   work_queue->AddTask([&execution_context, &trace_me_context_id]() {
     tsl::profiler::TraceMeConsumer activity(
         [&] { return "RunMlrtFunction::Execute"; },
-        tsl::profiler::ContextType::kTfrtExecutor, trace_me_context_id);
+        tsl::profiler::ContextType::kGenericModelExecutor, trace_me_context_id);
     mlrt::Execute(execution_context);
   });
 
