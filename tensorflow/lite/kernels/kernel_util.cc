@@ -331,8 +331,8 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* filter,
                                               TfLiteTensor* output,
                                               double* multiplier) {
-  const double input_product_scale =
-      static_cast<double>(input->params.scale * filter->params.scale);
+  const double input_product_scale = static_cast<double>(input->params.scale) *
+                                     static_cast<double>(filter->params.scale);
   TF_LITE_ENSURE(context, input_product_scale >= 0);
   *multiplier = input_product_scale / static_cast<double>(output->params.scale);
 
