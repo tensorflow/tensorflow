@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
