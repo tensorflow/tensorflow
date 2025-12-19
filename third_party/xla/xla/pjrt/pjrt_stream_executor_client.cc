@@ -1664,6 +1664,7 @@ PjRtStreamExecutorClient::RunAsync(
     LocalExecutable& exec, PjRtDevice* device,
     std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
     ExecutableRunOptions run_options) {
+  LOG(FATAL) << "Why me!?";
   std::vector<ExecutionInput> xla_arguments;
   for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
     xla_arguments.emplace_back(input.shape());
