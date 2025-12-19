@@ -73,7 +73,8 @@ absl::Status EmitCompareLoopBody(
     std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilderBase* b, bool needs_bounds_checks = true) {
+    llvm::IRBuilderBase* b, bool uses_shared_memory,
+    bool needs_bounds_checks = true) {
   auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
@@ -95,7 +96,8 @@ absl::Status EmitCompareLoopBody(
     // There is no adjacent block inside bounds with which to compare elements.
     return absl::OkStatus();
   }
-  if (num_threads % gpu::kNumShmemBanks == 0 && unroll_factor > 1) {
+  if (uses_shared_memory && num_threads % gpu::kNumShmemBanks == 0 &&
+      unroll_factor > 1) {
     // We want to avoid bank conflicts, therefore we want to make sure that
     // a thread keeps the same bank offsets for each element pair it processes.
     // We can do that by (implicitly) subdividing our index space into blocks of
@@ -122,7 +124,7 @@ absl::Status EmitCompareLoopBody(
   }
   for (int64_t i = 0; i < unroll_factor; ++i) {
     llvm::Value* current_keys_index;
-    if (num_threads % gpu::kNumShmemBanks == 0) {
+    if (uses_shared_memory && num_threads % gpu::kNumShmemBanks == 0) {
       current_keys_index = b->CreateAdd(
           element_pair_index, index_typed_constant(i * gpu::kNumShmemBanks),
           "current_keys_index", /*hasNUW=*/true, /*HasNSW=*/true);
@@ -359,14 +361,14 @@ absl::Status EmitTiledCompareLoop(
                 unroll_factor / 2, params.size(), element_pair_index, xor_mask,
                 tiled_keys_index.GetType(), element_address,
                 element_address_pointee_type, write_element,
-                emit_compare_callback, b);
+                emit_compare_callback, b, /*uses_shared_memory=*/true);
           },
           [&]() {
             return EmitCompareLoopBody(
                 tile_size, num_threads, unroll_factor / 2, params.size(),
                 element_pair_index, xor_mask, tiled_keys_index.GetType(),
                 element_address, element_address_pointee_type, write_element,
-                emit_compare_callback, b,
+                emit_compare_callback, b, /*uses_shared_memory=*/true,
                 /*needs_bounds_checks=*/false);
           }));
     } else {
@@ -374,7 +376,7 @@ absl::Status EmitTiledCompareLoop(
           tile_size, num_threads, unroll_factor / 2, params.size(),
           element_pair_index, xor_mask, tiled_keys_index.GetType(),
           element_address, element_address_pointee_type, write_element,
-          emit_compare_callback, b,
+          emit_compare_callback, b, /*uses_shared_memory=*/true,
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
@@ -536,7 +538,8 @@ absl::Status EmitSortInPlace(
           dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
           values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
           tiles_index.GetType(), element_address, element_address_pointee_type,
-          write_element, emit_compare_callback, b));
+          write_element, emit_compare_callback, b,
+          /*uses_shared_memory=*/false));
     }
     return absl::OkStatus();
   };
