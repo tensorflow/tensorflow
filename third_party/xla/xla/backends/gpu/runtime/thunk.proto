@@ -400,7 +400,7 @@ message CollectiveThunkProto {
 }
 
 message AllGatherStartThunkProto {
-  uint64 async_events_unique_id = 1;
+  optional uint64 async_events_unique_id = 1;
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 }
@@ -414,7 +414,7 @@ enum ReductionKindProto {
 }
 
 message AllReduceStartThunkProto {
-  uint64 async_events_unique_id = 1;
+  optional uint64 async_events_unique_id = 1;
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 
@@ -427,7 +427,7 @@ message AllReduceStartThunkProto {
 }
 
 message AllToAllStartThunkProto {
-  uint64 async_events_unique_id = 1;
+  optional uint64 async_events_unique_id = 1;
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 
@@ -438,7 +438,7 @@ message AllToAllStartThunkProto {
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
   AsyncStreamKind async_stream_kind = 2;
-  uint64 async_events_unique_id = 3;
+  optional uint64 async_events_unique_id = 3;
 }
 
 message ThunkProto {

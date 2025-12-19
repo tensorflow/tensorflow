@@ -539,8 +539,8 @@ absl::StatusOr<ThunkProto> CollectiveDoneThunk::ToProto() const {
   thunk_proto->set_async_stream_kind(stream_kind_);
 
   std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (!async_events_id.has_value()) {
-    return absl::FailedPreconditionError("AsyncEvents is not set.");
+  if (async_events_id.has_value()) {
+    thunk_proto->set_async_events_unique_id(async_events_id->value());
   }
   thunk_proto->set_async_events_unique_id(async_events_id->value());
   thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
@@ -551,11 +551,15 @@ absl::StatusOr<std::unique_ptr<CollectiveDoneThunk>>
 CollectiveDoneThunk::FromProto(
     ThunkInfo thunk_info, const CollectiveDoneThunkProto& thunk_proto,
     CollectiveThunk::AsyncEventsMap& async_events_map) {
-  std::shared_ptr<CollectiveThunk::AsyncEvents>& async_events =
-      async_events_map[AsyncEventsUniqueId{
-          thunk_proto.async_events_unique_id()}];
-  if (!async_events) {
-    async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
   }
 
   ASSIGN_OR_RETURN(Thunk::Kind kind,

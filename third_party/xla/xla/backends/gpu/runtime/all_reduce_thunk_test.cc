@@ -70,5 +70,35 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(CollectiveThunkTest, SyncCollective) {
+  ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info {
+          profile_annotation: "partition_id_profile_annotation"
+          execution_stream_id: 2
+        }
+        all_reduce_start_thunk {
+          collective_config {}
+          reduction_kind: 1
+        }
+      )pb");
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
+  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
+      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
+          proto.thunk_info().execution_stream_id())};
+
+  CollectiveThunk::AsyncEventsMap async_events_map;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AllReduceStartThunk> thunk,
+      AllReduceStartThunk::FromProto(thunk_info, proto.all_reduce_start_thunk(),
+                                     buffer_allocations, async_events_map));
+  ASSERT_EQ(thunk->async_events(), nullptr);
+}
+
 }  // namespace
 }  // namespace xla::gpu

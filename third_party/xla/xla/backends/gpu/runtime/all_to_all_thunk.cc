@@ -297,11 +297,15 @@ AllToAllStartThunk::FromProto(
     buffers.push_back(buffer);
   }
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents>& async_events =
-      async_events_map[AsyncEventsUniqueId{
-          thunk_proto.async_events_unique_id()}];
-  if (!async_events) {
-    async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
   }
 
   CollectiveConfig config =
@@ -320,10 +324,9 @@ absl::StatusOr<ThunkProto> AllToAllStartThunk::ToProto() const {
   AllToAllStartThunkProto* thunk_proto = proto.mutable_all_to_all_start_thunk();
 
   std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (!async_events_id.has_value()) {
-    return absl::FailedPreconditionError("AsyncEvents is not set.");
+  if (async_events_id.has_value()) {
+    thunk_proto->set_async_events_unique_id(async_events_id->value());
   }
-  thunk_proto->set_async_events_unique_id(async_events_id->value());
 
   for (const Buffer& buffer : buffers_) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
