@@ -105,12 +105,33 @@ Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
       });
 }
 
+/*static*/ tsl::AsyncValueRef<CpuEvent> CpuTrackedDeviceEvent::AfterAll(
+    absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events) {
+  tsl::AsyncValueRef<CpuEvent> definition_event;
+  if (events.empty()) {
+    return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
+  }
+  if (events.size() == 1) {
+    return tsl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
+  }
+
+  tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
+  for (auto& ev : events) {
+    tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event().AndThen(
+        [after_all](absl::Status status) mutable {
+          after_all.CountDown(std::move(status));
+        });
+  }
+  return std::move(after_all).AsRef();
+}
+
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {
   TF_ASSIGN_OR_RETURN(auto memory,
                       CpuDeviceMemory::Allocate(size_bytes, allocator));
-  return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
+  return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory),
+                                    size_bytes);
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
@@ -126,12 +147,11 @@ CpuRawBuffer::ImportForeignMemory(
   return tsl::MakeRef<CpuRawBuffer>(
       memory_space,
       CpuDeviceMemory::CreateForeignMemory(data, on_device_bytes_count,
-                                           std::move(on_delete_callback)));
+                                           std::move(on_delete_callback)),
+      on_device_bytes_count);
 }
 
-size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const {
-  return buffer_->size_bytes();
-}
+size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const { return buffer_size_; }
 
 void* CpuRawBuffer::GetHostPointer() const { return buffer_->untyped_data(); }
 

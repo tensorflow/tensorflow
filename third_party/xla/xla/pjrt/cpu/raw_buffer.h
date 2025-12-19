@@ -83,6 +83,9 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
 
   Future<> GetReadyFuture() override;
 
+  static tsl::AsyncValueRef<CpuEvent> AfterAll(
+      absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events);
+
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
   const char* callee_type_;
@@ -92,8 +95,10 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
 class CpuRawBuffer : public CommonPjRtRawBuffer {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,
-               tsl::AsyncValueRef<CpuDeviceMemory> buffer)
-      : memory_space_(memory_space), buffer_(std::move(buffer)) {}
+               tsl::AsyncValueRef<CpuDeviceMemory> buffer, size_t buffer_size)
+      : memory_space_(memory_space),
+        buffer_(std::move(buffer)),
+        buffer_size_(buffer_size) {}
 
   absl::Status ValidateSlice(int64_t offset, int64_t slice_size);
 
@@ -169,6 +174,7 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
  private:
   PjRtMemorySpace* const memory_space_;
   tsl::AsyncValueRef<CpuDeviceMemory> buffer_;
+  size_t buffer_size_;
 };
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,

@@ -199,7 +199,8 @@ class CommonPjRtClient : public PjRtClient {
       absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>) &&>;
   virtual absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
                                    PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space) {
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                         size_t on_device_bytes_count) {
     return absl::UnimplementedError("CreateRawBufferChannel is not supported");
   }
 
