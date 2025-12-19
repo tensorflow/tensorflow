@@ -2068,6 +2068,28 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_GetCompileOptions(
+    PJRT_Executable_GetCompileOptions_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_GetCompileOptions_Args",
+      PJRT_Executable_GetCompileOptions_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::CompileOptions options,
+                        args->executable->executable->GetCompileOptions());
+  PJRT_ASSIGN_OR_RETURN(xla::CompileOptionsProto options_proto,
+                        options.ToProto());
+  std::string serialized = options_proto.SerializeAsString();
+
+  PJRT_SerializedCompileOptions* serialized_options =
+      new PJRT_SerializedCompileOptions;
+  serialized_options->serialized = std::move(serialized);
+  args->serialized_compile_options = serialized_options;
+  args->serialized_bytes = serialized_options->serialized.data();
+  args->serialized_bytes_size = serialized_options->serialized.size();
+  args->serialized_compile_options_deleter =
+      +[](PJRT_SerializedCompileOptions* options) { delete options; };
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3276,6 +3298,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Device_CreateAsyncTrackingEvent,
       /*PJRT_AsyncTrackingEvent_Destroy=*/
       pjrt::PJRT_AsyncTrackingEvent_Destroy,
+      /*PJRT_Executable_GetCompileOptions=*/
+      pjrt::PJRT_Executable_GetCompileOptions,
   };
 }
 

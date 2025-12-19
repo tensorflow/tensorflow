@@ -2210,6 +2210,32 @@ absl::StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
                      args.executable_fingerprint_size);
 }
 
+absl::StatusOr<CompileOptions> PjRtCApiExecutable::GetCompileOptions() const {
+  if (c_api_->pjrt_api_version.major_version == 0 &&
+      c_api_->pjrt_api_version.minor_version < 87) {
+    return absl::UnimplementedError(
+        "PJRT_Executable_GetCompileOptions not implemented in this PJRT "
+        "plugin.");
+  }
+  PJRT_Executable_GetCompileOptions_Args args;
+  args.struct_size = PJRT_Executable_GetCompileOptions_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_executable();
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Executable_GetCompileOptions(&args),
+                              c_api_);
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_compile_options_deleter(args.serialized_compile_options);
+  };
+  CompileOptionsProto proto;
+  if (!proto.ParseFromString(
+          std::string(args.serialized_bytes, args.serialized_bytes_size))) {
+    return absl::InternalError(
+        "PjRtCApiExecutable::GetCompileOptions: Failed to parse "
+        "CompileOptionsProto");
+  }
+  return CompileOptions::FromProto(proto);
+}
+
 // ------------------------ Loaded Executables ---------------------------------
 
 PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(

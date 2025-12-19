@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.87
+
+* Add `PJRT_Executable_GetCompileOptions`.
+
 ## 0.86
 
 * Add `PJRT_Device_CreateAsyncTrackingEvent`.

@@ -215,6 +215,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_SerializedCompileOptions {
+  std::string serialized;
+};
+
 struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
 };
@@ -378,6 +382,8 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
+PJRT_Error* PJRT_Executable_GetCompileOptions(
+    PJRT_Executable_GetCompileOptions_Args* args);
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args);
 

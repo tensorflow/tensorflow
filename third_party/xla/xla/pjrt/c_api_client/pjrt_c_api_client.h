@@ -680,6 +680,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
   // TODO(b/438000615): Move this to PjRtLoadedExecutable.
   absl::StatusOr<std::string> GetSerializedExecutableMetadata() const;
 
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override;
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
@@ -753,6 +755,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return executable_->GetOutputMemoryKinds();
+  }
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
+    return executable_->GetCompileOptions();
   }
 
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
