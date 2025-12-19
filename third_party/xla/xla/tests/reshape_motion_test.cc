@@ -13,31 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <numeric>
-#include <random>
-#include <vector>
+#include <cstdint>
 
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/array2d.h"
-#include "xla/array4d.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/reference_util.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ReshapeMotionTest = ClientLibraryTestBase;
+using ReshapeMotionTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
   XlaBuilder builder(TestName());

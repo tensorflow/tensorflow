@@ -3595,22 +3595,15 @@ xla_test(
 xla_test(
     name = "reshape_motion_test",
     srcs = ["reshape_motion_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":client_library_test_base",
-        ":literal_test_util",
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
-        "//xla:array2d",
-        "//xla:array4d",
-        "//xla:literal",
-        "//xla:reference_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/testlib:test_helpers",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
