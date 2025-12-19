@@ -69,9 +69,9 @@ struct ReplaceCustomCallWithComposite final
 
     auto decomposition = mlir::cast<FlatSymbolRefAttr>(calledComputations[0]);
 
-    auto composite = rewriter.create<mlir::stablehlo::CompositeOp>(
-        op.getLoc(), op.getResultTypes(), op.getOperands(), name.str(), attrs,
-        decomposition.getValue());
+    auto composite = mlir::stablehlo::CompositeOp::create(
+        rewriter, op.getLoc(), op.getResultTypes(), op.getOperands(),
+        name.str(), attrs, decomposition.getValue());
     rewriter.replaceOp(op, composite.getResults());
     return success();
   }

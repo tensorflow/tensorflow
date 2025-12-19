@@ -119,9 +119,9 @@ LogicalResult LowerGELU::matchAndRewrite(Operation* op,
   if (!HasSplatArg(rhs_mul, kOneOverRoot2, 1)) return failure();
 
   auto is_approx_attr = rewriter.getBoolAttr(false);
-  auto gelu = rewriter.create<TFL::GeluOp>(
-      output_mul.getLoc(), output_mul.getResult().getType(),
-      erf_input->getOperand(0), is_approx_attr);
+  auto gelu = TFL::GeluOp::create(rewriter, output_mul.getLoc(),
+                                  output_mul.getResult().getType(),
+                                  erf_input->getOperand(0), is_approx_attr);
   rewriter.replaceAllOpUsesWith(output_mul, gelu);
   // Note these must be erased in reverse topo order to avoid
   // failing in debug mode.

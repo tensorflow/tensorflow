@@ -125,9 +125,9 @@ class ConvertTfQuantToMhloIntTest : public Test {
       // can't lower tf.Const.
       Value cst;
       if (use_mhlo_const) {
-        cst = builder.create<mhlo::ConstantOp>(func_op->getLoc(), attrs);
+        cst = mhlo::ConstantOp::create(builder, func_op->getLoc(), attrs);
       } else {
-        cst = builder.create<TF::ConstOp>(func_op->getLoc(), attrs);
+        cst = TF::ConstOp::create(builder, func_op->getLoc(), attrs);
       }
       func_op.getArgument(i).replaceAllUsesWith(cst);
     }

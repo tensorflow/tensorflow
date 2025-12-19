@@ -86,9 +86,9 @@ LogicalResult InsertCalibrationStatisticsSaverOp(
   ArrayAttr ids_attr = builder.getStrArrayAttr(ids);
   ArrayAttr calibration_methods_attr =
       builder.getI32ArrayAttr(calibration_methods);
-  builder.create<TF::CalibrationStatisticsSaverOp>(
-      region.getLoc(), statistics_outputs, output_file_path_attr, ids_attr,
-      calibration_methods_attr);
+  TF::CalibrationStatisticsSaverOp::create(
+      builder, region.getLoc(), statistics_outputs, output_file_path_attr,
+      ids_attr, calibration_methods_attr);
   return success();
 }
 

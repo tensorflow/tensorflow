@@ -123,8 +123,8 @@ void ConvertXlaCallModuleOpToBfloat16Pass::runOnOperation() {
     builder.setInsertionPoint(op);
     for (auto& op_operand : op->getOpOperands()) {
       if (quant::stablehlo::IsLargeFloatType(op_operand.get().getType())) {
-        op_operand.set(builder.create<TF::CastOp>(
-            op->getLoc(),
+        op_operand.set(TF::CastOp::create(
+            builder, op->getLoc(),
             quant::stablehlo::ToBfloat16Type(op_operand.get().getType()),
             op_operand.get()));
       }
@@ -135,7 +135,7 @@ void ConvertXlaCallModuleOpToBfloat16Pass::runOnOperation() {
         const Type original_type = op_result.getType();
         op_result.setType(quant::stablehlo::ToBfloat16Type(original_type));
         const Value cast =
-            builder.create<TF::CastOp>(op->getLoc(), original_type, op_result);
+            TF::CastOp::create(builder, op->getLoc(), original_type, op_result);
         op_result.replaceAllUsesExcept(cast, cast.getDefiningOp());
       }
     }
