@@ -27,6 +27,13 @@ limitations under the License.
 // - https://github.com/google/XNNPACK/issues/6989
 // We also don't need a lot of the functionality in the upstream library.
 
+// If building with a library that uses //third_party/FP16, that library
+// provides its own fp16 conversion functions. Avoid redefining them here to
+// prevent build errors.
+// FP16_H and FP16_BITCASTS_H are defined by //third_party/FP16/fp16.h and
+// //third_party/FP16/bitcasts.h respectively.
+#if !defined(FP16_H) && !defined(FP16_BITCASTS_H)
+
 static inline float fp32_from_bits(uint32_t w) {
   union {
     uint32_t as_bits;
@@ -215,5 +222,7 @@ static inline uint16_t fp16_ieee_from_fp32_value(float f) {
   return (sign >> 16) |
          (shl1_w > UINT32_C(0xFF000000) ? UINT16_C(0x7E00) : nonsign);
 }
+
+#endif  // !defined(FP16_H) && !defined(FP16_BITCASTS_H)
 
 #endif  // TENSORFLOW_LITE_TYPES_FP16_H_
