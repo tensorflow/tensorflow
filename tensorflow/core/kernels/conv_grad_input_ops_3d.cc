@@ -138,7 +138,7 @@ class Conv3DBackpropInputOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -241,8 +241,8 @@ class Conv3DBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;
@@ -268,7 +268,7 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -593,8 +593,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;

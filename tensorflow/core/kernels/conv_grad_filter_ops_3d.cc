@@ -135,7 +135,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -193,7 +193,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                       "filter_sizes shape must be rank 1 but is rank ",
                       filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  filter_sizes.vec<int32>(), &filter_shape));
+                                  filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
@@ -247,8 +247,8 @@ class Conv3DBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;
@@ -274,7 +274,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -332,7 +332,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                       "filter_sizes shape must be rank 1 but is rank ",
                       filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  filter_sizes.vec<int32>(), &filter_shape));
+                                  filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
@@ -560,8 +560,8 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;
