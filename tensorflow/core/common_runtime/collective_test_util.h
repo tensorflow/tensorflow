@@ -46,8 +46,9 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
     fail_after_ = fail_after;
   }
 
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
+  void RecvFromPeer(const std::string& peer_device,
+                    const std::string& peer_task, bool peer_is_local,
+                    const std::string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
@@ -55,8 +56,8 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     CancellationManager* cancellation_manager,
                     const StatusCallback& done) override;
 
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
+  void PostToPeer(const std::string& peer_device, const std::string& peer_task,
+                  const std::string& key, Device* from_device,
                   DeviceContext* from_device_ctx,
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
@@ -92,8 +93,9 @@ std::unique_ptr<CollectiveTestEnv> CreateCollectiveTestEnv(
     bool use_nccl = false);
 
 core::RefCountPtr<CollectiveParams> CreateCollectiveParams(
-    const CollectiveTestEnv& test_env, int rank, const string& collective_name,
-    CollectiveType collective_type, DataType dtype, const TensorShape& shape,
+    const CollectiveTestEnv& test_env, int rank,
+    const std::string& collective_name, CollectiveType collective_type,
+    DataType dtype, const TensorShape& shape,
     const std::vector<std::vector<int>> user_specified_rank_per_worker = {{}});
 
 std::vector<int> GenerateEvenSubdivOffsets(int num_devices_per_worker,
