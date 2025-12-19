@@ -224,7 +224,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
         GetCoordinationServiceConfig(/*num_tasks=*/2);
     config.heartbeat_timeout = kHeartbeatTimeout;
     if (set_worker_job_recoverable) {
-      config.recoverable_jobs.insert("worker");
+      task_0_.set_recoverable(true);
+      task_1_.set_recoverable(true);
     }
     if (enable_shutdown_barrier) {
       config.shutdown_barrier_timeout = kShutdownBarrierTimeout;
@@ -1912,16 +1913,17 @@ TEST_F(CoordinateTwoTasksTest,
 TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
   CoordinationService::Config config;
   // Workers are recoverable, chief is not.
-  config.recoverable_jobs.insert("worker");
   CoordinatedTask chief;
   chief.set_job_name("chief");
   chief.set_task_id(0);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
+  task_0.set_recoverable(true);
   CoordinatedTask task_1;
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
+  task_1.set_recoverable(true);
   CoordinatedJob chief_job;
   chief_job.set_name("chief");
   chief_job.set_num_tasks(1);

@@ -889,8 +889,7 @@ absl::Status CoordinationService::RecordHeartbeat(const CoordinatedTask& task,
 bool CoordinationService::AllTasksAreRecoverable(
     const std::vector<CoordinatedTask>& tasks) {
   for (const auto& task : tasks) {
-    if (!cluster_state_[GetTaskName(task)]->IsRecoverable() &&
-        !isRecoverableJob(task.job_name())) {
+    if (!cluster_state_[GetTaskName(task)]->IsRecoverable()) {
       return false;
     }
   }
@@ -1755,12 +1754,6 @@ void CoordinationService::CompleteShutdownAfterBarrier(
     // there is a new service instance.
     SetAllTasksError(shutdown_error);
   }
-}
-
-bool CoordinationService::isRecoverableJob(
-    const absl::string_view task_name) const {
-  return config_.recoverable_jobs.find(task_name) !=
-         config_.recoverable_jobs.end();
 }
 
 void CoordinationService::SendErrorPollingResponseOrFailAllTasks(
