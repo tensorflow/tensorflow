@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -222,7 +223,8 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
     std::function<void(HloModule*)> after_pass_checks,
-    const HloModuleConfig* config) const {
+    const HloModuleConfig* config,
+    absl::Span<const absl::string_view> additional_check_prefixes) const {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           config ? ParseAndReturnVerifiedModule(hlo, *config)
                                  : ParseAndReturnVerifiedModule(hlo));
@@ -233,7 +235,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
         bool filecheck_matches,
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),
-            *expected));
+            *expected, additional_check_prefixes));
     EXPECT_TRUE(filecheck_matches) << module->ToString();
     if (after_pass_checks) {
       after_pass_checks(module.get());
