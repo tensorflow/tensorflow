@@ -502,6 +502,8 @@ class TupleTree {
     return const_reverse_leaf_iterator(leaf_begin());
   }
 
+  size_t num_leaves() const { return std::distance(leaf_begin(), leaf_end()); }
+
   // Returns an iterator pointing to the node at the given ShapeIndex.
   // Returns end() if the index is not found.
   iterator find(ShapeIndexView index) {
