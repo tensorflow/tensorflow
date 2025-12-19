@@ -57,6 +57,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+static const absl::flat_hash_set<absl::string_view> kFailingOps = {
+    "Pad",
+    "Where",
+    // add more here
+};
+
 const char* const kXlaCompiledKernelAttr = "_XlaCompiledKernel";
 const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
@@ -1173,6 +1179,14 @@ static absl::Status RenumberArguments(Graph* graph,
   return absl::OkStatus();
 }
 
+static bool SubgraphHasFailingOps(const Graph& g) {
+  for (Node* n : g.op_nodes()) {
+    if (n->IsRetval()) continue;
+    if (kFailingOps.contains(n->def().op())) return true;
+  }
+  return false;
+}
+
 absl::Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
@@ -1319,8 +1333,8 @@ absl::Status EncapsulateSubgraphsPass::Run(
 
         // TODO(phawkins): add a forward is-constant analysis, similarly split
         // outputs into host-memory constants and device-memory non-constants.
-
-        AddNodeAttr(kXlaCompiledKernelAttr, true, node);
+        bool compile_enabled = !SubgraphHasFailingOps(**subgraph);
+        AddNodeAttr(kXlaCompiledKernelAttr, compile_enabled, node);
         AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
         AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
         return absl::OkStatus();

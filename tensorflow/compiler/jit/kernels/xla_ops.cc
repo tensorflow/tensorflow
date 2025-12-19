@@ -845,14 +845,24 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
           ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
           /*may_alias_resource_update=*/false, &client, &kernel, &executable);
     }
+
     if (compile_mode != DeviceCompileMode::kLazy ||
         status.code() != error::UNIMPLEMENTED) {
-      OP_REQUIRES_OK(ctx, status);
+      if ((status != OkStatus()) &&
+          (status.code() != error::UNIMPLEMENTED) &&
+        (compile_mode == DeviceCompileMode::kLazy)) {
+        // We set the error to error::UNIMPLEMENTED so it falls in the
+        // conditions of the if to fall back to TensorFlow function call
+        status = tensorflow::errors::Unimplemented(status.ToString());
+      } else {
+        OP_REQUIRES_OK(ctx, status);
+      }
     }
 
     if (status.code() == error::UNIMPLEMENTED) {
-      LOG(WARNING) << "Compilation failed:" << status
-                   << ".  Falling back to TF function call.";
+      LOG(WARNING) << "[HUAWEI] Compilation of the cluster failed with:";
+      LOG(WARNING) << "[HUAWEI] " << status;
+      LOG(WARNING) << "[HUAWEI] Falling back to TF function call.\n";
 
       BroadcastOptimizationRemark(
           XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
@@ -860,6 +870,8 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
       executable = nullptr;
       pjrt_executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
+      // TODO: decide if we want to set this flag to true, as we may want to
+      // allow the cluster to try to compile again later in time.
       cannot_compile_cluster_ = true;
     }
   }
