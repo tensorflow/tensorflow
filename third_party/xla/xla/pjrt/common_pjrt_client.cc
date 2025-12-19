@@ -205,8 +205,12 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
   PjRtFulfillAliasRawBufferCallback buffer_promise;
 
-  TF_ASSIGN_OR_RETURN(std::tie(raw_buffer, buffer_promise),
-                      CreateRawBufferChannel(memory_space));
+  TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
+                      GetOnDeviceBytesCount(memory_space, shape));
+
+  TF_ASSIGN_OR_RETURN(
+      std::tie(raw_buffer, buffer_promise),
+      CreateRawBufferChannel(memory_space, on_device_bytes_count));
 
   tsl::RCReference<xla::PjRtDeviceEventPromise> definition_event_promise;
   tsl::RCReference<xla::PjRtDeviceEvent> definition_event;

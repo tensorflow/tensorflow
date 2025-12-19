@@ -108,8 +108,9 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
   TrackedCpuDeviceBuffer tracked_buffer(
-      /*owns_buffers=*/true, tsl::MakeRef<CpuRawBuffer>(memory_space, buffer),
-      expected.size(), definition_event);
+      /*owns_buffers=*/true,
+      tsl::MakeRef<CpuRawBuffer>(memory_space, buffer, expected.size()),
+      definition_event);
   auto result = tracked_buffer.buffer();
   ASSERT_FALSE(result.IsAvailable());
   ASSERT_EQ(tracked_buffer.BufferSize(), expected.size());
