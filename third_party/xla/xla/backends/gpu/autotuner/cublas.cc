@@ -104,7 +104,8 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
       out_desc.compute_type,
       se::gpu::GetBlasComputationType(
           gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
-          gemm_config.output_layout.dtype, gemm_config.compute_precision));
+          gemm_config.output_layout.dtype, gemm_config.compute_precision,
+          target_config().device_description.gpu_compute_capability()));
 
   se::blas::BlasSupport* blas = stream_executor()->AsBlas();
   if (blas == nullptr) {

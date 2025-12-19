@@ -409,7 +409,6 @@ cc_library(
     name = "gpu_blas_lt",
     srcs = ["gpu_blas_lt.cc"],
     hdrs = ["gpu_blas_lt.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":gpu_blas_lt_proto_cc",
         "//xla:shape_util",
@@ -420,8 +419,11 @@ cc_library(
         "//xla/service:algorithm_util",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -435,9 +437,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-    ]) + if_static([
+    ] + if_static([
         "@local_tsl//tsl/platform:tensor_float_32_utils",
     ]),
 )
