@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
