@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -55,7 +56,6 @@ limitations under the License.
 namespace xla {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
-using tensorflow::CoordinatedTaskStateInfo;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 
@@ -69,64 +69,40 @@ constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 
 }  // namespace
 
-absl::Status CoordinationServiceAgent::Initialize(
-    tsl::Env* env, absl::string_view job_name, int task_id,
-    const Config& config, std::unique_ptr<CoordinationClient> leader_client,
-    tsl::StatusCallback error_fn) {
-  return Initialize(env, job_name, task_id, config, std::move(leader_client),
-                    error_fn,
-                    /*recoverable=*/false);
-}
-
-absl::Status CoordinationServiceAgent::Initialize(
+/*static*/ absl::StatusOr<std::unique_ptr<CoordinationServiceAgent>>
+CoordinationServiceAgent::Create(
     tsl::Env* env, absl::string_view job_name, int task_id,
     const Config& config, std::unique_ptr<CoordinationClient> leader_client,
     tsl::StatusCallback error_fn, bool recoverable) {
-  CoordinatedTask task;
-  task.set_job_name(std::string(job_name));
-  task.set_task_id(task_id);
+  // Validate arguments.
+  if (config.service_leader.empty()) {
+    return MakeCoordinationError(absl::InvalidArgumentError(
+        "CoordinationServiceAgent must be initialized with a valid leader."));
+  }
+  if (leader_client == nullptr) {
+    return MakeCoordinationError(absl::InvalidArgumentError(
+        "CoordinationServiceAgent must have a valid leader client."));
+  }
   if (recoverable) {
     LOG(WARNING)
         << "Using experimental recoverable task feature. The default shutdown "
            "barrier will only block non-recoverable tasks. If a synchronized "
            "shutdown is desired, the user / library should invoke "
            "`WaitAtBarrier` explicitly at the end of the program.";
-    task.set_recoverable(true);
   }
-  return Initialize(env, task, config, std::move(leader_client), error_fn);
-}
 
-absl::Status CoordinationServiceAgent::Initialize(
-    tsl::Env* env, const CoordinatedTask& task, const Config& config,
-    std::unique_ptr<CoordinationClient> leader_client,
-    tsl::StatusCallback error_fn) {
+  // Record coordination service agent metric.
   enabled_usage_metric->GetCell()->Set(true);
-  absl::MutexLock l(state_mu_);
-  if (state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED) {
-    return MakeCoordinationError(absl::FailedPreconditionError(
-        "Coordination service agent has already been initialized."));
-  }
 
-  env_ = env;
-  task_ = task;
-  config_ = config;
-  if (config_.service_leader.empty()) {
-    return MakeCoordinationError(absl::InvalidArgumentError(
-        "CoordinationServiceAgent must be initialized with a valid leader."));
-  }
-  leader_client_ = std::move(leader_client);
-  if (leader_client_ == nullptr) {
-    return MakeCoordinationError(absl::InvalidArgumentError(
-        "CoordinationServiceAgent must have a valid leader client."));
-  }
-  error_fn_ = error_fn;
-  state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
-  return absl::OkStatus();
-}
+  CoordinatedTask task;
+  task.set_job_name(std::string(job_name));
+  task.set_task_id(task_id);
+  task.set_recoverable(recoverable);
 
-bool CoordinationServiceAgent::IsInitialized() {
-  absl::MutexLock l(state_mu_);
-  return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+  // The CoordinationServiceAgent constructor is private, so we can't call
+  // std::make_unique.
+  return absl::WrapUnique(new CoordinationServiceAgent(
+      env, task, config, error_fn, std::move(leader_client)));
 }
 
 bool CoordinationServiceAgent::IsConnected() {
@@ -354,11 +330,6 @@ const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
 }
 
 absl::StatusOr<CoordinatedTask> CoordinationServiceAgent::GetOwnTask() {
-  if (!IsInitialized()) {
-    return MakeCoordinationError(absl::FailedPreconditionError(
-        "Agent has not been initialized; we do not "
-        "know the associated task yet."));
-  }
   return task_;
 }
 
@@ -964,20 +935,12 @@ absl::Status CoordinationServiceAgent::ValidateRunningAgent(
 }
 
 absl::StatusOr<tsl::Env*> CoordinationServiceAgent::GetEnv() {
-  if (!IsInitialized()) {
-    return MakeCoordinationError(absl::FailedPreconditionError(
-        "Coordination service agent has not been initialized."));
-  }
   if (env_ == nullptr) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "Coordination service agent was not "
         "initialized with a valid tsl::Env* object."));
   }
   return env_;
-}
-
-std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent() {
-  return std::make_unique<CoordinationServiceAgent>();
 }
 
 }  // namespace xla

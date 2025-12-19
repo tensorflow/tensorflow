@@ -106,29 +106,15 @@ class CoordinationServiceAgent {
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
-  CoordinationServiceAgent() = default;
+  static absl::StatusOr<std::unique_ptr<CoordinationServiceAgent>> Create(
+      tsl::Env* env, absl::string_view job_name, int task_id,
+      const Config& config, std::unique_ptr<CoordinationClient> leader_client,
+      tsl::StatusCallback error_fn, bool recoverable = false);
 
   virtual ~CoordinationServiceAgent() {
     absl::Status s = Shutdown();
     VLOG(3) << "Coordination agent dtor failed with status: " << s;
   }
-
-  absl::Status Initialize(tsl::Env* env, absl::string_view job_name,
-                          int task_id, const Config& config,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          tsl::StatusCallback error_fn, bool recoverable);
-  absl::Status Initialize(tsl::Env* env, absl::string_view job_name,
-                          int task_id, const Config& config,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          tsl::StatusCallback error_fn);
-  absl::Status Initialize(tsl::Env* env,
-                          const tensorflow::CoordinatedTask& task,
-                          const Config& config,
-                          std::unique_ptr<CoordinationClient> leader_client,
-                          tsl::StatusCallback error_fn);
-
-  // Return true if the coordination service agent has been initialized.
-  bool IsInitialized();
 
   // Return true if the coordination service agent has successfully connected
   // with the Coordination Service
@@ -154,11 +140,11 @@ class CoordinationServiceAgent {
 
   // State transition in coordination service agent:
   //
-  //                 Init              Connect           SetError
-  //   UNINITIALIZED ---> DISCONNECTED ------> CONNECTED -------> ERROR
-  //                           ^                                  |
-  //                           |__________________________________|
-  //                                         Reset
+  //               Connect           SetError
+  //  DISCONNECTED ------> CONNECTED -------> ERROR
+  //       ^                                  |
+  //       |__________________________________|
+  //                     Reset
 
   // Get task associated with this agent.
   absl::StatusOr<tensorflow::CoordinatedTask> GetOwnTask();
@@ -179,7 +165,7 @@ class CoordinationServiceAgent {
   // distinguish user-specified errors from internal service or RPC failures.
   // Possible service errors:
   //   - Internal: Coordination service has shut down.
-  //   - FailedPrecondition: Uninitialized/disconnected/already in error state.
+  //   - FailedPrecondition: disconnected/already in error state.
   //   - InvalidArgument: Unexpected task request
   absl::Status ReportError(const absl::Status& error);
 
@@ -290,8 +276,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state, or the
-  //       same barrier id is still being invoked.
+  //   - FailedPrecondition: Agent is in ERROR state, or the same barrier id is
+  //       still being invoked.
   virtual absl::Status WaitAtBarrier(
       absl::string_view barrier_id, absl::Duration timeout,
       const std::vector<tensorflow::CoordinatedTask>& tasks);
@@ -378,6 +364,16 @@ class CoordinationServiceAgent {
  private:
   friend class CoordinationServiceRpcHandler;
 
+  explicit CoordinationServiceAgent(
+      tsl::Env* env, const tensorflow::CoordinatedTask& task,
+      const Config& config, tsl::StatusCallback error_fn,
+      std::unique_ptr<CoordinationClient> leader_client)
+      : env_(env),
+        task_(task),
+        config_(config),
+        error_fn_(error_fn),
+        leader_client_(std::move(leader_client)) {}
+
   // Starts sending heartbeats to the coordination service.
   void StartSendingHeartbeats();
   // Use long polling to get error from the coordination service.
@@ -398,7 +394,7 @@ class CoordinationServiceAgent {
 
   mutable absl::Mutex state_mu_;
   tensorflow::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      tensorflow::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+      tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_
@@ -428,8 +424,6 @@ class CoordinationServiceAgent {
   CoordinationServiceAgent(const CoordinationServiceAgent&) = delete;
   void operator=(const CoordinationServiceAgent&) = delete;
 };
-
-std::unique_ptr<CoordinationServiceAgent> CreateCoordinationServiceAgent();
 
 }  // namespace xla
 
