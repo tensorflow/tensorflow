@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -414,8 +415,17 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
     llvm::SmallVector<int64_t> indices;
     indices.reserve(transpose_to - transpose_from);
     for (int64_t j = transpose_from; j < transpose_to; ++j) {
-      int64_t index = operand_inv_layout
-          [transpose_dims[transpose_shape.layout().minor_to_major(j)]];
+      int64_t dim_index = transpose_shape.layout().minor_to_major(j);
+      int64_t index = operand_inv_layout[transpose_dims[dim_index]];
+
+      if (transpose_shape.dimensions(dim_index) == 1) {
+        // Size-1 dimensions do not affect the physical layout, so we can ignore
+        // them for the purpose of checking contiguity. We mark them with an
+        // empty range in the operand_to_result_range map, so that they are
+        // dropped from the new bitcast/transpose shape.
+        operand_to_result_range[index] = {result_from, result_from};
+        continue;
+      }
 
       // Store the entire result dimension range in the minor-most dimension
       // index and an empty range in all others.
@@ -427,12 +437,10 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
     };
 
     if (indices.empty()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Cannot hoist bitcast across ", transpose->ToString(),
-                       " because size-1 dims in bitcasts are not yet supported "
-                       "(b/466065483)."));
+      // If all dimensions are size 1, we can just drop them.
+      continue;
     }
-    if (indices.back() - indices.front() >= transpose_to - transpose_from ||
+    if (indices.back() - indices.front() >= indices.size() ||
         !absl::c_is_sorted(indices)) {
       return absl::InvalidArgumentError(
           absl::StrCat("Cannot hoist bitcast across ", transpose->ToString(),
@@ -799,15 +807,15 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
 // shape. The bitcast is chosen so that it cancels out bitcasts and reshapes
 // along the way up to the dot. Updates the callers of the dot to expect the new
 // root shape.
-absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
-                                    absl::Span<HloInstruction*> callers) {
+absl::StatusOr<bool> MaybeInsertRootBitcast(
+    HloInstruction* dot, absl::Span<HloInstruction*> callers) {
   TF_ASSIGN_OR_RETURN(Shape root_shape,
                       ComputeRootShapeAfterHoistingBitcasts(dot));
 
   HloComputation* computation = dot->parent();
   HloInstruction* root = computation->root_instruction();
   if (root->shape() == root_shape) {
-    return absl::OkStatus();
+    return false;
   }
 
   // Insert a new bitcast at the root.
@@ -822,24 +830,28 @@ absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
     *caller->mutable_shape() = root_shape;
   }
 
-  return absl::OkStatus();
+  return true;
 }
 
 // Try hoisting bitcasts and reshapes in the computation away from 'dot' to the
 // callers of the computation. Some bitcasts or reshapes may remain in the
 // computation, because they cannot be hoisted across all ops, e.g. across some
 // transposes and broadcasts. This is not reported as an error.
-absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
-                                                    CallGraph* call_graph) {
+absl::StatusOr<bool> TryHoistBitcastsInComputationToCallers(
+    HloInstruction* dot, CallGraph* call_graph) {
+  bool changed = false;
   // Instead of implementing a logic to hoist bitcast upwards and downwards
   // we insert a bitcast at the root that and always hoist bitcasts upwards.
   // That significantly simplifies the implementation.
   VLOG(2) << "Before hoisting bitcasts: " << dot->parent()->ToString();
 
   auto callers = call_graph->GetComputationCallers(dot->parent());
-  if (auto status = MaybeInsertRootBitcast(dot, absl::MakeSpan(callers));
-      !status.ok()) {
-    VLOG(2) << "Failed to insert root bitcast: " << status;
+  absl::StatusOr<bool> inserted =
+      MaybeInsertRootBitcast(dot, absl::MakeSpan(callers));
+  if (!inserted.ok()) {
+    VLOG(2) << "Failed to insert root bitcast: " << inserted.status();
+  } else {
+    changed |= *inserted;
   }
   VLOG(2) << "After inserting root bitcast: " << dot->parent()->ToString();
 
@@ -856,11 +868,13 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
     if (!status.ok()) {
       VLOG(2) << "Failed to hoist " << instruction->ToString()
               << " upwards: " << status;
+    } else {
+      changed = true;
     }
   }
 
   VLOG(2) << "After hoisting bitcasts: " << dot->parent()->ToString();
-  return absl::OkStatus();
+  return changed;
 }
 
 class HoistFusedBitcastsVisitor : public DfsHloRewriteVisitor {
@@ -884,10 +898,11 @@ class HoistFusedBitcastsVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    TF_RETURN_IF_ERROR(
-        TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    // TODO(b/446827313): don't mark as changed if no changes were made.
-    MarkAsChanged();
+    ASSIGN_OR_RETURN(bool changed,
+                     TryHoistBitcastsInComputationToCallers(instr, call_graph));
+    if (changed) {
+      MarkAsChanged();
+    }
     return absl::OkStatus();
   }
 
