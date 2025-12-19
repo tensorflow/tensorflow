@@ -2629,7 +2629,6 @@ xla_test(
         "gpu",
     ],
     tags = [
-        "cuda-only",
         "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
