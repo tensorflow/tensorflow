@@ -457,6 +457,14 @@ message DebugOptions {
   // but potentially higher the performance.
   optional int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
+  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
+  // ops by default. This is expected to improve performance at the expense of
+  // numerical accuracy.
+  //
+  // At this point, XLA may still choose a higher precision dot algorithm, but
+  // we expect this to change at a later point.
+  optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
+
   // Guarantees run-to-run determinism.
   // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
   // disables autotuning.
@@ -1333,7 +1341,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 441
+  // Next id: 442
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
