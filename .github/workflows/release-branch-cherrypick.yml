@@ -58,7 +58,7 @@ jobs:
           echo "SHORTSHA=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%h")" >> "$GITHUB_OUTPUT"
           echo "TITLE=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%s")" >> "$GITHUB_OUTPUT"
     - name: Create Pull Request with changes
-      uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412 # v7.0.9
+      uses: peter-evans/create-pull-request@98357b18bf14b5342f975ff684046ec3b2a07725  # v8
       with:
         title: '${{ github.event.inputs.release_branch }} cherry-pick: ${{ steps.cherrypick.outputs.SHORTSHA }} "${{ steps.cherrypick.outputs.TITLE }}"'
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>
