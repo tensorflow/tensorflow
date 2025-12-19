@@ -960,6 +960,10 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
       add_field("PJRT_Device_CreateAsyncTrackingEvent", kFnPtrSize);
       add_field("PJRT_AsyncTrackingEvent_Destroy", kFnPtrSize);
     }
+    if (minor_version >= 87) {
+      add_field("PJRT_Event_Create", kFnPtrSize);
+      add_field("PJRT_Event_Set", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1371,6 +1375,12 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_AsyncTrackingEvent_Destroy",
            {offsetof(PJRT_Api, PJRT_AsyncTrackingEvent_Destroy),
             sizeof(PJRT_Api::PJRT_AsyncTrackingEvent_Destroy)}},
+          {"PJRT_Event_Create",
+           {offsetof(PJRT_Api, PJRT_Event_Create),
+            sizeof(PJRT_Api::PJRT_Event_Create)}},
+          {"PJRT_Event_Set",
+           {offsetof(PJRT_Api, PJRT_Event_Set),
+            sizeof(PJRT_Api::PJRT_Event_Set)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
