@@ -43,6 +43,8 @@ class CollectiveDeviceList;
 
 enum class CollectiveDeviceListVersion { kListOfLists, kIota, kMeshAxes };
 
+// Base class providing the interface for all collective device list
+// representations.
 class CollectiveDeviceListBase {
  public:
   virtual ~CollectiveDeviceListBase() = default;
@@ -73,6 +75,7 @@ class CollectiveDeviceListBase {
   }
   virtual std::vector<std::vector<int64_t>> flattened_replica_groups()
       const = 0;
+
   virtual const std::vector<ReplicaGroup>& replica_groups() const {
     if (replica_groups_ != nullptr) {
       return *replica_groups_;
@@ -86,33 +89,30 @@ class CollectiveDeviceListBase {
     }
     return *replica_groups_;
   };
+
   virtual void Print(Printer* printer) const = 0;
   virtual void Print(Printer* printer,
                      bool print_full_replica_group_list) const {
-    return Print(printer);
-  };
+    Print(printer);
+  }
   virtual std::string ToString() const = 0;
   virtual std::string ToString(bool print_full_replica_group_list) const {
     return ToString();
   };
 
   virtual std::unique_ptr<CollectiveDeviceListBase> Clone() const = 0;
-
   virtual CollectiveDeviceListVersion version() const = 0;
 
-  // shared_ptr for fast copy.
-  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
-
  protected:
+  // Used by operator== to check equality of derived types.
   virtual bool isEqual(const CollectiveDeviceListBase& other) const = 0;
+
+  // shared_ptr for fast copy and lazy materialization.
+  mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
 };
 
+// Compact representation using Mesh and Axis indices.
 class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
-  struct ReshapeAndAggregateAxes {
-    std::vector<int64_t> reshape_dims;
-    std::vector<int64_t> aggregate_axes;
-  };
-
  public:
   explicit MeshAxesReplicaGroupList(Mesh mesh, std::vector<AxisRef> axes);
 
@@ -125,49 +125,49 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
     return H::combine(std::move(h), c.mesh_, c.axes_);
   }
 
+  // Overrides
   int64_t num_replica_groups() const override;
   int64_t num_devices_per_group() const override;
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
   void Print(Printer* printer) const override;
   std::string ToString() const override;
   MeshAxesReplicaGroupListProto ToProto() const;
+
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
     return std::make_unique<MeshAxesReplicaGroupList>(*this);
-  };
+  }
   CollectiveDeviceListVersion version() const override {
     return CollectiveDeviceListVersion::kMeshAxes;
   }
 
+  // Conversion and Serialization
   static MeshAxesReplicaGroupList FromProto(
       const MeshAxesReplicaGroupListProto& proto);
-
-  // Methods for converting to V2 and V1 representations.
   IotaReplicaGroupList ToIotaReplicaGroupList() const;
   CollectiveDeviceList ToCollectiveDeviceList() const;
 
  protected:
   bool isEqual(const CollectiveDeviceListBase& other) const override {
-    const MeshAxesReplicaGroupList& rhs =
-        static_cast<const MeshAxesReplicaGroupList&>(other);
-    return *this == rhs;
+    return *this == static_cast<const MeshAxesReplicaGroupList&>(other);
   }
 
  private:
+  struct ReshapeAndAggregateAxes {
+    std::vector<int64_t> reshape_dims;
+    std::vector<int64_t> aggregate_axes;
+  };
+
+  // Internal helpers for computing device groups.
   absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>
   GetDimToReshapeAndAggregateAxes() const;
   std::pair<std::vector<int64_t>, std::vector<int64_t>> ComputeReindexedAxes()
       const;
+
   Mesh mesh_;
   std::vector<AxisRef> axes_;
 };
 
-std::string ReplicaGroupsToString(
-    absl::Span<const ReplicaGroup> replica_groups);
-
-// Represents a list of replica groups (a list of list of devices) with
-// reshaping and transposing an iota array (iota tile assignment). Can be used
-// to represent certain common patterns of device lists in a compact, scalable
-// format.
+// Representation using Iota patterns (reshaping/transposing linear ranges).
 class IotaReplicaGroupList : public CollectiveDeviceListBase {
  public:
   explicit IotaReplicaGroupList(int64_t num_replica_groups,
@@ -213,24 +213,21 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
 
   void Print(Printer* printer) const override;
-
   std::string ToString() const override;
+
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
     return std::make_unique<IotaReplicaGroupList>(*this);
-  };
+  }
   CollectiveDeviceListVersion version() const override {
     return CollectiveDeviceListVersion::kIota;
   }
 
   IotaReplicaGroupListProto ToProto() const;
-
   static IotaReplicaGroupList FromProto(const IotaReplicaGroupListProto& proto);
 
  protected:
   bool isEqual(const CollectiveDeviceListBase& other) const override {
-    const IotaReplicaGroupList& rhs =
-        static_cast<const IotaReplicaGroupList&>(other);
-    return *this == rhs;
+    return *this == static_cast<const IotaReplicaGroupList&>(other);
   }
 
  private:
@@ -239,9 +236,7 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
   int64_t num_devices_per_group_ = -1;
 };
 
-// Represents a series of devices participating in a collective operation
-// (all-gather, all-reduce, etc.). While this directly translates to a list of
-// replica groups, it may be used to represent these lists in compact forms.
+// Legacy/Explicit representation using an explicit list of ReplicaGroups.
 class CollectiveDeviceList : public CollectiveDeviceListBase {
  public:
   explicit CollectiveDeviceList() {
@@ -263,7 +258,6 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     replica_groups_ = ToReplicaGroupVector(replica_groups);
   };
 
-  // Replica groups are materialized lazily upon first access.
   explicit CollectiveDeviceList(
       const IotaReplicaGroupList& iota_replica_group_list)
       : iota_replica_group_list_(iota_replica_group_list) {}
@@ -298,7 +292,7 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     return h;
   }
 
-  // Lazyly explands iota if applicable.
+  // Overrides
   const std::vector<ReplicaGroup>& replica_groups() const override;
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
   const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
@@ -322,6 +316,7 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
              bool print_full_replica_group_list) const override;
   std::string ToString() const override;
   std::string ToString(bool print_full_replica_group_list) const override;
+
   CollectiveDeviceListVersion version() const override {
     if (iota_replica_group_list_.has_value()) {
       return CollectiveDeviceListVersion::kIota;
@@ -332,20 +327,17 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   CollectiveDeviceListProto ToProto() const;
   static CollectiveDeviceList FromProto(const CollectiveDeviceListProto& proto);
   static CollectiveDeviceList FromProto(const HloInstructionProto& proto);
+
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
     return std::make_unique<CollectiveDeviceList>(*this);
   };
 
  protected:
   bool isEqual(const CollectiveDeviceListBase& other) const override {
-    const CollectiveDeviceList& rhs =
-        static_cast<const CollectiveDeviceList&>(other);
-    return *this == rhs;
+    return *this == static_cast<const CollectiveDeviceList&>(other);
   }
 
  private:
-  // Construct collective device list from protobuf replica group start and end
-  // iterators.
   CollectiveDeviceList(
       tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
       tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
@@ -364,12 +356,13 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     return result;
   }
 
-  // Load replica groups from iota tile assignment if not already done so.
   void MaybeMaterializeFullReplicaGroupList() const;
 
   std::optional<IotaReplicaGroupList> iota_replica_group_list_;
 };
 
+std::string ReplicaGroupsToString(
+    absl::Span<const ReplicaGroup> replica_groups);
 CollectiveDeviceList ConvertToV1CollectiveDeviceList(
     const CollectiveDeviceListBase& device_list);
 
