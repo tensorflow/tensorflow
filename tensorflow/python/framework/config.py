@@ -16,7 +16,6 @@
 
 from typing import Union
 import platform
-import warnings
 from packaging.version import Version
 from tensorflow.python.framework import versions
 from tensorflow.python.eager import context
@@ -25,8 +24,10 @@ from tensorflow.python.util import _pywrap_determinism
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.platform import tf_logging as logging
 
 _warned_windows_gpu = False
+
 
 
 @tf_export('config.experimental.tensor_float_32_execution_enabled')
@@ -460,25 +461,26 @@ def list_physical_devices(device_type=None):
   Returns:
     List of discovered `tf.config.PhysicalDevice` objects
   """
+
+
   global _warned_windows_gpu
 
   if not _warned_windows_gpu:
     if platform.system() == "Windows":
-      if Version is not None:
-        try:
-          if Version(versions.__version__) >= Version("2.11.0"):
-            warnings.warn(
-              "TensorFlow GPU support is not available on native Windows for "
-              "TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will "
-              "not be used. Please use WSL2 or the TensorFlow-DirectML plugin.",
-              RuntimeWarning,
-              stacklevel=2,
-            )
-            _warned_windows_gpu = True
-        except (AttributeError, ValueError):
-          # Best-effort warning only; never break device listing
-          pass
+      try:
+        if Version(versions.__version__) >= Version("2.11.0"):
+          logging.warning(
+            "TensorFlow GPU support is not available on native Windows for "
+            "TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will "
+            "not be used. Please use WSL2 or the TensorFlow-DirectML plugin."
+          )
+          _warned_windows_gpu = True
+      except (ImportError, AttributeError, ValueError):
+        # Best-effort warning only; never break device listing
+        pass
+
   return context.context().list_physical_devices(device_type)
+
 
 
 @tf_export('config.list_logical_devices',
