@@ -651,7 +651,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
     return device_list_->replica_groups();
   }
 
-  const CollectiveDeviceList& device_list() const {
+  const CollectiveDeviceListBase& device_list() const {
     const CollectiveDeviceList* device_list_v1 =
         dynamic_cast<const CollectiveDeviceList*>(device_list_.get());
     // TODO(b/468442352): After XLA codebase is genericized to utilize
@@ -683,8 +683,8 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& collective_device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      const CollectiveDeviceListBase& collective_device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   HloInstructionProto ToProto() const override;
 
@@ -704,7 +704,7 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
   explicit HloAllGatherInstruction(HloOpcode opcode, const Shape& shape,
                                    absl::Span<HloInstruction* const> operands,
                                    int64_t all_gather_dimension,
-                                   const CollectiveDeviceList& device_list,
+                                   const CollectiveDeviceListBase& device_list,
                                    bool constrain_layout,
                                    const std::optional<int64_t>& channel_id,
                                    bool use_global_device_ids);
@@ -760,7 +760,7 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const CollectiveDeviceListBase& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids);
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
@@ -817,7 +817,7 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
   explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const CollectiveDeviceListBase& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
 
@@ -862,7 +862,7 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const CollectiveDeviceListBase& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension);
 
@@ -910,7 +910,7 @@ class HloRaggedAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloRaggedAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& device_list,
+      const CollectiveDeviceListBase& device_list,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -941,7 +941,7 @@ class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
   explicit HloCollectiveBroadcastInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const CollectiveDeviceListBase& device_list, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")

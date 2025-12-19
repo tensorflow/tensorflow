@@ -489,4 +489,31 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
   return FromProto(proto.collective_device_list());
 }
 
+CollectiveDeviceList ConvertToV1CollectiveDeviceList(
+    const CollectiveDeviceListBase& device_list) {
+  switch (device_list.version()) {
+    case CollectiveDeviceListVersion::kListOfLists: {
+      return dynamic_cast<const CollectiveDeviceList&>(device_list);
+    }
+    case CollectiveDeviceListVersion::kIota: {
+      if (const auto* v2 =
+              dynamic_cast<const IotaReplicaGroupList*>(&device_list)) {
+        return CollectiveDeviceList(*v2);
+      }
+      const auto* v1 = dynamic_cast<const CollectiveDeviceList*>(&device_list);
+      CHECK(v1 != nullptr) << "Failed to convert kIota to V1 list.";
+      return *v1;
+    }
+    case CollectiveDeviceListVersion::kMeshAxes: {
+      const auto* v3 =
+          dynamic_cast<const MeshAxesReplicaGroupList*>(&device_list);
+      CHECK(v3 != nullptr) << "Failed to convert kMeshAxes to V1 list.";
+      return v3->ToCollectiveDeviceList();
+    }
+    default:
+      LOG(FATAL) << "Unknown CollectiveDeviceListVersion: "
+                 << static_cast<int>(device_list.version());
+  }
+}
+
 }  // namespace xla

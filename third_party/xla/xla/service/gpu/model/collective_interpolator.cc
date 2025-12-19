@@ -101,13 +101,12 @@ struct InterpolationSpecification {
 // Returns number of participating devices in an input `device_list`. Supports
 // only `iota_replica_group_list`.
 absl::StatusOr<int> GetNumParticipatingDevices(
-    const CollectiveDeviceList& device_list) {
-  auto iota = device_list.iota_replica_group_list();
-  if (!iota.has_value()) {
+    const CollectiveDeviceListBase& device_list) {
+  if (device_list.version() != CollectiveDeviceListVersion::kIota) {
     return absl::FailedPreconditionError(
         "Only iota device assignment is supported.");
   }
-  return iota->num_devices_per_group();
+  return device_list.num_devices_per_group();
 }
 
 absl::StatusOr<InterpolationSpecification> Spec(
@@ -147,13 +146,16 @@ absl::StatusOr<InterpolationSpecification> Spec(
   TF_ASSIGN_OR_RETURN(int num_devices,
                       GetNumParticipatingDevices(collective->device_list()));
 
+  CollectiveDeviceList list_of_devices =
+      ConvertToV1CollectiveDeviceList(collective->device_list());
+
   return InterpolationSpecification{
       /*opcode=*/collective->opcode(),
       /*num_devices=*/num_devices,
       /*transfer_size=*/bytes_transferred,
       /*data_type=*/collective->shape().element_type(),
       /*collective_params=*/
-      CollectiveOpSpecInfo{collective->device_list(), comm}};
+      CollectiveOpSpecInfo{list_of_devices, comm}};
 }
 
 std::unique_ptr<HloModule> AllReduceModule(
@@ -348,11 +350,13 @@ std::unique_ptr<HloModule> CollectivePermuteModule(
   return module;
 }
 
-std::optional<CollectiveDeviceList> CanonicalDeviceList(
+std::optional<std::unique_ptr<CollectiveDeviceListBase>> CanonicalDeviceList(
     const HloCollectiveInstruction& instr) {
-  if (instr.device_list().iota_replica_group_list().has_value()) {
-    return instr.device_list();
+  const CollectiveDeviceListBase& device_list = instr.device_list();
+  if (device_list.version() == CollectiveDeviceListVersion::kIota) {
+    return device_list.Clone();
   }
+
   auto num_groups_and_devices = GetReplicaGroupCountAndSize(&instr);
   if (!num_groups_and_devices.ok() || !num_groups_and_devices->has_value()) {
     VLOG(1) << "Failed to determine a number of devices participating in "
@@ -363,7 +367,7 @@ std::optional<CollectiveDeviceList> CanonicalDeviceList(
 
   IotaReplicaGroupList iota((*num_groups_and_devices)->first,
                             (*num_groups_and_devices)->second);
-  return CollectiveDeviceList(iota);
+  return std::make_unique<CollectiveDeviceList>(iota);
 }
 
 HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
@@ -720,12 +724,15 @@ absl::StatusOr<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
         absl::StrCat("Cannot find key for instr: ", instr.ToString()));
   }
   auto* collective = Cast<HloCollectiveInstruction>(&instr);
-  std::optional<CollectiveDeviceList> devices =
+  std::optional<std::unique_ptr<CollectiveDeviceListBase>> devices =
       CanonicalDeviceList(*collective);
   if (devices.has_value()) {
+    CollectiveDeviceList list_of_devices =
+        ConvertToV1CollectiveDeviceList(*devices.value());
+
     ExactInterpolatorKey exact_key{
         /*opcode=*/instr.opcode(),
-        /*collective_params=*/*devices,
+        /*collective_params=*/list_of_devices,
         /*data_type=*/
         RequiresAccumulation(instr.opcode())
             ? std::make_optional(instr.shape().element_type())

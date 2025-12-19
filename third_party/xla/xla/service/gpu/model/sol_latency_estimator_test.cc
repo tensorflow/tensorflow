@@ -739,7 +739,7 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         module->AddEmbeddedComputation(wrapped_computation.Build());
     entry->AddInstruction(HloInstruction::CreateAllReduce(
         shape, {dummy_operand}, subcomp,
-        /*replica_groups=*/{}, /*constrain_layout=*/false,
+        /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
         /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   }
 

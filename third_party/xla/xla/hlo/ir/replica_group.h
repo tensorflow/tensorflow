@@ -53,6 +53,19 @@ class CollectiveDeviceListBase {
   CollectiveDeviceListBase(CollectiveDeviceListBase&&) = default;
   CollectiveDeviceListBase& operator=(CollectiveDeviceListBase&&) = default;
 
+  // This is strict equality, which means that two different types
+  // can't be compared for functional equality (i.e. even though an
+  // IotaReplicaGroup and a CollectiveDeviceList may correspond to the same
+  // underlying set of device groups, they will compare as unequal).
+  friend bool operator==(const CollectiveDeviceListBase& lhs,
+                         const CollectiveDeviceListBase& rhs) {
+    if (typeid(lhs) != typeid(rhs)) {
+      return false;
+    }
+    // If types are the same, delegate to the derived implementation
+    return lhs.isEqual(rhs);
+  }
+
   virtual int64_t num_replica_groups() const = 0;
   virtual int64_t num_devices_per_group() const = 0;
   int64_t num_total_devices() const {
@@ -89,6 +102,9 @@ class CollectiveDeviceListBase {
 
   // shared_ptr for fast copy.
   mutable std::shared_ptr<std::vector<ReplicaGroup>> replica_groups_ = nullptr;
+
+ protected:
+  virtual bool isEqual(const CollectiveDeviceListBase& other) const = 0;
 };
 
 class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
@@ -128,6 +144,13 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   // Methods for converting to V2 and V1 representations.
   IotaReplicaGroupList ToIotaReplicaGroupList() const;
   CollectiveDeviceList ToCollectiveDeviceList() const;
+
+ protected:
+  bool isEqual(const CollectiveDeviceListBase& other) const override {
+    const MeshAxesReplicaGroupList& rhs =
+        static_cast<const MeshAxesReplicaGroupList&>(other);
+    return *this == rhs;
+  }
 
  private:
   absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes>
@@ -202,6 +225,13 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
   IotaReplicaGroupListProto ToProto() const;
 
   static IotaReplicaGroupList FromProto(const IotaReplicaGroupListProto& proto);
+
+ protected:
+  bool isEqual(const CollectiveDeviceListBase& other) const override {
+    const IotaReplicaGroupList& rhs =
+        static_cast<const IotaReplicaGroupList&>(other);
+    return *this == rhs;
+  }
 
  private:
   IotaTileAssignment iota_tile_assignment_;
@@ -306,6 +336,13 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     return std::make_unique<CollectiveDeviceList>(*this);
   };
 
+ protected:
+  bool isEqual(const CollectiveDeviceListBase& other) const override {
+    const CollectiveDeviceList& rhs =
+        static_cast<const CollectiveDeviceList&>(other);
+    return *this == rhs;
+  }
+
  private:
   // Construct collective device list from protobuf replica group start and end
   // iterators.
@@ -333,7 +370,7 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   std::optional<IotaReplicaGroupList> iota_replica_group_list_;
 };
 
-std::optional<CollectiveDeviceList> ConvertToV1CollectiveDeviceList(
+CollectiveDeviceList ConvertToV1CollectiveDeviceList(
     const CollectiveDeviceListBase& device_list);
 
 }  // namespace xla
