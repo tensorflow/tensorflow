@@ -463,24 +463,15 @@ def list_physical_devices(device_type=None):
   """
 
 
-  global _warned_windows_gpu
-
-  if not _warned_windows_gpu:
-    if platform.system() == "Windows":
-      try:
-        if Version(versions.__version__) >= Version("2.11.0"):
-          logging.warning(
-            "TensorFlow GPU support is not available on native Windows for "
-            "TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will "
-            "not be used. Please use WSL2 or the TensorFlow-DirectML plugin."
-          )
-          _warned_windows_gpu = True
-      except (ImportError, AttributeError, ValueError):
-        # Best-effort warning only; never break device listing
-        pass
+  if not _warned_windows_gpu and platform.system() == "Windows":
+      logging.warning(
+          "TensorFlow GPU support is not available on native Windows for "
+          "TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will "
+          "not be used. Please use WSL2 or the TensorFlow-DirectML plugin."
+        )
+      _warned_windows_gpu = True
 
   return context.context().list_physical_devices(device_type)
-
 
 
 @tf_export('config.list_logical_devices',
