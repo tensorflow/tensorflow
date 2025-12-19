@@ -439,6 +439,9 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
+  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+    GTEST_SKIP() << "Skipping CUDA-specific test";
+  }
   auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA");
 
   // Batch 1
@@ -477,6 +480,9 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
+  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+    GTEST_SKIP() << "Skipping CUDA-specific test";
+  }
   auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA");
 
   // Batch 1
@@ -571,13 +577,23 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare, metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
 })";
   constexpr char kExpectedPattern[] = R"(
-    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[1]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
+    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[{{[0-9]+}}]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
-  for (const auto& [device_description, platform_name] :
-       {std::tuple{TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA"},
-        std::tuple{TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA"}}) {
-    RunAndFilecheckHloRewrite(kHlo,
-                              SortRewriter(device_description, platform_name),
+
+  auto platform_name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto device_list = [platform_name]() -> std::vector<se::DeviceDescription> {
+    if (platform_name == "CUDA") {
+      return {TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+              TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+    } else {
+      return {TestGpuDeviceInfo::AMDMI210DeviceInfo(),
+              TestGpuDeviceInfo::AMDRX7900DeviceInfo()};
+    }
+  };
+
+  for (const auto& device_desc : device_list()) {
+    RunAndFilecheckHloRewrite(kHlo, SortRewriter(device_desc, platform_name),
                               kExpectedPattern);
   }
 }

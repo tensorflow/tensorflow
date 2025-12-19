@@ -252,7 +252,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                          \
           .Attr<size_t>("batch_size"));                                       \
   XLA_FFI_REGISTER_HANDLER(                                                   \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                \
        /* .initialize = */ kCubSortKeysInitialize_##suffix,                   \
        /* .execute = */ kCubSortKeysExecute_##suffix});
@@ -278,7 +278,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                           \
           .Attr<size_t>("batch_size"));                                        \
   XLA_FFI_REGISTER_HANDLER(                                                    \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                 \
        /* .initialize = */ kCubSortPairsInitialize_##suffix,                   \
        /* .execute = */ kCubSortPairsExecute_##suffix});
