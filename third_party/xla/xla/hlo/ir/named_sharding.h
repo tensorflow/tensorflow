@@ -87,6 +87,9 @@ class NamedSharding {
   absl::Span<const DimensionSharding> dim_shardings() const {
     return dim_shardings_;
   }
+  const DimensionSharding& dim_sharding(int64_t dim) const {
+    return dim_shardings_[dim];
+  }
   absl::Span<const AxisRef> replicated_axes() const { return replicated_axes_; }
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }

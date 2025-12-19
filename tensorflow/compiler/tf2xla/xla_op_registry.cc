@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
-#include <functional>
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <set>
 #include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -28,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -42,11 +48,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -265,7 +267,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
             "Ops registered: \n" +
                 dynamic_cast<OpRegistry*>(op_registry)->DebugString(true));
       }
-      TF_CHECK_OK(lookup_status);
+      CHECK_OK(lookup_status);
 
       std::unordered_set<std::string> type_attrs;
       for (const OpDef::AttrDef& attr_def : op_def->attr()) {
@@ -475,7 +477,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const std::string& op) {
       }
     } else {
       int start, stop;
-      TF_CHECK_OK(op_kernel->InputRange(input, &start, &stop));
+      CHECK_OK(op_kernel->InputRange(input, &start, &stop));
       for (int i = start; i < stop; ++i) {
         result->push_back(i);
       }

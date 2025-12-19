@@ -98,13 +98,14 @@ DistributedRuntimeCoordinationServiceClient::
 
   std::unique_ptr<CoordinationClient> leader_client;
   leader_client.reset(NewGrpcCoordinationClient(channel));
-  coord_agent_ = CreateCoordinationServiceAgent();
-  const absl::Status status = coord_agent_->Initialize(
+  auto agent = CoordinationServiceAgent::Create(
       options.env, "jax_worker", options.node_id, config,
       std::move(leader_client), options.missed_heartbeat_callback,
       options.recoverable);
-  if (!status.ok()) {
-    LOG(ERROR) << "Coordination agent failed to initialize: " << status;
+  if (!agent.ok()) {
+    LOG(ERROR) << "Coordination agent failed to initialize: " << agent.status();
+  } else {
+    coord_agent_ = *std::move(agent);
   }
   task_id_ = options.node_id;
   config_ = config;

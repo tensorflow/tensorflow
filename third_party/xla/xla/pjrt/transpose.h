@@ -175,6 +175,11 @@ class TransposePlan {
     // Number of parallel threads to use for this loop.
     int64_t parallelism;
 
+    // Iteration bounds for this chunk. Initially [0, full_iterations).
+    // After chunk splitting, each chunk's loops have narrowed bounds.
+    int64_t start = 0;  // Inclusive start of iteration range
+    int64_t end = 0;    // Exclusive end of iteration range
+
     bool operator==(const Loop& other) const;
   };
 
@@ -186,11 +191,20 @@ class TransposePlan {
   // Performs plan initialization that cannot fail.
   void Initialize();
 
-  void BuildPlanNodes(int thread_id, std::vector<Node>& output_nodes);
+  void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
 
-  // Chooses a parallelism for each loop. Returns the total number of parallel
-  // work units.
-  int ChooseParallelizationStrategy();
+  // Chooses a parallelism for each loop. Returns the number of separate chunks
+  // in the plan, and populates the `parallelism` field of each loop.
+  int ChooseParallelizationStrategy(std::vector<Loop>& loop_order);
+
+  // Creates per-chunk loop vectors by splitting loop_order_ into per-chunk
+  // loops. Returns a vector of loop vectors, one per chunk. Each chunk's
+  // loops have their start/end bounds narrowed to represent that chunk's work.
+  static void PartitionLoops(
+      int num_chunks, const std::vector<Loop>& loop_order,
+      std::vector<std::vector<TransposePlan::Loop>>& result,
+      std::vector<int64_t>& input_offset_bytes,
+      std::vector<int64_t>& output_offset_bytes);
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -237,9 +251,13 @@ class TransposePlan {
   bool a_is_tiled_;
   bool b_is_tiled_;
 
-  // Order to traverse dimensions, from slowest-varying to fastest-varying.
+  // Per-chunk loop nests. Each loop nest has its own start/end bounds
+  // representing one chunk of the work.
+  std::vector<std::vector<Loop>> chunk_loops_;
 
-  std::vector<Loop> loop_order_;
+  // Per-chunk byte offsets into the input and output arrays.
+  std::vector<int64_t> input_offset_bytes_;
+  std::vector<int64_t> output_offset_bytes_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.

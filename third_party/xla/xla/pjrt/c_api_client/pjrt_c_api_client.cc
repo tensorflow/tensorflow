@@ -77,10 +77,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1742,6 +1745,48 @@ absl::StatusOr<bool> PjRtCApiDevice::PoisonExecution(int32_t launch_id,
   return args.poisoned;
 }
 
+std::unique_ptr<ScopedAsyncTrackingEvent>
+PjRtCApiDevice::CreateAsyncTrackingEvent(absl::string_view description) const {
+  if (client_->pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      client_->pjrt_c_api()->pjrt_api_version.minor_version < 86) {
+    return nullptr;
+  }
+  PJRT_Device_CreateAsyncTrackingEvent_Args args;
+  args.struct_size = PJRT_Device_CreateAsyncTrackingEvent_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device = c_device();
+  args.description = description.data();
+  args.description_size = description.size();
+  args.event = nullptr;
+
+  const PJRT_Api* api = client_->pjrt_c_api();
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_CreateAsyncTrackingEvent(&args),
+                            api);
+
+  if (args.event == nullptr) {
+    return nullptr;
+  }
+  return std::make_unique<PjRtCApiAsyncTrackingEvent>(api, args.event);
+}
+
+PjRtCApiAsyncTrackingEvent::PjRtCApiAsyncTrackingEvent(
+    const PJRT_Api* c_api, PJRT_AsyncTrackingEvent* event)
+    : c_api_(c_api), event_(event) {}
+
+PjRtCApiAsyncTrackingEvent::~PjRtCApiAsyncTrackingEvent() {
+  PJRT_AsyncTrackingEvent_Destroy_Args args;
+  args.struct_size = PJRT_AsyncTrackingEvent_Destroy_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.event = event_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_AsyncTrackingEvent_Destroy(&args),
+                            c_api_);
+}
+
+void PjRtCApiAsyncTrackingEvent::AddDependency(
+    tsl::RCReference<tsl::AsyncValue> dependency) {
+  LOG(FATAL) << "AddDependency is not supported in C API yet.";
+}
+
 // ------------------------------- Memory --------------------------------------
 
 const PJRT_Api* PjRtCApiMemorySpace::pjrt_c_api() const {
@@ -2163,6 +2208,32 @@ absl::StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
                               c_api_);
   return std::string(args.executable_fingerprint,
                      args.executable_fingerprint_size);
+}
+
+absl::StatusOr<CompileOptions> PjRtCApiExecutable::GetCompileOptions() const {
+  if (c_api_->pjrt_api_version.major_version == 0 &&
+      c_api_->pjrt_api_version.minor_version < 87) {
+    return absl::UnimplementedError(
+        "PJRT_Executable_GetCompileOptions not implemented in this PJRT "
+        "plugin.");
+  }
+  PJRT_Executable_GetCompileOptions_Args args;
+  args.struct_size = PJRT_Executable_GetCompileOptions_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_executable();
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Executable_GetCompileOptions(&args),
+                              c_api_);
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_compile_options_deleter(args.serialized_compile_options);
+  };
+  CompileOptionsProto proto;
+  if (!proto.ParseFromString(
+          std::string(args.serialized_bytes, args.serialized_bytes_size))) {
+    return absl::InternalError(
+        "PjRtCApiExecutable::GetCompileOptions: Failed to parse "
+        "CompileOptionsProto");
+  }
+  return CompileOptions::FromProto(proto);
 }
 
 // ------------------------ Loaded Executables ---------------------------------

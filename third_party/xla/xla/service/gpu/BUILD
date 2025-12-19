@@ -1121,6 +1121,8 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1128,8 +1130,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1565,12 +1565,8 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = [
-        "gpu_compiler.cc",
-    ],
-    hdrs = [
-        "gpu_compiler.h",
-    ],
+    srcs = ["gpu_compiler.cc"],
+    hdrs = ["gpu_compiler.h"],
     tags = ["gpu"],
     deps = [
         ":alias_info",
@@ -1772,6 +1768,7 @@ cc_library(
         "//xla/service/gpu/transforms:dot_strength_reduction",
         "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
+        "//xla/service/gpu/transforms:estimate_cub_scratch_size",
         "//xla/service/gpu/transforms:explicit_collectives_group_async_wrapper",
         "//xla/service/gpu/transforms:explicit_stream_annotation_async_wrapper",
         "//xla/service/gpu/transforms:fusion_block_level_rewriter",
@@ -1848,6 +1845,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",

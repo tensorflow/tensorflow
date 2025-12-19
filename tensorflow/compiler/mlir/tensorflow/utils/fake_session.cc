@@ -19,17 +19,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
@@ -81,9 +85,9 @@ void FakeSession::InitVariables() {
   auto container = device->resource_manager()->default_container();
 
   // Create 2 resources and initialize them with dummy values.
-  TF_CHECK_OK(device->resource_manager()->Create(
+  CHECK_OK(device->resource_manager()->Create(
       container, "var1", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
-  TF_CHECK_OK(device->resource_manager()->Create(
+  CHECK_OK(device->resource_manager()->Create(
       container, "var2", new tensorflow::Var(tensorflow::DataType::DT_FLOAT)));
 }
 

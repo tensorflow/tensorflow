@@ -130,16 +130,17 @@ class ClientServerTest : public ::testing::Test {
     std::unique_ptr<CoordinationClient> leader_client;
     leader_client.reset(NewGrpcCoordinationClient(channel));
 
-    auto coord_agent = CreateCoordinationServiceAgent();
     CoordinationServiceAgent::Config config =
         GetConfig(init_and_shutdown_timeout, shutdown_on_destruction);
-    const absl::Status status = coord_agent->Initialize(
+    auto coord_agent = CoordinationServiceAgent::Create(
         tsl::Env::Default(), "agent", node_id, config, std::move(leader_client),
         std::move(error_fn), recoverable);
-    if (!status.ok()) {
-      LOG(ERROR) << "Coordination agent failed to initialize: " << status;
+    if (!coord_agent.ok()) {
+      LOG(ERROR) << "Coordination agent failed to initialize: "
+                 << coord_agent.status();
+      return nullptr;
     }
-    return coord_agent;
+    return *std::move(coord_agent);
   }
 
   void StartService(int num_nodes,

@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -799,15 +800,15 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
 // shape. The bitcast is chosen so that it cancels out bitcasts and reshapes
 // along the way up to the dot. Updates the callers of the dot to expect the new
 // root shape.
-absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
-                                    absl::Span<HloInstruction*> callers) {
+absl::StatusOr<bool> MaybeInsertRootBitcast(
+    HloInstruction* dot, absl::Span<HloInstruction*> callers) {
   TF_ASSIGN_OR_RETURN(Shape root_shape,
                       ComputeRootShapeAfterHoistingBitcasts(dot));
 
   HloComputation* computation = dot->parent();
   HloInstruction* root = computation->root_instruction();
   if (root->shape() == root_shape) {
-    return absl::OkStatus();
+    return false;
   }
 
   // Insert a new bitcast at the root.
@@ -822,24 +823,28 @@ absl::Status MaybeInsertRootBitcast(HloInstruction* dot,
     *caller->mutable_shape() = root_shape;
   }
 
-  return absl::OkStatus();
+  return true;
 }
 
 // Try hoisting bitcasts and reshapes in the computation away from 'dot' to the
 // callers of the computation. Some bitcasts or reshapes may remain in the
 // computation, because they cannot be hoisted across all ops, e.g. across some
 // transposes and broadcasts. This is not reported as an error.
-absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
-                                                    CallGraph* call_graph) {
+absl::StatusOr<bool> TryHoistBitcastsInComputationToCallers(
+    HloInstruction* dot, CallGraph* call_graph) {
+  bool changed = false;
   // Instead of implementing a logic to hoist bitcast upwards and downwards
   // we insert a bitcast at the root that and always hoist bitcasts upwards.
   // That significantly simplifies the implementation.
   VLOG(2) << "Before hoisting bitcasts: " << dot->parent()->ToString();
 
   auto callers = call_graph->GetComputationCallers(dot->parent());
-  if (auto status = MaybeInsertRootBitcast(dot, absl::MakeSpan(callers));
-      !status.ok()) {
-    VLOG(2) << "Failed to insert root bitcast: " << status;
+  absl::StatusOr<bool> inserted =
+      MaybeInsertRootBitcast(dot, absl::MakeSpan(callers));
+  if (!inserted.ok()) {
+    VLOG(2) << "Failed to insert root bitcast: " << inserted.status();
+  } else {
+    changed |= *inserted;
   }
   VLOG(2) << "After inserting root bitcast: " << dot->parent()->ToString();
 
@@ -856,11 +861,13 @@ absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
     if (!status.ok()) {
       VLOG(2) << "Failed to hoist " << instruction->ToString()
               << " upwards: " << status;
+    } else {
+      changed = true;
     }
   }
 
   VLOG(2) << "After hoisting bitcasts: " << dot->parent()->ToString();
-  return absl::OkStatus();
+  return changed;
 }
 
 class HoistFusedBitcastsVisitor : public DfsHloRewriteVisitor {
@@ -884,10 +891,11 @@ class HoistFusedBitcastsVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    TF_RETURN_IF_ERROR(
-        TryHoistBitcastsInComputationToCallers(instr, call_graph));
-    // TODO(b/446827313): don't mark as changed if no changes were made.
-    MarkAsChanged();
+    ASSIGN_OR_RETURN(bool changed,
+                     TryHoistBitcastsInComputationToCallers(instr, call_graph));
+    if (changed) {
+      MarkAsChanged();
+    }
     return absl::OkStatus();
   }
 

@@ -338,6 +338,29 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   }
 }
 
+TEST(PjRtCApiClientTest, GetCompileOptions) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  builder.SetUpAlias({}, 0, {});
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  options.compile_portable_executable = !options.compile_portable_executable;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, options));
+
+  ASSERT_OK_AND_ASSIGN(CompileOptions retrieved_options,
+                       executable->GetCompileOptions());
+  EXPECT_EQ(retrieved_options.compile_portable_executable,
+            options.compile_portable_executable);
+}
+
 TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,

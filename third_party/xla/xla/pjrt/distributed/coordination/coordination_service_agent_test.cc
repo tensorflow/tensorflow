@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -154,12 +155,13 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   // Should be called after mocking service responses, before testing the agent.
   void InitializeAgent(CoordinationServiceAgent::Config config = {}) {
     config.service_leader = "test_leader";
-    TF_ASSERT_OK(agent_->Initialize(
-        tsl::Env::Default(), /*job_name=*/"test_job",
-        /*task_id=*/0, config, std::move(client_),
-        /*error_fn=*/[](absl::Status s) {
-          LOG(ERROR) << "Coordination agent is set to error: " << s;
-        }));
+    TF_ASSERT_OK_AND_ASSIGN(
+        agent_, CoordinationServiceAgent::Create(
+                    tsl::Env::Default(), /*job_name=*/"test_job",
+                    /*task_id=*/0, config, std::move(client_),
+                    /*error_fn=*/[](absl::Status s) {
+                      LOG(ERROR) << "Coordination agent is set to error: " << s;
+                    }));
   }
 
   TestCoordinationClient* GetClient() {
@@ -170,8 +172,7 @@ class CoordinationServiceAgentTest : public ::testing::Test {
   }
 
  protected:
-  std::unique_ptr<CoordinationServiceAgent> agent_ =
-      CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationServiceAgent> agent_;
   std::unique_ptr<TestCoordinationClient> client_ =
       std::make_unique<TestCoordinationClient>();
 };
@@ -490,18 +491,9 @@ TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
   EXPECT_EQ(actual_task.task_id(), expected_task.task_id());
 }
 
-TEST_F(CoordinationServiceAgentTest, GetOwnTask_Uninitialized) {
-  auto result = agent_->GetOwnTask();
-
-  EXPECT_TRUE(absl::IsFailedPrecondition(result.status()));
-}
-
 TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {
-  EXPECT_TRUE(absl::IsFailedPrecondition(agent_->GetEnv().status()));
   InitializeAgent();
-
   absl::StatusOr<tsl::Env*> result = agent_->GetEnv();
-
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(*result, tsl::Env::Default());
 }

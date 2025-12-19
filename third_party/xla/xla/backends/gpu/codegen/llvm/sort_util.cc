@@ -73,7 +73,7 @@ absl::Status EmitCompareLoopBody(
     std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilderBase* b, bool needs_bounds_checks = true) {
+    llvm::IRBuilderBase* b, bool force_write, bool needs_bounds_checks = true) {
   auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
@@ -211,7 +211,18 @@ absl::Status EmitCompareLoopBody(
           llvm::Value* is_smaller_than = b->CreateICmpNE(
               result, llvm::ConstantInt::get(result->getType(), 0),
               "boolean_predicate");
-          ksl.If("is_smaller_than", is_smaller_than, [&]() {
+          auto write_original_order = [&]() {
+            for (int64_t i = 0; i < num_values; ++i) {
+              // Don't swap the values.
+              auto value1 = b->CreateLoad(values_to_compare_types[i * 2],
+                                          values_to_compare[i * 2]);
+              auto value2 = b->CreateLoad(values_to_compare_types[i * 2 + 1],
+                                          values_to_compare[i * 2 + 1]);
+              write_element(i, current_keys_index, value2);
+              write_element(i, compare_keys_index, value1);
+            }
+          };
+          auto write_swapped_order = [&]() {
             for (int64_t i = 0; i < num_values; ++i) {
               // Swap the values.
               auto value1 = b->CreateLoad(values_to_compare_types[i * 2],
@@ -221,7 +232,18 @@ absl::Status EmitCompareLoopBody(
               write_element(i, current_keys_index, value1);
               write_element(i, compare_keys_index, value2);
             }
-          });
+          };
+          if (force_write) {
+            // If we don't use shared memory, we have to make sure that values
+            // that were emitted as part of the first iteration get written to
+            // global memory, even if the comparison determined that no swap is
+            // necessary.
+            ksl.If("is_smaller_than", is_smaller_than, write_swapped_order,
+                   write_original_order);
+          } else {
+            ksl.If("is_smaller_than", is_smaller_than, write_swapped_order);
+          }
+
           return absl::OkStatus();
         }));
   }
@@ -359,14 +381,14 @@ absl::Status EmitTiledCompareLoop(
                 unroll_factor / 2, params.size(), element_pair_index, xor_mask,
                 tiled_keys_index.GetType(), element_address,
                 element_address_pointee_type, write_element,
-                emit_compare_callback, b);
+                emit_compare_callback, b, /*force_write=*/false);
           },
           [&]() {
             return EmitCompareLoopBody(
                 tile_size, num_threads, unroll_factor / 2, params.size(),
                 element_pair_index, xor_mask, tiled_keys_index.GetType(),
                 element_address, element_address_pointee_type, write_element,
-                emit_compare_callback, b,
+                emit_compare_callback, b, /*force_write=*/false,
                 /*needs_bounds_checks=*/false);
           }));
     } else {
@@ -374,7 +396,7 @@ absl::Status EmitTiledCompareLoop(
           tile_size, num_threads, unroll_factor / 2, params.size(),
           element_pair_index, xor_mask, tiled_keys_index.GetType(),
           element_address, element_address_pointee_type, write_element,
-          emit_compare_callback, b,
+          emit_compare_callback, b, /*force_write=*/false,
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
@@ -506,7 +528,8 @@ absl::Status EmitSortInPlace(
         llvm::Value* element;
         if (emit_iota_operands &&
             HloPredicateIsOp<HloOpcode::kIota>(sort->operand(operand))) {
-          ASSIGN_OR_RETURN(element, EmitIota(sort, keys_index, module, b));
+          ASSIGN_OR_RETURN(
+              element, EmitIota(sort->operand(operand), keys_index, module, b));
         } else {
           if (!primitive_util::IsSubByteNonPredType(element_type)) {
             return values_arrays[operand].EmitArrayElementAddress(keys_index,
@@ -536,7 +559,8 @@ absl::Status EmitSortInPlace(
           dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
           values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
           tiles_index.GetType(), element_address, element_address_pointee_type,
-          write_element, emit_compare_callback, b));
+          write_element, emit_compare_callback, b,
+          /*force_write=*/emit_iota_operands));
     }
     return absl::OkStatus();
   };

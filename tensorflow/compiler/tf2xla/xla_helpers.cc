@@ -17,58 +17,74 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 
-#include <map>
+#include <cstdint>
+#include <numeric>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/hlo/builder/lib/arithmetic.h"
-#include "xla/hlo/builder/lib/constants.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 
 xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return xla::ConstantLiteral(b, xla::LiteralUtil::Zero(type));
 }
 
 xla::XlaOp XlaHelpers::One(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return xla::ConstantLiteral(b, xla::LiteralUtil::One(type));
 }
 
 xla::XlaOp XlaHelpers::IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
                                       int64_t value) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return ::tensorflow::IntegerLiteral(b, type, value);
 }
 
 xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
                                     double value) {
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   return ::tensorflow::FloatLiteral(b, type, value);
 }
 
@@ -139,7 +155,7 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
 xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp operand,
                                           const DataType new_element_type) {
   xla::PrimitiveType convert_to;
-  TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
+  CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
   return xla::ConvertElementType(operand, convert_to);
 }
 

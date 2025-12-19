@@ -16,12 +16,13 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/port.h"
 
@@ -84,8 +84,8 @@ class UnaryOpsCompositionTest : public OpsTestBase {
     DeviceContext* device_context =
         device_->tensorflow_accelerator_device_info()->default_context;
 
-    TF_CHECK_OK(device_context->CopyCPUTensorToDeviceSync(&input_on_host,
-                                                          device_, input));
+    CHECK_OK(device_context->CopyCPUTensorToDeviceSync(&input_on_host, device_,
+                                                       input));
 
     TF_ASSERT_OK(RunOpKernel());
 
@@ -95,7 +95,7 @@ class UnaryOpsCompositionTest : public OpsTestBase {
     Tensor* output = GetOutput(0);
     Tensor output_on_host(cpu_allocator, output->dtype(), output->shape());
 
-    TF_CHECK_OK(device_context->CopyDeviceTensorToCPUSync(
+    CHECK_OK(device_context->CopyDeviceTensorToCPUSync(
         output, "output 0", device_, &output_on_host));
 
     test::ExpectClose(expected_tensor, output_on_host, /*atol=*/1e-5,

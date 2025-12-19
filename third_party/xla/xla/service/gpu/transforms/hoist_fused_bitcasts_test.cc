@@ -535,7 +535,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
   std::unique_ptr<VerifiedHloModule> module =
-      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
@@ -571,7 +572,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
   std::unique_ptr<VerifiedHloModule> module =
-      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
@@ -834,7 +836,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
   std::unique_ptr<VerifiedHloModule> module =
-      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK:      transpose
@@ -866,7 +869,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
   std::unique_ptr<VerifiedHloModule> module =
-      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK:      f32[2,3,5]{2,1,0} $0
@@ -1010,7 +1014,7 @@ CHECK-SAME: dimensions={0,1}
 }
 
 TEST_P(HoistFusedBitcastsReshapeTest,
-       BitcastsAreHoistedDownThroughBroadcastsWithNonDefaultLayout) {
+       BitcastsAreNotHoistedDownThroughBroadcastsWithNonDefaultLayout) {
   HloOpcode opcode = GetParam();
   absl::string_view hlo = R"(
 triton_dot {
@@ -1031,7 +1035,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
 )";
   std::unique_ptr<VerifiedHloModule> module =
-      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
   EXPECT_THAT(RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()),
                            absl::Substitute(R"(
 CHECK:      f32[2,3,5]{2,1,0} $0(dot)

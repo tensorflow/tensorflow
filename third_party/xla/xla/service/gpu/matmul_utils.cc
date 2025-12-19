@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -50,11 +49,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -479,7 +478,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
     se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
-    se::DeviceAddressBase out_buf) const {
+    se::DeviceAddressBase out_buf,
+    const se::GpuComputeCapability& gpu_version) const {
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout,
                                se::DeviceAddressBase data)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
@@ -512,7 +512,7 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
   TF_ASSIGN_OR_RETURN(out_desc.compute_type,
                       se::gpu::GetBlasComputationType(
                           PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
-                          se::blas::kDefaultComputePrecision));
+                          se::blas::kDefaultComputePrecision, gpu_version));
 
   TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
                       create_matrix_desc(lhs, lhs_buf));
@@ -541,8 +541,9 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
   TF_ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
-      se::gpu::GetBlasComputationType(precision_algorithm, lhs_type,
-                                      output_type, compute_precision));
+      se::gpu::GetBlasComputationType(
+          precision_algorithm, lhs_type, output_type, compute_precision,
+          stream->parent()->GetDeviceDescription().gpu_compute_capability()));
   se::DeviceAddress<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
@@ -626,7 +627,9 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig::DescriptorsTuple desc,
-      config.GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer));
+      config.GetMatrixDescriptors(
+          lhs_buffer, rhs_buffer, output_buffer,
+          stream->parent()->GetDeviceDescription().gpu_compute_capability()));
 
   se::EngineOptions engine_options{
       deterministic_ops,

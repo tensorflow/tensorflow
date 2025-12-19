@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/shape.h"
 
 struct PJRT_Error {
@@ -214,6 +215,10 @@ struct PJRT_SerializedExecutable {
   std::string serialized;
 };
 
+struct PJRT_SerializedCompileOptions {
+  std::string serialized;
+};
+
 struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
 };
@@ -257,6 +262,10 @@ struct PJRT_PhaseCompiler {
         owned_compiler(std::move(phase_compiler)) {}
   explicit PJRT_PhaseCompiler(xla::PjRtPhaseCompiler* phase_compiler)
       : compiler(phase_compiler), owned_compiler(nullptr) {}
+};
+
+struct PJRT_AsyncTrackingEvent {
+  std::unique_ptr<xla::ScopedAsyncTrackingEvent> event;
 };
 
 namespace pjrt {
@@ -373,6 +382,8 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
+PJRT_Error* PJRT_Executable_GetCompileOptions(
+    PJRT_Executable_GetCompileOptions_Args* args);
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args);
 

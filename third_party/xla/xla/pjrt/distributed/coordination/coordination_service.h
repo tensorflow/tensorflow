@@ -89,12 +89,6 @@ class CoordinationService {
     // worker can disconnect individually.
     absl::Duration shutdown_barrier_timeout = absl::ZeroDuration();
 
-    // The list of jobs which are recoverable. If a task in this list fails,
-    // it will not propagate error to other tasks.
-    // If empty, no jobs will be recoverable and every task failure will cause
-    // error propagation to other tasks.
-    absl::flat_hash_set<std::string> recoverable_jobs;
-
     // If a task restarts with a new incarnation, we may allow it to reconnect
     // silently. This is useful when we know that a task can immediately resume
     // work upon re-connecting to the service.

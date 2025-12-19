@@ -163,12 +163,16 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     };
     CoordinationServiceAgent::Config coord_config;
     coord_config.service_leader = "test_leader";
-    CHECK_OK(coord_agent_->Initialize(tsl::Env::Default(), kJobName,
-                                      /*task_id=*/0, coord_config,
-                                      std::move(coord_client), error_fn));
-    CHECK_OK(coord_agent2_->Initialize(tsl::Env::Default(), kJobName,
-                                       /*task_id=*/1, coord_config,
-                                       std::move(coord_client2), error_fn));
+    coord_agent_ =
+        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+                                         /*task_id=*/0, coord_config,
+                                         std::move(coord_client), error_fn)
+            .value();
+    coord_agent2_ =
+        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+                                         /*task_id=*/1, coord_config,
+                                         std::move(coord_client2), error_fn)
+            .value();
     CHECK_OK(coord_agent_->Connect());
     CHECK_OK(coord_agent2_->Connect());
   }
@@ -180,12 +184,10 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
   // Owned by task 1.
-  std::unique_ptr<CoordinationServiceAgent> coord_agent_ =
-      CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationServiceAgent> coord_agent_;
   FakePreemptionNotifier* preempt_notifier_;
   // Owned by task 2.
-  std::unique_ptr<CoordinationServiceAgent> coord_agent2_ =
-      CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationServiceAgent> coord_agent2_;
   FakePreemptionNotifier* preempt_notifier2_;
 };
 

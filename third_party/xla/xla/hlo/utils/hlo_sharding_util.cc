@@ -789,6 +789,28 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   if (sharding.IsTileMaximal() || sharding.IsManual()) {
     return sharding;
   }
+
+  if (sharding.UseNamedShardingLeaf()) {
+    // For NamedSharding, subgroup dimensions (e.g., for replication) are
+    // handled separately from data dimensions. The `dimensions` parameter here
+    // only permutes data dimensions, so its size must match the tensor rank.
+    // This differs from the tile-based HloSharding format, where subgroup
+    // dimensions are part of the tile assignment.
+    CHECK_EQ(sharding.num_dimensions(), dimensions.size());
+
+    std::vector<NamedSharding::DimensionSharding> transposed_dim_shardings(
+        sharding.num_dimensions());
+    for (int64_t i = 0; i < dimensions.size(); ++i) {
+      transposed_dim_shardings[dimensions[i]] =
+          sharding.named_sharding().dim_sharding(i);
+    }
+    return HloSharding(NamedSharding(
+        sharding.named_sharding().mesh(), transposed_dim_shardings,
+        sharding.named_sharding().replicated_axes(),
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().metadata()));
+  }
+
   std::vector<int> perm_dimensions(dimensions.begin(), dimensions.end());
   // Add subgroup dims if missing.
   if (sharding.TiledDataRank() == dimensions.size()) {
@@ -1621,10 +1643,11 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
   }
 
   if (sharding.UseNamedShardingLeaf()) {
-    // Check to ensure subgroup dimensions are not passed in dims_to_remove as
-    // named sharding doesn't handle them as part of dim_shardings but separate
-    // replicated, unreduced axes as opposed to tile hlo sharding format which
-    // uses tile dimensions to represent subgroup dimensions as well.
+    // For NamedSharding, subgroup dimensions (e.g., for replication) are
+    // handled separately from data dimensions. The `dimensions` parameter here
+    // only permutes data dimensions, so its size must match the tensor rank.
+    // This differs from the tile-based HloSharding format, where subgroup
+    // dimensions are part of the tile assignment.
     DCHECK(
         std::all_of(dims_to_remove.begin(), dims_to_remove.end(),
                     [&](int64_t i) { return i < sharding.num_dimensions(); }));
@@ -1669,6 +1692,36 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
   if (source.IsTileMaximal() || source.IsManual()) {
     return source;
   }
+
+  if (source.UseNamedShardingLeaf()) {
+    // For NamedSharding, subgroup dimensions (e.g., for replication) are
+    // handled separately from data dimensions. The `dimensions` parameter here
+    // only permutes data dimensions, so its size must match the tensor rank.
+    // This differs from the tile-based HloSharding format, where subgroup
+    // dimensions are part of the tile assignment.
+    CHECK_EQ(source.num_dimensions(), src_to_tgt.size());
+
+    for (int64_t i = 0; i < src_to_tgt.size(); ++i) {
+      if (src_to_tgt[i] < 0 && source.dimension(i) > 1) {
+        return std::nullopt;
+      }
+    }
+
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        tgt_to_src.size());
+    for (int64_t i = 0; i < tgt_to_src.size(); ++i) {
+      if (tgt_to_src[i] >= 0) {
+        new_dim_shardings[i] =
+            source.named_sharding().dim_sharding(tgt_to_src[i]);
+      }
+    }
+
+    return HloSharding(NamedSharding(
+        source.named_sharding().mesh(), new_dim_shardings,
+        source.named_sharding().replicated_axes(),
+        source.named_sharding().unreduced_axes(), source.metadata()));
+  }
+
   if (src_to_tgt.size() < source.num_dimensions()) {
     // Add missing subgroup dims.
     DimensionVector new_src_to_tgt(src_to_tgt.begin(), src_to_tgt.end());
