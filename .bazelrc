@@ -291,10 +291,11 @@ common:mkl_aarch64_threadpool -c opt
 # This is an alias for the mkl_aarch64_threadpool build.
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
-# Default CUDA, CUDNN and NVSHMEM versions.
+# Default CUDA, CUDNN, NCCL and NVSHMEM versions.
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
