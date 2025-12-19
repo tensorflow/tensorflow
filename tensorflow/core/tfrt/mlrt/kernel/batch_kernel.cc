@@ -461,6 +461,7 @@ REGISTER_KERNEL_BUILDER(
     Name(kMlrtBatchFunctionName).Device(DEVICE_GPU),
     tfrt_stub::BatchFunctionFallbackKernel<MlrtBatchResource>);
 
+// LINT.IfChange
 // Identical to BatchFunction except it has 2 extra TFRT attributes and it does
 // not have `f` attribute. Users will not invoke this op directly.
 REGISTER_OP(kMlrtBatchFunctionName)
@@ -521,6 +522,8 @@ REGISTER_OP(kMlrtBatchFunctionName)
     // function.
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);
+
+// LINT.ThenChange(//tensorflow/core/runtime_fallback/runtime/runtime_fallback_batch_tf_opkernels.cc)
 
 }  // namespace
 
