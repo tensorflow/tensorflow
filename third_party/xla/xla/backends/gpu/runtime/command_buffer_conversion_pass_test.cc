@@ -59,6 +59,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {

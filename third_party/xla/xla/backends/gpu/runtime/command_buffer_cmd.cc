@@ -102,6 +102,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {

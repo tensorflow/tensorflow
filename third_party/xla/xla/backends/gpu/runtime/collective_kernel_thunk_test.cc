@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {

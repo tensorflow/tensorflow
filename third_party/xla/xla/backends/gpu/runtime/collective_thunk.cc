@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"

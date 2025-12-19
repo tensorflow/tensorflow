@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
