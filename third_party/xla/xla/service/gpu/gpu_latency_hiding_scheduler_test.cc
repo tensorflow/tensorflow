@@ -74,6 +74,8 @@ class GpuLatencyHidingSchedulerBaseTest
     DebugOptions& options = module->mutable_config().mutable_debug_options();
     options.set_xla_gpu_experimental_parallel_collective_overlap_limit(
         num_parallel_resources);
+    options.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
@@ -1084,6 +1086,90 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
 
   // It should compile without any issues.
   TF_EXPECT_OK(ScheduleModule(module.get()));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       MultipleParallelAsyncsExtendedOverAllComputes) {
+  absl::string_view kHloModule = R"(
+HloModule m
+reduce {
+x = f32[] parameter(0)
+y = f32[] parameter(1)
+ROOT _ = f32[] add(x, y)
+}
+ENTRY main {
+p0 = f32[] parameter(0)
+p1 = f32[2] parameter(1)
+p2 = f32[2] parameter(2)
+p3 = f32[2] parameter(3)
+p4 = f32[2] parameter(4)
+p5 = f32[2] parameter(5)
+p6 = f32[2] parameter(6)
+ar_0 = f32[] all-reduce-start(p0), to_apply=reduce
+ar_1 = f32[] all-reduce-done(ar_0)
+add_2 = f32[2] add(p1, p6)
+
+ar_2 = f32[2] all-reduce-start(add_2), to_apply=reduce
+ar_3 = f32[2] all-reduce-done(ar_2)
+add_3 = f32[2] add(p1, p3)
+
+rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(add_3), to_apply=reduce,
+dimensions={0}
+rs_1 = f32[1] reduce-scatter-done(rs_0)
+add_0 = f32[2] add(p1, p2)
+div_0 = f32[2] divide(p3, p4)
+mul_0 = f32[2] multiply(p4, p5)
+ROOT _ = (f32[], f32[2], f32[1], f32[2], f32[2], f32[2]) tuple(ar_1, ar_3, rs_1, add_0, div_0, mul_0)
+}
+)";
+  absl::string_view kFdoProfile = "";
+
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/16));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  // With a lot of parallel resources and default latency estimator,
+  // LHS will try to extend all asyncs as much as possible.
+  // We expect all computes to be wrapped within all async start-done
+  // intervals.
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "add_2") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "add_3") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "add_2") <
+                  GetIndexByName(instruction_sequence, "ar_1") &&
+              GetIndexByName(instruction_sequence, "add_3") <
+                  GetIndexByName(instruction_sequence, "ar_1"));
+
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "add_0") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "add_0") >
+                  GetIndexByName(instruction_sequence, "rs_0") &&
+              GetIndexByName(instruction_sequence, "add_0") <
+                  GetIndexByName(instruction_sequence, "ar_1") &&
+              GetIndexByName(instruction_sequence, "add_0") <
+                  GetIndexByName(instruction_sequence, "rs_1"));
+
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "div_0") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "div_0") >
+                  GetIndexByName(instruction_sequence, "rs_0") &&
+              GetIndexByName(instruction_sequence, "div_0") <
+                  GetIndexByName(instruction_sequence, "ar_1") &&
+              GetIndexByName(instruction_sequence, "div_0") <
+                  GetIndexByName(instruction_sequence, "rs_1"));
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "mul_0") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "mul_0") >
+                  GetIndexByName(instruction_sequence, "rs_0") &&
+              GetIndexByName(instruction_sequence, "mul_0") <
+                  GetIndexByName(instruction_sequence, "ar_1") &&
+              GetIndexByName(instruction_sequence, "mul_0") <
+                  GetIndexByName(instruction_sequence, "rs_1"));
 }
 
 }  // namespace
