@@ -145,12 +145,28 @@ TEST(HloShardingUtilTest, MoveAndMergeShardingTilesSubGroup) {
 TEST(HloShardingUtilTest, TransposeShardingReplicated) {
   EXPECT_EQ(TransposeSharding(HloSharding::Replicate(), {0, 1, 2}),
             HloSharding::Replicate());
+
+  EXPECT_EQ(
+      TransposeSharding(HloSharding::Replicate({}, /*use_named_sharding=*/true),
+                        {0, 1, 2}),
+      HloSharding::Replicate({}, /*use_named_sharding=*/true));
 }
 
 TEST(HloShardingUtilTest, TransposeShardingTiled) {
   HloSharding input = HloSharding::IotaTile({1, 2, 1, 2});
   HloSharding output = HloSharding::IotaTile({2, 1, 2, 1}, {2, 2}, {1, 0});
   EXPECT_EQ(TransposeSharding(input, {3, 0, 1, 2}), output);
+
+  {
+    Mesh mesh({2, 2}, {"a", "b"});
+    NamedSharding input =
+        test_utils::FromAxisNames(mesh, {{}, {"a"}, {}, {"b"}});
+    NamedSharding output =
+        test_utils::FromAxisNames(mesh, {{"b"}, {}, {"a"}, {}});
+    EXPECT_EQ(
+        TransposeSharding(HloSharding(input), {3, 2, 1, 0}).named_sharding(),
+        output);
+  }
 }
 
 TEST(HloShardingUtilTest, TransposeShardingWithCollapsedDimsSubgroupManual) {
@@ -160,6 +176,16 @@ TEST(HloShardingUtilTest, TransposeShardingWithCollapsedDimsSubgroupManual) {
       HloSharding::Subgroup(TileAssignment({1, 1, 2, 4}), {OpSharding::MANUAL});
   EXPECT_EQ(TransposeShardingWithCollapsedDims(input, {-1, 2}, {-1, -1, 1}),
             output);
+
+  {
+    Mesh mesh({1, 2, 4}, {"a", "b", "c"});
+    NamedSharding input = test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+    NamedSharding output = test_utils::FromAxisNames(mesh, {{}, {}, {"b"}});
+    EXPECT_EQ(TransposeShardingWithCollapsedDims(HloSharding(input), {-1, 2},
+                                                 {-1, -1, 1})
+                  ->named_sharding(),
+              output);
+  }
 }
 
 TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned1) {
