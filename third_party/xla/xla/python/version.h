@@ -19,6 +19,6 @@ limitations under the License.
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
 #define JAX_IFRT_VERSION_NUMBER \
-  44  // xla::ifrt::Device has a new PlatformName() API.
+  45  // Refresh custom layouts when copying an array across clients.
 
 #endif  // XLA_PYTHON_VERSION_H_
