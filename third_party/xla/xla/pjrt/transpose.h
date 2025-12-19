@@ -200,8 +200,11 @@ class TransposePlan {
   // Creates per-chunk loop vectors by splitting loop_order_ into per-chunk
   // loops. Returns a vector of loop vectors, one per chunk. Each chunk's
   // loops have their start/end bounds narrowed to represent that chunk's work.
-  std::vector<std::vector<Loop>> PartitionLoops(
-      int num_chunks, const std::vector<Loop>& loop_order);
+  static void PartitionLoops(
+      int num_chunks, const std::vector<Loop>& loop_order,
+      std::vector<std::vector<TransposePlan::Loop>>& result,
+      std::vector<int64_t>& input_offset_bytes,
+      std::vector<int64_t>& output_offset_bytes);
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -251,6 +254,10 @@ class TransposePlan {
   // Per-chunk loop nests. Each loop nest has its own start/end bounds
   // representing one chunk of the work.
   std::vector<std::vector<Loop>> chunk_loops_;
+
+  // Per-chunk byte offsets into the input and output arrays.
+  std::vector<int64_t> input_offset_bytes_;
+  std::vector<int64_t> output_offset_bytes_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.
