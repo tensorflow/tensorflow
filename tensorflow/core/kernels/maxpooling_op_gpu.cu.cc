@@ -70,7 +70,7 @@ __global__ void MaxPoolForwardNCHW(
     const int channels, const int height, const int width,
     const int pooled_height, const int pooled_width, const int kernel_h,
     const int kernel_w, const int stride_h, const int stride_w, const int pad_t,
-    const int pad_l, dtype* __restrict__ top_data, int64* __restrict__ mask,
+    const int pad_l, dtype* __restrict__ top_data, int64_t* __restrict__ mask,
     const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
@@ -110,13 +110,13 @@ __global__ void MaxPoolForwardNCHW(
 // the same X, y coordinate.
 // (so channels = outer_channels, output_size = real output size / 4).
 __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
-    const int nthreads, const int32* __restrict__ bottom_data, const int height,
-    const int width, const int channels, const int pooled_height,
-    const int pooled_width, const int kernel_h, const int kernel_w,
-    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    int32* __restrict__ top_data) {
+    const int nthreads, const int32_t* __restrict__ bottom_data,
+    const int height, const int width, const int channels,
+    const int pooled_height, const int pooled_width, const int kernel_h,
+    const int kernel_w, const int stride_h, const int stride_w, const int pad_t,
+    const int pad_l, int32_t* __restrict__ top_data) {
   // TODO(pauldonnelly): Implement a better optimized version of this kernel.
-  const int32 kMinINT8X4 = 0x80808080;
+  const int32_t kMinINT8X4 = 0x80808080;
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -128,8 +128,8 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
     int wend = min(wstart + kernel_w, width);
     hstart = max(hstart, 0);
     wstart = max(wstart, 0);
-    int32 maxval = kMinINT8X4;
-    const int32* bottom_data_n = bottom_data + n * channels * height * width;
+    int32_t maxval = kMinINT8X4;
+    const int32_t* bottom_data_n = bottom_data + n * channels * height * width;
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (c * height + h) * width + w;
@@ -147,7 +147,7 @@ __global__ void MaxPoolForwardNHWC(
     const int width, const int channels, const int pooled_height,
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    dtype* __restrict__ top_data, int64* __restrict__ mask,
+    dtype* __restrict__ top_data, int64_t* __restrict__ mask,
     const bool include_batch_in_index) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
@@ -203,7 +203,7 @@ __global__ void MaxPoolForwardNHWC(
 template <typename dtype>
 __global__ void MaxPoolBackward(const int nthreads,
                                 const dtype* __restrict__ top_diff,
-                                const int64* __restrict__ mask,
+                                const int64_t* __restrict__ mask,
                                 const int top_offset, const int bottom_offset,
                                 dtype* __restrict__ bottom_diff,
                                 const bool include_batch_in_index) {
@@ -332,7 +332,7 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads,
                                     const dtype* __restrict__ top_diff,
-                                    const int64* __restrict__ mask,
+                                    const int64_t* __restrict__ mask,
                                     const int top_offset,
                                     const int bottom_offset,
                                     dtype* __restrict__ bottom_diff,
@@ -353,11 +353,11 @@ namespace functor {
 // Note: channels is the outer channels (dim 1) which has already been
 // divided by 4.
 bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
-    const int32* bottom_data, const int batch, const int height,
+    const int32_t* bottom_data, const int batch, const int height,
     const int width, int channels, const int pooled_height,
     const int pooled_width, const int kernel_h, const int kernel_w,
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
-    int32* top_data, const Eigen::GpuDevice& d) {
+    int32_t* top_data, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
   if (output_size == 0) return true;
@@ -377,7 +377,7 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     const int channels, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
     const int stride_w, const int pad_t, const int pad_l, T* top_data,
-    int64* mask, const Eigen::GpuDevice& d, bool propagate_nans,
+    int64_t* mask, const Eigen::GpuDevice& d, bool propagate_nans,
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
@@ -405,7 +405,7 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
 template <typename T>
 bool MaxPoolBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
-    const int64* mask, const int top_offset, const int bottom_offset,
+    const int64_t* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
@@ -454,7 +454,7 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
 template <typename T>
 bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
-    const int64* mask, const int top_offset, const int bottom_offset,
+    const int64_t* mask, const int top_offset, const int bottom_offset,
     T* bottom_diff, const Eigen::GpuDevice& d,
     const bool include_batch_in_index) {
   if (input_size == 0) return true;
