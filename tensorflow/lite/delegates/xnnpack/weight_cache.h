@@ -56,9 +56,8 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 1 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 2 };
   uint64_t version;
-  uint8_t xnnpack_build_identifier[32];
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
 };
@@ -161,8 +160,8 @@ class WeightCacheBuilder {
   // The buffer space must have been reserved before using `Reserve`. If not, a
   // new call to `Reserve` will be done and the data will be copied over.
   [[nodiscard /*The location to the appended data should be saved.*/]]
-  BufferLocation Append(PackIdentifier pack_id, const void* data,
-                        uint64_t size);
+  BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
+                        int fingerprint_id);
 
   // Writes the flatbuffer to disk.
   [[nodiscard /*Writing the weight cache can fail.*/]]
