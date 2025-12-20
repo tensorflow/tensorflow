@@ -1911,7 +1911,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
 
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+      static_cast<int64_t>(stream_executor::MemorySpace::kHost));
 
 #ifdef NDEBUG
   // Verify the module in non-debug builds. For debug builds, the verifier
@@ -2940,7 +2940,7 @@ HloCostAnalysis::Options CreateHloAnalysisOpts(
                           gpu_device_info.fpus_per_core() *
                           gpu_device_info.clock_rate_ghz() * kGiga * kFma;
     int64_t host_memory_space_color =
-        static_cast<int64_t>(se::MemoryType::kHost);
+        static_cast<int64_t>(stream_executor::MemorySpace::kHost);
     hlo_cost_analysis_options.set_flops_per_second(flops_per_sec);
     hlo_cost_analysis_options.set_transcendentals_per_second(flops_per_sec);
     offloading_config =
@@ -2964,7 +2964,7 @@ HloRematerialization::Options CreateRematOpts(
       offloading_config = std::nullopt;
   if (enable_offloading) {
     int64_t host_memory_space_color =
-        static_cast<int64_t>(se::MemoryType::kHost);
+        static_cast<int64_t>(stream_executor::MemorySpace::kHost);
     offloading_config =
         std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
             /*host_memory_space=*/host_memory_space_color,
