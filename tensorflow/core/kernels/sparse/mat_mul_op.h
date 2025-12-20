@@ -276,7 +276,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   Eigen::Ref<const SparseMatrix> GetSparseMatrixRef(
       const CSRSparseMatrix& csr_matrix, const int batch_index,
       const int64_t row_begin, const int64_t num_shard_rows,
-      std::vector<int32>* row_ptrs) {
+      std::vector<int32_t>* row_ptrs) {
     // Compute the row pointers of the sparse sub-matrix.
     row_ptrs->resize(num_shard_rows + 1);
     const int64_t row_offset =
@@ -325,7 +325,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
                 // Define an Eigen::SparseMatrix over the row range:
                 // [row_begin, row_end) of the CSR SparseMatrix A.
-                std::vector<int32> row_ptrs;
+                std::vector<int32_t> row_ptrs;
                 auto sparse_matrix = GetSparseMatrixRef(
                     lhs, batch_idx, row_begin, num_shard_rows, &row_ptrs);
 
@@ -396,7 +396,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
                 // Define a new sparse sub-matrix from the row range
                 // [row_begin, row_end) of the sparse matrix A.
-                std::vector<int32> row_ptrs;
+                std::vector<int32_t> row_ptrs;
                 auto sparse_matrix = GetSparseMatrixRef(
                     lhs, batch_idx, row_begin, num_shard_rows, &row_ptrs);
 
@@ -773,9 +773,9 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
   explicit CSRSparseMatrixMatMul(const bool transpose_output)
       : transpose_output_(transpose_output) {}
 
-  Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
-                 typename TTypes<T>::UnalignedConstMatrix b,
-                 typename TTypes<T>::UnalignedMatrix c) {
+  absl::Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
+                       typename TTypes<T>::UnalignedConstMatrix b,
+                       typename TTypes<T>::UnalignedMatrix c) {
     GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     {
@@ -859,11 +859,11 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
           DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
-      DCHECK(buffer.flat<int8>().data() != nullptr);
+      DCHECK(buffer.flat<int8_t>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
                                           &beta, matC, algo,
-                                          buffer.flat<int8>().data()));
+                                          buffer.flat<int8_t>().data()));
 
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matB));
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnMat(matC));
@@ -940,7 +940,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 #endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -954,8 +954,8 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       : transA_(TransposeAndConjugateToGpuSparseOp(transpose_a, conjugate_a,
                                                    &status_)) {}
 
-  Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
-                 const T* x, T* y) {
+  absl::Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
+                       const T* x, T* y) {
     TF_RETURN_IF_ERROR(status_);
     GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
@@ -1001,11 +1001,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 #endif
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
-  Status status_;
+  absl::Status status_;
   const gpusparseOperation_t transA_;
 };
 
