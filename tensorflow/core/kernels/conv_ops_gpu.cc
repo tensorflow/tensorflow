@@ -85,7 +85,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
   auto* stream = ctx->op_device_context()->stream();
 
   if (!autotune_map->Find(params, &autotune_entry)) {
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
@@ -250,7 +250,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
   auto* stream = ctx->op_device_context()->stream();
 
   if (!autotune_map->Find(conv_parameters, &autotune_entry)) {
-    profiler::ScopedAnnotation annotation("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation annotation("cudnn_autotuning");
 
 #if GOOGLE_CUDA
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
