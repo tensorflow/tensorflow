@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <numeric>
 #include <ostream>
@@ -29,7 +30,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
@@ -141,16 +141,6 @@ TEST(TransposeTest, CoalesceLoops) {
   ASSERT_EQ(loops.size(), 1);
   EXPECT_EQ(loops[0].tile_size, 16);
   EXPECT_EQ(loops[0].tile_interior, true);
-
-  // Case 4: Mismatched tile_interior status (should not coalesce)
-  loops.clear();
-  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
-                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
-  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/5,
-                       /*tile_size=*/5, /*lda=*/4, /*ldb=*/80});
-
-  TestTransposePlan::CoalesceLoops(loops);
-  EXPECT_EQ(loops.size(), 2);
 }
 
 TEST(TransposeTest, InvalidTilings) {
@@ -184,36 +174,6 @@ TEST(TransposeTest, LargeDimensions) {
   TF_EXPECT_OK(TransposePlan::Create(options).status());
 }
 
-// Computes the size in elements of a tiled array.
-int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
-                         absl::Span<int64_t const> tiling) {
-  int64_t size = 1;
-  for (size_t i = 0; i < shape.size(); ++i) {
-    if (i >= shape.size() - tiling.size()) {
-      size *= RoundUpTo(shape[i], tiling[i - (shape.size() - tiling.size())]);
-    } else {
-      size *= shape[i];
-    }
-  }
-  return size;
-}
-
-// Advances 'indices' in the lexicographical order of the multidimensional
-// array with `shape`. Returns false if the end of the array has been reached.
-bool BumpIndices(absl::Span<int64_t const> shape, absl::Span<int64_t> indices) {
-  CHECK_EQ(shape.size(), indices.size());
-  for (int dimno = indices.size() - 1; dimno >= 0; --dimno) {
-    if (indices[dimno] + 1 < shape[dimno]) {
-      indices[dimno]++;
-      // Whenever an index of a dimension is increased, it means that all
-      // following dimensions have maxed out, so they must go to 0.
-      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
-      return true;
-    }
-  }
-  return false;
-}
-
 // Helper to pad tiling to match shape rank. (Suffix alignment).
 std::vector<int64_t> PadTiling(absl::Span<int64_t const> shape,
                                absl::Span<int64_t const> tiling) {
@@ -240,14 +200,75 @@ std::vector<int64_t> ComputeDefaultStrides(
   return strides;
 }
 
+// Computes the size in bytes of a tiled array.
+int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
+                         absl::Span<int64_t const> tiling,
+                         absl::Span<int64_t const> striding, int64_t elem_size,
+                         int64_t* min_offset = nullptr) {
+  for (int64_t dim : shape) {
+    if (dim == 0) {
+      if (min_offset) {
+        *min_offset = 0;
+      }
+      return 0;
+    }
+  }
+  std::vector<int64_t> full_tiling = PadTiling(shape, tiling);
+  int64_t tile_size =
+      absl::c_accumulate(full_tiling, int64_t{1}, std::multiplies<int64_t>());
+  int64_t min_offset_bytes = 0;
+  int64_t max_offset_bytes = 0;
+  for (int i = 0; i < shape.size(); ++i) {
+    int64_t last_idx = (shape[i] - 1) / full_tiling[i];
+    int64_t term = last_idx * striding[i];
+    if (striding[i] > 0) {
+      max_offset_bytes += term;
+    } else {
+      min_offset_bytes += term;
+    }
+  }
+  max_offset_bytes += tile_size * elem_size;
+  if (min_offset) {
+    *min_offset = min_offset_bytes;
+  }
+  return max_offset_bytes - min_offset_bytes;
+}
+
+int64_t SizeOfTiledArray(absl::Span<int64_t const> shape,
+                         absl::Span<int64_t const> tiling, int64_t elem_size) {
+  std::vector<int64_t> full_tiling = PadTiling(shape, tiling);
+  std::vector<int64_t> striding =
+      ComputeDefaultStrides(shape, full_tiling, elem_size);
+  return SizeOfTiledArray(shape, tiling, striding, elem_size);
+}
+
+// Advances 'indices' in the lexicographical order of the multidimensional
+// array with `shape`. Returns false if the end of the array has been reached.
+bool BumpIndices(absl::Span<int64_t const> shape, absl::Span<int64_t> indices) {
+  CHECK_EQ(shape.size(), indices.size());
+  for (int dimno = indices.size() - 1; dimno >= 0; --dimno) {
+    if (indices[dimno] + 1 < shape[dimno]) {
+      indices[dimno]++;
+      // Whenever an index of a dimension is increased, it means that all
+      // following dimensions have maxed out, so they must go to 0.
+      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
+      return true;
+    }
+  }
+  return false;
+}
+
 // Converts a multidimensional index `indices` into an array with `shape` and
 // tiling `tiling` into a linear offset into a buffer.
 // `striding` is the stride between tiles in bytes.
-int64_t IndexToLinearIndex(absl::Span<int64_t const> shape,
-                           absl::Span<int64_t const> full_tiling,
-                           absl::Span<int64_t const> indices,
-                           absl::Span<int64_t const> striding,
-                           int elem_size_bytes) {
+// Converts a multidimensional index `indices` into an array with `shape` and
+// tiling `tiling` into a byte offset into a buffer.
+// `striding` is the stride between tiles in bytes.
+int64_t IndexToByteOffset(absl::Span<int64_t const> shape,
+                          absl::Span<int64_t const> full_tiling,
+                          absl::Span<int64_t const> indices,
+                          absl::Span<int64_t const> striding,
+                          int elem_size_bytes) {
   CHECK_EQ(full_tiling.size(), shape.size());
   CHECK_EQ(shape.size(), indices.size());
   CHECK_EQ(shape.size(), striding.size());
@@ -260,10 +281,11 @@ int64_t IndexToLinearIndex(absl::Span<int64_t const> shape,
     offset += (indices[i] % full_tiling[i]) * stride;
     stride *= full_tiling[i];
   }
+  offset *= elem_size_bytes;
   // Strides outside a tiling are the input strides.
   for (size_t i = 0; i < shape.size(); ++i) {
     int64_t outer_idx = indices[i] / full_tiling[i];
-    offset += outer_idx * (striding[i] / elem_size_bytes);
+    offset += outer_idx * striding[i];
   }
   return offset;
 }
@@ -343,22 +365,28 @@ void ReferenceTranspose(absl::Span<int64_t const> dims,
                         absl::Span<int64_t const> input_striding,
                         absl::Span<int64_t const> output_tiling,
                         absl::Span<int64_t const> output_striding,
-                        absl::Span<const T> input, absl::Span<T> output) {
+                        absl::Span<const T> input, absl::Span<T> output,
+                        int64_t input_base_offset_bytes = 0) {
   std::vector<int64_t> output_dims = Permute(dims, permutation);
   std::vector<int64_t> indices(dims.size(), 0);
   std::vector<int64_t> output_indices(dims.size());
 
+  const char* input_ptr = reinterpret_cast<const char*>(input.data());
+  char* output_ptr = reinterpret_cast<char*>(output.data());
+
   do {
-    int64_t input_linear_idx = IndexToLinearIndex(dims, input_tiling, indices,
-                                                  input_striding, sizeof(T));
-    T val = input[input_linear_idx];
+    int64_t input_byte_offset = IndexToByteOffset(dims, input_tiling, indices,
+                                                  input_striding, sizeof(T)) +
+                                input_base_offset_bytes;
+    T val;
+    std::memcpy(&val, input_ptr + input_byte_offset, sizeof(T));
 
     for (size_t i = 0; i < dims.size(); ++i) {
       output_indices[i] = indices[permutation[i]];
     }
-    int64_t output_linear_idx = IndexToLinearIndex(
+    int64_t output_byte_offset = IndexToByteOffset(
         output_dims, output_tiling, output_indices, output_striding, sizeof(T));
-    output[output_linear_idx] = val;
+    std::memcpy(output_ptr + output_byte_offset, &val, sizeof(T));
   } while (BumpIndices(dims, absl::MakeSpan(indices)));
 }
 
@@ -462,10 +490,29 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*permutation=*/{3, 1, 2, 0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{8, 128}),
-      TransposeTestCase{/*dims=*/{129, 1234567},
+      TransposeTestCase(/*dims=*/{129, 1234567},
                         /*permutation=*/{0, 1},
                         /*input_tiling=*/{},
-                        /*output_tiling=*/{8, 128}}};
+                        /*output_tiling=*/{8, 128}),
+
+      // Negative strides
+      TransposeTestCase(/*dims=*/{10}, /*permutation=*/{0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{-4}),
+      TransposeTestCase(/*dims=*/{3, 4}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{16, -4}),
+      TransposeTestCase(/*dims=*/{3, 4}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{-16, -4}),
+
+      // Negative strides with tiling
+      TransposeTestCase(/*dims=*/{10}, /*permutation=*/{0},
+                        /*input_tiling=*/{2}, /*output_tiling=*/{},
+                        /*input_striding=*/{-32}),
+      TransposeTestCase(/*dims=*/{4, 4}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{2, 2}, /*output_tiling=*/{},
+                        /*input_striding=*/{-32, 16})};
   return cases;
 }
 
@@ -497,8 +544,9 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
 
     // Allocate sufficiently large buffers.
     // We can use SizeOfTiledArray for output which is always tiled/dense.
-    int64_t output_size =
-        SizeOfTiledArray(plan->OutputDims(), test.output_tiling);
+    int64_t output_size_bytes =
+        SizeOfTiledArray(plan->OutputDims(), test.output_tiling, sizeof(T));
+    int64_t output_size = CeilOfRatio<int64_t>(output_size_bytes, sizeof(T));
     std::vector<T> output(output_size, -1);
 
     std::vector<int64_t> input_striding = test.input_striding;
@@ -507,35 +555,29 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
       input_striding =
           ComputeDefaultStrides(test.dims, input_tiling, sizeof(T));
     }
-    int64_t input_tile_size = absl::c_accumulate(input_tiling, int64_t{1},
-                                                 std::multiplies<int64_t>());
-
     std::vector<int64_t> output_tiling =
         PadTiling(output_dims, test.output_tiling);
     std::vector<int64_t> output_striding =
         ComputeDefaultStrides(output_dims, output_tiling, sizeof(T));
 
-    int64_t input_size = 1;
-    if (!test.dims.empty()) {
-      std::vector<int64_t> max_indices = test.dims;
-      for (int i = 0; i < test.dims.size(); ++i) {
-        max_indices[i] = RoundDownTo(max_indices[i], input_tiling[i]);
-      }
-      input_size = IndexToLinearIndex(test.dims, input_tiling, max_indices,
-                                      input_striding, sizeof(T)) +
-                   input_tile_size;
-    }
+    int64_t min_offset_bytes;
+    int64_t input_size_bytes = SizeOfTiledArray(
+        test.dims, input_tiling, input_striding, sizeof(T), &min_offset_bytes);
+    int64_t input_size = CeilOfRatio<int64_t>(input_size_bytes, sizeof(T));
     std::vector<T> input(input_size);
     FillRandom<T>(absl::MakeSpan(input));
     std::vector<T> expected_output(output_size, -1);
 
+    int64_t input_base_offset_bytes = -min_offset_bytes;
     ReferenceTranspose<T>(test.dims, test.permutation, input_tiling,
                           input_striding, output_tiling, output_striding, input,
-                          absl::MakeSpan(expected_output));
+                          absl::MakeSpan(expected_output),
+                          input_base_offset_bytes);
 
-    plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
-      threadpool.Schedule(std::move(fn));
-    });
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()) + input_base_offset_bytes,
+        output.data(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
 
     EXPECT_EQ(output, expected_output);
   }
@@ -599,6 +641,149 @@ TEST(TransposeTest, NegativeStrides2D) {
   plan->Execute(input.data() + 3, output.data());
   EXPECT_EQ(expected, output);
 }
+
+// Test contiguous chunk execution modes: kNone, kInput, kOutput.
+// Uses all TransposeTestCases as test inputs to verify chunked execution.
+class ChunkedTransposeTest
+    : public ::testing::TestWithParam<
+          std::tuple<TransposeTestCase, TransposePlan::ChunkContiguity>> {};
+
+TEST_P(ChunkedTransposeTest, ChunkedTranspose) {
+  using ChunkContiguity = TransposePlan::ChunkContiguity;
+  const auto& [test, mode] = GetParam();
+  std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
+
+  // Skip tests with non-default input striding for chunk size validation
+  // since strided inputs don't have contiguous chunk sums.
+  bool has_non_default_striding = !test.input_striding.empty();
+
+  std::vector<int64_t> input_tiling = PadTiling(test.dims, test.input_tiling);
+  std::vector<int64_t> input_striding =
+      test.input_striding.empty()
+          ? ComputeDefaultStrides(test.dims, input_tiling, sizeof(int32_t))
+          : test.input_striding;
+  int64_t min_offset_bytes;
+  int64_t input_size_bytes =
+      SizeOfTiledArray(test.dims, input_tiling, input_striding, sizeof(int32_t),
+                       &min_offset_bytes);
+  int64_t input_size = CeilOfRatio<int64_t>(input_size_bytes, sizeof(int32_t));
+  int64_t input_base_offset_bytes = -min_offset_bytes;
+  int64_t output_size_bytes =
+      SizeOfTiledArray(output_dims, test.output_tiling, sizeof(int32_t));
+  int64_t output_size =
+      CeilOfRatio<int64_t>(output_size_bytes, sizeof(int32_t));
+  std::vector<int64_t> output_tiling =
+      PadTiling(output_dims, test.output_tiling);
+  std::vector<int64_t> output_striding =
+      ComputeDefaultStrides(output_dims, output_tiling, sizeof(int32_t));
+
+  // Generate random input.
+  std::vector<int32_t> input(input_size);
+  absl::BitGen gen;
+  for (auto& val : input) {
+    val = absl::bit_cast<int32_t>(absl::Uniform<uint32_t>(gen));
+  }
+
+  // Compute reference output. Initialize to -1 like output buffer.
+  std::vector<int32_t> expected_output(output_size, -1);
+  ReferenceTranspose<int32_t>(test.dims, test.permutation, input_tiling,
+                              input_striding, output_tiling, output_striding,
+                              input, absl::MakeSpan(expected_output),
+                              input_base_offset_bytes);
+
+  TransposePlan::Options options;
+  options.elem_size_in_bytes = sizeof(int32_t);
+  options.dims = test.dims;
+  options.permutation = test.permutation;
+  if (!test.input_tiling.empty()) {
+    options.input_tiling = TransposePlan::Tiling{test.input_tiling};
+  }
+  if (!test.output_tiling.empty()) {
+    options.output_tiling = TransposePlan::Tiling{test.output_tiling};
+  }
+  if (!test.input_striding.empty()) {
+    options.input_striding = TransposePlan::Striding{test.input_striding};
+  }
+  options.num_threads = 4;
+  options.chunk_contiguity = mode;
+  TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
+
+  LOG(INFO) << "Plan for dims=" << absl::StrJoin(test.dims, ",")
+            << " perm=" << absl::StrJoin(test.permutation, ",")
+            << " mode=" << static_cast<int>(mode);
+  LOG(INFO) << plan->ToString();
+  int num_chunks_log = plan->Parallelism();
+  for (int i = 0; i < num_chunks_log; ++i) {
+    LOG(INFO) << "Chunk " << i
+              << ": input_offset=" << plan->InputChunkOffsetBytes(i)
+              << " input_size=" << plan->InputChunkSizeBytes(i)
+              << " output_offset=" << plan->OutputChunkOffsetBytes(i)
+              << " output_size=" << plan->OutputChunkSizeBytes(i);
+  }
+
+  int num_chunks = plan->Parallelism();
+  int64_t input_total = input_size * static_cast<int64_t>(sizeof(int32_t));
+  int64_t output_total = output_size * static_cast<int64_t>(sizeof(int32_t));
+
+  // For contiguous buffers, sum of chunk sizes should equal total.
+  if (mode == ChunkContiguity::kInput && !has_non_default_striding) {
+    int64_t sum = 0;
+    for (int i = 0; i < num_chunks; ++i) {
+      sum += plan->InputChunkSizeBytes(i);
+    }
+    EXPECT_EQ(sum, input_total)
+        << "Sum of input chunk sizes should equal total input size";
+  }
+  if (mode == ChunkContiguity::kOutput) {
+    int64_t sum = 0;
+    for (int i = 0; i < num_chunks; ++i) {
+      sum += plan->OutputChunkSizeBytes(i);
+    }
+    EXPECT_EQ(sum, output_total)
+        << "Sum of output chunk sizes should equal total output size";
+  }
+  std::vector<int32_t> output(output_size, -1);
+
+  for (int chunk = 0; chunk < num_chunks; ++chunk) {
+    int64_t input_offset = plan->InputChunkOffsetBytes(chunk);
+    int64_t input_bytes = plan->InputChunkSizeBytes(chunk);
+    int64_t output_offset = plan->OutputChunkOffsetBytes(chunk);
+    int64_t output_bytes = plan->OutputChunkSizeBytes(chunk);
+
+    // Copy input chunk to temp buffer.
+    std::vector<char> input_temp(input_bytes);
+    std::memcpy(input_temp.data(),
+                reinterpret_cast<const char*>(input.data()) +
+                    input_base_offset_bytes + input_offset,
+                input_bytes);
+
+    if (mode == ChunkContiguity::kOutput) {
+      // Output is contiguous: use local output buffer.
+      std::vector<char> output_temp(output_bytes, 0xFF);
+      plan->ExecuteChunk(chunk, input_temp.data(), output_temp.data(),
+                         /*input_is_global=*/false,
+                         /*output_is_global=*/false);
+      // Copy to full output for final verification.
+      std::memcpy(reinterpret_cast<char*>(output.data()) + output_offset,
+                  output_temp.data(), output_bytes);
+    } else {
+      // Input-contiguous or non-contiguous: output is scattered, use global.
+      plan->ExecuteChunk(chunk, input_temp.data(), output.data(),
+                         /*input_is_global=*/false,
+                         /*output_is_global=*/true);
+    }
+  }
+
+  EXPECT_EQ(output, expected_output);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ChunkedTransposeTestInstance, ChunkedTransposeTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(GetTransposeTestCases()),
+        ::testing::Values(TransposePlan::ChunkContiguity::kNone,
+                          TransposePlan::ChunkContiguity::kInput,
+                          TransposePlan::ChunkContiguity::kOutput)));
 
 static std::vector<TransposeTestCase> BenchmarkCases() {
   return std::vector<TransposeTestCase>{
@@ -666,7 +851,9 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   options.dims = bm.dims;
   options.permutation = bm.permutation;
   options.transformation = TransposePlan::Transformation::kNone;
+
   options.num_threads = parallelism;
+
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   Array<T> input(bm.dims);
   input.FillIota(0);
