@@ -47,7 +47,7 @@ static void BM_ProtoSerializationToString(::testing::benchmark::State& state) {
   GraphDef graph_def = MakeGraphDef(num_nodes);
 
   for (auto i : state) {
-    string serialized;
+    std::string serialized;
     testing::DoNotOptimize(
         SerializeToStringDeterministic(graph_def, &serialized));
   }
