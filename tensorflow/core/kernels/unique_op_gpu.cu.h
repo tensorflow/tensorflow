@@ -81,12 +81,10 @@ __global__ void ExtractFirstOccurrenceIndicesKernel(
 // unique value's range in the sorted input (the last element is always set
 // to input_size).
 template <typename TIndex>
-Status ExtractFirstOccurrenceIndices(const GPUDevice& d, int64_t input_size,
-                                     int64_t uniq_size,
-                                     const TIndex* sorted_input_inds,
-                                     const TIndex* sorted_input_unique_ids,
-                                     TIndex* unique_input_inds,
-                                     TIndex* segment_ends) {
+absl::Status ExtractFirstOccurrenceIndices(
+    const GPUDevice& d, int64_t input_size, int64_t uniq_size,
+    const TIndex* sorted_input_inds, const TIndex* sorted_input_unique_ids,
+    TIndex* unique_input_inds, TIndex* segment_ends) {
   CHECK_GT(input_size, 0);  // Crash OK
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_size, d, &ExtractFirstOccurrenceIndicesKernel<TIndex>,
@@ -120,14 +118,12 @@ __global__ void GatherOutputsAndInvertPermutationKernel(
 // Gathers input values using sorted_unique_input_inds, and inverts the
 // permutation specified by sorted_unique_perm.
 template <typename T, typename TIndex>
-Status GatherOutputsAndInvertPermutation(const GPUDevice& d, int64_t uniq_size,
-                                         const T* input,
-                                         const TIndex* sorted_unique_input_inds,
-                                         const TIndex* sorted_unique_perm,
-                                         const TIndex* segment_ends, T* output,
-                                         TIndex* inv_sorted_unique_perm,
-                                         TIndex* count) {
-  if (uniq_size == 0) return OkStatus();
+absl::Status GatherOutputsAndInvertPermutation(
+    const GPUDevice& d, int64_t uniq_size, const T* input,
+    const TIndex* sorted_unique_input_inds, const TIndex* sorted_unique_perm,
+    const TIndex* segment_ends, T* output, TIndex* inv_sorted_unique_perm,
+    TIndex* count) {
+  if (uniq_size == 0) return absl::OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       uniq_size, d, &GatherOutputsAndInvertPermutationKernel<T, TIndex>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -153,11 +149,11 @@ __global__ void LookupAndScatterUniqueIdsKernel(
 // Maps the values of sorted_input_unique_ids and scatters them to idx using
 // sorted_input_inds.
 template <typename TIndex>
-Status LookupAndScatterUniqueIds(const GPUDevice& d, int64_t input_size,
-                                 const TIndex* sorted_input_inds,
-                                 const TIndex* sorted_input_unique_ids,
-                                 const TIndex* inv_sorted_unique_perm,
-                                 TIndex* idx) {
+absl::Status LookupAndScatterUniqueIds(const GPUDevice& d, int64_t input_size,
+                                       const TIndex* sorted_input_inds,
+                                       const TIndex* sorted_input_unique_ids,
+                                       const TIndex* inv_sorted_unique_perm,
+                                       TIndex* idx) {
   CHECK_GT(input_size, 0);  // Crash OK
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_size, d, &LookupAndScatterUniqueIdsKernel<TIndex>,
@@ -191,12 +187,12 @@ class UniqueOpGPU : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     // TODO(dga):  Make unique polymorphic for returning int32 and int64
     // vectors to support large tensors.
-    OP_REQUIRES_ASYNC(context,
-                      input.NumElements() <= std::numeric_limits<int32>::max(),
-                      errors::InvalidArgument(
-                          "unique does not support input tensors larger than ",
-                          std::numeric_limits<int32>::max(), " elements"),
-                      done);
+    OP_REQUIRES_ASYNC(
+        context, input.NumElements() <= std::numeric_limits<int32_t>::max(),
+        errors::InvalidArgument(
+            "unique does not support input tensors larger than ",
+            std::numeric_limits<int32_t>::max(), " elements"),
+        done);
 
     OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(input.shape()),
                       errors::InvalidArgument("unique expects a 1D vector."),
@@ -313,7 +309,7 @@ class UniqueOpGPU : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         context,
         stream->Memcpy(last_idx_host.mutable_data(),
-                       se::DeviceMemoryBase(
+                       stream_executor::DeviceAddressBase(
                            const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
                                (input_size - 1),
                            sizeof(*last_idx_host.data())),
@@ -326,7 +322,7 @@ class UniqueOpGPU : public AsyncOpKernel {
                                      sorted_input_unique_ids_ptr, last_idx_host,
                                      has_count_output, done]() -> void {
       const GPUDevice& device = context->eigen_gpu_device();
-      int64 uniq_size = (*last_idx_host.data()) + 1;
+      int64_t uniq_size = (*last_idx_host.data()) + 1;
 
       std::unique_ptr<se::ActivateContext> scoped_activation =
           context->op_device_context()->stream()->parent()->Activate();
