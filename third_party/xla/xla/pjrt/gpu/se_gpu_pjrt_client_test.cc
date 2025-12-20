@@ -2875,8 +2875,7 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
                           client->CreateLinkedEventPromise(memory_space, ""));
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, client->DefineBuffer(device_shape, memory_space, raw_buffer,
-                                        {std::move(event)},
-                                        /*raw_buffer_is_mutable=*/true));
+                                        {std::move(event)}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto definition_event,

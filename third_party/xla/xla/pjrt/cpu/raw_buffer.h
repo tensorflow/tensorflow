@@ -95,10 +95,12 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
 class CpuRawBuffer : public CommonPjRtRawBuffer {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,
-               tsl::AsyncValueRef<CpuDeviceMemory> buffer, size_t buffer_size)
+               tsl::AsyncValueRef<CpuDeviceMemory> buffer, size_t buffer_size,
+               bool is_mutable)
       : memory_space_(memory_space),
         buffer_(std::move(buffer)),
-        buffer_size_(buffer_size) {}
+        buffer_size_(buffer_size),
+        is_mutable_(is_mutable) {}
 
   absl::Status ValidateSlice(int64_t offset, int64_t slice_size);
 
@@ -111,7 +113,8 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
   // Imports foreign memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> ImportForeignMemory(
       void* data, absl::AnyInvocable<void() &&> on_delete_callback,
-      size_t on_device_bytes_count, PjRtMemorySpace* memory_space);
+      size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
+      bool is_mutable);
 
   size_t GetOnDeviceSizeInBytes() const override;
 
@@ -128,6 +131,8 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
   const tsl::AsyncValueRef<CpuDeviceMemory>& buffer() const { return buffer_; }
 
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
+
+  bool is_mutable() const { return is_mutable_; }
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
@@ -175,6 +180,7 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
   PjRtMemorySpace* const memory_space_;
   tsl::AsyncValueRef<CpuDeviceMemory> buffer_;
   size_t buffer_size_;
+  bool is_mutable_;
 };
 
 absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(xla::Shape shape,

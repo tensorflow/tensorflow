@@ -141,8 +141,7 @@ class CpuDeviceMemory {
 class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
   // Variant with single definition event.
-  TrackedCpuDeviceBuffer(bool owns_buffers,
-                         tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+  TrackedCpuDeviceBuffer(tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
                          tsl::AsyncValueRef<CpuEvent> definition_event);
 
   TrackedCpuDeviceBuffer(TrackedCpuDeviceBuffer&&) noexcept = default;
@@ -170,8 +169,6 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
   LockUseAndTransferUsageEvents();
 
-  bool owns_buffers() const { return owns_buffers_; }
-
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
 
@@ -189,8 +186,6 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
  private:
   void ConfirmDonation() override;
-
-  bool owns_buffers_;
 
   // The definition event are associated with CPU operations that write to the
   // buffers.

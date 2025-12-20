@@ -158,8 +158,7 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
                     HostBufferSemantics::kImmutableUntilTransferCompletes,
                     raw_buffer));
   return DefineBuffer(device_shape, memory_space, std::move(raw_buffer),
-                      {std::move(definition_event)},
-                      /*raw_buffer_is_mutable=*/true);
+                      {std::move(definition_event)});
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -193,8 +192,7 @@ CommonPjRtClient::CreateUninitializedBuffer(const Shape& shape,
                       raw_buffer->MakeAllocationReadyEvent());
   TF_ASSIGN_OR_RETURN(auto output_buffer,
                       DefineBuffer(device_shape, memory_space, raw_buffer,
-                                   {std::move(definition_event)},
-                                   /*raw_buffer_is_mutable=*/true));
+                                   {std::move(definition_event)}));
   return output_buffer;
 }
 
@@ -270,8 +268,7 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
 
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       DefineBuffer(shape, memory_space, std::move(raw_buffer),
-                                   {std::move(definition_event)},
-                                   /*raw_buffer_is_mutable=*/true));
+                                   {std::move(definition_event)}));
 
   return std::make_pair(std::move(result_buffer), std::move(fulfill_cb));
 }
@@ -302,14 +299,14 @@ CommonPjRtClient::BufferFromHostBuffer(
           ImportForeignMemory(
               const_cast<void*>(data),  // CONST_CAST_OK=flag controlled.
               std::move(on_done_with_host_buffer), on_device_bytes_count,
-              memory_space));
+              memory_space,
+              host_buffer_semantics ==
+                  PjRtClient::HostBufferSemantics::kMutableZeroCopy));
       TF_ASSIGN_OR_RETURN(
           auto output_buffer,
           DefineBuffer(
               device_shape, memory_space, raw_buffer,
-              absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{},
-              /*raw_buffer_is_mutable=*/host_buffer_semantics ==
-                  PjRtClient::HostBufferSemantics::kMutableZeroCopy));
+              absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{}));
       return output_buffer;
     }
   }
@@ -327,8 +324,7 @@ CommonPjRtClient::BufferFromHostBuffer(
           std::move(on_done_with_host_buffer), device_shape, raw_buffer));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> output_buffer,
                       DefineBuffer(device_shape, memory_space, raw_buffer,
-                                   {std::move(definition_event)},
-                                   /*raw_buffer_is_mutable=*/true));
+                                   {std::move(definition_event)}));
   return output_buffer;
 }
 
@@ -351,12 +347,13 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
   TF_ASSIGN_OR_RETURN(
       auto raw_buffer,
       ImportForeignMemory(device_ptr, std::move(on_delete_callback),
-                          on_device_bytes_count, memory_space));
+                          on_device_bytes_count, memory_space,
+                          /*is_mutable=*/false));
   TF_ASSIGN_OR_RETURN(
       auto output_buffer,
-      DefineBuffer(device_shape, memory_space, raw_buffer,
-                   absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{},
-                   /*raw_buffer_is_mutable=*/false));
+      DefineBuffer(
+          device_shape, memory_space, raw_buffer,
+          absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{}));
   return output_buffer;
 }
 
@@ -705,9 +702,9 @@ static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
     CHECK(memory_space) << "No memory space found for device: "
                         << device->DebugString() << " kind: " << kind_id;
   }
-  auto buffer_or = client->DefineBuffer(
-      output_leaf_shape, memory_space, std::move(leaf_buffer),
-      {definition_event}, /*raw_buffer_is_mutable=*/true);
+  auto buffer_or =
+      client->DefineBuffer(output_leaf_shape, memory_space,
+                           std::move(leaf_buffer), {definition_event});
   CHECK_OK(buffer_or);
   return *std::move(buffer_or);
 }
@@ -1154,8 +1151,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       dst_client->DefineBuffer(dst_shape, dst_memory_space, dst_raw_buffer,
-                               {std::move(definition_event)},
-                               /*raw_buffer_is_mutable=*/true));
+                               {std::move(definition_event)}));
   auto* base_ptr = dst_raw_buffer->GetHostPointer();
   std::unique_ptr<MutableLiteralBase> literal;
   bool needs_second_copy = false;
@@ -1265,8 +1261,7 @@ static absl::Status CommonCopyToMemorySpace(
     TF_ASSIGN_OR_RETURN(
         dst_buffer,
         dst_client->DefineBuffer(dst_shape, dst_memory_space, dst_raw_buffer,
-                                 {std::move(definition_event)},
-                                 /*raw_buffer_is_mutable=*/true));
+                                 {std::move(definition_event)}));
     TF_RETURN_IF_ERROR(src_buffer->AcquireScopedRawBuffer(
         [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
             std::vector<tsl::RCReference<tsl::AsyncValue>>

@@ -888,10 +888,11 @@ static bool IsAlignedData(void* ptr) {
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 PjRtCpuClient::ImportForeignMemory(
     void* device_ptr, absl::AnyInvocable<void() &&> on_delete_callback,
-    size_t on_device_bytes_count, PjRtMemorySpace* memory_space) {
-  return CpuRawBuffer::ImportForeignMemory(device_ptr,
-                                           std::move(on_delete_callback),
-                                           on_device_bytes_count, memory_space);
+    size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
+    bool is_mutable) {
+  return CpuRawBuffer::ImportForeignMemory(
+      device_ptr, std::move(on_delete_callback), on_device_bytes_count,
+      memory_space, is_mutable);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
@@ -910,7 +911,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   return std::make_unique<CommonPjRtBufferImpl>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*owns_buffers=*/true, std::move(raw_buffer),
+          std::move(raw_buffer),
           tsl::AsyncValueRef<CpuEvent>(
               tsl::MakeErrorAsyncValueRef(std::move(error)))),
       memory_space);
@@ -995,8 +996,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
     const Shape& on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-        definition_device_events,
-    bool raw_buffer_is_mutable) {
+        definition_device_events) {
   if (raw_buffer && raw_buffer->memory_space() != memory_space) {
     return absl::InvalidArgumentError(
         absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",
@@ -1006,7 +1006,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
   return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
       on_device_shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
-          /*owns_buffers=*/raw_buffer_is_mutable, std::move(raw_buffer),
+          std::move(raw_buffer),
           CpuTrackedDeviceEvent::AfterAll(definition_device_events)),
       memory_space));
 }
@@ -1029,7 +1029,7 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto raw_buffer = tsl::MakeRef<CpuRawBuffer>(
       memory_space, tsl::AsyncValueRef<CpuDeviceMemory>(buffer_promise),
-      on_device_bytes_count);
+      on_device_bytes_count, /*is_mutable=*/true);
 
   auto buffer_promise_cb =
       [buffer_promise = std::move(buffer_promise), memory_space](
@@ -1250,7 +1250,9 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
     // If we don't own the buffer, we can't overwrite it or donate it. For
     // example we might be pointing to a buffer owned by the client whose
     // lifetime will not extend past the lifetime of the donated input buffer.
-    if ((!can_donate || (arg && !arg->owns_buffers())) &&
+    if ((!can_donate ||
+         (arg && !tensorflow::down_cast<CpuRawBuffer*>(arg->raw_buffer().get())
+                      ->is_mutable())) &&
         !allocation.is_readonly()) {
       auto copy = CpuDeviceMemory::CreateDelayedMemory();
 
@@ -1265,7 +1267,9 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
     }
 
     buffer_info.buffer = out.CopyRef();
-    buffer_info.owns_buffer = !arg || arg->owns_buffers();
+    buffer_info.owns_buffer =
+        !arg || tensorflow::down_cast<CpuRawBuffer*>(arg->raw_buffer().get())
+                    ->is_mutable();
     buffer_info.buffer_size = buffer_size;
     return buffer_info;
 
@@ -1856,10 +1860,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       // Program execution writes to output buffers so it's a definition event.
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedCpuDeviceBuffer>(
-              result_buffers_info[i].owns_buffer,
               tsl::MakeRef<CpuRawBuffer>(
                   memory_space, std::move(result_buffers_info[i].buffer),
-                  result_buffers_info[i].buffer_size),
+                  result_buffers_info[i].buffer_size,
+                  result_buffers_info[i].owns_buffer),
               execute_event.CopyRef());
       auto leaf_buffer = std::make_unique<CommonPjRtBufferImpl>(
           result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
@@ -1870,10 +1874,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     CHECK_EQ(result_buffers_info.size(), 1);
     // Program execution writes to output buffers so it's a definition event.
     auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-        result_buffers_info[0].owns_buffer,
         tsl::MakeRef<CpuRawBuffer>(memory_space,
                                    std::move(result_buffers_info[0].buffer),
-                                   result_buffers_info[0].buffer_size),
+                                   result_buffers_info[0].buffer_size,
+                                   result_buffers_info[0].owns_buffer),
         /*definition_event=*/execute_event);
     auto output_buffer = std::make_unique<CommonPjRtBufferImpl>(
         result_shape, std::move(tracked_device_buffer), memory_space);

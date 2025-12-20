@@ -87,7 +87,7 @@ class CommonPjRtClient : public PjRtClient {
   ImportForeignMemory(void* device_ptr,
                       absl::AnyInvocable<void() &&> on_delete_callback,
                       size_t on_device_bytes_count,
-                      PjRtMemorySpace* memory_space) {
+                      PjRtMemorySpace* memory_space, bool is_mutable) {
     return absl::UnimplementedError("ImportForeignMemory is not supported");
   }
 
@@ -105,8 +105,7 @@ class CommonPjRtClient : public PjRtClient {
       const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-          definition_device_events,
-      bool raw_buffer_is_mutable) {
+          definition_device_events) {
     return absl::UnimplementedError("DefineBuffer is not supported");
   }
 

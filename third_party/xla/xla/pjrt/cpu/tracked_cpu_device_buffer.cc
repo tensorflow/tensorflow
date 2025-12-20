@@ -189,10 +189,9 @@ absl::Status CpuDeviceMemory::AllocateInto(
 //===----------------------------------------------------------------------===//
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     tsl::AsyncValueRef<CpuEvent> definition_event)
     : AbstractTrackedDeviceBuffer(std::move(raw_buffer)),
-      owns_buffers_(owns_buffers),
       definition_event_(std::move(definition_event)) {
   DCHECK(definition_event_);
 }
