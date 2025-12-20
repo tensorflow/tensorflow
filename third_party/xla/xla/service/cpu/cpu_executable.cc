@@ -159,7 +159,7 @@ static absl::StatusOr<MaybeOwningDeviceAddress> MemoryForAllocation(
   if (allocation.is_entry_computation_parameter()) {
     se::DeviceAddressBase out = arguments[allocation.parameter_number()]
                                     .Buffer(allocation.param_shape_index())
-                                    .AsDeviceMemoryBase();
+                                    .AsDeviceAddress();
     CHECK_LE(allocation.size(), out.size())
         << "Size mismatch on param " << allocation.parameter_number()
         << " at shape index " << allocation.param_shape_index().ToString();
@@ -239,8 +239,7 @@ absl::Status CpuExecutable::ExecuteThunks(
   VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
                              buffers.size());
   auto mem_printer = [](std::string* out, const MaybeOwningDeviceAddress& mem) {
-    absl::StrAppend(out,
-                    absl::StrFormat("%p", mem.AsDeviceMemoryBase().opaque()));
+    absl::StrAppend(out, absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
   };
   VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
                              absl::StrJoin(buffers, ", ", mem_printer));
@@ -370,9 +369,9 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
         result_buffer = allocated_buffer.Release();
         MaybeOwningDeviceAddress& registered_buffer = buffers[buffer_index];
         CHECK_EQ(result_buffer.size(),
-                 registered_buffer.AsDeviceMemoryBase().size());
+                 registered_buffer.AsDeviceAddress().size());
         std::memcpy(/*dest=*/result_buffer.opaque(),
-                    /*src=*/registered_buffer.AsDeviceMemoryBase().opaque(),
+                    /*src=*/registered_buffer.AsDeviceAddress().opaque(),
                     /*n=*/result_buffer.size());
         registered_buffer = result_buffer;
       }
@@ -385,7 +384,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
         result_buffer = owned_buffer->Release();
         buffer = result_buffer;
       } else {
-        result_buffer = buffer.AsDeviceMemoryBase();
+        result_buffer = buffer.AsDeviceAddress();
         result.AddAliasedIndex(index);
       }
     }
