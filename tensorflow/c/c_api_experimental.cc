@@ -434,7 +434,7 @@ void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
                                const TF_DataType* values, int num_values) {
   auto iter = builder->attr_names.insert(attr_name).first;
-  builder->Set(*iter, tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+  builder->Set(*iter, absl::Span<const const tensorflow::DataType>(
                           reinterpret_cast<const tensorflow::DataType*>(values),
                           num_values));
 }
