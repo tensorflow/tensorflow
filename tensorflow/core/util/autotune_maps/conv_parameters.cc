@@ -31,11 +31,11 @@ namespace tensorflow {
 namespace {
 using ::tsl::protobuf::util::MessageDifferencer;
 
-uint64 ComputeHash(int device_id, const ConvParametersProto& proto) {
+uint64_t ComputeHash(int device_id, const ConvParametersProto& proto) {
   return Hash64Combine(device_id, tsl::DeterministicProtoHash64(proto));
 }
 
-uint64 ComputeHash(int device_id, const MatmulParametersProto& proto) {
+uint64_t ComputeHash(int device_id, const MatmulParametersProto& proto) {
   return Hash64Combine(device_id, tsl::DeterministicProtoHash64(proto));
 }
 }  // namespace
@@ -99,7 +99,7 @@ bool ConvParameters::operator==(const ConvParameters& other) const {
          MessageDifferencer::Equals(this->proto_, other.proto_);
 }
 
-string ConvParameters::ToString() const { return proto_.DebugString(); }
+std::string ConvParameters::ToString() const { return proto_.DebugString(); }
 
 MatmulParameters::MatmulParameters(
     se::StreamExecutor* stream_exec, DataType ab_dtype, DataType c_dtype,
@@ -137,7 +137,7 @@ bool MatmulParameters::operator==(const MatmulParameters& other) const {
          MessageDifferencer::Equals(this->proto_, other.proto_);
 }
 
-string MatmulParameters::ToString() const { return proto_.DebugString(); }
+std::string MatmulParameters::ToString() const { return proto_.DebugString(); }
 
 }  // namespace tensorflow
 
