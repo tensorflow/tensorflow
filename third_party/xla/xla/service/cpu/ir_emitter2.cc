@@ -195,6 +195,33 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
+absl::StatusOr<IrEmitter2::KernelInfo>
+IrEmitter2::EmitGetOuterBatchValueHostKernel(const HloInstruction* getBatch) {
+  VLOG(2) << "Emit GetOuterBatchValue host kernel: " << getBatch->name();
+
+  TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,
+                      EmitKernelPrototype(getBatch));
+  llvm_ir::IrArray operand_array = kernel_prototype.arguments[0];
+  llvm_ir::IrArray output_array = kernel_prototype.results[0];
+  int64_t multiplier = getBatch->operand(0)->shape().outer_multiplier();
+  if (multiplier <= 0) {
+    LOG(ERROR) << "Invalid outer multiplier for GetOuterBatchValue: "
+               << multiplier;
+    return absl::InvalidArgumentError(
+        "Invalid outer multiplier for GetOuterBatchValue");
+  }
+  llvm::IRBuilder<> b(module_->getContext());
+  b.SetInsertPoint(kernel_prototype.function->getEntryBlock().getTerminator());
+  llvm::Value* bdim_value = llvm_ir::GetBatchDimByName(&b, multiplier);
+  llvm_ir::IrArray::Index output_index(/*multidimensional_index=*/{},
+                                       getBatch->shape(), b.getInt32Ty());
+  llvm::Value* output_ptr =
+      output_array.EmitArrayElementAddress(output_index, &b);
+  b.CreateStore(bdim_value, output_ptr);
+  return kernels_.emplace_back(
+      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
+}
+
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emit fusion host kernel: " << fusion->name();
