@@ -3396,12 +3396,52 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
       PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = c_buffer();
-  // TODO(emilyaf): Support async instead of awaiting here.
-  absl::StatusOr<std::string> descriptor = serialized_descriptor.Await();
-  CHECK_OK(descriptor) << "Failed to copy buffer to remote device: "
-                       << descriptor.status();
-  args.serialized_descriptor = descriptor->c_str();
-  args.serialized_descriptor_size = descriptor->size();
+
+  // When `serialized_descriptor` is ready, `descriptor_data` and
+  // `descriptor_size` will be populated with the string data.
+  size_t* descriptor_size = new size_t;
+  char** descriptor_data = new char*;
+
+  const PJRT_Api* c_api = pjrt_c_api();
+  if (c_api->PJRT_Event_Create == nullptr || c_api->PJRT_Event_Set == nullptr) {
+    // If `PJRT_Event_Create` or `PJRT_Event_Set` is not supported, block until
+    // `serialized_descriptor` is ready and populate the descriptor data
+    // synchronously.
+    absl::StatusOr<std::string> descriptor = serialized_descriptor.Await();
+    CHECK_OK(descriptor) << "Failed to copy buffer to remote device: "
+                         << descriptor.status();
+    *descriptor_data = descriptor->data();
+    *descriptor_size = descriptor->size();
+  } else {
+    // Get a PJRT_Event to track `serialized_descriptor`.
+    PJRT_Event_Create_Args event_args;
+    event_args.struct_size = PJRT_Event_Create_Args_STRUCT_SIZE;
+    event_args.extension_start = nullptr;
+    pjrt::LogFatalIfPjrtError(c_api->PJRT_Event_Create(&event_args), c_api);
+
+    // When `serialized_descriptor` is ready, set the event and populate the
+    // descriptor data.
+    serialized_descriptor.OnReady([c_api, event = event_args.event,
+                                   descriptor_data, descriptor_size](
+                                      absl::StatusOr<std::string> descriptor) {
+      *descriptor_data = descriptor->data();
+      *descriptor_size = descriptor->size();
+
+      PJRT_Event_Set_Args event_set_args;
+      event_set_args.struct_size = PJRT_Event_Set_Args_STRUCT_SIZE;
+      event_set_args.extension_start = nullptr;
+      event_set_args.event = event;
+      event_set_args.error_code =
+          pjrt::StatusCodeToPjrtErrorCode(descriptor.status().code());
+      event_set_args.error_message = descriptor.status().message().data();
+      event_set_args.error_message_size = descriptor.status().message().size();
+      c_api->PJRT_Event_Set(&event_set_args);
+    });
+    args.event = event_args.event;
+  }
+  args.serialized_descriptor = descriptor_data;
+  args.serialized_descriptor_size = descriptor_size;
+
   PJRT_Transfers_CrossHostRemoteSendCallbackInfo on_done_info =
       pjrt::CppCrossHostRemoteSendCallbackToC(pjrt_c_api(), std::move(on_done));
   args.on_done = on_done_info;
