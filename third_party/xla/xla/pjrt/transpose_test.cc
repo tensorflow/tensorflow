@@ -462,10 +462,7 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*permutation=*/{3, 1, 2, 0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{8, 128}),
-      TransposeTestCase{/*dims=*/{129, 1234567},
-                        /*permutation=*/{0, 1},
-                        /*input_tiling=*/{},
-                        /*output_tiling=*/{8, 128}}};
+  };
   return cases;
 }
 

@@ -972,7 +972,6 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
-    shard_count = 10,
     deps = [
         ":transpose",
         "//xla:array",

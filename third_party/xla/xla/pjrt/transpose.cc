@@ -120,8 +120,9 @@ static constexpr int kMaxInnerBlockSizeBytes = 16;
 // A plan is a data structure that describes a loop nest.
 // TODO(phawkins): consider shrinking Node so it fits in a cache line.
 struct TransposePlan::Node {
-  // The loop should iterate over the index space range(0, end, inc).
+  // The loop should iterate over the index space range(start, end, inc).
   // These fields are ignored by the macrokernel.
+  int64_t start;
   int64_t end;  // For the inner loop of a memcpy loop nest, this is the size of
                 // the transfer.
   int64_t inc;  // The transpose sentinel node has inc < 0.
@@ -202,6 +203,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
   DVLOG(10) << "Transpose " << outer_bs_a << " " << outer_bs_b;
   DCHECK_GT(outer_bs_a, 0);
   DCHECK_GT(outer_bs_b, 0);
+  const int64_t start = node->start;
   const int64_t end = node->end;
   const int64_t stop = node->end - (node->inc - 1);
   const int64_t lda = node->lda;
@@ -215,7 +217,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     const int64_t lda_block = next_node->lda;
     const int64_t ldb_block = next_node->ldb;
     int64_t i;
-    for (i = 0; i < stop; i += inc) {
+    for (i = start; i < stop; i += inc) {
       MacroKernel<T, inner_bs, transformation>(a + i * lda, lda_block,
                                                outer_bs_a, b + i * ldb,
                                                ldb_block, outer_bs_b, scratch);
@@ -279,7 +281,7 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
     // inner loops. Structurally this code is identical to the previous case,
     // but we call Transpose() recursively instead of MacroKernel().
     int64_t i;
-    for (i = 0; i < stop; i += inc) {
+    for (i = start; i < stop; i += inc) {
       Transpose<T, inner_bs, transformation>(
           a + i * lda, outer_bs_a, b + i * ldb, outer_bs_b, next_node, scratch);
     }
@@ -333,44 +335,59 @@ void Transpose(const char* __restrict a, int outer_bs_a, char* __restrict b,
 
 void TransposeConstStride1(const char* __restrict a, char* __restrict b,
                            TransposePlan::Node const* __restrict node) {
+  a += node[0].start * node[0].lda;
+  b += node[0].start * node[0].ldb;
   if (node[0].is_inner_dim_in_a) {
     int64_t num_bytes = node->end;
     std::memcpy(b, a, num_bytes);
   } else if (node[1].is_inner_dim_in_a) {
+    int64_t offset_a = node[1].start * node[1].lda;
+    int64_t offset_b = node[1].start * node[1].ldb;
     int64_t num_bytes = node[1].end;
-    for (int64_t i = 0; i < node[0].end; ++i) {
+    a += offset_a;
+    b += offset_b;
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
       std::memcpy(b, a, num_bytes);
       a += node[0].lda;
       b += node[0].ldb;
     }
     if (node[0].trailing_tile_next_node_inc) {
-      TransposeConstStride1(a, b, node + node[0].trailing_tile_next_node_inc);
+      TransposeConstStride1(a - offset_a, b - offset_b,
+                            node + node[0].trailing_tile_next_node_inc);
     }
   } else if (node[2].is_inner_dim_in_a) {
     int64_t num_bytes = node[2].end;
-    for (int64_t i = 0; i < node[0].end; ++i) {
+    int64_t offset_a1 = node[1].start * node[1].lda;
+    int64_t offset_b1 = node[1].start * node[1].ldb;
+    int64_t offset_a2 = node[2].start * node[2].lda;
+    int64_t offset_b2 = node[2].start * node[2].ldb;
+    a += offset_a1 + offset_a2;
+    b += offset_b1 + offset_b2;
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
       const char* a1 = a;
       char* b1 = b;
-      for (int64_t j = 0; j < node[1].end; ++j) {
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
         std::memcpy(b1, a1, num_bytes);
         a1 += node[1].lda;
         b1 += node[1].ldb;
       }
       if (node[1].trailing_tile_next_node_inc) {
-        TransposeConstStride1(a1, b1,
+        TransposeConstStride1(a1 - offset_a2, b1 - offset_b2,
                               &node[1] + node[1].trailing_tile_next_node_inc);
       }
       a += node[0].lda;
       b += node[0].ldb;
     }
     if (node[0].trailing_tile_next_node_inc) {
-      TransposeConstStride1(a, b, node + node[0].trailing_tile_next_node_inc);
+      TransposeConstStride1(a - offset_a1 - offset_a2,
+                            b - offset_b1 - offset_b2,
+                            node + node[0].trailing_tile_next_node_inc);
     }
   } else {
-    for (int64_t i = 0; i < node[0].end; ++i) {
-      const char* a1 = a;
-      char* b1 = b;
-      for (int64_t j = 0; j < node[1].end; ++j) {
+    for (int64_t i = node[0].start; i < node[0].end; ++i) {
+      const char* a1 = a + node[1].start * node[1].lda;
+      char* b1 = b + node[1].start * node[1].ldb;
+      for (int64_t j = node[1].start; j < node[1].end; ++j) {
         TransposeConstStride1(a1, b1, node + 2);
         a1 += node[1].lda;
         b1 += node[1].ldb;
@@ -442,49 +459,6 @@ struct uint128 {
 };
 static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
-void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b) const {
-  if (num_elems_ == 0) {
-    return;
-  }
-  tsl::profiler::TraceMe traceme("Transpose::ExecuteChunk", /*level=*/2);
-
-  absl::Span<Node const> nodes = nodes_[chunk_id];
-  const char* ac = static_cast<const char*>(a) + input_offset_bytes_[chunk_id];
-  char* bc = static_cast<char*>(b) + output_offset_bytes_[chunk_id];
-
-  if (inner_kernel_is_memcpy_) {
-    DCHECK(transformation_ == Transformation::kNone);
-    // Memcpy-based plans all assume element size 1 (i.e., bytes).
-    TransposeConstStride1(ac, bc, nodes.data());
-    return;
-  }
-
-  switch (elem_size_in_bytes_) {
-    case 1:
-      ExecuteTyped<uint8_t, Transformation::kNone>(ac, bc, nodes);
-      break;
-    case 2:
-      ExecuteTyped<uint16_t, Transformation::kNone>(ac, bc, nodes);
-      break;
-    case 4:
-      if (transformation_ == Transformation::kNone) {
-        ExecuteTyped<uint32_t, Transformation::kNone>(ac, bc, nodes);
-      } else {
-        DCHECK(transformation_ == Transformation::kF64ToEf57);
-        ExecuteTyped<uint32_t, Transformation::kF64ToEf57>(ac, bc, nodes);
-      }
-      break;
-    case 8:
-      ExecuteTyped<uint64_t, Transformation::kNone>(ac, bc, nodes);
-      break;
-    case 16:
-      ExecuteTyped<uint128, Transformation::kNone>(ac, bc, nodes);
-      break;
-    default:
-      LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
-  }
-}
-
 void TransposePlan::Execute(
     const void* a, void* b,
     std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
@@ -494,19 +468,58 @@ void TransposePlan::Execute(
   }
   tsl::profiler::TraceMe traceme("Transpose::Execute", /*level=*/2);
 
-  if (!schedule_work || Parallelism() <= 1) {
-    for (int i = 0; i < Parallelism(); ++i) {
-      ExecuteChunk(i, a, b);
+  const char* ac = static_cast<const char*>(a);
+  char* bc = static_cast<char*>(b);
+
+  auto execute_by_type = [&](absl::Span<Node const> nodes) {
+    if (inner_kernel_is_memcpy_) {
+      DCHECK(transformation_ == Transformation::kNone);
+      // Memcpy-based plans all assume element size 1 (i.e., bytes).
+      TransposeConstStride1(ac, bc, nodes.data());
+      return;
+    }
+
+    switch (elem_size_in_bytes_) {
+      case 1:
+        ExecuteTyped<uint8_t, Transformation::kNone>(ac, bc, nodes);
+        break;
+      case 2:
+        ExecuteTyped<uint16_t, Transformation::kNone>(ac, bc, nodes);
+        break;
+      case 4:
+        if (transformation_ == Transformation::kNone) {
+          ExecuteTyped<uint32_t, Transformation::kNone>(ac, bc, nodes);
+        } else {
+          DCHECK(transformation_ == Transformation::kF64ToEf57);
+          ExecuteTyped<uint32_t, Transformation::kF64ToEf57>(ac, bc, nodes);
+        }
+        break;
+      case 8:
+        ExecuteTyped<uint64_t, Transformation::kNone>(ac, bc, nodes);
+        break;
+      case 16:
+        ExecuteTyped<uint128, Transformation::kNone>(ac, bc, nodes);
+        break;
+      default:
+        LOG(FATAL) << "Unimplemented element size " << elem_size_in_bytes_;
+    }
+  };
+
+  if (!schedule_work || nodes_.size() <= 1) {
+    for (const auto& nodes : nodes_) {
+      execute_by_type(nodes);
     }
   } else {
-    absl::BlockingCounter counter(Parallelism() - 1);
+    absl::BlockingCounter counter(nodes_.size() - 1);
     for (size_t i = 1; i < nodes_.size(); ++i) {
-      (*schedule_work)([&, i]() {
-        ExecuteChunk(i, a, b);
+      absl::Span<Node const> nodes = nodes_[i];
+      (*schedule_work)([&, nodes]() {
+        execute_by_type(nodes);
         counter.DecrementCount();
       });
     }
-    ExecuteChunk(0, a, b);
+    // Run the first chunk inline in this thread.
+    execute_by_type(nodes_[0]);
     counter.Wait();
   }
 }
@@ -587,29 +600,32 @@ bool TransposePlan::Loop::operator==(const Loop& other) const {
          lda == other.lda && ldb == other.ldb &&
          is_inner_dim_in_a == other.is_inner_dim_in_a &&
          is_inner_dim_in_b == other.is_inner_dim_in_b &&
-         parallelism == other.parallelism && start == other.start &&
-         end == other.end;
+         parallelism == other.parallelism;
 }
 
 // Helper function that builds a plan.
-void TransposePlan::BuildPlanNodes(int chunk_id,
+void TransposePlan::BuildPlanNodes(int thread_id,
                                    std::vector<TransposePlan::Node>& nodes) {
   VLOG(8) << "Before plan build: " << ToString();
   const int ndim = a_dims_.size();
   DCHECK_GT(ndim, 0);
 
-  // Use the pre-computed chunk loops which have start/end bounds already set.
-  absl::Span<const Loop> chunk_loops = chunk_loops_[chunk_id];
-
   // We build plans in a depth-first order, visiting loops from outermost to
   // innermost. We use a stack (depth-first) order to handle trailing partial
   // tiles, which we "come back to" after handling the non-trailing case.
   struct Agendum {
-    // The ID of the loop to visit in chunk_loops.
+    // The ID of the loop to visit in loop_order_.
     int loop_id;
     // The parent node ID whose trailing tile should be made to point to this
     // node.
     int parent_node_id;
+
+    // The number of parallel tasks available to run this loop and its
+    // successors.
+    int num_tasks_at_loop;
+
+    // The ID number of the current thread in the tasks at this loop.
+    int task_id_at_loop;
 
     // For which dimensions of `a` are we to visit the partial trailing tile
     // a loop that visits that tile's interior?
@@ -617,11 +633,18 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
   };
   std::stack<Agendum> agenda;
 
+  int total_tasks = 1;
+  for (const Loop& loop : loop_order_) {
+    total_tasks *= loop.parallelism;
+  }
+
   agenda.push(Agendum{/*loop_id=*/0, /*parent_node_id=*/-1,
+                      /*num_tasks_at_loop=*/total_tasks,
+                      /*task_id_at_loop=*/thread_id,
                       absl::InlinedVector<bool, 4>(ndim, false)});
 
   auto loop_has_trivial_iteration_space = [](const Node& node) {
-    return node.inc == node.end;
+    return node.start == 0 && node.start + node.inc == node.end;
   };
 
   while (!agenda.empty()) {
@@ -636,13 +659,14 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
           node_id - agendum.parent_node_id;
     }
 
-    if (agendum.loop_id == chunk_loops.size()) {
+    if (agendum.loop_id == loop_order_.size()) {
       // We've reached the end of the loop nest.
+      DCHECK_EQ(agendum.num_tasks_at_loop, 1);
       // Transpose loops have a sentinel node, indicated by a negative `inc`
       // value, that describes the striding of the inner transpose kernel.
       if (!inner_kernel_is_memcpy_) {
         Node node;
-        node.end = node.inc = -1;
+        node.start = node.end = node.inc = -1;
         node.lda = sentinel_lda_;
         node.ldb = sentinel_ldb_;
         nodes.push_back(node);
@@ -651,8 +675,13 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       continue;
     }
 
-    const Loop& loop = chunk_loops[agendum.loop_id];
+    const Loop& loop = loop_order_[agendum.loop_id];
     int a_dim = loop.dim_in_a;
+
+    // Compute the number of tasks for the next loop iteration.
+    int task_id_at_loop = agendum.task_id_at_loop;
+    int num_tasks_at_loop = agendum.num_tasks_at_loop / loop.parallelism;
+    int task_id_at_next_loop = task_id_at_loop % num_tasks_at_loop;
 
     Node node;
     node.lda = loop.lda;
@@ -666,20 +695,22 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       node.inc = inner_block_elems_ * outer_block_elems_b_;
     }
 
+    int task_id = task_id_at_loop / num_tasks_at_loop;
+
     if (loop.tile_interior) {
       // We are visiting the tile interior of a tiled dimension.
       bool partial = agendum.partial_tiles[a_dim];
 
       int64_t size = partial ? loop.dim_size % loop.tile_size : loop.tile_size;
-      // loop.start and loop.end are in element units.
-      // Verify alignment to block boundaries.
-      CHECK(loop.start % node.inc == 0)
-          << "loop.start=" << loop.start
-          << " must be aligned to node.inc=" << node.inc;
-      node.end = std::min<int64_t>(size, loop.end) - loop.start;
+      int64_t num_iterations = CeilOfRatio(size, node.inc);
+      int64_t num_iterations_per_task =
+          CeilOfRatio<int64_t>(num_iterations, loop.parallelism);
+      node.start = std::min(size, task_id * num_iterations_per_task * node.inc);
+      node.end =
+          std::min(size, (task_id + 1) * num_iterations_per_task * node.inc);
 
       if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
-        node.end *= elem_size_in_bytes_;
+        node.end = (node.end - node.start) * elem_size_in_bytes_;
       }
 
       if (!loop_has_trivial_iteration_space(node) ||
@@ -689,6 +720,8 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       Agendum new_agendum;
       new_agendum.loop_id = agendum.loop_id + 1;
       new_agendum.parent_node_id = -1;
+      new_agendum.task_id_at_loop = task_id_at_next_loop;
+      new_agendum.num_tasks_at_loop = num_tasks_at_loop;
       new_agendum.partial_tiles = agendum.partial_tiles;
       agenda.push(std::move(new_agendum));
     } else {
@@ -699,16 +732,14 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
 
       // If there is a trailing partial tile as well as complete tiles, handle
       // it as a trailer on the loop over complete tiles.
-      // A chunk is responsible for the trailing tile if its loop.end covers
-      // the full dimension.
-      int64_t full_size = CeilOfRatio(loop.dim_size, loop.tile_size);
-      bool handles_trailing =
-          loop.end >= full_size && loop.start <= num_complete_tiles;
       bool has_trailing_plan_node = false;
-      if (num_complete_tiles > 0 && has_partial_tile && handles_trailing) {
+      if (num_complete_tiles > 0 && has_partial_tile &&
+          task_id == loop.parallelism - 1) {
         Agendum new_agendum;
         new_agendum.loop_id = agendum.loop_id + 1;
         new_agendum.parent_node_id = node_id;
+        new_agendum.task_id_at_loop = task_id_at_next_loop;
+        new_agendum.num_tasks_at_loop = num_tasks_at_loop;
         new_agendum.partial_tiles = agendum.partial_tiles;
         new_agendum.partial_tiles[a_dim] = true;
         agenda.push(std::move(new_agendum));
@@ -720,12 +751,18 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       // path to handle the trailing tile.
       bool partial = num_complete_tiles == 0 && has_partial_tile;
 
-      // loop.start and loop.end are in tile units.
+      // Evenly divide the loop iterations amongst the threads.
       int64_t num_tiles = partial ? 1 : num_complete_tiles;
-      node.end = std::min<int64_t>(num_tiles, loop.end) - loop.start;
+      int64_t num_iterations = CeilOfRatio(num_tiles, node.inc);
+      int64_t num_iterations_per_task =
+          CeilOfRatio<int64_t>(num_iterations, loop.parallelism);
+      node.start =
+          std::min(num_tiles, task_id * num_iterations_per_task * node.inc);
+      node.end = std::min(num_tiles,
+                          (task_id + 1) * num_iterations_per_task * node.inc);
 
       if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
-        node.end *= elem_size_in_bytes_;
+        node.end = (node.end - node.start) * elem_size_in_bytes_;
       }
 
       // If this loop has a trivial iteration space, drop it.
@@ -737,6 +774,8 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       Agendum new_agendum;
       new_agendum.loop_id = agendum.loop_id + 1;
       new_agendum.parent_node_id = -1;
+      new_agendum.task_id_at_loop = task_id_at_next_loop;
+      new_agendum.num_tasks_at_loop = num_tasks_at_loop;
       new_agendum.partial_tiles = agendum.partial_tiles;
       new_agendum.partial_tiles[a_dim] = partial;
       agenda.push(std::move(new_agendum));
@@ -960,10 +999,7 @@ void TransposePlan::Initialize() {
                         : ldb_[pos_stride1a_in_b];
   }
 
-  // Order to traverse dimensions, from slowest-varying to fastest-varying.
-  std::vector<Loop> loop_order;
-
-  loop_order.reserve(ndim);
+  loop_order_.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
     Loop loop;
     loop.dim_in_a = i;
@@ -981,7 +1017,7 @@ void TransposePlan::Initialize() {
     }
     loop.is_inner_dim_in_a = (loop.tile_size == 1) && (i == pos_stride1a);
     loop.is_inner_dim_in_b = (loop.tile_size == 1) && (i == pos_stride1b_in_a);
-    loop_order.push_back(loop);
+    loop_order_.push_back(loop);
 
     if (loop.tile_size > 1) {
       loop.tile_interior = true;
@@ -990,12 +1026,12 @@ void TransposePlan::Initialize() {
                              : ldb_[inverse_permutation[i]];
       loop.is_inner_dim_in_a = (i == pos_stride1a);
       loop.is_inner_dim_in_b = (i == pos_stride1b_in_a);
-      loop_order.push_back(loop);
+      loop_order_.push_back(loop);
     }
   }
 
-  RemoveTrivialLoops(loop_order);
-  CoalesceLoops(loop_order);
+  RemoveTrivialLoops(loop_order_);
+  CoalesceLoops(loop_order_);
 
   // Bound the block sizes so they are smaller than the stride-1 dimension
   // size.
@@ -1082,7 +1118,7 @@ void TransposePlan::Initialize() {
                            inner_kernel_is_memcpy_ && l.tile_interior,
                            -std::min<double>(a_stride * penalty, b_stride));
   };
-  absl::c_stable_sort(loop_order, [&](const Loop& a, const Loop& b) {
+  absl::c_stable_sort(loop_order_, [&](const Loop& a, const Loop& b) {
     return cost(a) < cost(b);
   });
   // It is a required invariant of the loop order that tile interiors always
@@ -1091,15 +1127,13 @@ void TransposePlan::Initialize() {
   // both input and output.
 
   // The stride-1 loop must be innermost for a memcpy loop.
-  DCHECK(!inner_kernel_is_memcpy_ || loop_order.back().is_inner_dim_in_a)
+  DCHECK(!inner_kernel_is_memcpy_ || loop_order_.back().is_inner_dim_in_a)
       << ToString();
 
-  int num_chunks = ChooseParallelizationStrategy(loop_order);
-  PartitionLoops(num_chunks, loop_order, chunk_loops_, input_offset_bytes_,
-                 output_offset_bytes_);
-  nodes_.resize(num_chunks);
-  for (int chunk_id = 0; chunk_id < num_chunks; ++chunk_id) {
-    BuildPlanNodes(chunk_id, nodes_[chunk_id]);
+  int num_threads = ChooseParallelizationStrategy();
+  nodes_.resize(num_threads);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    BuildPlanNodes(thread_id, nodes_[thread_id]);
   }
 
   switch (transformation_) {
@@ -1114,8 +1148,7 @@ void TransposePlan::Initialize() {
   }
 }
 
-int TransposePlan::ChooseParallelizationStrategy(
-    std::vector<Loop>& loop_order) {
+int TransposePlan::ChooseParallelizationStrategy() {
   int available_parallelism = num_threads_requested_;
 
   // Compute the number of iterations in `loop`.
@@ -1137,14 +1170,14 @@ int TransposePlan::ChooseParallelizationStrategy(
   };
 
   // Estimate the number of bytes each iteration of each loop processes.
-  absl::InlinedVector<int64_t, 4> work_in_bytes(loop_order.size());
+  absl::InlinedVector<int64_t, 4> work_in_bytes(loop_order_.size());
   int64_t acc = elem_size_in_bytes_;
   if (!inner_kernel_is_memcpy_) {
     acc *= inner_block_elems_ * inner_block_elems_ * outer_block_elems_a_ *
            outer_block_elems_b_;
   }
   auto work_it = work_in_bytes.rbegin();
-  for (auto it = loop_order.rbegin(); it != loop_order.rend(); ++it) {
+  for (auto it = loop_order_.rbegin(); it != loop_order_.rend(); ++it) {
     *work_it++ = acc;
     acc *= loop_iterations(*it);
   }
@@ -1153,17 +1186,11 @@ int TransposePlan::ChooseParallelizationStrategy(
 
   // Heuristic that attempts to parallelize the outermost loops, down to a
   // minimum per-thread number of bytes processed.
-  int num_chunks = 1;
-  for (size_t i = 0; i < loop_order.size(); ++i) {
-    Loop& loop = loop_order[i];
+  int num_threads = 1;
+  for (size_t i = 0; i < loop_order_.size(); ++i) {
+    Loop& loop = loop_order_[i];
     CHECK_GE(available_parallelism, 1);
     int64_t iterations = loop_iterations(loop);
-
-    // Initialize loop iteration bounds to full range in element units.
-    loop.start = 0;
-    loop.end = loop.tile_interior ? loop.tile_size
-                                  : CeilOfRatio(loop.dim_size, loop.tile_size);
-
     int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
@@ -1171,61 +1198,16 @@ int TransposePlan::ChooseParallelizationStrategy(
 
     VLOG(8) << "iterations=" << iterations << " parallel_work=" << parallel_work
             << " available_parallelism=" << available_parallelism;
-    int parallelism = std::min<int64_t>(available_parallelism, parallel_work);
-    if (parallelism > 1) {
-      // If we use CeilOfRatio(iterations, parallelism) as the chunk size, we
-      // might end up with fewer chunks than parallelism if the chunk size is
-      // large. For example, if iterations=17 and parallelism=16,
-      // chunk_size=2. Then useful_tasks=9. We should reduce parallelism to 9.
-      int64_t chunk_size =
-          CeilOfRatio(iterations, static_cast<int64_t>(parallelism));
-      int64_t useful_tasks = CeilOfRatio(iterations, chunk_size);
-      parallelism = useful_tasks;
+    if (parallel_work >= available_parallelism) {
+      loop.parallelism = available_parallelism;
+      available_parallelism = 1;
+    } else {
+      loop.parallelism = parallel_work;
+      available_parallelism /= parallel_work;
     }
-    loop.parallelism = parallelism;
-    available_parallelism /= parallelism;
-    num_chunks *= loop.parallelism;
+    num_threads *= loop.parallelism;
   }
-  return num_chunks;
-}
-
-/*static*/ void TransposePlan::PartitionLoops(
-    int num_chunks, const std::vector<Loop>& loop_order,
-    std::vector<std::vector<TransposePlan::Loop>>& result,
-    std::vector<int64_t>& input_offset_bytes,
-    std::vector<int64_t>& output_offset_bytes) {
-  // Copy the base loop order for each chunk.
-  result.resize(num_chunks, loop_order);
-  input_offset_bytes.resize(num_chunks);
-  output_offset_bytes.resize(num_chunks);
-  for (int chunk_id = 0; chunk_id < num_chunks; ++chunk_id) {
-    // For each loop, narrow the start/end bounds to this chunk's portion.
-    int task_id_remaining = chunk_id;
-    int num_tasks_remaining = num_chunks;
-
-    for (size_t i = 0; i < loop_order.size(); ++i) {
-      Loop& chunk_loop = result[chunk_id][i];
-      const Loop& base_loop = loop_order[i];
-
-      num_tasks_remaining /= base_loop.parallelism;
-      int task_id = task_id_remaining / num_tasks_remaining;
-      task_id_remaining = task_id_remaining % num_tasks_remaining;
-
-      // Divide this loop's iterations (in element units) among parallelism
-      // tasks.
-      int64_t iterations = base_loop.end - base_loop.start;
-      int64_t iterations_per_task =
-          CeilOfRatio<int64_t>(iterations, base_loop.parallelism);
-
-      chunk_loop.start =
-          base_loop.start + std::min(iterations, task_id * iterations_per_task);
-      chunk_loop.end =
-          base_loop.start +
-          std::min(iterations, (task_id + 1) * iterations_per_task);
-      input_offset_bytes[chunk_id] += chunk_loop.start * chunk_loop.lda;
-      output_offset_bytes[chunk_id] += chunk_loop.start * chunk_loop.ldb;
-    }
-  }
+  return num_threads;
 }
 
 std::string TransposePlan::ToString() const {
@@ -1238,28 +1220,19 @@ std::string TransposePlan::ToString() const {
                   absl::StrAppendFormat(
                       out,
                       "    "
-                      "Node(end=%d,inc=%d,lda=%"
+                      "Node(start=%d,end=%d,inc=%d,lda=%"
                       "d,ldb=%d,next_trailing=%d,inner_a=%s,inner_b=%s)",
-                      node.end, node.inc, node.lda, node.ldb,
+                      node.start, node.end, node.inc, node.lda, node.ldb,
                       node.trailing_tile_next_node_inc,
                       node.is_inner_dim_in_a ? "y" : "n",
                       node.is_inner_dim_in_b ? "y" : "n");
                 }));
       });
-  auto format_loop = [](std::string* out, const Loop& loop) {
-    absl::StrAppendFormat(out, "%d%s[%d,%d](%d)", loop.dim_in_a,
-                          loop.tile_interior ? "[tile]" : "", loop.start,
-                          loop.end, loop.parallelism);
+  auto format_loop_order = [](std::string* out, const Loop& loop) {
+    return absl::StrAppend(out, loop.dim_in_a,
+                           loop.tile_interior ? "[tile]" : "", "(",
+                           loop.parallelism, ")");
   };
-  std::vector<std::string> chunk_strings;
-  chunk_strings.reserve(chunk_loops_.size());
-  for (int i = 0; i < chunk_loops_.size(); ++i) {
-    chunk_strings.push_back(absl::StrFormat(
-        "    chunk %d: input_offset=%d output_offset=%d loops=%s", i,
-        input_offset_bytes_[i], output_offset_bytes_[i],
-        absl::StrJoin(chunk_loops_[i], ", ", format_loop)));
-  }
-  std::string chunk_loops_str = absl::StrJoin(chunk_strings, "\n");
   std::string transformation_str;
   switch (transformation_) {
     case Transformation::kNone:
@@ -1271,19 +1244,19 @@ std::string TransposePlan::ToString() const {
   }
   return absl::StrFormat(
       "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
-      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s "
+      "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s "
       "outer_bs=[%d,%d] inner_bs=%d "
       "transformation=%s scratch_size=%d\n"
-      "chunk_loops:\n%s\n"
       "nodes:\n%s",
       elem_size_in_bytes_, absl::StrJoin(a_dims_, ","),
       absl::StrJoin(Permute(a_dims_, permutation_), ","),
       absl::StrJoin(permutation_, ","), absl::StrJoin(a_tiling_, ","),
       absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
-      absl::StrJoin(ldb_tile_, ","), outer_block_elems_a_, outer_block_elems_b_,
-      inner_block_elems_, transformation_str, scratch_size_, chunk_loops_str,
-      nodes_str);
+      absl::StrJoin(ldb_tile_, ","),
+      absl::StrJoin(loop_order_, ",", format_loop_order), outer_block_elems_a_,
+      outer_block_elems_b_, inner_block_elems_, transformation_str,
+      scratch_size_, nodes_str);
 }
 
 bool TransposePlanCacheKey::operator==(
@@ -1367,7 +1340,7 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   }
 
   // Coalesce from slow-varying to fast-varying (outer to inner).
-  // loops[0] is slowest.
+  // loop_order_[0] is slowest.
   int write_pos = 0;
   for (int read_pos = 1; read_pos < loops.size(); ++read_pos) {
     Loop& outer = loops[write_pos];
