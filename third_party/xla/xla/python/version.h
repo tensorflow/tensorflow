@@ -18,7 +18,6 @@ limitations under the License.
 
 // An increasing version number to protect jax code against breaking changes.
 // In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER \
-  45  // Refresh custom layouts when copying an array across clients.
+#define JAX_IFRT_VERSION_NUMBER 46  // Shardy replicated -> unreduced
 
 #endif  // XLA_PYTHON_VERSION_H_
