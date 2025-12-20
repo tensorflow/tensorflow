@@ -437,6 +437,26 @@ class StablehloExportManualReductionCollectivesPass
     ModuleOp moduleOp = getOperation();
     mlir::IRRewriter rewriter(moduleOp.getContext());
 
+    moduleOp.walk([&](mlir::Operation* op) {
+      if (auto constant = mlir::dyn_cast<sdy::ConstantOp>(op)) {
+        TensorShardingAttr oldSharding = sdy::getSharding(constant);
+        if (!oldSharding || oldSharding.getUnreducedAxes().empty()) {
+          return;
+        }
+
+        TensorShardingAttr newSharding = oldSharding.replaceUnreducedAxes({});
+        sdy::setSharding(constant, newSharding);
+
+        rewriter.setInsertionPointAfter(constant);
+        sdy::ReplicatedToUnreducedOp replicatedToUnreduced =
+            sdy::ReplicatedToUnreducedOp::create(
+                rewriter, constant.getLoc(), constant,
+                oldSharding.getUnreducedAxes(), oldSharding);
+        rewriter.replaceAllUsesExcept(constant, replicatedToUnreduced,
+                                      replicatedToUnreduced);
+      }
+    });
+
     // Do very restricted backward propagation of unreduced axes along specific
     // ops that don't modify the data.
     moduleOp.walk<mlir::WalkOrder::PostOrder, mlir::ReverseIterator>(

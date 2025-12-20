@@ -406,3 +406,34 @@ func.func @replicated_to_unreduced(%arg0: tensor<16x16xf32> {sdy.sharding = #sdy
   %0 = sdy.replicated_to_unreduced {"x", "z"} %arg0 out_sharding=<@mesh, [{}, {}], unreduced={"x", "y", "z"}> : tensor<16x16xf32>
   return %0 : tensor<16x16xf32>
 }
+
+// -----
+
+sdy.mesh @mesh = <["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @unreduced_constant
+func.func @unreduced_constant() -> tensor<2x2xf32> {
+  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} dense<{{\[\[}}0.000000e+00, 1.000000e+00], [2.000000e+00, 3.000000e+00]]> : tensor<2x2xf32>
+  // CHECK-NEXT: %[[MANUAL_COMP:.*]] = sdy.manual_computation(%[[CONST]])
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"x"}, {}]>]
+  // CHECK-SAME:     out_shardings=[<@mesh, [{"x"}, {}], unreduced={"y"}>]
+  // CHECK-SAME:     manual_axes={"x", "y"} (%arg0: tensor<1x2xf32>) {
+  // CHECK-NEXT:   %[[PID:.*]] = stablehlo.partition_id : tensor<ui32>
+  // CHECK-NEXT:   %[[PID_I32:.*]] = stablehlo.convert %[[PID]] : (tensor<ui32>) -> tensor<i32>
+  // CHECK-NEXT:   %[[C2:.*]] = stablehlo.constant dense<2> : tensor<i32>
+  // CHECK-NEXT:   %[[REM:.*]] = stablehlo.remainder %[[PID_I32]], %[[C2]] : tensor<i32>
+  // CHECK-NEXT:   %[[DIV:.*]] = stablehlo.divide %[[PID_I32]], %[[C2]] : tensor<i32>
+  // CHECK-NEXT:   %[[C2_0:.*]] = stablehlo.constant dense<2> : tensor<i32>
+  // CHECK-NEXT:   %[[REM_0:.*]] = stablehlo.remainder %[[DIV]], %[[C2_0]] : tensor<i32>
+  // CHECK-NEXT:   %[[DIV_0:.*]] = stablehlo.divide %[[DIV]], %[[C2_0]] : tensor<i32>
+  // CHECK-NEXT:   %[[C0:.*]] = stablehlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT:   %[[CMP:.*]] = stablehlo.compare  EQ, %[[REM]], %[[C0]] : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT:   %[[ZERO:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-NEXT:   %[[ZERO_BCAST:.*]] = stablehlo.broadcast %[[ZERO]], sizes = [1, 2] : (tensor<f32>) -> tensor<1x2xf32>
+  // CHECK-NEXT:   %[[SELECT:.*]] = stablehlo.select %[[CMP]], %arg0, %[[ZERO_BCAST]] : tensor<i1>, tensor<1x2xf32>
+  // CHECK-NEXT:   sdy.return %[[SELECT]] : tensor<1x2xf32>
+  // CHECK-NEXT: } : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: return %[[MANUAL_COMP]] : tensor<2x2xf32>
+  %0 = sdy.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}], unreduced={"y"}>]>} dense<[[0.0, 1.0], [2.0, 3.0]]> : tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
