@@ -124,16 +124,16 @@ struct FusedBatchNormInferenceKernel {
   static_assert(tensor_format == FORMAT_NHWC || tensor_format == FORMAT_NCHW,
                 "Unsupported data format");
 
-  __device__ static void run(int32 count, int32 channels_size,
-                             int32 inner_dim_size, const T* __restrict__ in,
+  __device__ static void run(int32_t count, int32_t channels_size,
+                             int32_t inner_dim_size, const T* __restrict__ in,
                              const U* __restrict__ scale,
                              const U* __restrict__ offset,
                              const U* __restrict__ mean,
                              const U* __restrict__ var,
                              const T* __restrict__ side_input, float epsilon,
                              T* __restrict__ out) {
-    int32 index = blockIdx.x * blockDim.x + threadIdx.x;
-    const int32 total_device_threads = gridDim.x * blockDim.x;
+    int32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32_t total_device_threads = gridDim.x * blockDim.x;
 
     while (index < count) {
       const int channel = (tensor_format == FORMAT_NHWC)
@@ -186,8 +186,8 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
                                     activation_mode,
                                     /*is_generic_kernel=*/true>;
 
-  __device__ static void run(int32 count, int32 channels_size,
-                             int32 inner_dim_size, const T* __restrict__ _in,
+  __device__ static void run(int32_t count, int32_t channels_size,
+                             int32_t inner_dim_size, const T* __restrict__ _in,
                              const U* __restrict__ scale,
                              const U* __restrict__ offset,
                              const U* __restrict__ mean,
@@ -289,7 +289,7 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
 template <typename T, typename U, TensorFormat tensor_format,
           bool add_side_input, FusedBatchNormActivationMode activation_mode>
 __global__ void FusedBatchNormInferenceMetaKernel(
-    int32 count, int32 channels_size, int32 inner_dim_size, const T* in,
+    int32_t count, int32_t channels_size, int32_t inner_dim_size, const T* in,
     const U* scale, const U* offset, const U* mean, const U* var,
     const T* side_input, float epsilon, T* out) {
   // We prefer to run non-generic specialization, for the given types T and U.
@@ -320,14 +320,14 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
                   typename TTypes<T, 4>::Tensor out) {
     const auto& d = context->eigen_device<GPUDevice>();
 
-    const int32 count = out.size();
+    const int32_t count = out.size();
     if (count == 0) return;
 
     bool launched = false;
 #if TENSORFLOW_USE_ROCM
     constexpr int32 kThreadInBlock = 1024;
 #else
-    constexpr int32 kThreadInBlock = 512;
+    constexpr int32_t kThreadInBlock = 512;
 #endif
 
 #define LAUNCH(DATA_FORMAT, ADD_SIDE_INPUT, ACTIVATION, CHANNEL_SIZE,          \
