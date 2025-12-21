@@ -53,15 +53,14 @@ class CpuAotCompilationTest : public HloTestBase {
         std::vector<std::unique_ptr<Executable>> executables,
         compiler->Compile(std::move(module), {stream_exec}, nullptr));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AotCompilationResult> exported_aot_result,
-        compiler->Export(executables[0].get()));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> exported_aot_result,
+                            compiler->Export(executables[0].get()));
 
     // Serialize-deserialize AOT compilation result.
     TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                             exported_aot_result->SerializeAsString());
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AotCompilationResult> loaded_aot_result,
+        std::unique_ptr<CompiledModule> loaded_aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
     // Load Executable from AOT compilation result.

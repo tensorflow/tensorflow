@@ -699,7 +699,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = [
         "no_mac",
     ],
