@@ -65,7 +65,10 @@ filegroup(
 # Please use the individual targets in the deps list as needed. See b/336889334.
 cc_library(
     name = "jit",
-    visibility = internal_visibility([":legacy_jit_users"]),
+    visibility = internal_visibility([
+        ":legacy_jit_users",
+        "//tensorflow/python/profiler:__pkg__",
+    ]),
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",
