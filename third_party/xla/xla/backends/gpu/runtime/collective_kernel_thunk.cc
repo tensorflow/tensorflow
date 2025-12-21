@@ -317,7 +317,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   se::Stream* stream = params.stream;
   if (is_async_) {
     stream = params.collective_params->async_streams.at(
-        static_cast<int64_t>(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+        Thunk::execution_stream_id().value());
   }
   const int device_ordinal = stream->parent()->device_ordinal();
 

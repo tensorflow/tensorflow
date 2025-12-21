@@ -209,24 +209,21 @@ CollectiveConfig GetCollectiveConfig(
 }
 
 CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
-                                 AsyncStreamKind stream_kind)
+                                 bool is_p2p)
     : Thunk(kind, thunk_info),
-      stream_kind_(stream_kind),
-      async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
+      async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()),
+      is_p2p_(is_p2p) {}
 
 CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
                                  std::shared_ptr<AsyncEvents> async_events,
-                                 AsyncStreamKind stream_kind)
-    : Thunk(kind, thunk_info),
-      stream_kind_(stream_kind),
-      async_events_(async_events) {}
+                                 bool is_p2p)
+    : Thunk(kind, thunk_info), async_events_(async_events), is_p2p_(is_p2p) {}
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
     bool include_participant_groups) {
   return GetGpuCliqueKey(params, collective_config.replica_groups,
-                         collective_config.group_mode,
-                         AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE,
+                         collective_config.group_mode, false,
                          include_participant_groups);
 }
 
@@ -349,7 +346,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, GetAsyncStreamKind()));
+                      config().group_mode, IsP2PCollective()));
   return params.clique_requests->RequestClique(clique_key);
 }
 
@@ -364,12 +361,11 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat(
       "[%d] Starting %s %s.", params.stream->parent()->device_ordinal(),
       IsAsync() ? "async" : "sync", Thunk::KindToString(kind()));
-  AsyncStreamKind stream_kind = GetAsyncStreamKind();
 
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, stream_kind));
+                      config().group_mode, IsP2PCollective()));
 
   ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
@@ -377,23 +373,29 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   DCHECK(comm) << "Failed to get communicator for collective operation";
 
   se::StreamExecutor* executor = params.stream->parent();
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
 
   bool is_first_rendezvous_needed = false;
   if (IsAsync()) {
     // Launch collective operation on an async stream.
-    se::Stream& async_stream =
-        *params.collective_params->async_streams.at(async_stream_idx);
+    se::Stream* async_stream = params.collective_params->async_streams.at(
+        Thunk::execution_stream_id().value());
+
+    // Override the async stream if set by the thunk.
+    auto stream_id = GetStreamIdOverride();
+    if (stream_id.has_value()) {
+      async_stream =
+          params.collective_params->async_streams.at(stream_id.value().value());
+    }
 
     // Wait for main compute stream to make sure all buffers are ready.
-    RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
+    RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
 
     ASSIGN_OR_RETURN(is_first_rendezvous_needed,
-                     RunCollective(params, clique_key, async_stream, *comm));
+                     RunCollective(params, clique_key, *async_stream, *comm));
 
     // Record collective operation completion.
     ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-    RETURN_IF_ERROR(async_stream.RecordEvent(event));
+    RETURN_IF_ERROR(async_stream->RecordEvent(event));
   } else {
     // Launch collective operation on a main stream.
     ASSIGN_OR_RETURN(is_first_rendezvous_needed,
@@ -445,12 +447,10 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
     const ExecuteParams& params) const {
-  AsyncStreamKind stream_kind = GetAsyncStreamKind();
-
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, stream_kind));
+                      config().group_mode, IsP2PCollective()));
   ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
                        clique_key, params.collective_params->global_device_id));
@@ -482,8 +482,6 @@ absl::StatusOr<CollectiveThunkProto> CollectiveThunk::ToCollectiveThunkProto()
     const {
   CollectiveThunkProto proto;
 
-  proto.set_async_stream_kind(stream_kind_);
-
   std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
   if (!async_events_id.has_value()) {
     return absl::FailedPreconditionError("AsyncEvents is not set.");
@@ -496,11 +494,8 @@ absl::StatusOr<CollectiveThunkProto> CollectiveThunk::ToCollectiveThunkProto()
 
 CollectiveDoneThunk::CollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-    AsyncStreamKind async_stream_kind)
-    : Thunk(kind, std::move(thunk_info)),
-      async_events_(async_events),
-      stream_kind_(async_stream_kind) {}
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
 
 absl::Status CollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
@@ -536,7 +531,6 @@ absl::StatusOr<ThunkProto> CollectiveDoneThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   CollectiveDoneThunkProto* thunk_proto = proto.mutable_collective_done_thunk();
-  thunk_proto->set_async_stream_kind(stream_kind_);
 
   std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
   if (async_events_id.has_value()) {
@@ -565,8 +559,7 @@ CollectiveDoneThunk::FromProto(
   ASSIGN_OR_RETURN(Thunk::Kind kind,
                    Thunk::KindFromProto(thunk_proto.thunk_kind()));
   return std::make_unique<CollectiveDoneThunk>(kind, std::move(thunk_info),
-                                               async_events,
-                                               thunk_proto.async_stream_kind());
+                                               async_events);
 }
 
 }  // namespace xla::gpu

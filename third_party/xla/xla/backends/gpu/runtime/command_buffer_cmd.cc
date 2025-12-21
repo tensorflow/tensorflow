@@ -2117,8 +2117,7 @@ absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().group_mode, false));
   return params.clique_requests->RequestClique(clique_key);
 }
 
@@ -2193,8 +2192,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,
@@ -2261,8 +2259,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,
@@ -2329,8 +2326,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,
@@ -2395,8 +2391,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,
@@ -2461,8 +2456,7 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,
@@ -2527,8 +2521,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*execute_params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+                      config().replica_groups, config().group_mode, false));
 
   TF_ASSIGN_OR_RETURN(
       Communicator * comm,

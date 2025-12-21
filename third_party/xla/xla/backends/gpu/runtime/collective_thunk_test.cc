@@ -40,7 +40,6 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
         }
         collective_done_thunk {
           thunk_kind: 1
-          async_stream_kind: 2
           async_events_unique_id: 3
         }
       )pb");

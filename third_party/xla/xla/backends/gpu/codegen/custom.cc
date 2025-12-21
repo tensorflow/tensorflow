@@ -220,7 +220,8 @@ std::unique_ptr<HloModule> ExtractOffsetModule(
     const HloInstruction* offset_value, int64_t indvar_idx) {
   // Extract offset as a function of parameter to while body.
   std::unique_ptr<HloModule> extracted_offset = ExtractModule(
-      /*instruction=*/offset_value, /*height=*/-1,
+      /*instruction=*/
+      offset_value, /*height=*/-1,
       /*extract_selector=*/
       [](const HloInstruction* instr) -> bool {
         return instr->opcode() != HloOpcode::kParameter;
@@ -1333,8 +1334,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
           /*thunk_info=*/
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context.GetNextThunkId()),
-          /*async_events=*/async_events,
-          /*async_stream_kind=*/AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+          /*async_events=*/async_events);
       seq.emplace_back(std::move(collective_done_thunk));
     }
   } else {

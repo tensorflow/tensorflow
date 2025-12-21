@@ -44,6 +44,9 @@ class SendThunk : public CollectiveThunk {
 
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
+  std::optional<ExecutionStreamId> GetStreamIdOverride() const override {
+    return stream_id_override_;
+  }
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
@@ -54,6 +57,7 @@ class SendThunk : public CollectiveThunk {
   const Buffer buffer_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
+  std::optional<ExecutionStreamId> stream_id_override_;
 };
 
 }  // namespace gpu

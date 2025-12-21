@@ -395,8 +395,8 @@ message CollectiveConfigProto {
 
 message CollectiveThunkProto {
   ThunkKindProto thunk_kind = 1;
-  AsyncStreamKind async_stream_kind = 2;
   uint64 async_events_unique_id = 3;
+  bool is_p2p = 4;
 }
 
 message AllGatherStartThunkProto {
@@ -437,7 +437,6 @@ message AllToAllStartThunkProto {
 
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
-  AsyncStreamKind async_stream_kind = 2;
   optional uint64 async_events_unique_id = 3;
 }
 
