@@ -34,21 +34,25 @@ namespace tensorflow {
 
 namespace {
 
-// Calculate maximum thread count based on hardware (8x CPU cores)
+constexpr int32 kDefaultFallbackThreads = 128;
+constexpr int32 kThreadOversubscriptionFactor = 8;
+constexpr int32 kMinimumThreadCount = 128;
+
+// Calculate maximum thread count based on hardware
 int32 GetMaxThreadCount() {
   static const int32 max_threads = []() {
     const int hw_concurrency = std::thread::hardware_concurrency();
     if (hw_concurrency == 0) {
-      return 128;  // Fallback if detection fails
+      return kDefaultFallbackThreads;  // Fallback if detection fails
     }
     // Allow 8x oversubscription, minimum 128
-    return std::max(hw_concurrency * 8, 128);
+    return std::max(hw_concurrency * kThreadOversubscriptionFactor, kMinimumThreadCount);
   }();
   return max_threads;
 }
 
 int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
-  // 0 means auto-detect - valid
+  // Auto-detect case
   if (requested_threads == 0) {
     return 0;
   }
@@ -65,7 +69,7 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
   const int max_threads = GetMaxThreadCount();
   const int max_reasonable = std::max(hardware_concurrency * 2, 128);
 
-  // CRITICAL: Clamp to prevent segfault
+  // hard limit
   if (requested_threads > max_threads) {
     LOG(ERROR) << thread_type << " thread count " << requested_threads
                << " exceeds hard limit of " << max_threads
@@ -74,7 +78,7 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
     return max_threads;
   }
 
-  // Warn if value is very large
+  // warning limit
   if (requested_threads > max_reasonable) {
     LOG(WARNING) << thread_type << " thread count " << requested_threads
                  << " is very large for a system with " << hardware_concurrency
@@ -84,7 +88,7 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
   return requested_threads;
 }
 
-// Use environment setting if specified (init once)
+// Get the inter-op thread count from the environment variable.
 int32_t GetEnvNumInterOpThreads() {
   static int32_t env_num_threads = NumInterOpThreadsFromEnvironment();
   return env_num_threads;
