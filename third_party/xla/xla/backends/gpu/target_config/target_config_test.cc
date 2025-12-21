@@ -44,12 +44,13 @@ TEST_P(GetGpuTargetConfigTest, TestProtoRetrieval) {
   auto config = GetGpuTargetConfig(test_case.gpu_model);
 
   if (test_case.expect_ok) {
-    ASSERT_THAT(config, IsOk());
+    ASSERT_THAT(config, absl_testing::IsOk());
     EXPECT_TRUE(config->has_gpu_device_info());
     EXPECT_GT(config->gpu_device_info().threads_per_block_limit(), 0);
   } else {
-    EXPECT_THAT(config, StatusIs(absl::StatusCode::kNotFound,
-                                 HasSubstr("Embedded file not found")));
+    EXPECT_THAT(config,
+                absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                       HasSubstr("Embedded file not found")));
   }
 }
 
