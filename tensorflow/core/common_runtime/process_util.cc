@@ -43,9 +43,8 @@ int32 GetMaxThreadCount() {
   static const int32 max_threads = []() {
     const int hw_concurrency = std::thread::hardware_concurrency();
     if (hw_concurrency == 0) {
-      return kDefaultFallbackThreads;  // Fallback if detection fails
+      return kDefaultFallbackThreads;
     }
-    // Allow 8x oversubscription, minimum 128
     return std::max(hw_concurrency * kThreadOversubscriptionFactor, kMinimumThreadCount);
   }();
   return max_threads;
@@ -57,19 +56,17 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
     return 0;
   }
 
-  // Negative case not valid
+  // Negative case
   if (requested_threads < 0) {
     LOG(WARNING) << thread_type << " thread count " << requested_threads
                  << " is negative. Using 0 (auto-detect).";
     return 0;
   }
 
-  // Get hardware info for validation
   const int hardware_concurrency = std::thread::hardware_concurrency();
   const int max_threads = GetMaxThreadCount();
   const int max_reasonable = std::max(hardware_concurrency * 2, 128);
 
-  // hard limit
   if (requested_threads > max_threads) {
     LOG(ERROR) << thread_type << " thread count " << requested_threads
                << " exceeds hard limit of " << max_threads
@@ -78,7 +75,6 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
     return max_threads;
   }
 
-  // warning limit
   if (requested_threads > max_reasonable) {
     LOG(WARNING) << thread_type << " thread count " << requested_threads
                  << " is very large for a system with " << hardware_concurrency
@@ -101,7 +97,7 @@ int32_t DefaultNumInterOpThreads() {
     return ValidateThreadCount(env_num_threads, "inter_op_parallelism (env)");
   }
 
-  // Default to the maximum parallelism for the current process.
+  // Default to the maximum parallelism .
   return port::MaxParallelism();
 #else
   // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
