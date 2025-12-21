@@ -123,6 +123,7 @@ apply fixes to bugs or security vulnerabilities:
 You can find more community-supported platforms and configurations in the
 [TensorFlow SIG Build Community Builds Table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
 
+
 ### Official Builds
 
 Build Type                    | Status                                                                                                                                                                           | Artifacts
@@ -171,3 +172,10 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
+
+## Verify Installation
+After installing TensorFlow, you can quickly verify it by running:
+
+```python
+import tensorflow as tf
+print(tf.__version__)
