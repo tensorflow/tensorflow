@@ -3218,6 +3218,10 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      if (hlo->sharding().dimension(i) != 1) {
+        update_on_a_single_partition = false;
+        continue;
+      }
       continue;
     }
     analysis.slice_dims.push_back(i);
