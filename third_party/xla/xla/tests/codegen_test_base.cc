@@ -33,12 +33,12 @@ CodegenTestBase::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
                                           /*device_allocator=*/nullptr);
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 CodegenTestBase::CompileToAotCompilationResult(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& options) {
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> results,
+      std::vector<std::unique_ptr<CompiledModule>> results,
       backend().compiler()->CompileAheadOfTime(std::move(hlo_module), options));
   return std::move(results.front());
 }

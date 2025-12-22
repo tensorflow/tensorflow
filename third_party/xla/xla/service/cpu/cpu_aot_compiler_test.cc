@@ -101,13 +101,13 @@ ENTRY e {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo));
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+        std::vector<std::unique_ptr<CompiledModule>> aot_results,
         compiler->CompileAheadOfTime(std::move(module), *aot_options));
 
     TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                             aot_results[0]->SerializeAsString());
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AotCompilationResult> aot_result,
+        std::unique_ptr<CompiledModule> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
     TF_ASSERT_OK_AND_ASSIGN(
