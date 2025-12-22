@@ -2512,6 +2512,40 @@ PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
+    PJRT_Buffer_DonateWithControlDependency_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_DonateWithControlDependency_Args",
+      PJRT_Buffer_DonateWithControlDependency_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  auto [promise, future] = xla::Future<>::MakePromise();
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> out_buffer,
+      args->buffer->buffer->DonateWithControlDependency(std::move(future)));
+
+  struct CallbackData {
+    xla::Promise<> promise;
+  };
+  args->out_buffer =
+      new PJRT_Buffer{std::move(out_buffer), args->buffer->client};
+  args->callback_data = new CallbackData{std::move(promise)};
+  args->dependency_ready_callback =
+      [](PJRT_Buffer_DonateWithControlDependency_Callback_Args* args) {
+        auto* data = static_cast<CallbackData*>(args->callback_data);
+        if (args->error_code == PJRT_Error_Code_OK) {
+          data->promise.Set();
+        } else {
+          absl::Status status(
+              pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+              absl::string_view(args->error_message, args->error_message_size));
+          data->promise.Set(std::move(status));
+        }
+        delete data;
+      };
+  return nullptr;
+}
+
 // ---------------------------- CopyToDeviceStream -----------------------------
 
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
@@ -3300,6 +3334,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_AsyncTrackingEvent_Destroy,
       /*PJRT_Executable_GetCompileOptions=*/
       pjrt::PJRT_Executable_GetCompileOptions,
+      /*PJRT_Buffer_DonateWithControlDependency=*/
+      pjrt::PJRT_Buffer_DonateWithControlDependency,
   };
 }
 

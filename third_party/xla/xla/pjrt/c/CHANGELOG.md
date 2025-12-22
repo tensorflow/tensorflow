@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.88
+
+* Add `PJRT_Buffer_DonateWithControlDependency`.
+
 ## 0.87
 
 * Add `PJRT_Executable_GetCompileOptions`.

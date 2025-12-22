@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 87
+#define PJRT_API_MINOR 88
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2464,6 +2464,33 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args,
 typedef PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
     PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
 
+struct PJRT_Buffer_DonateWithControlDependency_Callback_Args {
+  size_t struct_size;
+  void* callback_data;
+  PJRT_Error_Code error_code;
+  const char* error_message;
+  size_t error_message_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DonateWithControlDependency_Callback_Args,
+                          error_message_size);
+
+struct PJRT_Buffer_DonateWithControlDependency_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+
+  void* callback_data;  // out
+  void (*dependency_ready_callback)(
+      PJRT_Buffer_DonateWithControlDependency_Callback_Args* args);  // out
+
+  PJRT_Buffer* out_buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_DonateWithControlDependency_Args,
+                          out_buffer);
+
+typedef PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
+    PJRT_Buffer_DonateWithControlDependency_Args* args);
+
 // ---------------------------- CopyToDeviceStream -----------------------------
 
 struct PJRT_CopyToDeviceStream_Destroy_Args {
@@ -2852,11 +2879,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_CreateAsyncTrackingEvent);
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncTrackingEvent_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompileOptions);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DonateWithControlDependency);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_GetCompileOptions)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_DonateWithControlDependency)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

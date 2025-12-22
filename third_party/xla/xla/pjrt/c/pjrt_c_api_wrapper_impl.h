@@ -434,6 +434,9 @@ PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
 PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
     PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
 
+PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
+    PJRT_Buffer_DonateWithControlDependency_Args* args);
+
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
     PJRT_CopyToDeviceStream_Destroy_Args* args);
 PJRT_Error* PJRT_CopyToDeviceStream_AddChunk(
