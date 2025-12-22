@@ -422,9 +422,6 @@ cc_library(
     name = "rocm_solver_context",
     srcs = ["rocm_solver_context.cc"],
     hdrs = ["rocm_solver_context.h"],
-    local_defines = [
-        "TENSORFLOW_USE_ROCM=1",
-    ],
     tags = [
         "gpu",
         "manual",
