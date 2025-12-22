@@ -3282,6 +3282,21 @@ func.func @test_fullyconnected_dynamic_output(%arg0: tensor<1x2048xf32>, %arg1: 
 
 // -----
 
+// CHECK-LABEL: @test_fullyconnected_dynamic_batch
+func.func @test_fullyconnected_dynamic_batch(%arg0: tensor<?x512xf32>, %arg1: tensor<256x512xf32>, %arg2: tensor<256xf32>) -> tensor<?x256xf32> {
+  // CHECK-DAG: %[[OUT_SHAPE:.*]] = tosa.const_shape  {values = dense<[-1, 256]> : tensor<2xindex>} : () -> !tosa.shape<2>
+  // CHECK-DAG: %[[FILTER_SHAPE:.*]] = tosa.const_shape  {values = dense<[256, 1, 1, 512]> : tensor<4xindex>} : () -> !tosa.shape<4>
+  // CHECK-DAG: %[[IN_SHAPE:.*]] = tosa.const_shape  {values = dense<[-1, 1, 1, 512]> : tensor<4xindex>} : () -> !tosa.shape<4>
+  // CHECK: %[[RESHAPE_IN:.*]] = tosa.reshape %arg0, %[[IN_SHAPE]]
+  // CHECK: %[[RESHAPE_FILTER:.*]] = tosa.reshape %arg1, %[[FILTER_SHAPE]]
+  // CHECK: %[[CONV:.*]] = tosa.conv2d %[[RESHAPE_IN]], %[[RESHAPE_FILTER]], %arg2, {{.*}}, {{.*}}
+  // CHECK: tosa.reshape %[[CONV]], %[[OUT_SHAPE]]
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x512xf32>, tensor<256x512xf32>, tensor<256xf32>) -> tensor<?x256xf32>
+  func.return %0 : tensor<?x256xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @test_fullyconnected_keep_dims
 func.func @test_fullyconnected_keep_dims(%arg0: tensor<1x64x64x768x!quant.uniform<i8:f32, 0.13852123916149139:5>>, %arg1: tensor<3072x768x!quant.uniform<i8<-127:127>:f32, 0.003333511995151639>>, %arg2: tensor<3072x!quant.uniform<i32:f32, 4.6176221803762019E-4>>) -> tensor<1x64x64x3072x!quant.uniform<i8:f32, 0.1022367924451828:45>> {
     // CHECK-DAG: %[[CONST_SHAPE0:.*]] = tosa.const_shape  {values = dense<[1, 64, 64, 3072]> : tensor<4xindex>}

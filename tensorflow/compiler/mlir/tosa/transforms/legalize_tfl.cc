@@ -2336,7 +2336,10 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   // shape[1].
   if (input_type.getRank() != 2) {
     int64_t num_elems = filter_type.getShape()[1];
-    int64_t num_batch = input_type.getNumElements() / num_elems;
+    int64_t num_batch = ShapedType::kDynamic;
+    if (input_type.hasStaticShape()) {
+      num_batch = input_type.getNumElements() / num_elems;
+    }
     SmallVector<int64_t, 2> shape_vals({num_batch, num_elems});
 
     RankedTensorType reshape_type =
