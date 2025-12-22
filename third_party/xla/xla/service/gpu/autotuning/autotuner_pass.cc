@@ -80,10 +80,12 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   return autotune_config;
 }
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options) {
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 const AutotuneConfig& autotune_config) {
   ProfileOptions profile_options;
   profile_options.redzone_padding_bytes =
       debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = autotune_config.check_buffers;
   return profile_options;
 }
 
@@ -103,8 +105,9 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
 
   if (!is_deviceless) {
-    profiler = GpuProfiler::Create(stream_executor,
-                                   GetProfileOptions(debug_options), allocator);
+    profiler = GpuProfiler::Create(
+        stream_executor, GetProfileOptions(debug_options, autotune_config),
+        allocator);
   }
 
   std::unique_ptr<AutotunerCacheInterface> cache =
