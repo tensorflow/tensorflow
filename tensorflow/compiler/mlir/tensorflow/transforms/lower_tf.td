@@ -37,7 +37,7 @@ class GetF32Scalar<int value> :
 def TrueBoolAttr : AttrConstraint<CPred<"llvm::cast<::mlir::BoolAttr>($_self).getValue()">>;
 
 def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
+    "TF::ShapeOp::create($_builder, $0.getLoc(), $1, $2)">;
 
 def IsI32 : NativeCodeCall<
     "$_builder.getBoolAttr(getElementTypeOrSelf($0.getType()).isInteger(32))">;
@@ -49,11 +49,11 @@ def CreateTFCastOpI32 : NativeCodeCall<
     "CreateTFCastOpI32(&$_builder, $0.getLoc(), $1, $2)">;
 
 def CreateTensorScatterNdOp : NativeCodeCall<
-    "$_builder.create<TF::ScatterNdOp>("
+    "TF::ScatterNdOp::create($_builder, "
     "$0.getLoc(), $0.getType(), $1, $2, $3, $4)">;
 
 def CreateTensorScatterUpdateOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterUpdateOp>("
+    "TF::TensorScatterUpdateOp::create($_builder, "
     "$0.getLoc(), $0.getType(), $0, $1, $2, $3)">;
 
 //===----------------------------------------------------------------------===//
