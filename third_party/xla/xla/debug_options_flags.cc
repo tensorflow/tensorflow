@@ -474,6 +474,15 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
 
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUDNN);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_TRITON);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUBLAS);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUBLASLT);
+
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
   opts.set_xla_cpu_collective_timeout_seconds(30 * 60);
@@ -711,6 +720,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       }
     };
     return absl::StrJoin(command_types, ", ", Formatter());
+  };
+
+  auto autotune_backends_to_string =
+      [](google::protobuf::RepeatedField<int> backends) -> std::string {
+    struct Formatter {
+      void operator()(std::string* out, int type) const {
+        absl::StrAppend(out, DebugOptions::AutotuneBackend_Name(type));
+      }
+    };
+    return absl::StrJoin(backends, ", ", Formatter());
   };
 
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
@@ -2360,6 +2379,20 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_autotuner_cache_dir),
       debug_options->xla_gpu_experimental_autotuner_cache_dir(),
       "Experimental: Specify the directory to read/write autotuner cache to."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_autotune_backends",
+      SetterForRepeatedEnum<DebugOptions::AutotuneBackend>(
+          "xla_gpu_experimental_autotune_backends",
+          /*enum_prefix=*/"AUTOTUNE_BACKEND_",
+          &DebugOptions::AutotuneBackend_Parse,
+          debug_options->mutable_xla_gpu_experimental_autotune_backends()),
+      autotune_backends_to_string(
+          debug_options->xla_gpu_experimental_autotune_backends()),
+      "Backends to enable for autotuning. Comma-separated (no spaces). "
+      "Examples:\n"
+      "  'cudnn,triton' (overwrites defaults)\n"
+      "  '+cudnn,-cublas' (adds/removes from defaults)\n"
+      "Available: cudnn, triton, cublas, cublaslt."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_gemm_autotuner_override_file",
       string_setter_for(

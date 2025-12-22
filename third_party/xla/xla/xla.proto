@@ -61,6 +61,15 @@ message ThunkBufferDebugFilter {
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
 message DebugOptions {
+  // Enum to define all backends that can be autotuned.
+  enum AutotuneBackend {
+    AUTOTUNE_BACKEND_ALL = 0;
+    AUTOTUNE_BACKEND_CUDNN = 1;
+    AUTOTUNE_BACKEND_TRITON = 2;
+    AUTOTUNE_BACKEND_CUBLAS = 3;
+    AUTOTUNE_BACKEND_CUBLASLT = 4;
+  }
+
   // Enum to define all collective ops
   // that xla supports.
   enum CollectiveOpType {
@@ -306,7 +315,7 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend"] // NOLINT
   // clang-format on
 
   // Command buffer scheduling mode.
@@ -629,6 +638,9 @@ message DebugOptions {
   // includes the generated Thunks. In contrast, the legacy flow only compiles
   // up to the HLO optimization stage, before Thunk generation.
   optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
+
+  // List of autotuner backends to enable. If empty, all backends are enabled.
+  repeated AutotuneBackend xla_gpu_experimental_autotune_backends = 442;
 
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
@@ -1341,7 +1353,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 442
+  // Next id: 443
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -507,6 +507,38 @@ TEST(ParseRepeatedEnumFlagsTest, XnnFusionType) {
   TestLibraryFusionType("xnn");
 }
 
+TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  const auto& enabled_backends =
+      debug_options.xla_gpu_experimental_autotune_backends();
+
+  // Check that the default setting is populated.
+  ASSERT_THAT(enabled_backends,
+              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
+                          DebugOptions::AUTOTUNE_BACKEND_TRITON,
+                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS,
+                          DebugOptions::AUTOTUNE_BACKEND_CUBLASLT));
+
+  // Overwriting the default setting.
+  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=cudnn,triton");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_backends.size(), 2);
+  EXPECT_THAT(enabled_backends,
+              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
+                          DebugOptions::AUTOTUNE_BACKEND_TRITON));
+
+  // Adding / removing options from the existing setting.
+  SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=+cublas,-triton");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_backends.size(), 2);
+  EXPECT_THAT(enabled_backends,
+              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
+                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS));
+}
+
 TEST(ParseIntRangeInclusiveTest, SingleInteger) {
   IntRangeInclusive range;
   EXPECT_TRUE(ParseIntRangeInclusive("10", range));
