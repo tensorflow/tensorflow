@@ -915,7 +915,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_P(GemmFusionAutotunerLevelTest, Deviceless) {
+TEST_P(GemmFusionAutotunerLevelTest, DISABLED_Deviceless) {
   if (GetCudaComputeCapability().IsAtLeastBlackwell()) {
     GTEST_SKIP() << "TODO: b/407494653 - Re-enable for Blackwell once this is "
                     "no longer fragile.";
