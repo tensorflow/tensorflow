@@ -59,7 +59,6 @@ RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 # Setup JAX Python environment.
 COPY requirements.txt /requirements.txt
 COPY setup.python.sh /setup.python.sh
-RUN /setup.python.sh python3.9 requirements.txt
 RUN /setup.python.sh python3.10 requirements.txt
 RUN /setup.python.sh python3.11 requirements.txt
 RUN /setup.python.sh python3.12 requirements.txt

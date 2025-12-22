@@ -16,7 +16,7 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 add_definitions(-DTF_PIP_INTEGRATION_TEST)
 
-set(TENSORFLOW_PACKAGE_PATH "/usr/local/lib/python3.9/dist-packages/tensorflow"
+set(TENSORFLOW_PACKAGE_PATH "/usr/local/lib/python3.10/dist-packages/tensorflow"
     CACHE STRING "Full path of tensorflow python package")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

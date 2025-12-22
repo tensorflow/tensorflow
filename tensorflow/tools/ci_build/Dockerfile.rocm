@@ -105,7 +105,6 @@ COPY release/common.sh /install/common.sh
 COPY release/* tensorflow/tools/ci_build/release/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_deb_packages.sh
-RUN /install/install_pi_python3.9_toolchain.sh
 
 SHELL ["/bin/bash", "-c"]
 RUN /install/install_bazel.sh
