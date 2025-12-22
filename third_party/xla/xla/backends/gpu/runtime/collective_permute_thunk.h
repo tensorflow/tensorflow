@@ -1,4 +1,5 @@
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/service/buffer_assignment.h"
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,6 +93,18 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         ABSL_GUARDED_BY(mutex_);
   };
 
+  CollectivePermuteStartThunk(ThunkInfo thunk_info,
+                              const HloCollectivePermuteInstruction* instr,
+                              int64_t replica_count, int64_t partition_count,
+                              const std::vector<Buffer>& buffers,
+                              bool p2p_memcpy_enabled,
+                              AsyncStreamKind stream_kind);
+  CollectivePermuteStartThunk(ThunkInfo thunk_info, const P2PConfig& config,
+                              std::shared_ptr<AsyncEvents> async_events,
+                              const std::vector<Buffer>& buffers,
+                              bool p2p_memcpy_enabled,
+                              AsyncStreamKind stream_kind);
+
   static P2PConfig GetP2PConfig(const HloCollectivePermuteInstruction* instr,
                                 int64_t replica_count, int64_t partition_count);
 
@@ -101,22 +114,22 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  CollectivePermuteStartThunk(ThunkInfo thunk_info,
-                              const HloCollectivePermuteInstruction* instr,
-                              int64_t replica_count, int64_t partition_count,
-                              const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled,
-                              AsyncStreamKind stream_kind);
-
   absl::Status Initialize(const InitializeParams& params) override;
 
-  static const char* GetHloOpName() { return "collective-permute-start"; }
+  static absl::string_view GetHloOpName() { return "collective-permute-start"; }
 
   const CollectiveConfig& config() const override { return config_.config; }
 
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
   const P2PConfig& p2p_config() const { return config_; }
+
+  static absl::StatusOr<std::unique_ptr<CollectivePermuteStartThunk>> FromProto(
+      ThunkInfo thunk_info, const CollectivePermuteStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,

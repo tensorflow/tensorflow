@@ -446,6 +446,17 @@ message RaggedAllToAllStartThunkProto {
   bool one_shot_kernel_enabled = 7;
 }
 
+message CollectivePermuteStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  repeated CollectiveBufferProto buffers = 2;
+
+  CollectiveConfigProto collective_config = 3;
+  repeated SourceTarget source_target_pairs = 4;
+
+  AsyncStreamKind async_stream_kind = 5;
+  bool p2p_memcpy_enabled = 6;
+}
+
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
   AsyncStreamKind async_stream_kind = 2;
@@ -495,6 +506,7 @@ message ThunkProto {
     AllReduceStartThunkProto all_reduce_start_thunk = 39;
     AllToAllStartThunkProto all_to_all_start_thunk = 40;
     RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 41;
+    CollectivePermuteStartThunkProto collective_permute_start_thunk = 42;
   }
 }
 

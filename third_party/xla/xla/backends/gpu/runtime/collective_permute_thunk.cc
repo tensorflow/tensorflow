@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -90,9 +93,22 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     int64_t replica_count, int64_t partition_count,
     const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
     AsyncStreamKind stream_kind)
-    : CollectiveThunk(Thunk::kCollectivePermuteStart, thunk_info,
-                      IsGPUSyncCollective(*instr), stream_kind),
-      config_(GetP2PConfig(instr, replica_count, partition_count)),
+    : CollectivePermuteStartThunk(
+          std::move(thunk_info),
+          GetP2PConfig(instr, replica_count, partition_count),
+          IsGPUSyncCollective(*instr)
+              ? nullptr
+              : std::make_shared<CollectiveThunk::AsyncEvents>(),
+          buffers, p2p_memcpy_enabled, stream_kind) {}
+
+CollectivePermuteStartThunk::CollectivePermuteStartThunk(
+    ThunkInfo thunk_info, const P2PConfig& config,
+    std::shared_ptr<AsyncEvents> async_events,
+    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
+    AsyncStreamKind stream_kind)
+    : CollectiveThunk(Thunk::kCollectivePermuteStart, thunk_info, async_events,
+                      stream_kind),
+      config_(config),
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
 
@@ -228,6 +244,88 @@ struct CallRendezvousKey {
 
 bool operator==(const CallRendezvousKey& a, const CallRendezvousKey& b) {
   return a.run_id == b.run_id;
+}
+
+absl::StatusOr<std::unique_ptr<CollectivePermuteStartThunk>>
+CollectivePermuteStartThunk::FromProto(
+    ThunkInfo thunk_info, const CollectivePermuteStartThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(thunk_proto.buffers_size());
+  for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
+    ASSIGN_OR_RETURN(
+        CollectiveThunk::Buffer buffer,
+        CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
+    buffers.push_back(buffer);
+  }
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+
+  P2PConfig::IdToSourceTargetMap id_to_source_target;
+  for (const SourceTarget& source_target : thunk_proto.source_target_pairs()) {
+    id_to_source_target.insert({source_target.target(), {}})
+        .first->second.source = source_target.source();
+    id_to_source_target.insert({source_target.source(), {}})
+        .first->second.target = source_target.target();
+  }
+
+  return std::make_unique<CollectivePermuteStartThunk>(
+      std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
+      async_events, std::move(buffers), thunk_proto.p2p_memcpy_enabled(),
+      thunk_proto.async_stream_kind());
+}
+
+absl::StatusOr<ThunkProto> CollectivePermuteStartThunk::ToProto() const {
+  CHECK_EQ(config_.validation_kind, P2PConfig::ValidationKind::kValid);
+  CHECK(config_.source_target_to_bounds.empty());
+
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  CollectivePermuteStartThunkProto* thunk_proto =
+      proto.mutable_collective_permute_start_thunk();
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    thunk_proto->set_async_events_unique_id(async_events_id->value());
+  }
+
+  for (const Buffer& buffer : buffers_) {
+    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+  }
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+  thunk_proto->set_p2p_memcpy_enabled(p2p_memcpy_enabled_);
+
+  std::vector<SourceTarget> source_target_pairs;
+  source_target_pairs.reserve(config_.id_to_source_target.size() / 2);
+  for (const auto& [key_id, map_entry] : config_.id_to_source_target) {
+    SourceTarget pair;
+    if (!map_entry.source.has_value()) {
+      // Same pair is in the map with target/source switched.
+      continue;
+    }
+    pair.set_source(*map_entry.source);
+    pair.set_target(key_id);
+    source_target_pairs.push_back(pair);
+  }
+  thunk_proto->mutable_source_target_pairs()->Assign(
+      source_target_pairs.begin(), source_target_pairs.end());
+
+  return proto;
 }
 
 absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
