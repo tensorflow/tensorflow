@@ -14773,6 +14773,167 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestColoringWithLoopOptimization) {
+  absl::string_view hlo_string = R"hlo(
+HloModule UnrolledLoop, is_scheduled=true
+
+ENTRY %main {
+  %param.0 = (f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4],
+              f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4]) parameter(0)
+
+  %gte.0 = f32[2,4] get-tuple-element(%param.0), index=0
+  %gte.1 = f32[2,4] get-tuple-element(%param.0), index=1
+  %add.common = f32[2,4] add(%gte.0, %gte.1)
+  %tanh.common = f32[2,4] tanh(%add.common)
+
+  // loop idx0
+  %neg.0.idx0 = f32[2,4] negate(%tanh.common)
+  %neg.1.idx0 = f32[2,4] negate(%neg.0.idx0)
+  %neg.2.idx0 = f32[2,4] negate(%neg.1.idx0)
+
+  %gte.0.idx0 = f32[2,4] get-tuple-element(%param.0), index=2
+  %add.0.idx0 = f32[2,4] add(%neg.2.idx0, %gte.0.idx0)
+
+  %gte.1.idx0 = f32[2,4] get-tuple-element(%param.0), index=3
+  %add.1.idx0 = f32[2,4] add(%add.0.idx0, %gte.1.idx0)
+
+  %tanh.idx0 = f32[2,4] tanh(%add.1.idx0)
+
+  // loop idx1
+  %neg.0.idx1 = f32[2,4] negate(%tanh.idx0)
+  %neg.1.idx1 = f32[2,4] negate(%neg.0.idx1)
+  %neg.2.idx1 = f32[2,4] negate(%neg.1.idx1)
+
+  %gte.0.idx1 = f32[2,4] get-tuple-element(%param.0), index=4
+  %add.0.idx1 = f32[2,4] add(%neg.2.idx1, %gte.0.idx1)
+
+  %gte.1.idx1 = f32[2,4] get-tuple-element(%param.0), index=5
+  %add.1.idx1 = f32[2,4] add(%add.0.idx1, %gte.1.idx1)
+
+  %tanh.idx1 = f32[2,4] tanh(%add.1.idx1)
+
+  // loop idx2
+  %neg.0.idx2 = f32[2,4] negate(%tanh.idx1)
+  %neg.1.idx2 = f32[2,4] negate(%neg.0.idx2)
+  %neg.2.idx2 = f32[2,4] negate(%neg.1.idx2)
+
+  %gte.0.idx2 = f32[2,4] get-tuple-element(%param.0), index=6
+  %add.0.idx2 = f32[2,4] add(%neg.2.idx2, %gte.0.idx2)
+
+  %gte.1.idx2 = f32[2,4] get-tuple-element(%param.0), index=7
+  %add.1.idx2 = f32[2,4] add(%add.0.idx2, %gte.1.idx2)
+
+  %tanh.idx2 = f32[2,4] tanh(%add.1.idx2)
+
+  // loop idx3
+  %neg.0.idx3 = f32[2,4] negate(%tanh.idx2)
+  %neg.1.idx3 = f32[2,4] negate(%neg.0.idx3)
+  %neg.2.idx3 = f32[2,4] negate(%neg.1.idx3)
+
+  %gte.0.idx3 = f32[2,4] get-tuple-element(%param.0), index=8
+  %add.0.idx3 = f32[2,4] add(%neg.2.idx3, %gte.0.idx3)
+
+  %gte.1.idx3 = f32[2,4] get-tuple-element(%param.0), index=9
+  %add.1.idx3 = f32[2,4] add(%add.0.idx3, %gte.1.idx3)
+
+  %tanh.idx3 = f32[2,4] tanh(%add.1.idx3)
+
+  // loop idx4
+  %neg.0.idx4 = f32[2,4] negate(%tanh.idx3)
+  %neg.1.idx4 = f32[2,4] negate(%neg.0.idx4)
+  %neg.2.idx4 = f32[2,4] negate(%neg.1.idx4)
+
+  %gte.0.idx4 = f32[2,4] get-tuple-element(%param.0), index=10
+  %add.0.idx4 = f32[2,4] add(%neg.2.idx4, %gte.0.idx4)
+
+  %gte.1.idx4 = f32[2,4] get-tuple-element(%param.0), index=11
+  %add.1.idx4 = f32[2,4] add(%add.0.idx4, %gte.1.idx4)
+
+  %tanh.idx4 = f32[2,4] tanh(%add.1.idx4)
+
+  // loop idx5
+  %neg.0.idx5 = f32[2,4] negate(%tanh.idx4)
+  %neg.1.idx5 = f32[2,4] negate(%neg.0.idx5)
+  %neg.2.idx5 = f32[2,4] negate(%neg.1.idx5)
+
+  %gte.0.idx5 = f32[2,4] get-tuple-element(%param.0), index=12
+  %add.0.idx5 = f32[2,4] add(%neg.2.idx5, %gte.0.idx5)
+
+  %gte.1.idx5 = f32[2,4] get-tuple-element(%param.0), index=13
+  %add.1.idx5 = f32[2,4] add(%add.0.idx5, %gte.1.idx5)
+
+  %tanh.idx5 = f32[2,4] tanh(%add.1.idx5)
+
+  // loop idx6
+  %neg.0.idx6 = f32[2,4] negate(%tanh.idx5)
+  %neg.1.idx6 = f32[2,4] negate(%neg.0.idx6)
+  %neg.2.idx6 = f32[2,4] negate(%neg.1.idx6)
+
+  %gte.0.idx6 = f32[2,4] get-tuple-element(%param.0), index=14
+  %add.0.idx6 = f32[2,4] add(%neg.2.idx6, %gte.0.idx6)
+
+  %gte.1.idx6 = f32[2,4] get-tuple-element(%param.0), index=15
+  %add.1.idx6 = f32[2,4] add(%add.0.idx6, %gte.1.idx6)
+
+  %tanh.idx6 = f32[2,4] tanh(%add.1.idx6)
+
+  ROOT %negate.common = f32[2,4] negate(%tanh.idx6)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.memory_bound_loop_optimizer_options.set_enabled(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_desired_copy_ratio(0.1);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_allow_unsatisfied_fully_pipelined_prefetch(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_min_num_iterations(4);
+  HloUse add_0_idx0_use{FindInstruction(module.get(), "add.0.idx0"), 1, {}};
+  HloUse add_1_idx0_use{FindInstruction(module.get(), "add.1.idx0"), 1, {}};
+  HloUse add_0_idx1_use{FindInstruction(module.get(), "add.0.idx1"), 1, {}};
+  HloUse add_1_idx1_use{FindInstruction(module.get(), "add.1.idx1"), 1, {}};
+  HloUse add_0_idx2_use{FindInstruction(module.get(), "add.0.idx2"), 1, {}};
+  HloUse add_1_idx2_use{FindInstruction(module.get(), "add.1.idx2"), 1, {}};
+  HloUse add_0_idx3_use{FindInstruction(module.get(), "add.0.idx3"), 1, {}};
+  HloUse add_1_idx3_use{FindInstruction(module.get(), "add.1.idx3"), 1, {}};
+  HloUse add_0_idx4_use{FindInstruction(module.get(), "add.0.idx4"), 1, {}};
+  HloUse add_1_idx4_use{FindInstruction(module.get(), "add.1.idx4"), 1, {}};
+  HloUse add_0_idx5_use{FindInstruction(module.get(), "add.0.idx5"), 1, {}};
+  HloUse add_1_idx5_use{FindInstruction(module.get(), "add.1.idx5"), 1, {}};
+  HloUse add_0_idx6_use{FindInstruction(module.get(), "add.0.idx6"), 1, {}};
+  HloUse add_1_idx6_use{FindInstruction(module.get(), "add.1.idx6"), 1, {}};
+  memory_space_options.buffer_colorings = {
+      {add_0_idx0_use, kAlternateMemorySpace},
+      {add_1_idx0_use, kAlternateMemorySpace},
+      {add_0_idx1_use, kAlternateMemorySpace},
+      {add_1_idx1_use, kAlternateMemorySpace},
+      {add_0_idx2_use, kAlternateMemorySpace},
+      {add_1_idx2_use, kAlternateMemorySpace},
+      {add_0_idx3_use, kAlternateMemorySpace},
+      {add_1_idx3_use, kAlternateMemorySpace},
+      {add_0_idx4_use, kAlternateMemorySpace},
+      {add_1_idx4_use, kAlternateMemorySpace},
+      {add_0_idx5_use, kAlternateMemorySpace},
+      {add_1_idx5_use, kAlternateMemorySpace},
+      {add_0_idx6_use, kAlternateMemorySpace},
+      {add_1_idx6_use, kAlternateMemorySpace}};
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> alternate_memory_uses = {
+      "add.0.idx0", "add.1.idx0", "add.0.idx1", "add.1.idx1", "add.0.idx2",
+      "add.1.idx2", "add.0.idx3", "add.1.idx3", "add.0.idx4", "add.1.idx4",
+      "add.0.idx5", "add.1.idx5", "add.0.idx6", "add.1.idx6"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_index=*/1, /*operand_opcode=*/HloOpcode::kCopyDone,
+      /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        ScopedAllocationAccountingWhenInstructionsAreRemoved) {
   absl::string_view hlo_string = R"(
