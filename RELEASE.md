@@ -27,6 +27,9 @@
     * Adds support for SRQ int2 in tfl.fully_connected.
     * Adds support for int4 in tfl.slice.
 
+*  `tf.image`
+    * Adds JPEG XL support in decode_image.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
