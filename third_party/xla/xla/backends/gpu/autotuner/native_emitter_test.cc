@@ -203,12 +203,11 @@ class MockCompiler : public Compiler {
                std::vector<se::StreamExecutor*> stream_execs,
                const CompileOptions& options),
               (override));
-  MOCK_METHOD(
-      absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>,
-      CompileAheadOfTime,
-      (std::unique_ptr<HloModule> hlo_module,
-       const AotCompilationOptions& options),
-      (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>,
+              CompileAheadOfTime,
+              (std::unique_ptr<HloModule> hlo_module,
+               const AotCompilationOptions& options),
+              (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
               (const, override));
 };
