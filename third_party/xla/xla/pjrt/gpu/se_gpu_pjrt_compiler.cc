@@ -188,7 +188,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   const std::string name = hlo_module->name();
   const std::string fingerprint = hlo_module->GetFingerprint128();
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
