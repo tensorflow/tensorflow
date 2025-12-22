@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/service/dynamic_window_utils.h"
 
+#include <cstdint>
 #include <string>
 
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
