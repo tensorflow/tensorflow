@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/Operation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/xla.pb.h"

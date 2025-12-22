@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/dynamic_dimension_inference.h"
 
