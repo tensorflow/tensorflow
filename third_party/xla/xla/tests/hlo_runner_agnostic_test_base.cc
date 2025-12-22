@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -108,9 +107,9 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
-    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+HloRunnerAgnosticTestBase::HloModuleFromXlaComputation(
+    const XlaComputation& computation,
+    const ExecutionOptions& execution_options) const {
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig module_config,
       HloModule::CreateModuleConfigFromProto(computation.proto(),
@@ -121,6 +120,13 @@ HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
       HloModule::CreateFromProto(computation.proto(), module_config));
   TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
   return module;
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
+    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  return HloModuleFromXlaComputation(computation, execution_options);
 }
 
 HloComputation*
