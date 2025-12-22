@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
