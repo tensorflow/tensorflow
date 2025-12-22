@@ -3,7 +3,6 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_cuda_or_rocm_is_configured",
-    "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -541,7 +540,7 @@ xla_cc_test(
 
 xla_test(
     name = "triton_gemm_fusion_test",
-    srcs = if_gpu_is_configured(["triton_gemm_fusion_test.cc"]),
+    srcs = ["triton_gemm_fusion_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -595,7 +594,7 @@ xla_test(
 xla_test(
     name = "fusion_emitter_int4_device_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_int4_device_test.cc"]),
+    srcs = ["fusion_emitter_int4_device_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -692,7 +691,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_device_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_test.cc"]),
+    srcs = ["fusion_emitter_device_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -799,7 +798,7 @@ cc_library(
 xla_test(
     name = "fusion_emitter_large_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_large_test.cc"]),
+    srcs = ["fusion_emitter_large_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -828,7 +827,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_parametrized_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_test.cc"]),
+    srcs = ["fusion_emitter_parametrized_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -857,7 +856,7 @@ xla_test(
 
 xla_cc_test(
     name = "fusion_emitter_shared_dialect_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_shared_dialect_test.cc"]),
+    srcs = ["fusion_emitter_shared_dialect_test.cc"],
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
     tags = [
@@ -948,7 +947,7 @@ xla_cc_test(
 
 xla_test(
     name = "support_legacy_test",
-    srcs = if_gpu_is_configured(["support_legacy_test.cc"]),
+    srcs = ["support_legacy_test.cc"],
     backends = [
         "a100",
         "h100",
