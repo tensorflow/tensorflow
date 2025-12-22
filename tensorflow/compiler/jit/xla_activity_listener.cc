@@ -15,6 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 
+#include <cstdlib>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
