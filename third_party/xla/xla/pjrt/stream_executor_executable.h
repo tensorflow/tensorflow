@@ -43,7 +43,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
  public:
   StreamExecutorExecutable(
       const CompileOptions& compile_options,
-      std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
+      std::vector<std::unique_ptr<CompiledModule>> executables,
       int num_replicas, int num_partitions, absl::string_view name,
       absl::string_view fingerprint, absl::string_view default_memory_kind);
 
@@ -101,7 +101,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
   // The unoptimized HLO module proto is necessary for HLO debug dumping. It is
   // not available for deserialized executables.
   std::optional<HloModuleProto> unoptimized_hlo_module_proto_;
-  std::variant<std::vector<std::unique_ptr<xla::AotCompilationResult>>,
+  std::variant<std::vector<std::unique_ptr<CompiledModule>>,
                std::vector<std::unique_ptr<LocalExecutable>>>
       executables_;
   LocalClient* local_client_ = nullptr;

@@ -1900,6 +1900,7 @@ xla_test(
     },
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
+    shard_count = 2,
     deps = [
         ":alias_info",
         ":backend_configs_cc",

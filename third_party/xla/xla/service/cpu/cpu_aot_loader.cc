@@ -147,11 +147,11 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
-    xla::AotCompilationResult&& compilation_result) {
+    CompiledModule&& compilation_result) {
   return std::move(compilation_result).LoadExecutable(/*executor=*/nullptr);
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuAotLoader::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   xla::cpu::CompilationResultProto proto;
@@ -161,7 +161,7 @@ CpuAotLoader::LoadAotCompilationResult(
   return LoadAotCompilationResult(proto);
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuAotLoader::LoadAotCompilationResult(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
   TF_ASSIGN_OR_RETURN(
