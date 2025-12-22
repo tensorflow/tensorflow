@@ -729,8 +729,39 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
   EXPECT_CALL(*backend, GetSupportedConfigs(_))
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
-      .WillOnce(Return(std::unique_ptr<Executable>()))
       .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  auto profiler = std::make_unique<MockProfiler>();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner, Autotuner::Create(std::move(backends),
+                                        std::move(profiler), config_, nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
+TEST_F(AutotunerTest, SelectFirstConfigStopsAfterFirstSuccess) {
+  config_.select_first_config = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+  configs.push_back(GetTestConfig("test_config_3"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2"))).Times(0);
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_3"))).Times(0);
+
   EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
       .Times(1)
       .WillRepeatedly(Return(absl::OkStatus()));
@@ -893,6 +924,37 @@ TEST_F(AutotunerTest, DumpHlos) {
           MatchesRegex(".*\\.test_module\\.autotuner_0\\.copy\\.after\\.txt"),
           MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.after\\.txt"),
           MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.before\\.txt")));
+}
+
+TEST(AutotuneConfigTest, ToString) {
+  AutotuneConfig config;
+  config.check_buffers = true;
+  config.relative_tolerance = 1e-4;
+  config.crash_on_check_failure = false;
+  config.optimize_scratch_bytes = true;
+  config.scratch_bytes_window_size_us = 10;
+  config.expect_all_instructions_in_cache = false;
+  config.dump_logs_to = "/tmp/log";
+  config.exclude_cublas_config = true;
+  config.select_first_config = false;
+  config.use_default_config = true;
+  config.dump_hlos = false;
+
+  std::string expected =
+      "{\n"
+      "  \"check_buffers\": true,\n"
+      "  \"relative_tolerance\": 0.000100,\n"
+      "  \"crash_on_check_failure\": false,\n"
+      "  \"optimize_scratch_bytes\": true,\n"
+      "  \"scratch_bytes_window_size_us\": 10,\n"
+      "  \"expect_all_instructions_in_cache\": false,\n"
+      "  \"dump_logs_to\": \"/tmp/log\",\n"
+      "  \"exclude_cublas_config\": true,\n"
+      "  \"select_first_config\": false,\n"
+      "  \"use_default_config\": true,\n"
+      "  \"dump_hlos\": false\n"
+      "}";
+  EXPECT_EQ(config.ToString(), expected);
 }
 
 }  // namespace

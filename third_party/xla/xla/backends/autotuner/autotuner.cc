@@ -444,6 +444,27 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CompileAll", 5);
   tsl::profiler::TraceMe traceme("CompileAll");
   tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
+
+  if (autotune_config_.select_first_config) {
+    std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
+    executables.reserve(configs.size());
+    for (int i = 0; i < configs.size(); ++i) {
+      absl::StatusOr<std::unique_ptr<Executable>> executable =
+          configs[i].codegen_backend->Compile(*instr,
+                                              *configs[i].backend_config);
+      if (executable.ok()) {
+        std::vector<absl::StatusOr<std::unique_ptr<Executable>>> success_result;
+        success_result.push_back(std::move(executable));
+        Config selected_config = std::move(configs[i]);
+        configs.clear();
+        configs.push_back(std::move(selected_config));
+        return success_result;
+      }
+      executables.push_back(std::move(executable));
+    }
+    return executables;
+  }
+
   if (thread_pool_ == nullptr) {
     std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
     executables.reserve(configs.size());
@@ -480,6 +501,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
   std::optional<ScopedShapedBuffer> reference_output;
   if (autotune_config_.check_buffers) {
+    VLOG(2) << "Checking buffers";
     reference_output = GetReferenceOutput(candidates, *input_buffers);
     if (!reference_output.has_value()) {
       LOG(WARNING) << "No reference output found even though buffer checking "
@@ -586,6 +608,8 @@ std::optional<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
       continue;
     }
     if (profile_result.value().output_buffer.has_value()) {
+      VLOG(2) << "Found reference output for config: "
+              << candidate.config.ToString();
       return std::move(profile_result.value().output_buffer.value());
     }
   }
@@ -711,6 +735,30 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
 std::string Autotuner::Config::ToString() const {
   return absl::StrFormat("%s : %s", codegen_backend->name(),
                          UnpackedAnyShortDebugString(*backend_config));
+}
+
+std::string AutotuneConfig::ToString() const {
+  return absl::StrFormat(
+      "{\n"
+      "  \"check_buffers\": %s,\n"
+      "  \"relative_tolerance\": %f,\n"
+      "  \"crash_on_check_failure\": %s,\n"
+      "  \"optimize_scratch_bytes\": %s,\n"
+      "  \"scratch_bytes_window_size_us\": %d,\n"
+      "  \"expect_all_instructions_in_cache\": %s,\n"
+      "  \"dump_logs_to\": \"%s\",\n"
+      "  \"exclude_cublas_config\": %s,\n"
+      "  \"select_first_config\": %s,\n"
+      "  \"use_default_config\": %s,\n"
+      "  \"dump_hlos\": %s\n"
+      "}",
+      check_buffers ? "true" : "false", relative_tolerance,
+      crash_on_check_failure ? "true" : "false",
+      optimize_scratch_bytes ? "true" : "false", scratch_bytes_window_size_us,
+      expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
+      exclude_cublas_config ? "true" : "false",
+      select_first_config ? "true" : "false",
+      use_default_config ? "true" : "false", dump_hlos ? "true" : "false");
 }
 
 }  // namespace xla

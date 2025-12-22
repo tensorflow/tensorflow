@@ -630,6 +630,9 @@ message DebugOptions {
   // up to the HLO optimization stage, before Thunk generation.
   optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
 
+  // List of autotuner backends to enable. If empty, all backends are enabled.
+  repeated string xla_gpu_experimental_autotune_backends = 442;
+
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
@@ -1341,7 +1344,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 442
+  // Next id: 443
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
