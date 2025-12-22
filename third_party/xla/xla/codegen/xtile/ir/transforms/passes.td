@@ -45,3 +45,8 @@ def StablehloLowerToXtilePass
     "mlir::stablehlo::StablehloDialect",
   ];
 }
+
+def LegalizeUnsignedIntegersAsSignlessPass
+    : Pass<"legalize-unsigned-integers-as-signless"> {
+  let summary = "Legalizes unsigned integers as signless.";
+}

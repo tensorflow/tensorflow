@@ -263,8 +263,11 @@ class LowerConvertOp
   Value LowerIntegerToFloatConvert(ImplicitLocOpBuilder& builder, Location loc,
                                    Value value, IntegerType src_element_ty,
                                    Type dst_ty) const {
-    // The current logic handles signed integer types only.
     if (src_element_ty.isInteger(1)) {
+      return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
+    }
+    if (src_element_ty.isUnsignedInteger()) {
+      value = UnsignedIntegerToSignlessInteger(builder, value);
       return mlir::arith::UIToFPOp::create(builder, loc, dst_ty, value);
     }
     return mlir::arith::SIToFPOp::create(builder, loc, dst_ty, value);

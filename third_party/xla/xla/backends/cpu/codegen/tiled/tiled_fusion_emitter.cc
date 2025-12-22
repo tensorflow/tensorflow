@@ -155,10 +155,6 @@ bool IsSupportedTilingType(PrimitiveType type) {
     return false;
   }
 
-  if (primitive_util::IsUnsignedIntegralType(type)) {
-    return false;
-  }
-
   if (primitive_util::IsComplexType(type)) {
     return false;
   }
