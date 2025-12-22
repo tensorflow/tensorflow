@@ -216,38 +216,29 @@ absl::Status RunRaggedAllToAll(
   return future.Await();
 }
 
-// Contains the values that are passed between host threads with rendezvous.
-struct RendezvousValue {
-  RankId rank;
-  se::DeviceAddressBase output_buffer;
-  se::Event* start_event;
-  se::Event* end_event;
-
-  bool operator<(const RendezvousValue& other) const {
-    return rank < other.rank;
-  }
-};
+}  // namespace
 
 // Executes the rendezvous before the kernel start.
 // Inserts CUDA events into the stream to ensure that all devices have reached
 // the start event before the kernel starts.
-absl::StatusOr<std::shared_ptr<std::vector<RendezvousValue>>>
-RendezvousBeforeKernelStart(absl::string_view name,
-                            const GpuCliqueKey& clique_key, RankId rank,
-                            int64_t num_ranks,
-                            const se::DeviceAddressBase& output_buffer,
-                            se::Stream& stream, se::Event* start_event,
-                            se::Event* end_event) {
+absl::StatusOr<
+    std::shared_ptr<std::vector<RaggedAllToAllStartThunk::RendezvousValue>>>
+RaggedAllToAllStartThunk::RendezvousBeforeKernelStart(
+    const GpuCliqueKey& clique_key, se::Stream& stream,
+    const StreamState& state, const se::DeviceAddressBase& output_buffer) {
+  int64_t num_ranks = clique_key.num_local_participants();
+  const RankId& rank = state.rank;
+
   RendezvousValue rendezvous_value;
   rendezvous_value.rank = rank;
   rendezvous_value.output_buffer = output_buffer;
-  rendezvous_value.start_event = start_event;
-  rendezvous_value.end_event = end_event;
+  rendezvous_value.start_event = state.start_event.get();
+  rendezvous_value.end_event = state.end_event.get();
 
   // Record that this device has started the memcpy ragged-all-to-all. We do
   // this before the rendezvous to make sure that RecordEvent is called before
   // WaitFor on another stream.
-  RETURN_IF_ERROR(stream.RecordEvent(start_event));
+  RETURN_IF_ERROR(stream.RecordEvent(state.start_event.get()));
 
   auto rendezvous_fn = [](absl::Span<const RendezvousValue* const> values) {
     std::vector<RendezvousValue> values_copy;
@@ -260,16 +251,13 @@ RendezvousBeforeKernelStart(absl::string_view name,
     return values_copy;
   };
 
-  std::string start_rendezvous_key =
-      absl::StrFormat("start %s ragged-all-to-all for rank %d, clique %s", name,
+  std::string name =
+      absl::StrFormat("start one-shot ragged-all-to-all for rank %d, clique %s",
                       rank.value(), clique_key.ToString());
   ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
       Rendezvous<std::vector<RendezvousValue>>(
-          /*name=*/
-          start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
-          rendezvous_fn));
+          name, clique_key, rendezvous_value, num_ranks, rendezvous_fn));
 
   // Wait for all devices to reach the start event. This indicates that all
   // output buffers are ready for transfer.
@@ -282,32 +270,31 @@ RendezvousBeforeKernelStart(absl::string_view name,
 
 // Executes the rendezvous after the kernel finish. Waits for all devices to
 // reach the end event.
-absl::Status RendezvousAfterKernelFinish(
-    absl::string_view name, const GpuCliqueKey& clique_key, RankId rank,
-    int64_t num_ranks, se::Stream& stream, se::Event* end_event,
-    const std::shared_ptr<std::vector<RendezvousValue>>& rendezvous_values) {
+absl::Status RaggedAllToAllStartThunk::RendezvousAfterKernelFinish(
+    const GpuCliqueKey& clique_key, se::Stream& stream,
+    const StreamState& state,
+    const std::vector<RendezvousValue>& rendezvous_values) {
+  int64_t num_ranks = clique_key.num_local_participants();
+  const RankId& rank = state.rank;
+
   // Record that this device has finished the memcpy ragged-all-to-all.
-  RETURN_IF_ERROR(stream.RecordEvent(end_event));
+  RETURN_IF_ERROR(stream.RecordEvent(state.end_event.get()));
 
   // Do another rendezvous to make sure that we call RecordEvent for end_event
   // before WaitFor on another stream.
-  std::string finish_rendezvous_key =
-      absl::StrFormat("finish %s ragged-all-to-all for rank %d, clique %s",
-                      name, rank.value(), clique_key.ToString());
-  RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
-                             /*key=*/clique_key,
-                             /*num_threads=*/num_ranks));
+  std::string name = absl::StrFormat(
+      "finish one-shot ragged-all-to-all for rank %d, clique %s", rank.value(),
+      clique_key.ToString());
+  RETURN_IF_ERROR(Rendezvous(name, clique_key, num_ranks));
 
   // Wait for all devices to reach the end event. This indicates that all
   // updates from other devices have arrived.
-  for (auto& value : *rendezvous_values) {
+  for (auto& value : rendezvous_values) {
     RETURN_IF_ERROR(stream.WaitFor(value.end_event));
   }
 
   return absl::OkStatus();
 }
-
-}  // namespace
 
 absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -327,9 +314,7 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
 
   ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      RendezvousBeforeKernelStart(
-          /*name=*/"one-shot", clique_key, rank, num_ranks, output_buffer,
-          stream, state.start_event.get(), state.end_event.get()));
+      RendezvousBeforeKernelStart(clique_key, stream, state, output_buffer));
 
   const int64_t num_updates_per_replica = config_.num_total_updates / num_ranks;
 
@@ -344,9 +329,8 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
       buffers[4].source_buffer, num_ranks, num_updates_per_replica,
       config_.num_input_rows, config_.num_row_elements));
 
-  return RendezvousAfterKernelFinish(
-      /*name=*/"one-shot", clique_key, rank, num_ranks, stream,
-      state.end_event.get(), rendezvous_values);
+  return RendezvousAfterKernelFinish(clique_key, stream, state,
+                                     *rendezvous_values);
 }
 
 RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
