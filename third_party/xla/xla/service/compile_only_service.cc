@@ -61,7 +61,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
     : Service(options, /*execute_backend=*/nullptr),
       compiler_(std::move(compiler)) {}
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 CompileOnlyService::CompileAheadOfTime(
     const AotXlaComputationInstance& computation,
     const AotCompilationOptions& options,
