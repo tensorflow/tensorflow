@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -218,6 +219,32 @@ absl::Status RunRaggedAllToAll(
 
 }  // namespace
 
+RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
+    ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
+    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
+    : RaggedAllToAllStartThunk(
+          std::move(thunk_info), GetRaggedAllToAllConfig(instr),
+          IsGPUSyncCollective(*instr)
+              ? nullptr
+              : std::make_shared<CollectiveThunk::AsyncEvents>(),
+          std::move(buffers),
+          instr->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel()) {}
+
+RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
+    ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
+    std::shared_ptr<AsyncEvents> async_events,
+    std::vector<CollectiveThunk::Buffer> buffers, bool one_shot_kernel_enabled)
+    : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info, async_events,
+                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
+      config_(config),
+      buffers_(std::move(buffers)),
+      one_shot_kernel_enabled_(one_shot_kernel_enabled) {
+  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+}
+
 // Executes the rendezvous before the kernel start.
 // Inserts CUDA events into the stream to ensure that all devices have reached
 // the start event before the kernel starts.
@@ -333,22 +360,6 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
                                      *rendezvous_values);
 }
 
-RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
-    ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
-    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info,
-                      IsGPUSyncCollective(*instr),
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      config_(GetRaggedAllToAllConfig(instr)),
-      buffers_(std::move(buffers)),
-      one_shot_kernel_enabled_(
-          instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel()) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
-}
-
 /*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(
     const HloRaggedAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
@@ -450,6 +461,68 @@ bool RaggedAllToAllStartThunk::is_local() const {
     }
   }
   return true;
+}
+
+absl::StatusOr<std::unique_ptr<RaggedAllToAllStartThunk>>
+RaggedAllToAllStartThunk::FromProto(
+    ThunkInfo thunk_info, const RaggedAllToAllStartThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(thunk_proto.buffers_size());
+  for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
+    ASSIGN_OR_RETURN(
+        CollectiveThunk::Buffer buffer,
+        CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
+    buffers.push_back(buffer);
+  }
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+
+  return std::make_unique<RaggedAllToAllStartThunk>(
+      std::move(thunk_info),
+      RaggedAllToAllConfig{config, thunk_proto.num_total_updates(),
+                           thunk_proto.num_input_rows(),
+                           thunk_proto.num_row_elements()},
+      async_events, std::move(buffers), thunk_proto.one_shot_kernel_enabled());
+}
+
+absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  RaggedAllToAllStartThunkProto* thunk_proto =
+      proto.mutable_ragged_all_to_all_start_thunk();
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    thunk_proto->set_async_events_unique_id(async_events_id->value());
+  }
+
+  for (const Buffer& buffer : buffers_) {
+    ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+  }
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+
+  thunk_proto->set_num_total_updates(config_.num_total_updates);
+  thunk_proto->set_num_input_rows(config_.num_input_rows);
+  thunk_proto->set_num_row_elements(config_.num_row_elements);
+  thunk_proto->set_one_shot_kernel_enabled(one_shot_kernel_enabled_);
+
+  return proto;
 }
 
 absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
