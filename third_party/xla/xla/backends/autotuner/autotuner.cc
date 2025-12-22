@@ -444,6 +444,25 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CompileAll", 5);
   tsl::profiler::TraceMe traceme("CompileAll");
   tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
+
+  if (autotune_config_.select_first_config) {
+    std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
+    for (int i = 0; i < configs.size(); ++i) {
+      absl::StatusOr<std::unique_ptr<Executable>> executable =
+          configs[i].codegen_backend->Compile(*instr,
+                                              *configs[i].backend_config);
+      if (executable.ok()) {
+        std::vector<absl::StatusOr<std::unique_ptr<Executable>>> success_result;
+        success_result.push_back(std::move(executable));
+        Config selected_config = std::move(configs[i]);
+        configs.clear();
+        configs.push_back(std::move(selected_config));
+        return success_result;
+      }
+    }
+    return executables;
+  }
+
   if (thread_pool_ == nullptr) {
     std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
     executables.reserve(configs.size());
