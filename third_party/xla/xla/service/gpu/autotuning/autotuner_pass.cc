@@ -103,6 +103,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   bool is_deviceless = stream_executor == nullptr;
   AutotuneConfig autotune_config =
       GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
+  VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
     profiler = GpuProfiler::Create(
