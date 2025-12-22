@@ -219,7 +219,7 @@ TfLiteQuantization ToTfLiteQuantization(Quantization quantization) {
       Overload([&q](NoQuantization) { q.type = kTfLiteNoQuantization; },
                [&q](const AffineQuantization& src) {
                  q.type = kTfLiteAffineQuantization;
-                 q.params = calloc(sizeof(TfLiteAffineQuantization), 1);
+                 q.params = calloc(1, sizeof(TfLiteAffineQuantization));
                  TfLiteAffineQuantization& qa =
                      *reinterpret_cast<TfLiteAffineQuantization*>(q.params);
                  qa.quantized_dimension = src.axis;

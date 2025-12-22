@@ -662,7 +662,7 @@ TfLiteTensor* GetTempRhs(TfLiteContext* context, TfLiteNode* node,
         free(transposed_rhs->quantization.params);
       }
       transposed_rhs->quantization.params =
-          malloc(sizeof(TfLiteAffineQuantization));
+          calloc(1, sizeof(TfLiteAffineQuantization));
       const auto* rhs_affine_quantization =
           reinterpret_cast<TfLiteAffineQuantization*>(rhs->quantization.params);
       auto* transposed_rhs_affine_quantization =

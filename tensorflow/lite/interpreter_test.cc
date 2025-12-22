@@ -231,7 +231,7 @@ TEST(BasicInterpreter, CheckQuantization) {
   TfLiteQuantization rw_quantization;
   rw_quantization.type = kTfLiteAffineQuantization;
   auto* rw_affine_quantization = static_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   rw_affine_quantization->scale = TfLiteFloatArrayCreate(1);
   rw_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
   rw_affine_quantization->scale->data[0] = scale;
@@ -241,7 +241,7 @@ TEST(BasicInterpreter, CheckQuantization) {
   TfLiteQuantization ro_quantization;
   ro_quantization.type = kTfLiteAffineQuantization;
   auto* ro_affine_quantization = static_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   ro_affine_quantization->scale = TfLiteFloatArrayCreate(1);
   ro_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
   ro_affine_quantization->scale->data[0] = scale;

@@ -1243,7 +1243,7 @@ class SingleOpModel {
     TfLiteQuantizationFree(&t->quantization);
     t->quantization.type = kTfLiteAffineQuantization;
     auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
-        malloc(sizeof(TfLiteAffineQuantization)));
+        calloc(1, sizeof(TfLiteAffineQuantization)));
     affine_quantization->quantized_dimension = 0;
     affine_quantization->scale = TfLiteFloatArrayCreate(1);
     affine_quantization->zero_point = TfLiteIntArrayCreate(1);
