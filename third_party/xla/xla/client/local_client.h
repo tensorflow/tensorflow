@@ -161,7 +161,7 @@ class LocalClient : public Client {
   // Same as Compile() above, but return AotCompilationResult objects (instead
   // of LocalExecutable objects), which can be persisted to later load
   // LocalExecutable(s) using the Load() method below.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(const XlaComputation& computation,
                      absl::Span<const Shape* const> argument_layouts,
                      const ExecutableBuildOptions& options);
@@ -174,7 +174,7 @@ class LocalClient : public Client {
 
   // Variant of `Load()` that accepts an AotCompilationResult.
   absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       const ExecutableBuildOptions& options);
 
   // Copy the literal data to the device with the given ordinal and return as a
@@ -249,7 +249,7 @@ class LocalClient : public Client {
   LocalService* local_service_;
 
   absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       const ExecutableBuildOptions& options);
 };
 
