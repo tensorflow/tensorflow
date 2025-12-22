@@ -171,6 +171,10 @@ class DeterminismTest : public GpuCodegenTest {
 };
 
 TEST_F(DeterminismTest, CublasDot) {
+  // This test expects to use Cublas. Disable other backends, including Triton.
+  debug_options_.clear_xla_gpu_experimental_autotune_backends();
+  debug_options_.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUBLAS);
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[128,128] parameter(0)
