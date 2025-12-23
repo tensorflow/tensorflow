@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device_context.h"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,15 +23,37 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/util.h"
-#include "tensorflow/core/common_runtime/device.h"
+#include "xla/client/local_client.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/service/stream_pool.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
-#include "tsl/platform/statusor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 
@@ -249,7 +272,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   // shape as it is derived from the cpu_tensor's shape using
   // shape_representation_fn_.
   xla::MutableBorrowingLiteral literal;
-  TF_CHECK_OK(HostTensorToMutableBorrowingLiteral(
+  CHECK_OK(HostTensorToMutableBorrowingLiteral(
       xla::LayoutUtil::GetWithDefaultLayout(
           xla_tensor->shaped_buffer().on_host_shape()),
       cpu_tensor, &literal));

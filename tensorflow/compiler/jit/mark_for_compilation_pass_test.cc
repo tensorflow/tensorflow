@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <set>
 #include <string>
@@ -24,33 +26,50 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/list_ops.h"
+#include "tensorflow/cc/ops/logging_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/no_op.h"
+#include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/state_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -503,7 +522,7 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
     ops::BinaryOp(
         "MatMul", a, b,
         builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "ScopeC"));
-    TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+    CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
   FunctionDefLibrary flib;
@@ -536,7 +555,7 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
     ops::BinaryOp(
         "MatMul", a, b,
         builder.opts().WithName("C").WithAttr(kXlaScopeAttr, "ScopeC"));
-    TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+    CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
@@ -574,7 +593,7 @@ TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
                       .WithName("D")
                       .WithAttr(kXlaCompileAttr, true)
                       .WithAttr(kXlaScopeAttr, "Scope2"));
-    TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+    CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
@@ -607,7 +626,7 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
                                .WithAttr(kXlaCompileAttr, true)
                                .WithAttr(kXlaScopeAttr, "ScopeB"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
-    TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+    CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
   }
 
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(
@@ -797,11 +816,11 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
     auto BuildNoopNode = [](absl::string_view name, Graph* graph) {
       NodeDefBuilder builder(name, "NoOp");
       NodeDef def;
-      TF_CHECK_OK(builder.Finalize(&def));
+      CHECK_OK(builder.Finalize(&def));
 
       absl::Status status;
       Node* node = graph->AddNode(def, &status);
-      TF_CHECK_OK(status);
+      CHECK_OK(status);
       return node;
     };
 
