@@ -2,12 +2,12 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/backends/gpu/target_config:build_defs.bzl", "embed_files")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//xla:__subpackages__",
-    ],
+    default_visibility = internal_visibility(["//xla:friends"]),
     licenses = ["notice"],
 )
 
@@ -23,6 +23,7 @@ exports_files(glob([
 embed_files(
     name = "embed_gpu_specs",
     srcs = glob(["specs/*.txtpb"]),
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
     cpp_namespace = "xla::gpu",
 )
 
@@ -30,6 +31,7 @@ cc_library(
     name = "target_config",
     srcs = ["target_config.cc"],
     hdrs = ["target_config.h"],
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
     deps = [
         ":embed_gpu_specs",
         "//xla/stream_executor:device_description_proto_cc",
@@ -59,7 +61,6 @@ bzl_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla/tsl:package_groups_bzl",
-        "//xla/tsl:tsl_default_bzl",
         "//xla/tsl/platform:rules_cc_bzl",
     ],
 )

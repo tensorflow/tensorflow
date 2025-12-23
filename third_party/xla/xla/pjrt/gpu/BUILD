@@ -435,6 +435,7 @@ tf_proto_library(
     name = "gpu_topology_proto",
     srcs = ["gpu_topology.proto"],
     visibility = ["//visibility:public"],
+    deps = ["//xla/stream_executor:device_description_proto"],
 )
 
 cc_library(
@@ -447,6 +448,8 @@ cc_library(
     ]),
     deps = [
         ":gpu_topology_proto_cc",
+        "//xla/service:compiler",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

@@ -1,12 +1,11 @@
 """Contains embed_files build rule."""
 
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
-def embed_files(name, srcs, cpp_namespace = "", **kwargs):
+def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs):
     """Compiles srcs into a cc_library with functions returning embedded file data.
 
     Example:
@@ -101,12 +100,13 @@ def embed_files(name, srcs, cpp_namespace = "", **kwargs):
             namespace_open = namespace_open,
             namespace_close = namespace_close,
         ),
-        compatible_with = get_compatible_with_portable(),
+        compatible_with = compatible_with,
     )
 
     cc_library(
         name = name,
         srcs = [name + ".cc"],
         hdrs = [name + ".h"],
+        compatible_with = compatible_with,
         **kwargs
     )
