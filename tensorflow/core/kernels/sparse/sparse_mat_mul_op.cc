@@ -506,7 +506,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                      DT_INT8, TensorShape({static_cast<int64_t>(bufferSize1)}),
                      &buffer1_t));
       }
-      void* buffer1 = buffer1_t.flat<int8>().data();
+      void* buffer1 = buffer1_t.flat<int8_t>().data();
 
       // Do workEstimation using buffer1.
       // buffer1 implicitly captured in gemmDesc for use in the compute call.
@@ -525,7 +525,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                      DT_INT8, TensorShape({static_cast<int64_t>(bufferSize2)}),
                      &buffer2_t));
       }
-      void* buffer2 = buffer2_t.flat<int8>().data();
+      void* buffer2 = buffer2_t.flat<int8_t>().data();
 
       // Compute the gemm.
       // Note that buffer1 is implicitly consumed here and buffer2 is implicitly
@@ -552,7 +552,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
       // Copy product to final c_row_ptr and intermediate column and values
       // tensors.
       void* row_ptr = &c_row_ptr(i * (rows + 1));
-      void* col_ptr = colidx_tmp.flat<int32>().data();
+      void* col_ptr = colidx_tmp.flat<int32_t>().data();
       void* val_ptr = values_tmp.flat<T>().data();
       cusparseStatus_t cusp_status =
           cusparseCsrSetPointers(matC.get(), row_ptr, col_ptr, val_ptr);
