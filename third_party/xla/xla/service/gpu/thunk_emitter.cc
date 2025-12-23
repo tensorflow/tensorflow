@@ -1129,17 +1129,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
   TF_RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
   TF_RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
-                      GetAllocationSliceForHlo(operands[0]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
-                      GetAllocationSliceForHlo(operands[1]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
-
-  const Shape b_shape = operands[1]->shape();
-  const PrimitiveType elem_ty = b_shape.element_type();
+  ASSIGN_OR_RETURN(ShapedSlice a_slice, GetShapedSliceForHlo(operands[0]));
+  ASSIGN_OR_RETURN(ShapedSlice b_slice, GetShapedSliceForHlo(operands[1]));
+  ASSIGN_OR_RETURN(ShapedSlice result_slice, GetShapedSliceForHlo(instr, {0}));
+  ASSIGN_OR_RETURN(ShapedSlice temp_slice, GetShapedSliceForHlo(instr, {1}));
 
   TriangularSolveOptions backend_config;
   auto& backend_config_str = instr->raw_backend_config_string();
@@ -1152,30 +1145,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output
   // if they aren't the same buffer.
-  if (b_slice != result_slice) {
+  if (b_slice.slice != result_slice.slice) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/ShapedSlice{b_slice, b_shape},
-        /*destination_buffer=*/ShapedSlice{result_slice, b_shape},
-        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
+        /*source_buffer=*/b_slice,
+        /*destination_buffer=*/result_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_slice.shape)));
   }
 
-  int64_t m = b_shape.dimensions(b_shape.dimensions().size() - 2);
-  int64_t n = b_shape.dimensions(b_shape.dimensions().size() - 1);
-  int64_t batch_size = std::accumulate(
-      b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
-      [](int64_t a, int64_t b) { return a * b; });
-  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_ty);
-  int64_t a_batch_stride =
-      backend_config.left_side() ? m * m * elem_size : n * n * elem_size;
-  int64_t b_batch_stride = m * n * elem_size;
   thunks.push_back(std::make_unique<TriangularSolveThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      backend_config,
-      /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
-      batch_size, m, n, a_batch_stride, b_batch_stride));
+      backend_config, a_slice, result_slice, temp_slice));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {

@@ -188,15 +188,9 @@ message WaitForStreamsThunkProto {
 
 message TriangularSolveThunkProto {
   xla.TriangularSolveOptions options = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto b_buffer = 3;
-  xla.buffer_assignment.BufferAllocationSliceProto temp_buffer = 4;
-  xla.PrimitiveType type = 5;
-  int64 batch_size = 6;
-  int64 m = 7;
-  int64 n = 8;
-  int64 a_batch_stride = 9;
-  int64 b_batch_stride = 10;
+  ShapedSliceProto a_buffer = 2;
+  ShapedSliceProto b_buffer = 3;
+  ShapedSliceProto temp_buffer = 4;
 }
 
 message ReplicaIdThunkProto {
