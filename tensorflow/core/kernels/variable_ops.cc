@@ -29,8 +29,8 @@ namespace {
 
 // Makes a unique name for a temporary variable inside a while loop body,
 // because loop can be executed in multiple iterations in parallel.
-string TemporaryVariableName(const string& var_name,
-                             const FrameAndIter& control_frame) {
+std::string TemporaryVariableName(const std::string& var_name,
+                                  const FrameAndIter& control_frame) {
   if (control_frame.frame_id != kIllegalFrameId &&
       control_frame.iter_id != kIllegalIterId) {
     return strings::StrCat(var_name, "/frame:", control_frame.frame_id,
@@ -53,7 +53,7 @@ class LegacyVar : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* tensor() { return &tensor_; }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return absl::StrCat(DataTypeString(tensor_.dtype()), "/",
                         tensor_.shape().DebugString());
   }
@@ -130,14 +130,14 @@ class TemporaryVariableOp : public OpKernel {
   struct TmpVar : public ResourceBase {
     mutex mu;
     Tensor val;
-    string name;
-    string DebugString() const override { return name; }
+    std::string name;
+    std::string DebugString() const override { return name; }
     ~TmpVar() override { VLOG(3) << "TmpVar " << name << " deleted"; }
   };
 
   TensorShape shape_;
   DataType dtype_;
-  string var_name_;
+  std::string var_name_;
 };
 
 class DestroyTemporaryVariableOp : public OpKernel {
@@ -171,7 +171,7 @@ class DestroyTemporaryVariableOp : public OpKernel {
   }
 
  private:
-  string var_name_;
+  std::string var_name_;
 };
 
 class IsVariableInitializedOp : public OpKernel {
