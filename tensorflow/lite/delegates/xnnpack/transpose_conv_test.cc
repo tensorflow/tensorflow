@@ -19,16 +19,17 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/transpose_conv_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-struct TransposeConvTest : DelegateTest {};
+TEST(TransposeConvTest, 2x2Stride2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
 
-TEST_F(TransposeConvTest, 2x2Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -49,7 +50,11 @@ TEST_F(TransposeConvTest, 2x2Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 2x2Stride2NoBias) {
+TEST(TransposeConvTest, 2x2Stride2NoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -71,7 +76,11 @@ TEST_F(TransposeConvTest, 2x2Stride2NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 3x3Stride2) {
+TEST(TransposeConvTest, 3x3Stride2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -92,7 +101,11 @@ TEST_F(TransposeConvTest, 3x3Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 3x3Stride2NoBias) {
+TEST(TransposeConvTest, 3x3Stride2NoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -114,7 +127,11 @@ TEST_F(TransposeConvTest, 3x3Stride2NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 4x4Stride2) {
+TEST(TransposeConvTest, 4x4Stride2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -135,7 +152,11 @@ TEST_F(TransposeConvTest, 4x4Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 4x4Stride2NoBias) {
+TEST(TransposeConvTest, 4x4Stride2NoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -157,7 +178,11 @@ TEST_F(TransposeConvTest, 4x4Stride2NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 4x4Stride4) {
+TEST(TransposeConvTest, 4x4Stride4) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -178,7 +203,11 @@ TEST_F(TransposeConvTest, 4x4Stride4) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, 4x4Stride4NoBias) {
+TEST(TransposeConvTest, 4x4Stride4NoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto output_rng =
@@ -200,7 +229,11 @@ TEST_F(TransposeConvTest, 4x4Stride4NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SmallKernelWithSamePadding) {
+TEST(TransposeConvTest, SmallKernelWithSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -224,7 +257,11 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
+TEST(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -249,7 +286,11 @@ TEST_F(TransposeConvTest, SmallKernelWithSamePaddingNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SmallKernelWithValidPadding) {
+TEST(TransposeConvTest, SmallKernelWithValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -273,7 +314,11 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
+TEST(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -298,7 +343,11 @@ TEST_F(TransposeConvTest, SmallKernelWithValidPaddingNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, StrideWithSamePadding) {
+TEST(TransposeConvTest, StrideWithSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -326,7 +375,11 @@ TEST_F(TransposeConvTest, StrideWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, StrideWithSamePaddingNoBias) {
+TEST(TransposeConvTest, StrideWithSamePaddingNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -355,7 +408,11 @@ TEST_F(TransposeConvTest, StrideWithSamePaddingNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, StrideWithValidPadding) {
+TEST(TransposeConvTest, StrideWithValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -383,7 +440,11 @@ TEST_F(TransposeConvTest, StrideWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, StrideWithValidPaddingNoBias) {
+TEST(TransposeConvTest, StrideWithValidPaddingNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -412,7 +473,11 @@ TEST_F(TransposeConvTest, StrideWithValidPaddingNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, FP16Weights) {
+TEST(TransposeConvTest, FP16Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -441,7 +506,11 @@ TEST_F(TransposeConvTest, FP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, FP16WeightsNoBias) {
+TEST(TransposeConvTest, FP16WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -471,7 +540,11 @@ TEST_F(TransposeConvTest, FP16WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
+TEST(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -500,7 +573,11 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
+TEST(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -530,7 +607,11 @@ TEST_F(TransposeConvTest, TensorWiseQuantizedInt8WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
+TEST(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -559,7 +640,11 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
+TEST(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -589,7 +674,11 @@ TEST_F(TransposeConvTest, ChannelWiseQuantizedInt8WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseWeights) {
+TEST(TransposeConvTest, SparseWeights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -618,7 +707,11 @@ TEST_F(TransposeConvTest, SparseWeights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseWeightsNoBias) {
+TEST(TransposeConvTest, SparseWeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -648,7 +741,11 @@ TEST_F(TransposeConvTest, SparseWeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseFP16Weights) {
+TEST(TransposeConvTest, SparseFP16Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -678,7 +775,11 @@ TEST_F(TransposeConvTest, SparseFP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseFP16WeightsNoBias) {
+TEST(TransposeConvTest, SparseFP16WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -709,7 +810,11 @@ TEST_F(TransposeConvTest, SparseFP16WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
+TEST(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -739,7 +844,11 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
+TEST(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -770,7 +879,11 @@ TEST_F(TransposeConvTest, SparseTensorWiseQuantizedInt8WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
+TEST(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -800,7 +913,11 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
+TEST(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -831,11 +948,13 @@ TEST_F(TransposeConvTest, SparseChannelWiseQuantizedInt8WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, MultiThreading) {
+TEST(TransposeConvTest, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -864,11 +983,13 @@ TEST_F(TransposeConvTest, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, MultiThreadingNoBias) {
+TEST(TransposeConvTest, MultiThreadingNoBias) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -898,7 +1019,7 @@ TEST_F(TransposeConvTest, MultiThreadingNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(TransposeConvTest, WeightsCache) {
+TEST(TransposeConvTest, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -906,7 +1027,9 @@ TEST_F(TransposeConvTest, WeightsCache) {
       weights_cache(TfLiteXNNPackDelegateWeightsCacheCreate(),
                     TfLiteXNNPackDelegateWeightsCacheDelete);
   delegate_options.weights_cache = weights_cache.get();
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());

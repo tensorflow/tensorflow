@@ -23,16 +23,18 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/quantized_depthwise_conv_2d_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-struct ChannelwiseQuantizedDepthwiseConv2D : DelegateTest {};
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 1x1) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 1x1) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -64,7 +66,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 1x1) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 2x2) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 2x2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -97,7 +103,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 2x2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 3x3) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 3x3) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -130,75 +140,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 3x3) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 3x3Stride2) {
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto scale_rng = std::bind(
-      std::uniform_real_distribution<float>(0.25f, 1.25f), std::ref(rng));
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(3, 32), std::ref(rng));
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 3x3Stride2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
 
-  const int32_t num_channels = channel_rng();
-  std::vector<float> filter_scales;
-  filter_scales.reserve(num_channels);
-  std::generate_n(std::back_inserter(filter_scales), num_channels,
-                  std::ref(scale_rng));
-
-  QuantizedDepthwiseConv2DTester()
-      .InputZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .KernelScales(filter_scales)
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
-      .InputChannels(num_channels)
-      .KernelHeight(3)
-      .KernelWidth(3)
-      .StrideHeight(2)
-      .StrideWidth(2)
-      .SamePadding()
-      .Test(xnnpack_delegate.get());
-}
-
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 5x5) {
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto scale_rng = std::bind(
-      std::uniform_real_distribution<float>(0.25f, 1.25f), std::ref(rng));
-  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
-                                      std::numeric_limits<int8_t>::min(),
-                                      std::numeric_limits<int8_t>::max()),
-                                  std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(3, 32), std::ref(rng));
-
-  const int32_t num_channels = channel_rng();
-  std::vector<float> filter_scales;
-  filter_scales.reserve(num_channels);
-  std::generate_n(std::back_inserter(filter_scales), num_channels,
-                  std::ref(scale_rng));
-
-  QuantizedDepthwiseConv2DTester()
-      .InputZeroPoint(zero_point_rng())
-      .OutputZeroPoint(zero_point_rng())
-      .KernelScales(filter_scales)
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
-      .InputChannels(num_channels)
-      .KernelHeight(3)
-      .KernelWidth(3)
-      .SamePadding()
-      .Test(xnnpack_delegate.get());
-}
-
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 5x5Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -233,7 +179,87 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, 5x5Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithSamePadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 5x5) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto scale_rng = std::bind(
+      std::uniform_real_distribution<float>(0.25f, 1.25f), std::ref(rng));
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 32), std::ref(rng));
+
+  const int32_t num_channels = channel_rng();
+  std::vector<float> filter_scales;
+  filter_scales.reserve(num_channels);
+  std::generate_n(std::back_inserter(filter_scales), num_channels,
+                  std::ref(scale_rng));
+
+  QuantizedDepthwiseConv2DTester()
+      .InputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .KernelScales(filter_scales)
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(num_channels)
+      .KernelHeight(3)
+      .KernelWidth(3)
+      .SamePadding()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(ChannelwiseQuantizedDepthwiseConv2D, 5x5Stride2) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto scale_rng = std::bind(
+      std::uniform_real_distribution<float>(0.25f, 1.25f), std::ref(rng));
+  auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
+                                      std::numeric_limits<int8_t>::min(),
+                                      std::numeric_limits<int8_t>::max()),
+                                  std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(3, 32), std::ref(rng));
+
+  const int32_t num_channels = channel_rng();
+  std::vector<float> filter_scales;
+  filter_scales.reserve(num_channels);
+  std::generate_n(std::back_inserter(filter_scales), num_channels,
+                  std::ref(scale_rng));
+
+  QuantizedDepthwiseConv2DTester()
+      .InputZeroPoint(zero_point_rng())
+      .OutputZeroPoint(zero_point_rng())
+      .KernelScales(filter_scales)
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .InputChannels(num_channels)
+      .KernelHeight(3)
+      .KernelWidth(3)
+      .StrideHeight(2)
+      .StrideWidth(2)
+      .SamePadding()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -271,7 +297,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithValidPadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -309,7 +339,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, SmallKernelWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, StrideWithSamePadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, StrideWithSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -351,7 +385,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, StrideWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, StrideWithValidPadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, StrideWithValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -393,7 +431,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, StrideWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DilationWithSamePadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, DilationWithSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -435,7 +477,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DilationWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DilationWithValidPadding) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, DilationWithValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -477,7 +523,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DilationWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DepthMultiplier) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, DepthMultiplier) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -523,7 +573,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, DepthMultiplier) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, ReluActivation) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, ReluActivation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -565,7 +619,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, Relu6Activation) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, Relu6Activation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -607,7 +665,11 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, ReluMinus1To1Activation) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, ReluMinus1To1Activation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto scale_rng = std::bind(
@@ -649,11 +711,13 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, MultiThreading) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -695,7 +759,7 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, WeightsCache) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -703,7 +767,9 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, WeightsCache) {
       weights_cache(TfLiteXNNPackDelegateWeightsCacheCreate(),
                     TfLiteXNNPackDelegateWeightsCacheDelete);
   delegate_options.weights_cache = weights_cache.get();
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -746,13 +812,15 @@ TEST_F(ChannelwiseQuantizedDepthwiseConv2D, WeightsCache) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(ChannelwiseQuantizedDepthwiseConv2D, TransientIndirectionBuffer) {
+TEST(ChannelwiseQuantizedDepthwiseConv2D, TransientIndirectionBuffer) {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
   xnnpack_options.num_threads = 2;
   xnnpack_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
-  UseCustomDelegate(xnnpack_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
