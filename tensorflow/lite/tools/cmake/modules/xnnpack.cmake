@@ -49,5 +49,6 @@ include_directories(
    "${PTHREADPOOL_SOURCE_DIR}/include"
    "${FP16_SOURCE_DIR}/include"
    "${XNNPACK_SOURCE_DIR}/include"
+   "${XNNPACK_SOURCE_DIR}"
    "${CPUINFO_SOURCE_DIR}/"
 )
