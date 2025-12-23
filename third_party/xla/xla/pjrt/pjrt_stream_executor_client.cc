@@ -2777,7 +2777,7 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 
   Executable* built_executable = local_executables[0]->executable();
   Compiler* compiler = client_->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler->Export(built_executable));
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
