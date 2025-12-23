@@ -778,38 +778,29 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
-  Shape shape = has_bias ? instr->shape().tuple_shapes(0) : instr->shape();
-  if (shape.dimensions().size() != 5 || shape.dimensions(4) != 32) {
-    return Internal("Unexpected shape for convolution reorder: %s",
-                    instr->ToString());
-  }
-  ConvolutionFilterDimensions filter_dimensions;
-  filter_dimensions.set_output_feature_map_count(shape.dimensions(0));
-  filter_dimensions.set_input_feature_map_count(shape.dimensions(1) * 32);
-  filter_dimensions.set_input_filter_height(shape.dimensions(2));
-  filter_dimensions.set_input_filter_width(shape.dimensions(3));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
-                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(ShapedSlice filter_input,
+                      GetShapedSliceForHlo(instr->operand(0)));
 
-  BufferAllocation::Slice filter_output;
+  ShapedSlice filter_output;
   std::optional<ConvolutionReorderThunk::BiasBuffers> biases;
   if (has_bias) {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr, {0}));
+    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr, {0}));
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
-                        GetAllocationSliceForHlo(instr->operand(1)));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
-                        GetAllocationSliceForHlo(instr, {1}));
+    TF_ASSIGN_OR_RETURN(ShapedSlice bias_input,
+                        GetShapedSliceForHlo(instr->operand(1)));
+    TF_ASSIGN_OR_RETURN(ShapedSlice bias_output,
+                        GetShapedSliceForHlo(instr, {1}));
     biases = {{bias_input, bias_output}};
   } else {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr));
+    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr));
   }
 
-  auto thunk = std::make_unique<ConvolutionReorderThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(filter_dimensions), filter_input, filter_output, biases);
+  ASSIGN_OR_RETURN(auto thunk,
+                   ConvolutionReorderThunk::Create(
+                       Thunk::ThunkInfo::WithProfileAnnotation(
+                           instr, ir_emitter_context_->GetNextThunkId()),
+                       filter_input, filter_output, biases));
   return GetThunkSequence(std::move(thunk));
 }
 

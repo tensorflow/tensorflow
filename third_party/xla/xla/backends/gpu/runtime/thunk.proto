@@ -344,10 +344,9 @@ message ConvolutionThunkProto {
 }
 
 message ConvolutionReorderThunkProto {
-  ConvolutionFilterDimensions filter_dimensions = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto filter_input = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto filter_output = 3;
-  optional ConvolutionReorderBiasBuffers biases = 4;
+  ShapedSliceProto filter_input = 1;
+  ShapedSliceProto filter_output = 2;
+  optional ConvolutionReorderBiasBuffers biases = 3;
 }
 
 message FftThunkProto {
