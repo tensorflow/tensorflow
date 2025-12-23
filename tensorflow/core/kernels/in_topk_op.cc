@@ -129,18 +129,18 @@ namespace functor {
       typename TTypes<bool>::Vec output);                           \
   extern template struct InTopKFunctor<GPUDevice, T, TARGET_T>;
 
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
 
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNEL_BUILDER(
-    Name("InTopKV2").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
-    InTopK<GPUDevice, float, int32>);
+    Name("InTopKV2").Device(DEVICE_GPU).TypeConstraint<int32_t>("T"),
+    InTopK<GPUDevice, float, int32_t>);
 REGISTER_KERNEL_BUILDER(
     Name("InTopKV2").Device(DEVICE_GPU).TypeConstraint<int64_t>("T"),
-    InTopK<GPUDevice, float, int64>);
+    InTopK<GPUDevice, float, int64_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
