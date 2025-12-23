@@ -231,8 +231,8 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   Variant v_out = VariantValue();
 
   OpKernelContext* null_context_pointer = nullptr;
-  Status s0 = UnaryOpVariant<GPUDevice>(null_context_pointer,
-                                        ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
+  absl::Status s0 = UnaryOpVariant<GPUDevice>(
+      null_context_pointer, ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(absl::StrContains(s0.message(), "early exit zeros_like"));
 
@@ -304,7 +304,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Variant v_out = VariantValue();
 
   OpKernelContext* null_context_pointer = nullptr;
-  Status s0 = BinaryOpVariants<GPUDevice>(
+  absl::Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(absl::StrContains(s0.message(), "early exit add"));
