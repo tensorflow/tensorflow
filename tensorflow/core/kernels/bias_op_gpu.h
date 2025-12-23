@@ -68,12 +68,12 @@ class BiasGradGPUProfileResult {
   }
   BiasAddGradGPUMode algorithm() const { return algorithm_; }
   void set_algorithm(BiasAddGradGPUMode val) { algorithm_ = val; }
-  uint64 elapsed_time() const { return elapsed_time_; }
-  void set_elapsed_time(uint64 val) { elapsed_time_ = val; }
+  uint64_t elapsed_time() const { return elapsed_time_; }
+  void set_elapsed_time(uint64_t val) { elapsed_time_ = val; }
 
  private:
   BiasAddGradGPUMode algorithm_ = BiasAddGradGPUMode::kInvalid;
-  uint64 elapsed_time_ = std::numeric_limits<uint64>::max();
+  uint64_t elapsed_time_ = std::numeric_limits<uint64_t>::max();
 };
 
 }  // namespace tensorflow
