@@ -33,10 +33,11 @@ namespace grappler {
 class LoopOptimizerTest : public GrapplerTest {
  protected:
   // These helpers always sets T=DT_FLOAT.
-  void AddEnterNode(const string& name, const string& frame,
+  void AddEnterNode(const std::string& name, const std::string& frame,
                     const bool is_constant, const int piterations,
-                    const std::vector<string>& inputs, GraphDef* graph) const {
-    std::vector<std::pair<string, AttrValue>> attributes;
+                    const std::vector<std::string>& inputs,
+                    GraphDef* graph) const {
+    std::vector<std::pair<std::string, AttrValue>> attributes;
     AttrValue type;
     type.set_type(DT_FLOAT);
     attributes.emplace_back("T", type);
@@ -52,9 +53,10 @@ class LoopOptimizerTest : public GrapplerTest {
     AddNode(name, "Enter", inputs, attributes, graph);
   }
 
-  void AddSimpleNode(const string& name, const string& op,
-                     const std::vector<string>& inputs, GraphDef* graph) const {
-    std::vector<std::pair<string, AttrValue>> attributes;
+  void AddSimpleNode(const std::string& name, const std::string& op,
+                     const std::vector<std::string>& inputs,
+                     GraphDef* graph) const {
+    std::vector<std::pair<std::string, AttrValue>> attributes;
     AttrValue type;
     type.set_type(DT_FLOAT);
     attributes.emplace_back("T", type);
@@ -615,7 +617,8 @@ TEST_F(LoopOptimizerTest, NestedLoopConst2) {
 }
 
 void VerifyGraphsEqual(const GraphDef& original_graph,
-                       const GraphDef& optimized_graph, const string& func) {
+                       const GraphDef& optimized_graph,
+                       const std::string& func) {
   EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << func;
   for (int i = 0; i < original_graph.node_size(); ++i) {
     const NodeDef& original = original_graph.node(i);
@@ -967,7 +970,7 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition2) {
 }
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesFullyRemoveDeadBranches) {
-  const string gdef_ascii = R"EOF(
+  const std::string gdef_ascii = R"EOF(
 node {
   name: "episodicreplaybuffer_add_readvariableop_resource"
   op: "_Arg"
@@ -1378,7 +1381,7 @@ versions {
 }
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesZeroIterWhile) {
-  const string gdef_ascii = R"EOF(
+  const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -1590,7 +1593,7 @@ versions {
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors_got.size(), 1);
-  test::ExpectTensorEqual<int32>(tensors_got[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int32_t>(tensors_got[0], tensors_expected[0]);
 
   int nodes_present = 0;
   for (const NodeDef& node : output.node()) {
@@ -1610,7 +1613,7 @@ versions {
 }
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantFeed) {
-  const string gdef_ascii = R"EOF(
+  const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
