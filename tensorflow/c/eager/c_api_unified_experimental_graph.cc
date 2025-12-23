@@ -263,20 +263,20 @@ class GraphOperation : public TracingOperation {
   absl::Status SetAttrFloatList(const char* attr_name, const float* values,
                                 int num_values) override {
     op_->node_builder.Attr(attr_name,
-                           ArraySlice<const float>(values, num_values));
+                           absl::Span<const const float>(values, num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrIntList(const char* attr_name, const int64_t* values,
                               int num_values) override {
     op_->node_builder.Attr(
-        attr_name, ArraySlice<const int64_t>(
+        attr_name, absl::Span<const const int64_t>(
                        reinterpret_cast<const int64_t*>(values), num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrTypeList(const char* attr_name, const DataType* values,
                                int num_values) override {
-    op_->node_builder.Attr(attr_name,
-                           ArraySlice<const DataType>(values, num_values));
+    op_->node_builder.Attr(
+        attr_name, absl::Span<const const DataType>(values, num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrBoolList(const char* attr_name,
@@ -287,7 +287,7 @@ class GraphOperation : public TracingOperation {
       b[i] = values[i];
     }
     op_->node_builder.Attr(attr_name,
-                           ArraySlice<const bool>(b.get(), num_values));
+                           absl::Span<const const bool>(b.get(), num_values));
 
     return absl::OkStatus();
   }
