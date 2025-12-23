@@ -1750,14 +1750,13 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
     VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
                "(list of vectors).";
     // The order of ids in the group must follow the temp_target sharding.
-    std::vector<std::vector<int64_t>> groups =
-        GetPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
-                                           {group_size});
+    CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
+        temp_target, {target_dim}, {group_size});
     // After the reshape, it is guaranteed to have at least 3 dimensions.
     all_to_all =
         state_.collective_ops_creator.create_cross_partition_all_to_all(
-            state_.b, {reshape}, groups, (*state_.next_channel_id)++,
-            target_dim);
+            state_.b, {reshape}, groups.flattened_replica_groups(),
+            (*state_.next_channel_id)++, target_dim);
   }
   CHECK_NE(all_to_all, nullptr);
 
@@ -1939,12 +1938,12 @@ PartitionedHlo PartitionedHlo::TryMultipleSourceTargetDims(
   } else {
     VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
                "(list of vectors).";
-    std::vector<std::vector<int64_t>> groups =
-        GetPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
-                                           group_sizes);
+    CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
+        temp_target, eligible_target_dims, group_sizes);
     all_to_all =
         state_.collective_ops_creator.create_cross_partition_all_to_all(
-            state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
+            state_.b, {reshape_1}, groups.flattened_replica_groups(),
+            (*state_.next_channel_id)++, 0);
   }
   // Step 3. Split sharding axes to multiple dimensions
   // 1. reshape_2 (8,16,8,16,8) -> (2,4,16,8,16,8)
@@ -5209,9 +5208,12 @@ SpmdPartitioner::AllGatherShardsInternal(
         auto partition_subgroups =
             GetPartitionGroupsForReplication(sharding, {*it});
         result_shape.set_dimensions(
-            *it, result_shape.dimensions(*it) * partition_subgroups[0].size());
+            *it, result_shape.dimensions(*it) *
+                     partition_subgroups.num_devices_per_group());
         result = collectives_creator.create_cross_partition_all_gather(
-            b, result, result_shape, partition_subgroups, (*next_channel_id)++,
+            b, result, result_shape,
+            partition_subgroups.flattened_replica_groups(),
+            (*next_channel_id)++,
             /*all_gather_dimension=*/*it);
       }
     }
@@ -5247,10 +5249,10 @@ SpmdPartitioner::AllGatherShardsInternal(
   } else {
     auto partition_subgroups =
         GetPartitionGroupsForReplication(sharding, selected_dims);
-    shape[0] *= partition_subgroups[0].size();
+    shape[0] *= partition_subgroups.num_devices_per_group();
     result = collectives_creator.create_cross_partition_all_gather(
         b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-        partition_subgroups, (*next_channel_id)++,
+        partition_subgroups.flattened_replica_groups(), (*next_channel_id)++,
         /*all_gather_dimension=*/0);
   }
   ag = result;
@@ -5339,7 +5341,8 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     auto partition_subgroups =
         GetPartitionGroupsForReplication(sharding, selected_dims);
     return collectives_creator.create_cross_partition_all_reduce(
-        b, operand, reduction, partition_subgroups, (*next_channel_id)++);
+        b, operand, reduction, partition_subgroups.flattened_replica_groups(),
+        (*next_channel_id)++);
   }
 
   auto result = operand;
@@ -5362,7 +5365,8 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
       auto partition_subgroups =
           GetPartitionGroupsForReplication(sharding, {*it});
       result = collectives_creator.create_cross_partition_all_reduce(
-          b, result, reduction, partition_subgroups, (*next_channel_id)++);
+          b, result, reduction, partition_subgroups.flattened_replica_groups(),
+          (*next_channel_id)++);
     }
   }
   return result;
