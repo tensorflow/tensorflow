@@ -80,16 +80,16 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         output_shapes_(output_shapes),
         traceme_metadata_(
             {{"block_length",
-              strings::Printf("%lld", static_cast<long long>(block_length))},
+              absl::StrFormat("%lld", static_cast<long long>(block_length))},
              {"cycle_length",
-              strings::Printf("%lld", static_cast<long long>(cycle_length))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(cycle_length))}}) {
     input_->Ref();
   }
 
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -100,7 +100,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 

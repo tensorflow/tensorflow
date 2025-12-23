@@ -29,7 +29,7 @@ class TextLineDatasetParams : public DatasetParams {
  public:
   TextLineDatasetParams(std::vector<tstring> filenames,
                         CompressionType compression_type, int64_t buffer_size,
-                        string node_name)
+                        std::string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
         filenames_(std::move(filenames)),
@@ -44,7 +44,8 @@ class TextLineDatasetParams : public DatasetParams {
         CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     *input_names = {
         TextLineDatasetOp::kFileNames,
@@ -60,7 +61,7 @@ class TextLineDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return TextLineDatasetOp::kDatasetType;
   }
 
