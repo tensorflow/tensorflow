@@ -39,6 +39,7 @@ cc_library(
 xla_cc_test(
     name = "generate_benchmark_matrices_test",
     srcs = ["generate_benchmark_matrices_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":generate_benchmark_matrices_cc",
         "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",

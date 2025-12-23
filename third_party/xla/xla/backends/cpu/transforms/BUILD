@@ -50,6 +50,7 @@ xla_cc_test(
     name = "library_rewriter_test",
     srcs = ["library_rewriter_test.cc"],
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":library_rewriter",
         "//xla:xla_data_proto_cc",
@@ -118,6 +119,7 @@ cc_library(
 xla_cc_test(
     name = "ynn_matcher_test",
     srcs = ["ynn_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:xla_proto_cc",
         "//xla/service:cpu_plugin",

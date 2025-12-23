@@ -119,6 +119,7 @@ cc_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_emission_utils",
         "//xla:shape_util",
@@ -185,6 +186,7 @@ cc_library(
 xla_cc_test(
     name = "intrinsic_lib_test",
     srcs = ["intrinsic_lib_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic_lib",
         "//xla/codegen/intrinsic",

@@ -67,6 +67,7 @@ cc_library(
 xla_cc_test(
     name = "buffer_allocations_test",
     srcs = ["buffer_allocations_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":thunk_testlib",
@@ -117,6 +118,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_test",
     srcs = ["kernel_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel",
         ":kernel_c_api",
@@ -221,6 +223,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_test",
     srcs = ["thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":thunk",
         "//xla:executable_run_options",
@@ -267,6 +270,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_executor_test",
     srcs = ["thunk_executor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":thread_pool_task_runner",
@@ -336,6 +340,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_thunk_test",
     srcs = ["conditional_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_thunk",
         ":thunk",
@@ -457,6 +462,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_thunk_test",
     srcs = ["convolution_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":convolution_thunk",
@@ -645,6 +651,7 @@ cc_library(
 xla_cc_test(
     name = "copy_thunk_test",
     srcs = ["copy_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":copy_thunk",
@@ -795,6 +802,7 @@ cc_library(
 xla_cc_test(
     name = "dot_thunk_test",
     srcs = ["dot_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":dot_thunk",
@@ -839,6 +847,7 @@ cc_library(
 xla_cc_test(
     name = "outfeed_thunk_test",
     srcs = ["outfeed_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":outfeed_thunk",
         ":thunk",
@@ -876,6 +885,7 @@ cc_library(
 xla_cc_test(
     name = "logical_id_thunk_test",
     srcs = ["logical_id_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":logical_id_thunk",
@@ -919,6 +929,7 @@ cc_library(
 xla_cc_test(
     name = "infeed_thunk_test",
     srcs = ["infeed_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":infeed_thunk",
         ":thunk",
@@ -973,6 +984,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_thunk_test",
     srcs = ["kernel_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":function_library",
@@ -1008,6 +1020,7 @@ cc_library(
 xla_cc_test(
     name = "rng_state_lib_test",
     srcs = ["rng_state_lib_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":rng_state_lib",
         "@com_google_absl//absl/numeric:int128",
@@ -1087,6 +1100,7 @@ cc_library(
 xla_cc_test(
     name = "sort_thunk_test",
     srcs = ["sort_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":function_library",
@@ -1139,6 +1153,7 @@ cc_library(
 xla_cc_test(
     name = "while_thunk_test",
     srcs = ["while_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_allocations",
         ":thunk",
@@ -1290,6 +1305,7 @@ cc_library(
 xla_cc_test(
     name = "work_queue_test",
     srcs = ["work_queue_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":work_queue",
         "//xla/tsl/concurrency:async_value",
@@ -1306,6 +1322,7 @@ xla_cc_test(
 xla_cc_test(
     name = "thunk_sequence_serdes_test",
     srcs = ["thunk_sequence_serdes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_thunk",
         ":all_reduce_thunk",
@@ -1383,6 +1400,7 @@ cc_library(
 xla_cc_test(
     name = "xfeed_manager_test",
     srcs = ["xfeed_manager_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xfeed_manager",
         "//xla:shape_util",

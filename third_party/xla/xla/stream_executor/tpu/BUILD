@@ -87,6 +87,7 @@ cc_library(
 xla_cc_test(
     name = "c_api_conversions_test",
     srcs = ["c_api_conversions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":c_api_conversions",
         ":c_api_decl",

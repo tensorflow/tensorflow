@@ -60,6 +60,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_runner_test",
     srcs = ["kernel_runner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_runner",
         ":llvm_ir_kernel_emitter",
@@ -184,6 +185,7 @@ pytype_strict_library(
 xla_cc_test(
     name = "llvm_ir_kernel_emitter_test",
     srcs = ["llvm_ir_kernel_emitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":llvm_ir_kernel_emitter",
         "//xla/codegen:kernel_definition",

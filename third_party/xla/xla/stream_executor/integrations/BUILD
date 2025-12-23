@@ -99,6 +99,7 @@ cc_library(
 xla_cc_test(
     name = "stream_executor_allocator_test",
     srcs = ["stream_executor_allocator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stream_executor_allocator",
         "//xla/stream_executor:generic_memory_allocation",
@@ -116,6 +117,7 @@ xla_cc_test(
 xla_cc_test(
     name = "tf_allocator_adapter_test",
     srcs = ["tf_allocator_adapter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tf_allocator_adapter",
         "//xla/service:cpu_plugin",

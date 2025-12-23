@@ -56,6 +56,7 @@ cc_library(
 xla_cc_test(
     name = "bfloat16_propagation_test",
     srcs = ["bfloat16_propagation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bfloat16_propagation",
         "//xla:comparison_util",
@@ -98,6 +99,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_trip_count_annotator_test",
     srcs = ["while_loop_trip_count_annotator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_trip_count_annotator",
         "//xla:xla_data_proto_cc",
@@ -134,6 +136,7 @@ cc_library(
 xla_cc_test(
     name = "defuser_test",
     srcs = ["defuser_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":defuser",
         "//xla:literal",
@@ -150,6 +153,7 @@ xla_cc_test(
 xla_cc_test(
     name = "despecializer_test",
     srcs = ["despecializer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":despecializer",
         "//xla:literal",
@@ -182,6 +186,7 @@ cc_library(
 xla_cc_test(
     name = "memory_space_propagation_test",
     srcs = ["memory_space_propagation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":memory_space_propagation",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
@@ -223,6 +228,7 @@ cc_library(
 xla_cc_test(
     name = "convert_memory_placement_to_internal_annotations_test",
     srcs = ["convert_memory_placement_to_internal_annotations_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convert_memory_placement_to_internal_annotations",
         "//xla:util",
@@ -271,6 +277,7 @@ xla_cc_test(
     name = "host_offload_legalize_test",
     srcs = ["host_offload_legalize_test.cc"],
     shard_count = 11,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offload_legalize",
         "//xla:shape_util",
@@ -328,6 +335,7 @@ xla_cc_test(
     name = "host_offloader_test",
     srcs = ["host_offloader_test.cc"],
     shard_count = 12,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offload_legalize",
         ":host_offloader",
@@ -379,6 +387,7 @@ cc_library(
 xla_cc_test(
     name = "host_offloading_prepare_test",
     srcs = ["host_offloading_prepare_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offloading_prepare",
         "//xla/hlo/ir:hlo",
@@ -437,6 +446,7 @@ cc_library(
 xla_cc_test(
     name = "literal_canonicalizer_test",
     srcs = ["literal_canonicalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":literal_canonicalizer",
         "//xla:literal_pool",
@@ -471,6 +481,7 @@ cc_library(
 xla_cc_test(
     name = "shape_canonicalizer_test",
     srcs = ["shape_canonicalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_canonicalizer",
         "//xla:shape_pool",
@@ -506,6 +517,7 @@ cc_library(
 xla_cc_test(
     name = "operand_upcaster_test",
     srcs = ["operand_upcaster_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":operand_upcaster",
         "//xla:shape_util",
@@ -537,6 +549,7 @@ cc_library(
 xla_cc_test(
     name = "add_original_value_test",
     srcs = ["add_original_value_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":add_original_value",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -592,6 +605,7 @@ cc_library(
 xla_cc_test(
     name = "call_splitter_test",
     srcs = ["call_splitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":call_splitter",
         "//xla:util",

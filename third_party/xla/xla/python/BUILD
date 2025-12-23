@@ -517,6 +517,7 @@ cc_library(
 xla_cc_test(
     name = "xplane_to_profile_instructions_test",
     srcs = ["xplane_to_profile_instructions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xplane_to_profile_instructions",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -646,6 +647,7 @@ cc_library(
 xla_cc_test(
     name = "aggregate_profile_test",
     srcs = ["aggregate_profile_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":aggregate_profile",
         "//xla/tsl/platform:test",

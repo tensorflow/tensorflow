@@ -86,6 +86,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_clique_key_test",
     srcs = ["gpu_clique_key_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_clique_key",
         "//xla:xla_data_proto_cc",
@@ -119,6 +120,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_clique_rendezvous_test",
     srcs = ["gpu_clique_rendezvous_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_clique_key",
         ":gpu_clique_rendezvous",
@@ -701,6 +703,7 @@ cc_library(
 xla_cc_test(
     name = "single_threaded_executor_test",
     srcs = ["single_threaded_executor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":single_threaded_executor",
         "//xla/tsl/platform:env",

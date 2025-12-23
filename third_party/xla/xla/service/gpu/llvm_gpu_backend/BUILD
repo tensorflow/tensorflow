@@ -275,6 +275,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":nvptx_backend",
@@ -300,6 +301,7 @@ xla_cc_test(
         "nobuilder",
     ]) + [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ],
     deps = [
@@ -325,6 +327,7 @@ xla_cc_test(
     ],
     tags = [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ],
     deps = [
@@ -346,6 +349,7 @@ xla_cc_test(
     size = "small",
     srcs = ["load_ir_module_test.cc"],
     data = ["tests_data/saxpy.ll"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":load_ir_module",
         "//xla/tests:xla_internal_test_main",
@@ -358,6 +362,7 @@ xla_cc_test(
 xla_cc_test(
     name = "nvptx_utils_test",
     srcs = ["nvptx_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":nvptx_utils",
         "//xla/tests:xla_internal_test_main",
@@ -370,6 +375,7 @@ xla_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":utils",
         "//xla/tests:xla_internal_test_main",
@@ -417,6 +423,7 @@ xla_cc_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ] + if_google([
         "notap",
         "nobuilder",

@@ -140,6 +140,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_opcode_test",
     srcs = ["hlo_opcode_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla/tests:xla_internal_test_main",
@@ -150,6 +151,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:shape_util",
@@ -166,6 +168,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:printer",
@@ -260,6 +263,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_module_test",
     srcs = ["hlo_module_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:shape_util",
@@ -313,6 +317,7 @@ cc_library(
 xla_cc_test(
     name = "backend_config_test",
     srcs = ["backend_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_config",
         "//xla/service/gpu:backend_configs_cc",
@@ -359,6 +364,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_instruction_utils_test",
     srcs = ["hlo_instruction_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
@@ -381,6 +387,7 @@ cc_library(
 xla_cc_test(
     name = "ptrvec_test",
     srcs = ["ptrvec_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ptrvec",
         "//xla/tsl/platform:logging",
@@ -414,6 +421,7 @@ cc_library(
 xla_cc_test(
     name = "tile_assignment_test",
     srcs = ["tile_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tile_assignment",
         "//xla:array",
@@ -428,6 +436,7 @@ xla_cc_test(
 xla_cc_test(
     name = "replica_group_test",
     srcs = ["replica_group_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         ":mesh_and_axis",
@@ -444,6 +453,7 @@ xla_cc_test(
 xla_cc_test(
     name = "mesh_and_axis_test",
     srcs = ["mesh_and_axis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mesh_and_axis",
         ":tile_assignment",
@@ -460,6 +470,7 @@ xla_cc_test(
 xla_cc_test(
     name = "named_sharding_test",
     srcs = ["named_sharding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mesh_and_axis",
         ":named_sharding",
@@ -471,6 +482,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_casting_utils_test",
     srcs = ["hlo_casting_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:shape_util",
@@ -497,6 +509,7 @@ cc_library(
 xla_cc_test(
     name = "collective_op_group_mode_test",
     srcs = ["collective_op_group_mode_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_op_group_mode",
         "//xla/tests:xla_internal_test_main",
@@ -509,6 +522,7 @@ xla_cc_test(
 xla_cc_test(
     name = "dfs_hlo_visitor_test",
     srcs = ["dfs_hlo_visitor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:literal_util",
@@ -525,6 +539,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_original_value_test",
     srcs = ["hlo_original_value_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo",
         "//xla:shape_util",

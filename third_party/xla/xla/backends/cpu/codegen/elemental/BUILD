@@ -99,6 +99,7 @@ cc_library(
 xla_cc_test(
     name = "elemental_kernel_emitter_test",
     srcs = ["elemental_kernel_emitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":elemental_kernel_emitter",
         "//xla:xla_data_proto_cc",

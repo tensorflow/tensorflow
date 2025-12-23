@@ -482,6 +482,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_thunk_test",
     srcs = ["conditional_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_thunk",
         ":sequential_thunk",
@@ -538,6 +539,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_thunk_test",
     srcs = ["convolution_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convolution_thunk",
         ":thunk",
@@ -575,6 +577,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_reorder_thunk_test",
     srcs = ["convolution_reorder_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convolution_reorder_thunk",
         ":thunk",
@@ -630,6 +633,7 @@ cc_library(
 xla_cc_test(
     name = "copy_thunk_test",
     srcs = ["copy_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_thunk",
         ":thunk",
@@ -680,7 +684,10 @@ cc_library(
 xla_cc_test(
     name = "cub_sort_thunk_test",
     srcs = ["cub_sort_thunk_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":cub_sort_thunk",
         ":thunk",
@@ -833,6 +840,7 @@ cc_library(
 xla_cc_test(
     name = "fft_thunk_test",
     srcs = ["fft_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fft_thunk",
         ":thunk",
@@ -872,6 +880,7 @@ cc_library(
 xla_cc_test(
     name = "gemm_thunk_test",
     srcs = ["gemm_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gemm_thunk",
         ":thunk",
@@ -912,6 +921,8 @@ xla_test(
     name = "gpublas_lt_matmul_thunk_test",
     srcs = ["gpublas_lt_matmul_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gpublas_lt_matmul_thunk",
         ":thunk",
@@ -983,6 +994,7 @@ cc_library(
 xla_cc_test(
     name = "infeed_thunk_test",
     srcs = ["infeed_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":infeed_thunk",
         ":thunk",
@@ -1187,6 +1199,7 @@ cc_library(
 xla_cc_test(
     name = "select_k_thunk_test",
     srcs = ["select_k_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":select_k_thunk",
         ":thunk",
@@ -1225,6 +1238,7 @@ cc_library(
 xla_cc_test(
     name = "memset_thunk_test",
     srcs = ["memset_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":memset_thunk",
         ":thunk",
@@ -1271,6 +1285,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_thunk_test",
     srcs = ["all_gather_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_thunk",
         ":collective_thunk",
@@ -1430,6 +1445,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_thunk_test",
     srcs = ["all_reduce_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_thunk",
         ":collective_thunk",
@@ -1486,6 +1502,7 @@ cc_library(
 xla_cc_test(
     name = "all_to_all_thunk_test",
     srcs = ["all_to_all_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_to_all_thunk",
         ":collective_thunk",
@@ -1547,6 +1564,7 @@ cc_library(
 xla_cc_test(
     name = "ragged_all_to_all_thunk_test",
     srcs = ["ragged_all_to_all_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_thunk",
         ":ragged_all_to_all_thunk",
@@ -1590,6 +1608,8 @@ xla_test(
     name = "collective_broadcast_thunk_test",
     srcs = ["collective_broadcast_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":collective_broadcast_thunk",
         ":collective_thunk",
@@ -1672,6 +1692,8 @@ xla_test(
     name = "collective_permute_thunk_test",
     srcs = ["collective_permute_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":collective_permute_thunk",
         ":collective_thunk",
@@ -1721,6 +1743,7 @@ cc_library(
 xla_cc_test(
     name = "collective_clique_requests_test",
     srcs = ["collective_clique_requests_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_clique_requests",
         "//xla:xla_data_proto_cc",
@@ -1904,6 +1927,7 @@ cc_library(
 xla_cc_test(
     name = "collective_thunk_test",
     srcs = ["collective_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_thunk",
         ":thunk",
@@ -2062,6 +2086,7 @@ cc_library(
 xla_cc_test(
     name = "norm_thunk_test",
     srcs = ["norm_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":norm_thunk",
         ":thunk",
@@ -2106,6 +2131,7 @@ cc_library(
 xla_cc_test(
     name = "outfeed_thunk_test",
     srcs = ["outfeed_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":outfeed_thunk",
         ":thunk",
@@ -2198,6 +2224,7 @@ cc_library(
 xla_cc_test(
     name = "sequential_thunk_test",
     srcs = ["sequential_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sequential_thunk",
         ":thunk",
@@ -2257,6 +2284,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_id_test",
     srcs = ["thunk_id_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":thunk_id",
         "@com_google_googletest//:gtest_main",
@@ -2308,6 +2336,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_test",
     srcs = ["thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sequential_thunk",
         ":thunk",
@@ -2344,6 +2373,7 @@ cc_library(
 xla_cc_test(
     name = "shaped_slice_test",
     srcs = ["shaped_slice_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shaped_slice",
         ":shaped_slice_proto_cc",
@@ -2361,7 +2391,10 @@ xla_cc_test(
 xla_cc_test(
     name = "for_all_thunks_test",
     srcs = ["for_all_thunks_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":command_buffer_cmd",
         ":command_buffer_thunk",
@@ -2408,6 +2441,7 @@ cc_library(
 xla_cc_test(
     name = "triangular_solve_thunk_test",
     srcs = ["triangular_solve_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":thunk",
         ":thunk_proto_cc",
@@ -2424,6 +2458,7 @@ xla_cc_test(
 xla_cc_test(
     name = "replica_id_thunk_test",
     srcs = ["replica_id_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":replica_id_thunk",
         ":thunk",
@@ -2524,6 +2559,7 @@ cc_library(
 xla_cc_test(
     name = "wait_for_streams_thunk_test",
     srcs = ["wait_for_streams_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":thunk",
         ":thunk_proto_cc",
@@ -2558,6 +2594,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_thunk_test",
     srcs = ["cudnn_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cudnn_thunk",
         ":thunk",
@@ -2978,6 +3015,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_proto_deserialization_test",
     srcs = ["thunk_proto_deserialization_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_thunk",
         ":copy_thunk",
@@ -3277,6 +3315,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_pass_pipeline_test",
     srcs = ["thunk_pass_pipeline_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sequential_thunk",
         ":thunk",
@@ -3438,6 +3477,7 @@ cc_library(
 xla_cc_test(
     name = "thunk_buffer_debug_pass_test",
     srcs = ["thunk_buffer_debug_pass_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffers_checksum_thunk",
         ":buffers_float_check_thunk",
@@ -3507,6 +3547,8 @@ xla_test(
     name = "runtime_intrinsics_test",
     srcs = ["runtime_intrinsics_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":runtime_intrinsics",
         "//xla:literal",
@@ -3786,6 +3828,7 @@ cc_library(
 xla_cc_test(
     name = "custom_kernel_thunk_test",
     srcs = ["custom_kernel_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":custom_kernel_thunk",
         ":thunk",
@@ -3807,6 +3850,7 @@ xla_cc_test(
 xla_cc_test(
     name = "buffer_debug_log_entry_metadata_store_test",
     srcs = ["buffer_debug_log_entry_metadata_store_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_debug_log_entry_metadata_store",
         ":buffer_debug_log_structs",

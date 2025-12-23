@@ -255,6 +255,7 @@ cc_library(
 xla_cc_test(
     name = "slice_test",
     srcs = ["slice_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":slice",
         "//xla/service:time_utils",
@@ -300,6 +301,7 @@ cc_library(
 xla_cc_test(
     name = "allocation_test",
     srcs = ["allocation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":allocation",
         "//xla:xla_data_proto_cc",
@@ -384,6 +386,7 @@ cc_library(
 xla_cc_test(
     name = "cost_analysis_test",
     srcs = ["cost_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cost_analysis",
         "//xla:shape_util",
@@ -426,6 +429,7 @@ cc_library(
 xla_cc_test(
     name = "simulator_test",
     srcs = ["simulator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":allocation",
         ":cost_analysis",
@@ -537,6 +541,7 @@ cc_library(
 xla_cc_test(
     name = "memory_bound_loop_optimizer_test",
     srcs = ["memory_bound_loop_optimizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":allocation",
         ":buffer_interval_comparator",
@@ -674,6 +679,7 @@ cc_library(
 xla_cc_test(
     name = "prefetch_interval_picker_test",
     srcs = ["prefetch_interval_picker_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cost_analysis",
         ":prefetch_interval_picker",
@@ -694,6 +700,7 @@ xla_cc_test(
 xla_cc_test(
     name = "best_fit_repacker_test",
     srcs = ["best_fit_repacker_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":best_fit_repacker",
         "//xla:comparison_util",

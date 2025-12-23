@@ -40,6 +40,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_program_test",
     srcs = ["hlo_program_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_program",
         "//xla/pjrt:mlir_to_hlo",
@@ -77,6 +78,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_program_serdes_test",
     srcs = ["hlo_program_serdes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_program",
         ":hlo_program_serdes",

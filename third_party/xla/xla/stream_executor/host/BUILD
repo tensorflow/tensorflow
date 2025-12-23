@@ -143,6 +143,7 @@ cc_library(
 xla_cc_test(
     name = "host_stream_test",
     srcs = ["host_stream_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_platform",
         "//xla/stream_executor:platform",

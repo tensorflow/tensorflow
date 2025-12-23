@@ -37,6 +37,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_cse_test",
     srcs = ["all_gather_cse_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_cse",
         "//xla/hlo/ir:hlo",
@@ -79,6 +80,7 @@ cc_library(
 xla_cc_test(
     name = "async_collective_creator_test",
     srcs = ["async_collective_creator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":async_collective_creator",
         "//xla:side_effect_util",
@@ -122,6 +124,7 @@ cc_library(
 xla_cc_test(
     name = "convert_async_collectives_to_sync_test",
     srcs = ["convert_async_collectives_to_sync_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convert_async_collectives_to_sync",
         "//xla:util",
@@ -161,6 +164,7 @@ cc_library(
 xla_cc_test(
     name = "collective_quantizer_test",
     srcs = ["collective_quantizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_quantizer",
         "//xla:xla_data_proto_cc",
@@ -198,6 +202,7 @@ cc_library(
 xla_cc_test(
     name = "collectives_schedule_linearizer_test",
     srcs = ["collectives_schedule_linearizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collectives_schedule_linearizer",
         "//xla:xla_data_proto_cc",
@@ -234,6 +239,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_broadcast_reorder_test",
     srcs = ["all_gather_broadcast_reorder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_broadcast_reorder",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -273,6 +279,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_combiner_test",
     srcs = ["all_gather_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_combiner",
         "//xla:xla_data_proto_cc",
@@ -309,6 +316,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_remove_degenerate_dims_test",
     srcs = ["all_gather_remove_degenerate_dims_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_remove_degenerate_dims",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -346,6 +354,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_combiner_test",
     srcs = ["all_reduce_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_combiner",
         "//xla:literal_util",
@@ -386,6 +395,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_contiguous_test",
     srcs = ["all_reduce_contiguous_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_contiguous",
         "//xla/hlo/ir:hlo",
@@ -425,6 +435,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_combiner_test",
     srcs = ["collective_permute_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_permute_combiner",
         "//xla:literal_util",
@@ -460,6 +471,7 @@ cc_library(
 xla_cc_test(
     name = "collective_transformation_reorderer_test",
     srcs = ["collective_transformation_reorderer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_transformation_reorderer",
         "//xla:xla_data_proto_cc",
@@ -506,6 +518,7 @@ cc_library(
 xla_cc_test(
     name = "infeed_token_propagation_test",
     srcs = ["infeed_token_propagation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":infeed_token_propagation",
         "//xla/hlo/analysis:hlo_ordering",
@@ -543,6 +556,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_all_reduce_code_motion_setup_test",
     srcs = ["while_loop_all_reduce_code_motion_setup_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_all_reduce_code_motion_setup",
         "//xla:xla_data_proto_cc",

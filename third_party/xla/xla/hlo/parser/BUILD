@@ -69,6 +69,7 @@ xla_cc_test(
     name = "hlo_parser_test",
     size = "small",
     srcs = ["hlo_parser_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_lexer",
         ":hlo_parser",
@@ -122,6 +123,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_lexer_test",
     srcs = ["hlo_lexer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_lexer",
         "@com_google_absl//absl/base",

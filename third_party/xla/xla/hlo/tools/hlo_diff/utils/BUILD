@@ -29,6 +29,7 @@ cc_library(
 xla_cc_test(
     name = "connected_components_test",
     srcs = ["connected_components_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":connected_components",
         "//xla:shape_util",
@@ -86,6 +87,7 @@ cc_library(
 xla_cc_test(
     name = "text_diff_test",
     srcs = ["text_diff_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":text_diff",
         "@com_google_absl//absl/strings:string_view",

@@ -82,7 +82,10 @@ xla_cc_test(
     srcs = ["utils_test.cc"],
     # Not sure why it doesn't work on arm64 CPU, but these tests are just validating business logic
     # and so we just need to make sure they pass on other systems.
-    tags = ["not_run:arm"],
+    tags = [
+        "not_run:arm",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":utils",
         "//xla/hlo/ir:hlo_sharding",

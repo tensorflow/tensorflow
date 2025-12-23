@@ -15,6 +15,7 @@ xla_cpu_internal_packages()
 xla_cc_test(
     name = "pjrt_client_test_cpu",
     srcs = ["pjrt_client_test_cpu.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_client",
         "//xla/pjrt:pjrt_client_test_common",
@@ -25,6 +26,7 @@ xla_cc_test(
 xla_cc_test(
     name = "tracked_cpu_device_buffer_test",
     srcs = ["tracked_cpu_device_buffer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":abstract_cpu_buffer",
         ":cpu_client",
@@ -242,6 +244,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_client_test",
     srcs = ["cpu_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_client",
         "//xla:literal",
@@ -343,6 +346,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_pjrt_compiler_test",
     srcs = ["cpu_pjrt_compiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_client",
         ":cpu_pjrt_compiler",

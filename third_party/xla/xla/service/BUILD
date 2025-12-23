@@ -126,6 +126,7 @@ cc_library(
 xla_cc_test(
     name = "collective_opt_utils_test",
     srcs = ["collective_opt_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_opt_utils",
         "//xla/hlo/ir:hlo",
@@ -170,6 +171,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_promotion_test",
     srcs = ["all_reduce_promotion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_promotion",
         ":pattern_matcher",
@@ -210,6 +212,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_reassociate_test",
     srcs = ["all_reduce_reassociate_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_reassociate",
         ":pattern_matcher",
@@ -247,6 +250,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_reduce_scatter_reorder_test",
     srcs = ["all_reduce_reduce_scatter_reorder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_reduce_scatter_reorder",
         "//xla:xla_data_proto_cc",
@@ -286,6 +290,7 @@ cc_library(
 xla_cc_test(
     name = "source_target_pairs_test",
     srcs = ["source_target_pairs_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":source_target_pairs",
         "//xla:shape_util",
@@ -310,6 +315,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_cycle_test",
     srcs = ["collective_permute_cycle_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_permute_cycle",
         ":source_target_pairs",
@@ -345,6 +351,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_decomposer_test",
     srcs = ["collective_permute_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_ops_utils",
         ":collective_permute_decomposer",
@@ -402,6 +409,7 @@ cc_library(
 xla_cc_test(
     name = "constant_value_test",
     srcs = ["constant_value_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":constant_value",
         "//xla:literal_util",
@@ -430,6 +438,7 @@ cc_library(
 xla_cc_test(
     name = "value_range_test",
     srcs = ["value_range_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":constant_value",
         ":hlo_module_config",
@@ -499,6 +508,7 @@ cc_library(
 xla_cc_test(
     name = "collective_pipeliner_test",
     srcs = ["collective_pipeliner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_pipeliner",
         ":collective_pipeliner_utils",
@@ -584,6 +594,7 @@ xla_cc_test(
     srcs = ["dump_test.cc"],
     # Required to create BuildData as stamp data is disabled by default in tests.
     stamp = 1,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_assignment",
         ":dump",
@@ -642,6 +653,7 @@ cc_library(
 xla_cc_test(
     name = "shape_inference_test",
     srcs = ["shape_inference_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_inference",
         "//xla:shape_util",
@@ -711,6 +723,7 @@ xla_cc_test(
     srcs = [
         "sharding_propagation_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sharding_propagation",
         "//xla:shape_util",
@@ -760,6 +773,7 @@ xla_cc_test(
     srcs = [
         "sharding_remover_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sharding_remover",
         "//xla/hlo/ir:hlo",
@@ -791,6 +805,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_parameter_binding_test",
     srcs = ["dynamic_parameter_binding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -851,6 +866,7 @@ cc_library(
 xla_cc_test(
     name = "pattern_matcher_test",
     srcs = ["pattern_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         "//xla:comparison_util",
@@ -871,6 +887,7 @@ xla_cc_test(
 xla_cc_test(
     name = "pattern_matcher_gmock_test",
     srcs = ["pattern_matcher_gmock_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         "//xla:shape_util",
@@ -894,6 +911,7 @@ cc_library(
 xla_cc_test(
     name = "fuzzy_matcher_test",
     srcs = ["fuzzy_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fuzzy_matcher",
         ":pattern_matcher",
@@ -908,7 +926,10 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
-    tags = ["not_run:arm"],
+    tags = [
+        "not_run:arm",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":hlo_proto_cc",
         ":pattern_matcher",
@@ -940,6 +961,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_sharding_test",
     srcs = ["hlo_sharding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:array",
         "//xla:array3d",
@@ -991,6 +1013,7 @@ cc_library(
 xla_cc_test(
     name = "call_graph_test",
     srcs = ["call_graph_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":call_graph",
         "//xla:comparison_util",
@@ -1045,6 +1068,7 @@ xla_cc_test(
     name = "call_inliner_test",
     size = "small",
     srcs = ["call_inliner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":call_graph",
         ":call_inliner",
@@ -1283,6 +1307,7 @@ cc_library(
 xla_cc_test(
     name = "latency_hiding_scheduler_test",
     srcs = ["latency_hiding_scheduler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_placer_hdr",
         ":hlo_cost_analysis",
@@ -1339,6 +1364,7 @@ cc_library(
 xla_cc_test(
     name = "p2p_schedule_preparation_test",
     srcs = ["p2p_schedule_preparation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":p2p_schedule_preparation",
         "//xla:util",
@@ -1375,6 +1401,7 @@ cc_library(
 xla_cc_test(
     name = "profile_guided_latency_estimator_test",
     srcs = ["profile_guided_latency_estimator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":latency_hiding_scheduler",
         ":profile_guided_latency_estimator",
@@ -1504,6 +1531,7 @@ cc_library(
 xla_cc_test(
     name = "shaped_buffer_test",
     srcs = ["shaped_buffer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -1572,6 +1600,7 @@ cc_library(
 xla_cc_test(
     name = "executable_test",
     srcs = ["executable_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":executable",
         ":hlo_execution_profile",
@@ -1783,6 +1812,7 @@ cc_library(
 xla_cc_test(
     name = "name_uniquer_test",
     srcs = ["name_uniquer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":name_uniquer",
         "//xla/tests:xla_internal_test_main",
@@ -1839,6 +1869,7 @@ cc_library(
 xla_cc_test(
     name = "buffer_assignment_test",
     srcs = ["buffer_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_assignment",
         ":buffer_assignment_proto_cc",
@@ -1890,6 +1921,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_group_test",
     srcs = ["hlo_module_group_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_proto_cc",
         "//xla/hlo/ir:hlo_module_group",
@@ -1931,6 +1963,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_value",
         "//xla:literal_util",
@@ -1954,6 +1987,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_input_output_alias_config_test",
     srcs = ["hlo_input_output_alias_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:shape_util",
         "//xla:types",
@@ -2019,6 +2053,7 @@ cc_library(
 xla_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":instruction_fusion",
         "//xla:shape_util",
@@ -2106,6 +2141,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_node_indexing_evaluation_test",
     srcs = ["fusion_node_indexing_evaluation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_node_indexing_evaluation",
         ":instruction_fusion",
@@ -2121,6 +2157,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_creation_utils_test",
     srcs = ["hlo_creation_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
@@ -2260,6 +2297,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_expander_test",
     srcs = ["scatter_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scatter_expander",
         "//xla:literal",
@@ -2326,6 +2364,7 @@ xla_cc_test(
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
     shard_count = 12,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triangular_solve_expander",
         "//xla:array2d",
@@ -2442,6 +2481,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduce_scatter_combiner",
         "//xla/hlo/ir:hlo",
@@ -2480,6 +2520,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_simplifier_test",
     srcs = ["all_reduce_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_simplifier",
         ":hlo_module_config",
@@ -2518,6 +2559,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_simplifier_test",
     srcs = ["all_gather_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_simplifier",
         ":pattern_matcher",
@@ -2551,6 +2593,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_decomposer_test",
     srcs = ["reduce_scatter_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_ops_utils",
         ":reduce_scatter_decomposer",
@@ -2584,6 +2627,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_reassociate_test",
     srcs = ["reduce_scatter_reassociate_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_verifier",
         ":reduce_scatter_reassociate",
@@ -2598,6 +2642,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gather_expander_test",
     srcs = ["gather_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gather_expander",
         "//xla/hlo/ir:hlo",
@@ -2636,6 +2681,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_simplifier_test",
     srcs = ["conditional_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_simplifier",
         ":hlo_verifier",
@@ -2688,6 +2734,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_code_motion_test",
     srcs = ["conditional_code_motion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_code_motion",
         ":hlo_cse",
@@ -2745,6 +2792,7 @@ xla_cc_test(
     name = "space_to_batch_converter_test",
     size = "small",
     srcs = ["space_to_batch_converter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":space_to_batch_converter",
         "//xla/hlo/ir:hlo",
@@ -2785,6 +2833,7 @@ cc_library(
 xla_cc_test(
     name = "scan_loop_accumulator_input_unification_test",
     srcs = ["scan_loop_accumulator_input_unification_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":scan_loop_accumulator_input_unification",
@@ -2844,6 +2893,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_unroller_test",
     srcs = ["while_loop_unroller_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scheduling_annotations_util",
         ":while_loop_unroller",
@@ -2904,6 +2954,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_simplifier_test",
     srcs = ["while_loop_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_simplifier",
         "//xla:literal_util",
@@ -2965,6 +3016,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_decomposer_test",
     srcs = ["all_gather_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_decomposer",
         "//xla/hlo/ir:hlo",
@@ -3075,6 +3127,8 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":dynamic_dimension_inference",
         ":dynamic_padder",
@@ -3118,6 +3172,7 @@ xla_test(
 xla_cc_test(
     name = "dynamic_dimension_inference_test",
     srcs = ["dynamic_dimension_inference_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dynamic_dimension_inference",
         "//xla:comparison_util",
@@ -3180,6 +3235,7 @@ cc_library(
 xla_cc_test(
     name = "computation_placer_test",
     srcs = ["computation_placer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_placer",
         "//xla/runtime:device_id",
@@ -3271,6 +3327,7 @@ cc_library(
 xla_cc_test(
     name = "generic_transfer_manager_test",
     srcs = ["generic_transfer_manager_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":generic_transfer_manager",
         ":shaped_buffer",
@@ -3321,6 +3378,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cost_analysis_test",
     srcs = ["hlo_cost_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3370,7 +3428,10 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_mac_arm64",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3384,6 +3445,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         "//xla:comparison_util",
@@ -3412,6 +3474,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_test",
     srcs = ["hlo_module_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_value",
         ":compilation_environments",
@@ -3451,6 +3514,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_metadata_test",
     srcs = ["hlo_module_metadata_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
@@ -3539,6 +3603,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_phi_graph_test",
     srcs = ["hlo_phi_graph_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_graph_dumper",
         ":hlo_phi_graph",
@@ -3705,6 +3770,7 @@ cc_library(
 xla_cc_test(
     name = "copy_insertion_test",
     srcs = ["copy_insertion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":hlo_graph_dumper",
@@ -3737,6 +3803,7 @@ xla_cc_test(
 xla_cc_test(
     name = "loop_schedule_linearizer_test",
     srcs = ["loop_schedule_linearizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":hlo_graph_dumper",
@@ -3831,6 +3898,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_verifier_test",
     srcs = ["hlo_verifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_config",
         ":hlo_verifier",
@@ -3876,6 +3944,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_gpu_shape_verifier_test",
     srcs = ["cpu_gpu_shape_verifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_gpu_shape_verifier",
         ":hlo_module_config",
@@ -3892,6 +3961,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_dce_test",
     srcs = ["hlo_module_dce_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_dce",
         "//xla:shape_util",
@@ -3909,6 +3979,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_layout",
         ":hlo_verifier",
@@ -3966,6 +4037,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_cse",
         ":pattern_matcher",
@@ -4004,6 +4076,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cse_constant_key_test",
     srcs = ["hlo_cse_constant_key_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_cse_constant_key",
         "//xla:literal",
@@ -4085,6 +4158,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_domain_test",
     srcs = ["hlo_domain_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":call_inliner",
         ":hlo_domain_isolator",
@@ -4118,6 +4192,7 @@ cc_library(
 xla_cc_test(
     name = "maybe_owning_device_address_test",
     srcs = ["maybe_owning_device_address_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":maybe_owning_device_address",
         "//xla/tsl/platform:test",
@@ -4207,7 +4282,9 @@ xla_test(
     ],
     tags = [
         "no_windows",  # TODO(b/152037541)
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":elemental_ir_emitter",
         ":hlo_module_config",
@@ -4256,6 +4333,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_module_config_test",
     srcs = ["hlo_module_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_config",
         "//xla:xla_proto_cc",
@@ -4329,6 +4407,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_graph_dumper_test",
     srcs = ["hlo_graph_dumper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_graph_dumper",
         "//xla:literal_util",
@@ -4369,6 +4448,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_folding_test",
     srcs = ["transpose_folding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_inference",
         ":transpose_folding",
@@ -4410,6 +4490,7 @@ cc_library(
 xla_cc_test(
     name = "stream_pool_test",
     srcs = ["stream_pool_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stream_pool",
         "//xla/stream_executor:platform",
@@ -4438,6 +4519,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_proto_util_test",
     srcs = ["hlo_proto_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_proto_cc",
         ":hlo_proto_util",
@@ -4572,6 +4654,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_runner_pjrt_test",
     srcs = ["hlo_runner_pjrt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_placer_hdr",
         ":hlo_runner_interface",
@@ -4639,6 +4722,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_util_test",
     srcs = ["tuple_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_config",
         ":tuple_util",
@@ -4694,6 +4778,7 @@ cc_library(
 xla_cc_test(
     name = "host_offload_utils_test",
     srcs = ["host_offload_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offload_utils",
         "//xla:shape_util",
@@ -4738,6 +4823,7 @@ cc_library(
 xla_cc_test(
     name = "while_util_test",
     srcs = ["while_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_util",
         "//xla:util",
@@ -4789,6 +4875,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_all_reduce_code_motion_test",
     srcs = ["while_loop_all_reduce_code_motion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_verifier",
         ":while_loop_all_reduce_code_motion",
@@ -4840,6 +4927,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_concat_code_motion_test",
     srcs = ["while_loop_concat_code_motion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_verifier",
         ":while_loop_concat_code_motion",
@@ -4888,6 +4976,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_invariant_code_motion_test",
     srcs = ["while_loop_invariant_code_motion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_invariant_code_motion",
         "//xla:literal_util",
@@ -4932,6 +5021,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_expensive_invariant_code_motion_test",
     srcs = ["while_loop_expensive_invariant_code_motion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_expensive_invariant_code_motion",
         "//xla:util",
@@ -4973,6 +5063,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_constant_sinking_test",
     srcs = ["while_loop_constant_sinking_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_constant_sinking",
         "//xla:literal_util",
@@ -5015,6 +5106,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_fusible_sinking_test",
     srcs = ["while_loop_fusible_sinking_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_fusible_sinking",
         "//xla/hlo/ir:hlo",
@@ -5073,6 +5165,7 @@ cc_library(
 xla_cc_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":map_inliner",
         "//xla:literal",
@@ -5093,6 +5186,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_casting_utils_test",
     srcs = ["hlo_casting_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -5124,6 +5218,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_to_select_test",
     srcs = ["conditional_to_select_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conditional_to_select",
         "//xla:literal",
@@ -5145,6 +5240,7 @@ cc_library(
 xla_cc_test(
     name = "custom_call_target_registry_test",
     srcs = ["custom_call_target_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":custom_call_status",
         ":custom_call_target_registry",
@@ -5216,6 +5312,7 @@ cc_library(
 xla_cc_test(
     name = "custom_call_status_test",
     srcs = ["custom_call_status_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":custom_call_status_internal",
         ":custom_call_status_test_c_caller",
@@ -5253,6 +5350,7 @@ cc_library(
 xla_cc_test(
     name = "slow_operation_alarm_test",
     srcs = ["slow_operation_alarm_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":slow_operation_alarm",
         "//xla/tests:xla_internal_test_main",
@@ -5299,6 +5397,7 @@ cc_library(
 xla_cc_test(
     name = "collective_ops_utils_test",
     srcs = ["collective_ops_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_ops_utils",
         ":collective_permute_cycle",
@@ -5354,6 +5453,7 @@ cc_library(
 xla_cc_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         ":topk_rewriter",
@@ -5400,6 +5500,7 @@ cc_library(
 xla_cc_test(
     name = "xla_debug_info_manager_test",
     srcs = ["xla_debug_info_manager_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_config",
         ":hlo_proto_cc",
@@ -5440,6 +5541,7 @@ cc_library(
 xla_cc_test(
     name = "mapped_ptr_container_sorter_test",
     srcs = ["mapped_ptr_container_sorter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mapped_ptr_container_sorter",
         "//xla/hlo/testlib:test",
@@ -5467,6 +5569,7 @@ cc_library(
 xla_cc_test(
     name = "lockable_test",
     srcs = ["lockable_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":lockable",
         "@com_google_absl//absl/synchronization",
@@ -5499,6 +5602,7 @@ cc_library(
 xla_cc_test(
     name = "rendezvous_test",
     srcs = ["rendezvous_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":rendezvous",
         "//xla/tsl/lib/core:status_test_util",
@@ -5562,6 +5666,7 @@ tf_proto_library(
 xla_cc_test(
     name = "compilation_environments_test",
     srcs = ["compilation_environments_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_environments",
         ":test_compilation_environment_proto_cc",
@@ -5629,6 +5734,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_simplifier_test",
     srcs = ["scatter_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scatter_simplifier",
         "//xla:literal",
@@ -5665,6 +5771,7 @@ cc_library(
 xla_cc_test(
     name = "select_and_scatter_expander_test",
     srcs = ["select_and_scatter_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":select_and_scatter_expander",
         "//xla/hlo/ir:hlo",
@@ -5678,6 +5785,7 @@ xla_cc_test(
     srcs = [
         "layout_normalization_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":layout_normalization",
         ":scatter_simplifier",
@@ -5758,6 +5866,7 @@ cc_library(
 xla_cc_test(
     name = "batched_gather_scatter_normalizer_test",
     srcs = ["batched_gather_scatter_normalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":batched_gather_scatter_normalizer",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -5770,6 +5879,7 @@ xla_cc_test(
 xla_cc_test(
     name = "change_op_data_type_test",
     srcs = ["change_op_data_type_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":change_op_data_type",
         ":pattern_matcher",
@@ -5873,6 +5983,7 @@ xla_cc_test(
     tags = [
         "no_oss",
         "notap",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cpu_plugin",
@@ -5899,7 +6010,10 @@ xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
     srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
     data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
-    tags = ["not_run:arm"],  # b/341355246
+    tags = [
+        "not_run:arm",
+        "pjrt_migration_candidate",
+    ],  # b/341355246
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -5937,6 +6051,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_oss",
+        "pjrt_migration_candidate",
         "requires-gpu-sm90-only",
     ],
     deps = [
@@ -6005,6 +6120,7 @@ xla_cc_test(
     name = "gpu_compilation_environment_test",
     size = "small",
     srcs = ["gpu_compilation_environment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_environments",
         ":gpu_compilation_environment",
@@ -6074,6 +6190,7 @@ cc_library(
 xla_cc_test(
     name = "propagate_original_value_test",
     srcs = ["propagate_original_value_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":call_inliner",
         "//xla:literal_util",
@@ -6114,6 +6231,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_pipeline_unroller_test",
     srcs = ["while_loop_pipeline_unroller_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":while_loop_pipeline_unroller",
@@ -6163,6 +6281,7 @@ cc_library(
 xla_cc_test(
     name = "legalize_scheduling_annotations_test",
     srcs = ["legalize_scheduling_annotations_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":legalize_scheduling_annotations",
         ":scheduling_annotations_util",
@@ -6195,6 +6314,7 @@ cc_library(
 xla_cc_test(
     name = "schedule_config_test",
     srcs = ["schedule_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":schedule_config",
         "@com_google_googletest//:gtest_main",
@@ -6216,6 +6336,7 @@ cc_library(
 xla_cc_test(
     name = "sharding_config_test",
     srcs = ["sharding_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sharding_config",
         "//xla/hlo/ir:hlo_sharding",
@@ -6243,6 +6364,7 @@ cc_library(
 xla_cc_test(
     name = "scheduling_annotations_util_test",
     srcs = ["scheduling_annotations_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scheduling_annotations_util",
         "//xla/hlo/ir:hlo",
@@ -6283,6 +6405,7 @@ cc_library(
 xla_cc_test(
     name = "matmul_indexing_utils_test",
     srcs = ["matmul_indexing_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":matmul_indexing_utils",
         "//xla:shape_util",

@@ -404,6 +404,7 @@ xla_cc_test(
         # Disabled until autosharding is fully supported in OSS,
         # https://github.com/openxla/xla/issues/7248.
         "no_oss",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":auto_sharding",
@@ -450,6 +451,7 @@ xla_cc_test(
         # Disabled until autosharding is fully supported in OSS,
         # https://github.com/openxla/xla/issues/7248.
         "no_oss",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":auto_sharding_iopddl",
@@ -543,6 +545,7 @@ cc_library(
 xla_cc_test(
     name = "stablehlo_utils_test",
     srcs = ["stablehlo_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stablehlo_utils",
         "//xla/hlo/ir:hlo",
@@ -606,6 +609,7 @@ xla_cc_test(
     tags = [
         # Disabled until autosharding is fully supported for CPU and x86 GPU
         "no_oss",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":auto_sharding_stablehlo_pass",

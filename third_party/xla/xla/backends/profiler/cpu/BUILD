@@ -125,6 +125,7 @@ cc_library(
 xla_cc_test(
     name = "host_tracer_test",
     srcs = ["host_tracer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_tracer_impl",
         "//xla/tsl/lib/core:status_test_util",

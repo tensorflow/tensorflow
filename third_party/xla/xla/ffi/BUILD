@@ -53,6 +53,7 @@ cc_library(
 xla_cc_test(
     name = "call_frame_test",
     srcs = ["call_frame_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":attribute_map",
         ":call_frame",
@@ -88,6 +89,7 @@ cc_library(
 xla_cc_test(
     name = "execution_context_test",
     srcs = ["execution_context_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":execution_context",
         ":type_registry",
@@ -121,6 +123,7 @@ cc_library(
 xla_cc_test(
     name = "execution_state_test",
     srcs = ["execution_state_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":execution_state",
         ":execution_state_proto_cc",
@@ -261,6 +264,7 @@ cc_library(
 xla_cc_test(
     name = "attribute_map_test",
     srcs = ["attribute_map_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":attribute_map",
         ":attribute_map_proto_cc",
@@ -288,6 +292,7 @@ xla_cc_test(
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     shuffle_tests = False,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":attribute_map",
         ":call_frame",
@@ -345,6 +350,7 @@ cc_library(
 xla_cc_test(
     name = "type_registry_test",
     srcs = ["type_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type_registry",
         "//xla/tsl/lib/core:status_test_util",

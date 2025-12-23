@@ -54,6 +54,7 @@ cc_library(
 xla_cc_test(
     name = "op_cost_test",
     srcs = ["op_cost_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":op_cost",
         ":op_cost_test_utils",

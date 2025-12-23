@@ -111,6 +111,7 @@ xla_cc_test(
     srcs = ["pjrt_c_api_client_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":pjrt_c_api_client",
@@ -155,7 +156,10 @@ xla_cc_test(
 xla_cc_test(
     name = "pjrt_c_api_client_tpu_test",
     srcs = ["pjrt_c_api_client_tpu_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":pjrt_c_api_client",
         "//xla/pjrt:pjrt_common",

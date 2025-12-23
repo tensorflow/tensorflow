@@ -41,6 +41,7 @@ cc_library(
 xla_cc_test(
     name = "tiled_hlo_instruction_test",
     srcs = ["tiled_hlo_instruction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tiled_hlo_instruction",
         "//xla:shape_util",
@@ -96,6 +97,7 @@ cc_library(
 xla_cc_test(
     name = "tiled_hlo_fusion_instruction_test",
     srcs = ["tiled_hlo_fusion_instruction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tiled_hlo_fusion_instruction",
         "//xla:shape_util",
@@ -135,6 +137,7 @@ cc_library(
 xla_cc_test(
     name = "tiled_hlo_schedule_test",
     srcs = ["tiled_hlo_schedule_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile_analysis",
         ":tiled_hlo_schedule",
@@ -174,6 +177,7 @@ cc_library(
 xla_cc_test(
     name = "affine_map_evaluator_test",
     srcs = ["affine_map_evaluator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":affine_map_evaluator",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -206,6 +210,7 @@ cc_library(
 xla_cc_test(
     name = "constraint_expression_test",
     srcs = ["constraint_expression_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":constraint_expression",
         "//xla/hlo/analysis:indexing_test_utils",
@@ -255,6 +260,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tile_test",
     srcs = ["symbolic_tile_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":affine_map_evaluator",
         ":symbolic_tile",
@@ -284,6 +290,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tiled_hlo_instruction_test",
     srcs = ["symbolic_tiled_hlo_instruction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
@@ -319,6 +326,7 @@ cc_library(
 xla_cc_test(
     name = "tiling_specification_test",
     srcs = ["tiling_specification_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile_analysis",
         ":tiling_specification",
@@ -380,6 +388,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tile_analysis_test",
     srcs = ["symbolic_tile_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":constraint_expression",
         ":symbolic_tile_analysis",

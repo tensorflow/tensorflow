@@ -51,6 +51,7 @@ cc_ir_header(
 xla_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tanh_ll",
         "@com_google_googletest//:gtest_main",
@@ -81,6 +82,7 @@ cc_ir_header(
 xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":eigen_unary_lib",
         ":eigen_unary_ll",

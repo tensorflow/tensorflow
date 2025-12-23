@@ -25,6 +25,7 @@ cc_library(
 xla_cc_test(
     name = "error_codes_test",
     srcs = ["error_codes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":debug_me_context_util",
         ":error_codes",
@@ -52,6 +53,7 @@ cc_library(
 xla_cc_test(
     name = "debug_me_context_util_test",
     srcs = ["debug_me_context_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":debug_me_context_util",
         "//xla/tsl/platform:debug_me_context",
@@ -82,6 +84,7 @@ cc_library(
 xla_cc_test(
     name = "fatal_error_sink_test",
     srcs = ["fatal_error_sink_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":debug_me_context_util",
         ":fatal_error_sink",
@@ -102,6 +105,7 @@ cc_library(
 xla_cc_test(
     name = "check_test",
     srcs = ["check_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":check",
         ":debug_me_context_util",

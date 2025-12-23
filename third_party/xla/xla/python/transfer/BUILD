@@ -49,6 +49,7 @@ cc_library(
 xla_cc_test(
     name = "streaming_test",
     srcs = ["streaming_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":streaming",
         ":transfer_socket_proto_cc",
@@ -89,7 +90,7 @@ cc_library(
 xla_cc_test(
     name = "event_loop_test",
     srcs = ["event_loop_test.cc"],
-    tags = if_oss(["not_run:arm"]),
+    tags = if_oss(["not_run:arm"]) + ["pjrt_migration_candidate"],
     deps = [
         ":event_loop",
         "@com_google_absl//absl/log",
@@ -149,6 +150,7 @@ cc_library(
 xla_cc_test(
     name = "streaming_ifrt_test",
     srcs = ["streaming_ifrt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":streaming",
         ":streaming_ifrt",
@@ -201,7 +203,7 @@ cc_library(
 xla_cc_test(
     name = "socket_bulk_transport_test",
     srcs = ["socket_bulk_transport_test.cc"],
-    tags = if_oss(["not_run:arm"]),
+    tags = if_oss(["not_run:arm"]) + ["pjrt_migration_candidate"],
     deps = [
         ":event_loop",
         ":socket_bulk_transport",
@@ -244,7 +246,7 @@ cc_library(
 xla_cc_test(
     name = "socket-server_test",
     srcs = ["socket-server_test.cc"],
-    tags = if_oss(["not_run:arm"]),
+    tags = if_oss(["not_run:arm"]) + ["pjrt_migration_candidate"],
     deps = [
         ":event_loop",
         ":socket-server",

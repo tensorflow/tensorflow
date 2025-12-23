@@ -30,6 +30,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_gumgraph_renderer_util_test",
     srcs = ["hlo_gumgraph_renderer_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph_renderer_util",
         "//xla/hlo/ir:hlo",
@@ -89,6 +90,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_gumgraph_html_renderer_test",
     srcs = ["hlo_gumgraph_html_renderer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph_html_renderer",
         ":op_metric_getter",

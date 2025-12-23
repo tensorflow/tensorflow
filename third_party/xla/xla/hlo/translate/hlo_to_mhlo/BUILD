@@ -202,6 +202,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_utils_test",
     srcs = ["hlo_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_utils",
         "//xla:shape_util",

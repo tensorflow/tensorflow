@@ -31,6 +31,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_combiner_test",
     srcs = ["all_reduce_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_combiner",
         "//xla/hlo/ir:hlo",

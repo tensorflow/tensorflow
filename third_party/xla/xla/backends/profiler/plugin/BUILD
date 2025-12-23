@@ -76,6 +76,7 @@ cc_library(
 xla_cc_test(
     name = "plugin_tracer_impl_test",
     srcs = ["plugin_tracer_impl_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":plugin_tracer",
         ":plugin_tracer_impl",

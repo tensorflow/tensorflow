@@ -51,6 +51,7 @@ cc_library(
 xla_cc_test(
     name = "attribute_exporter_test",
     srcs = ["attribute_exporter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":attribute_exporter",
         "//xla:xla_data_proto_cc",
@@ -273,6 +274,7 @@ gentbl_cc_library(
 xla_cc_test(
     name = "mlir_hlo_to_hlo_test",
     srcs = ["mlir_hlo_to_hlo_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mlir_hlo_to_hlo",
         "//xla/hlo/translate:register",
@@ -359,6 +361,7 @@ cc_library(
 xla_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type_to_shape",
         "//xla:shape_util",

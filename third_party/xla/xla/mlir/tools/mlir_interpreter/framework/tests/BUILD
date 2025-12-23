@@ -5,6 +5,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 xla_cc_test(
     name = "tensor_or_memref_test",
     srcs = ["tensor_or_memref_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/mlir/tools/mlir_interpreter/framework",
         "@com_google_absl//absl/algorithm:container",
@@ -18,6 +19,7 @@ xla_cc_test(
 xla_cc_test(
     name = "interpreter_value_test",
     srcs = ["interpreter_value_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/mlir/tools/mlir_interpreter/framework",
         "@com_google_googletest//:gtest_main",

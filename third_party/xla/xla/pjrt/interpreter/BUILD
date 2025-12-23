@@ -74,6 +74,7 @@ cc_library(
 xla_cc_test(
     name = "interpreter_client_test",
     srcs = ["interpreter_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":interpreter_client",
         "//xla:literal",

@@ -47,6 +47,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_diff_result_test",
     srcs = ["hlo_diff_result_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_diff_result",
         ":hlo_gumgraph_mappings",
@@ -93,6 +94,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_diff_summary_test",
     srcs = ["hlo_diff_summary_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_diff_result",
         ":hlo_diff_summary",
@@ -142,6 +144,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_gumgraph_diff_test",
     srcs = ["hlo_gumgraph_diff_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph_diff",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -168,6 +171,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_diff_eval_test",
     srcs = ["hlo_diff_eval_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_diff_eval",
         ":hlo_diff_result",

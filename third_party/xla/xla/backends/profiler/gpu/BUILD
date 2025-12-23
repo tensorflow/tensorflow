@@ -132,6 +132,7 @@ xla_cc_test(
         "gpu",
         "no_mac",
         "nomsan",  # Disable  msan for cuda related tests.
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -521,6 +522,7 @@ xla_cc_test(
     srcs = ["rocm_tracer_test.cc"],
     tags = [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ] + if_google([
         # Optional: only run internally if ROCm config is enabled
@@ -545,6 +547,7 @@ xla_cc_test(
     srcs = ["rocm_collector_test.cc"],
     tags = [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ] + if_google([
         "manual",
@@ -748,6 +751,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_mac",
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -781,6 +785,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cupti_buffer_events",
@@ -799,6 +804,7 @@ xla_cc_test(
         "cuda-only",
         "gpu",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cupti_buffer_events",

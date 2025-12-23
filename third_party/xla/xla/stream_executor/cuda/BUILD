@@ -607,6 +607,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ] + if_google([
         "not_run:arm",  # TODO(hebecker): Remove this once we have a cuDNN build for AArch64.
     ]),
@@ -653,6 +654,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ] + if_google([
         "not_run:arm",  # TODO(b/339136501): Remove this once we have a cuDNN build for AArch64.
     ]),
@@ -838,6 +840,7 @@ cc_library(
 xla_cc_test(
     name = "ptx_compiler_helpers_test",
     srcs = ["ptx_compiler_helpers_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ptx_compiler_helpers",
         "//xla/stream_executor:kernel_stats",
@@ -933,6 +936,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":compilation_provider",
@@ -1166,6 +1170,7 @@ xla_cc_test(
     tags = [
         "nomsan",
         "notsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cuda_compute_capability",
@@ -1200,6 +1205,7 @@ xla_cc_test(
     tags = [
         "nomsan",
         "notsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":nvjitlink_known_issues",
@@ -1500,6 +1506,7 @@ cc_library(
 xla_cc_test(
     name = "cuda_version_parser_test",
     srcs = ["cuda_version_parser_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cuda_version_parser",
         "//xla/stream_executor:semantic_version",
@@ -1799,6 +1806,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cubin_or_ptx_image",
@@ -1822,6 +1830,7 @@ xla_cc_test(
         ":nvlink",
         ":ptxas",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":subprocess_compilation",
         "//xla/stream_executor:semantic_version",
@@ -1868,6 +1877,7 @@ cc_library(
 xla_cc_test(
     name = "compilation_options_test",
     srcs = ["compilation_options_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_options",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1977,6 +1987,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":compilation_provider_test_lib",
@@ -1990,6 +2001,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ] + tf_cuda_tests_tags(),
     deps = [
         ":compilation_provider_test_lib",
@@ -2066,6 +2078,7 @@ cc_library(
 xla_cc_test(
     name = "composite_compilation_provider_test",
     srcs = ["composite_compilation_provider_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_options",
         ":compilation_provider",
@@ -2103,6 +2116,7 @@ cc_library(
 xla_cc_test(
     name = "caching_compilation_provider_test",
     srcs = ["caching_compilation_provider_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":caching_compilation_provider",
         ":compilation_options",
@@ -2171,6 +2185,7 @@ cc_library(
 xla_cc_test(
     name = "defer_relocatable_compilation_compilation_provider_test",
     srcs = ["defer_relocatable_compilation_compilation_provider_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_options",
         ":compilation_provider",
@@ -2202,6 +2217,7 @@ cc_library(
 xla_cc_test(
     name = "compilation_provider_options_test",
     srcs = ["compilation_provider_options_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compilation_provider_options",
         "//xla:xla_proto_cc",
@@ -2257,6 +2273,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -2300,6 +2317,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":tma_util",
@@ -2337,6 +2355,7 @@ tf_proto_library(
 xla_cc_test(
     name = "cuda_compute_capability_test",
     srcs = ["cuda_compute_capability_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cuda_compute_capability",
         ":cuda_compute_capability_proto_cc",

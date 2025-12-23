@@ -44,6 +44,7 @@ cc_library(
 xla_cc_test(
     name = "computation_partitioner_test",
     srcs = ["computation_partitioner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_partitioner",
         "//xla/hlo/analysis:indexing_analysis",
@@ -127,6 +128,7 @@ cc_library(
 xla_cc_test(
     name = "elemental_hlo_to_mlir_test",
     srcs = ["elemental_hlo_to_mlir_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_partitioner",
         ":elemental_hlo_to_mlir",
@@ -216,6 +218,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_arguments_test",
     srcs = ["kernel_arguments_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_arguments",
         "//xla:shape_util",
@@ -277,6 +280,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_api_builder_test",
     srcs = ["kernel_api_builder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_api_builder",
         "//xla:shape_util",
@@ -447,6 +451,7 @@ cc_library(
 xla_cc_test(
     name = "type_util_test",
     srcs = ["type_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type_util",
         "//xla:shape_util",

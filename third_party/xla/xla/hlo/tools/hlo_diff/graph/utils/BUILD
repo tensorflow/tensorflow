@@ -48,6 +48,7 @@ cc_library(
 xla_cc_test(
     name = "cycle_detector_test",
     srcs = ["cycle_detector_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cycle_detector",
         "//xla:shape_util",
@@ -62,6 +63,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_gumgraph_dfs_test",
     srcs = ["hlo_gumgraph_dfs_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph_dfs",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -77,6 +79,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_gumgraph_bfs_test",
     srcs = ["hlo_gumgraph_bfs_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph_bfs",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

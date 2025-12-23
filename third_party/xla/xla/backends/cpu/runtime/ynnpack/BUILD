@@ -33,6 +33,7 @@ cc_library(
 xla_cc_test(
     name = "slinky_threadpool_test",
     srcs = ["slinky_threadpool_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":slinky_threadpool",
         "//xla/tsl/platform:env",
@@ -113,6 +114,7 @@ cc_library(
 xla_cc_test(
     name = "ynn_fusion_thunk_test",
     srcs = ["ynn_fusion_thunk_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ynn_fusion_thunk",
         ":ynn_interop",

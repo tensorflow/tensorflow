@@ -43,6 +43,7 @@ cc_library(
 xla_cc_test(
     name = "padding_test",
     srcs = ["padding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":padding",
         "@com_google_googletest//:gtest_main",
@@ -113,6 +114,7 @@ cc_library(
 xla_cc_test(
     name = "value_inference_test",
     srcs = ["value_inference_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":value_inference",
         ":xla_builder",
@@ -182,6 +184,7 @@ cc_library(
 xla_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":padding",
         ":sharding_builder",

@@ -40,6 +40,7 @@ cc_library(
 xla_cc_test(
     name = "topology_util_test",
     srcs = ["topology_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":in_memory_key_value_store",
         ":protocol_proto_cc",
@@ -136,7 +137,7 @@ xla_cc_test(
     name = "client_server_test",
     size = "medium",
     srcs = ["client_server_test.cc"],
-    tags = if_oss(["not_run:arm"]),
+    tags = if_oss(["not_run:arm"]) + ["pjrt_migration_candidate"],
     deps = [
         ":client",
         ":distributed",

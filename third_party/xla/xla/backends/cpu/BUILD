@@ -204,6 +204,7 @@ cc_library(
 xla_cc_test(
     name = "target_machine_options_test",
     srcs = ["target_machine_options_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":target_machine_options",
         "//xla:xla_proto_cc",

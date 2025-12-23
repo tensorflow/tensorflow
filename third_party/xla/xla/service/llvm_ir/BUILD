@@ -289,6 +289,7 @@ cc_library(
 xla_cc_test(
     name = "ir_array_test",
     srcs = ["ir_array_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_array",
         ":llvm_util",
@@ -306,6 +307,7 @@ xla_cc_test(
 xla_cc_test(
     name = "llvm_util_test",
     srcs = ["llvm_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":llvm_util",
         "//xla:error_spec",

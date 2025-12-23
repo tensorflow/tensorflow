@@ -44,6 +44,7 @@ cc_library(
 xla_cc_test(
     name = "nanort_client_test",
     srcs = ["nanort_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":nanort_client",
         ":nanort_executable",
@@ -213,6 +214,7 @@ cc_library(
 xla_cc_test(
     name = "ifrt_client_test",
     srcs = ["ifrt_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ifrt_client",
         ":register_nanort_for_ifrt_tests",

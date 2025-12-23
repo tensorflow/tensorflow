@@ -32,6 +32,7 @@ cc_library(
 xla_cc_test(
     name = "subprocess_registry_test",
     srcs = ["subprocess_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":subprocess_registry",
         "//xla/tsl/platform:env",
@@ -81,6 +82,7 @@ xla_cc_test(
     env = {
         "XPROF_TEST_SUBPROCESS_MAIN_PATH": "$(rlocationpath :subprocess_main)",
     },
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":subprocess_profiling_session",
         ":subprocess_registry",

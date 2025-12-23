@@ -34,6 +34,7 @@ cc_library(
 xla_cc_test(
     name = "convert_async_collectives_to_sync_test",
     srcs = ["convert_async_collectives_to_sync_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convert_async_collectives_to_sync",
         "//xla:util",
@@ -73,6 +74,7 @@ cc_library(
 xla_cc_test(
     name = "collective_backend_assigner_test",
     srcs = ["collective_backend_assigner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_backend_assigner",
         "//xla/hlo/ir:hlo",
@@ -116,6 +118,7 @@ cc_library(
 xla_cc_test(
     name = "collective_ops_utils_test",
     srcs = ["collective_ops_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_ops_utils",
         "//xla/hlo/ir:hlo",
@@ -152,6 +155,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_collective_combiner_utils_test",
     srcs = ["gpu_collective_combiner_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_collective_combiner_utils",
         "//xla:util",
@@ -198,6 +202,7 @@ xla_cc_test(
     name =
         "gpu_all_gather_combiner_test",
     srcs = ["all_gather_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_combiner_annotator",
         ":gpu_all_gather_combiner",
@@ -237,6 +242,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_combiner_annotator",
         ":gpu_reduce_scatter_combiner",
@@ -276,6 +282,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_combiner_test",
     srcs = ["all_reduce_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_combiner_annotator",
         ":gpu_all_reduce_combiner",
@@ -322,6 +329,7 @@ cc_library(
 xla_cc_test(
     name = "collective_combiner_annotator_test",
     srcs = ["collective_combiner_annotator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_combiner_annotator",
         "//xla/hlo/ir:hlo",
@@ -358,6 +366,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_optimizer_test",
     srcs = ["all_gather_optimizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_optimizer",
         "//xla:util",
@@ -389,6 +398,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_dynamic_slice_simplifier_test",
     srcs = ["all_gather_dynamic_slice_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_gather_dynamic_slice_simplifier",
         "//xla:xla_data_proto_cc",
@@ -433,6 +443,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_blueconnect_test",
     srcs = ["all_reduce_blueconnect_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_blueconnect",
         "//xla:shape_util",
@@ -480,6 +491,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_splitter_test",
     srcs = ["all_reduce_splitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_splitter",
         "//xla/hlo/ir:hlo",
@@ -525,6 +537,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_decomposer_test",
     srcs = ["all_reduce_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":all_reduce_decomposer",
         "//xla/hlo/testlib:filecheck",
@@ -563,6 +576,7 @@ cc_library(
 xla_cc_test(
     name = "collective_select_folder_test",
     srcs = ["collective_select_folder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_select_folder",
         "//xla/hlo/ir:hlo",
@@ -608,6 +622,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_cycle_decomposer_test",
     srcs = ["collective_permute_cycle_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_permute_cycle_decomposer",
         "//xla/hlo/ir:hlo",
@@ -644,6 +659,7 @@ cc_library(
 xla_cc_test(
     name = "collective_send_recv_combiner_test",
     srcs = ["collective_send_recv_combiner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_send_recv_combiner",
         "//xla/hlo/ir:hlo",
@@ -676,6 +692,7 @@ cc_library(
 xla_cc_test(
     name = "async_collective_annotator_test",
     srcs = ["async_collective_annotator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":async_collective_annotator",
         "//xla:util",
@@ -717,6 +734,7 @@ cc_library(
 xla_cc_test(
     name = "collective_pipelining_analyzer_test",
     srcs = ["collective_pipelining_analyzer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_pipelining_analyzer",
         "//xla/hlo/ir:hlo",

@@ -50,6 +50,7 @@ cc_library(
 xla_cc_test(
     name = "platform_object_registry_test",
     srcs = ["platform_object_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":platform_object_registry",
         "//xla/stream_executor/cuda:cuda_platform_id",

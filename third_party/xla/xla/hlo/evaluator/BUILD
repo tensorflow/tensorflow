@@ -120,6 +120,7 @@ xla_cc_test(
         "noasan",
         "notsan",
         "nozapfhahn",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":hlo_evaluator",
@@ -136,6 +137,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_evaluator",
         "//xla:array2d",
@@ -206,6 +208,7 @@ cc_library(
 xla_cc_test(
     name = "caching_hlo_evaluator_test",
     srcs = ["caching_hlo_evaluator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":caching_hlo_evaluator",
         ":hlo_evaluator_interface",

@@ -113,6 +113,7 @@ cc_library(
 xla_cc_test(
     name = "symbol_finder_test",
     srcs = ["symbol_finder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbol_finder",
         "@com_google_absl//absl/status",

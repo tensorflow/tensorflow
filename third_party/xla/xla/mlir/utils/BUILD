@@ -33,6 +33,7 @@ xla_cc_test(
     name = "error_util_test",
     srcs = ["error_util_test.cc"],
     linkstatic = 1,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":error_util",
         "//xla/tsl/lib/core:status_test_util",
@@ -63,6 +64,7 @@ cc_library(
 xla_cc_test(
     name = "type_util_test",
     srcs = ["type_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type_util",
         "//xla:shape_util",

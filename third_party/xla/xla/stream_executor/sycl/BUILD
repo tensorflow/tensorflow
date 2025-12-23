@@ -60,6 +60,7 @@ xla_cc_test(
     srcs = ["sycl_platform_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
     fail_if_no_test_selected = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sycl_platform",
         ":sycl_platform_id",
@@ -113,6 +114,7 @@ cc_library(
 xla_cc_test(
     name = "sycl_status_test",
     srcs = ["sycl_status_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sycl_status",
         "//xla/tsl/platform:test",
@@ -152,7 +154,9 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":sycl_event",
         ":sycl_platform_id",

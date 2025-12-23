@@ -62,6 +62,7 @@ cc_library(
 xla_cc_test(
     name = "type_adapters_test",
     srcs = ["type_adapters_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type_adapters",
         "@com_google_absl//absl/functional:any_invocable",
@@ -73,6 +74,7 @@ xla_cc_test(
     name = "tsl_task_executor_test",
     size = "small",
     srcs = ["tsl_task_executor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tsl_task_executor",
         "//xla/tsl/lib/core:status_test_util",
@@ -87,6 +89,7 @@ xla_cc_test(
     name = "concurrency_utils_test",
     size = "small",
     srcs = ["concurrency_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":concurrency_utils",
         ":tsl_task_executor",

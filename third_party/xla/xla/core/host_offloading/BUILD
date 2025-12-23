@@ -63,6 +63,7 @@ cc_library(
 strict_cc_test(
     name = "host_offloading_layout_analysis_test",
     srcs = ["host_offloading_layout_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offloading_layout_analysis",
         "//xla/hlo/ir:hlo",
@@ -99,6 +100,7 @@ cc_library(
 strict_cc_test(
     name = "host_offloading_transforms_test",
     srcs = ["host_offloading_transforms_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offloading_transforms",
         "//xla:shape_util",
@@ -233,6 +235,7 @@ cc_library(
 strict_cc_test(
     name = "host_offloading_executable_test",
     srcs = ["host_offloading_executable_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_offloading_buffer",
         ":host_offloading_executable",
@@ -294,6 +297,7 @@ cc_library(
 strict_cc_test(
     name = "annotate_host_compute_offload_test",
     srcs = ["annotate_host_compute_offload_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":annotate_host_compute_offload",
         "//xla/hlo/ir:hlo",

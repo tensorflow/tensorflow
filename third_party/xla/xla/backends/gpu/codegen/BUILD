@@ -49,6 +49,7 @@ cc_library(
 xla_cc_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy",
         "//xla/hlo/ir:hlo",
@@ -82,7 +83,11 @@ xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:comparison_util",
         "//xla:debug_options_flags",
@@ -207,6 +212,8 @@ xla_test(
         ],
     },
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",

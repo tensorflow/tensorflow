@@ -49,6 +49,7 @@ cc_library(
 xla_cc_test(
     name = "execution_trace_utils_test",
     srcs = ["execution_trace_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":execution_trace_utils",
         "//xla:literal",

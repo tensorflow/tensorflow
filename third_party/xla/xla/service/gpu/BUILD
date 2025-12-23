@@ -67,6 +67,7 @@ tf_proto_library(
 xla_cc_test(
     name = "backend_configs_test",
     srcs = ["backend_configs_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_configs_cc",
         "//xla/hlo/ir:hlo",
@@ -128,6 +129,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_memory_space_assignment_test",
     srcs = ["gpu_memory_space_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_memory_space_assignment",
         "//xla/hlo/analysis:alias_info",
@@ -178,6 +180,7 @@ tf_proto_library(
 xla_cc_test(
     name = "launch_dimensions_test",
     srcs = ["launch_dimensions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":launch_dimensions",
         "//xla/stream_executor:launch_dim",
@@ -242,6 +245,7 @@ xla_test(
 xla_cc_test(
     name = "gpu_copy_insertion_test",
     srcs = ["gpu_copy_insertion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":gpu_device_info_for_tests",
@@ -308,6 +312,7 @@ cc_library(
 xla_cc_test(
     name = "target_util_test",
     srcs = ["target_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":target_util",
         "//xla:xla_data_proto_cc",
@@ -623,6 +628,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_call_test",
     srcs = ["kernel_call_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_call",
         "//xla/tests:xla_internal_test_main",
@@ -772,6 +778,7 @@ tf_proto_library(
 xla_cc_test(
     name = "gpu_executable_test",
     srcs = ["gpu_executable_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_executable",
         ":launch_dimensions",
@@ -864,6 +871,7 @@ tf_proto_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
@@ -907,6 +915,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_utils_test",
     srcs = ["reduction_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduction_utils",
         "//xla/hlo/ir:hlo",
@@ -983,6 +992,7 @@ cc_library(
 xla_cc_test(
     name = "triton_tiling_propagation_test",
     srcs = ["triton_tiling_propagation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triton_tiling_propagation",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1020,6 +1030,7 @@ cc_library(
 xla_cc_test(
     name = "triton_fusion_analysis_test",
     srcs = ["triton_fusion_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triton_fusion_analysis",
         "//xla/hlo/ir:hlo",
@@ -1073,6 +1084,7 @@ cc_library(
 xla_cc_test(
     name = "split_k_gemm_rewriter_test",
     srcs = ["split_k_gemm_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":matmul_utils",
         ":split_k_gemm_rewriter",
@@ -1136,6 +1148,7 @@ cc_library(
 xla_cc_test(
     name = "matmul_utils_test",
     srcs = ["matmul_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":matmul_utils",
         "//xla:shape_util",
@@ -1193,6 +1206,7 @@ tf_proto_library(
 xla_cc_test(
     name = "gpu_conv_runner_test",
     srcs = ["gpu_conv_runner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_configs_cc",
         ":gpu_conv_runner",
@@ -1229,6 +1243,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_norm_runner_test",
     srcs = ["gpu_norm_runner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_norm_runner",
         "//xla/tsl/platform:statusor",
@@ -1285,6 +1300,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_process_dump_test",
     srcs = ["fusion_process_dump_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_process_dump",
         ":fusion_process_dump_proto_cc",
@@ -1323,6 +1339,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_support_utils_test",
     srcs = ["cudnn_support_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cudnn_support_utils",
         "//xla:shape_util",
@@ -1901,6 +1918,8 @@ xla_test(
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     shard_count = 2,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":alias_info",
         ":backend_configs_cc",
@@ -2014,6 +2033,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_aot_compilation_result_test",
     srcs = ["gpu_aot_compilation_result_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_aot_compilation_result",
         ":gpu_executable",
@@ -2054,6 +2074,8 @@ xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":backend_configs_cc",
         "//xla:autotune_results_proto_cc",
@@ -2082,7 +2104,11 @@ xla_test(
     name = "auto_sharding_gpu_compiler_test",
     srcs = ["auto_sharding_gpu_compiler_test.cc"],
     backends = ["gpu"],
-    tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],  # TODO(b/277355322): Make autosharding work in OSS
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
@@ -2237,7 +2263,9 @@ xla_test(
     tags = [
         "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":alias_info",
         ":gpu_constants",
@@ -2281,7 +2309,9 @@ xla_test(
     tags = [
         "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gpu_executable",
         ":nvptx_compiler_impl",
@@ -2323,6 +2353,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = if_cuda_is_configured([
@@ -2540,6 +2571,8 @@ xla_test(
         "gpu_hlo_schedule_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":alias_info",
         ":gpu_compiler",
@@ -2616,6 +2649,7 @@ xla_cc_test(
     srcs = [
         "gpu_spmd_pipeline_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_spmd_pipeline",
         "//xla:shape_util",
@@ -2643,6 +2677,7 @@ xla_cc_test(
     srcs = ["while_transformer_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         "//xla:comparison_util",
@@ -2708,6 +2743,7 @@ cc_library(
 xla_cc_test(
     name = "stream_executor_util_test",
     srcs = ["stream_executor_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cublas_cudnn",
         ":stream_executor_util",
@@ -2737,6 +2773,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_asm_opts_util_test",
     srcs = ["gpu_asm_opts_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_asm_opts_util",
         "//xla:xla_proto_cc",
@@ -2774,6 +2811,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_fusion_analysis_test",
     srcs = ["hlo_fusion_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_configs_cc",
         ":gpu_device_info_for_tests",
@@ -2811,6 +2849,7 @@ cc_library(
 xla_cc_test(
     name = "alias_info_test",
     srcs = ["alias_info_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":gpu_device_info_for_tests",
@@ -2847,6 +2886,7 @@ cc_library(
 xla_cc_test(
     name = "nvptx_alias_info_test",
     srcs = ["nvptx_alias_info_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_device_info_for_tests",
         ":nvptx_alias_info",
@@ -2904,6 +2944,7 @@ xla_cc_test(
     srcs = ["gpu_fusible_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":alias_info",
@@ -2934,6 +2975,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
@@ -2951,6 +2994,8 @@ xla_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
@@ -2989,6 +3034,7 @@ xla_cc_test(
     name = "hlo_algorithm_denylist_test",
     srcs = ["hlo_algorithm_denylist_test.cc"],
     data = ["data/hlo_algorithm_denylist.pbtxt"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_algorithm_denylist",
         "//xla:debug_options_flags",
@@ -3011,6 +3057,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_float_support_test",
     srcs = ["gpu_float_support_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_configs_cc",
         ":gpu_float_support",
@@ -3054,6 +3101,7 @@ xla_cc_test(
     tags = [
         # Streamz recording doesn't work in OSS.
         "no_oss",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":metrics",
@@ -3082,6 +3130,7 @@ xla_cc_test(
     srcs = ["hlo_fusion_stats_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":hlo_fusion_stats",
@@ -3123,7 +3172,9 @@ xla_test(
     ],
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -3167,6 +3218,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_reuse_cache_test",
     srcs = ["kernel_reuse_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_reuse_cache",
         "//xla/tests:xla_internal_test_main",
@@ -3185,7 +3237,9 @@ xla_test(
     tags = [
         "manual",
         "notap",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
@@ -3244,6 +3298,7 @@ cc_library(
 xla_cc_test(
     name = "execution_stream_assignment_test",
     srcs = ["execution_stream_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":execution_stream_assignment",
         "//xla/backends/gpu/runtime:thunk",
@@ -3284,6 +3339,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_latency_hiding_scheduler_test",
     srcs = ["gpu_latency_hiding_scheduler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":gpu_device_info_for_tests",
@@ -3328,6 +3384,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_deduplication_cache_test",
     srcs = ["fusion_deduplication_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_deduplication_cache",
         "//xla/hlo/ir:hlo",
@@ -3351,6 +3408,7 @@ cc_library(
 xla_cc_test(
     name = "ptx_compile_options_from_debug_options_test",
     srcs = ["ptx_compile_options_from_debug_options_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ptx_compile_options_from_debug_options",
         "//xla:xla_proto_cc",
@@ -3375,6 +3433,7 @@ cc_library(
 xla_cc_test(
     name = "flag_utils_test",
     srcs = ["flag_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":flag_utils",
         "//xla:xla_proto_cc",
@@ -3449,12 +3508,14 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ] + if_google([
         # TODO(b/456585142): Currently we don't support building the SYCL backend.
         "notap",
         "nobuilder",
         "manual",
     ]),
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":intel_gpu_compiler",
         "//xla/tests:hlo_test_base",

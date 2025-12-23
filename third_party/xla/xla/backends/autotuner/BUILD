@@ -71,6 +71,7 @@ cc_library(
 xla_cc_test(
     name = "autotuner_test",
     srcs = ["autotuner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":autotuner",
         ":autotuner_cache_interface",
@@ -172,6 +173,7 @@ cc_library(
 xla_cc_test(
     name = "file_based_autotuner_cache_test",
     srcs = ["file_based_autotuner_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":autotuner_cache_interface",
         ":autotuner_cache_proto_cc",

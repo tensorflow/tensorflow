@@ -71,7 +71,10 @@ cc_library(
 xla_cc_test(
     name = "xla_tpu_pjrt_client_test",
     srcs = ["xla_tpu_pjrt_client_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":tpu_static_registration",
         ":xla_tpu_pjrt_client",

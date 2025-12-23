@@ -144,6 +144,7 @@ xla_cc_test(
     name = "real_imag_expander_test",
     size = "small",
     srcs = ["real_imag_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":real_imag_expander",
         "//xla:literal",
@@ -212,6 +213,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_4d_expander_test",
     srcs = ["convolution_4d_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "convolution_4d_expander",
         "//xla/hlo/ir:hlo",
@@ -245,6 +247,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_pred_expander_test",
     srcs = ["convolution_pred_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convolution_pred_expander",
         "//xla:xla_data_proto_cc",
@@ -278,6 +281,7 @@ cc_library(
 xla_cc_test(
     name = "logistic_expander_test",
     srcs = ["logistic_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":logistic_expander",
         "//xla:xla_data_proto_cc",
@@ -322,6 +326,7 @@ cc_library(
 xla_cc_test(
     name = "bitcast_dtypes_expander_test",
     srcs = ["bitcast_dtypes_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bitcast_dtypes_expander",
         "//xla/hlo/ir:hlo",
@@ -357,6 +362,7 @@ cc_library(
 xla_cc_test(
     name = "dot_decomposer_test",
     srcs = ["dot_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dot_decomposer",
         "//xla/hlo/ir:hlo",
@@ -391,6 +397,7 @@ cc_library(
 xla_cc_test(
     name = "permutation_sort_expander_test",
     srcs = ["permutation_sort_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":permutation_sort_expander",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -444,6 +451,7 @@ cc_library(
 xla_cc_test(
     name = "ragged_dot_rewriter_test",
     srcs = ["ragged_dot_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ragged_dot_rewriter",
         "//xla/hlo/ir:hlo",
@@ -479,6 +487,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_decomposer_test",
     srcs = ["reduce_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduce_decomposer",
         "//xla/hlo/ir:hlo",
@@ -492,6 +501,7 @@ xla_cc_test(
 xla_cc_test(
     name = "reshape_decomposer_test",
     srcs = ["reshape_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reshape_decomposer",
         "//xla/hlo/parser:hlo_parser",
@@ -525,6 +535,7 @@ cc_library(
 xla_cc_test(
     name = "stable_sort_expander_test",
     srcs = ["stable_sort_expander_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stable_sort_expander",
         "//xla/hlo/parser:hlo_parser",
@@ -560,6 +571,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_index_splitter_test",
     srcs = ["dynamic_index_splitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dynamic_index_splitter",
         "//xla:xla_proto_cc",
@@ -654,6 +666,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_type_canonicalizer_test",
     srcs = ["convolution_type_canonicalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":convolution_type_canonicalizer",
         "//xla/hlo/ir:hlo",
@@ -667,6 +680,7 @@ xla_cc_test(
 xla_cc_test(
     name = "stochastic_convert_decomposer_test",
     srcs = ["stochastic_convert_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stochastic_convert_decomposer",
         "//xla/hlo/ir:hlo",

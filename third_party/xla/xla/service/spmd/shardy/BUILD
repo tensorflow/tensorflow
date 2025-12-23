@@ -94,6 +94,7 @@ cc_library(
 xla_cc_test(
     name = "utils_test",
     srcs = ["utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":utils",
         "@com_google_googletest//:gtest_main",
@@ -110,6 +111,7 @@ cc_library(
 xla_cc_test(
     name = "shardy_xla_pass_test",
     srcs = ["shardy_xla_pass_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":constants",
         ":shardy_xla_pass",

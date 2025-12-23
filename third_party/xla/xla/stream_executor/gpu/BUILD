@@ -71,6 +71,7 @@ cc_library(
 xla_cc_test(
     name = "context_map_test",
     srcs = ["context_map_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":context_map",
         "@com_google_googletest//:gtest_main",
@@ -117,6 +118,7 @@ cc_library(
 xla_cc_test(
     name = "scoped_activate_context_test",
     srcs = ["scoped_activate_context_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mock_context",
         ":scoped_activate_context",
@@ -455,6 +457,7 @@ tf_proto_library(
 xla_cc_test(
     name = "gpu_blas_lt_test",
     srcs = ["gpu_blas_lt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_blas_lt",
         ":gpu_blas_lt_proto_cc",
@@ -532,7 +535,10 @@ cc_library(
 xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":gpu_test_kernels_fatbin",
         "//xla/stream_executor:platform",
@@ -728,6 +734,7 @@ cc_library(
 xla_cc_test(
     name = "tma_metadata_test",
     srcs = ["tma_metadata_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tma_metadata",
         ":tma_metadata_proto_cc",
@@ -762,6 +769,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_kernel_registry_test",
     srcs = ["gpu_kernel_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_kernel_registry",
         "//xla/stream_executor:kernel",
@@ -886,6 +894,7 @@ cc_library(
 xla_cc_test(
     name = "elf_section_extraction_test",
     srcs = ["elf_section_extraction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":elf_section_extraction",
         "//xla/tsl/platform:statusor",

@@ -41,6 +41,7 @@ cc_library(
 xla_cc_test(
     name = "rocm_compute_capability_test",
     srcs = ["rocm_compute_capability_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":rocm_compute_capability",
         "//xla/stream_executor:device_description_proto_cc",
@@ -875,6 +876,7 @@ xla_cc_test(
     srcs = ["rocm_version_parser_test.cc"],
     tags = [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ],
     deps = [
@@ -1024,6 +1026,7 @@ xla_cc_test(
     srcs = ["rocm_status_test.cc"],
     tags = [
         "gpu",
+        "pjrt_migration_candidate",
         "rocm-only",
     ],
     deps = [

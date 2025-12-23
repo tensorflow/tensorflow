@@ -72,6 +72,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_cliques_test",
     srcs = ["cpu_cliques_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_clique_key",
         ":cpu_cliques",
@@ -210,6 +211,7 @@ cc_library(
 xla_cc_test(
     name = "gloo_collectives_test",
     srcs = ["gloo_collectives_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_clique_key",
         ":cpu_collectives",

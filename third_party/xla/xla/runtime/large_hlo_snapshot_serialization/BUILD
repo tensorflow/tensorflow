@@ -25,6 +25,7 @@ cc_library(
 xla_cc_test(
     name = "coded_stream_iterators_test",
     srcs = ["coded_stream_iterators_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":coded_stream_iterators",
         "@com_google_googletest//:gtest",
@@ -54,6 +55,7 @@ cc_library(
 xla_cc_test(
     name = "serialization_test",
     srcs = ["serialization_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":serialization",
         "//xla:literal",

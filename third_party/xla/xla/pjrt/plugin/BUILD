@@ -65,6 +65,7 @@ cc_library(
 xla_cc_test(
     name = "static_registration_test",
     srcs = ["static_registration_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":static_registration",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
@@ -95,6 +96,7 @@ xla_cc_test(
     # We must link this statically to prevent issues with symbol resolution between the loaded .so
     # for the test and the .so file.
     linkstatic = True,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dynamic_registration",
         ":dynamic_registration_test_helper",

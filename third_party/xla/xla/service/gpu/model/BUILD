@@ -83,6 +83,7 @@ cc_library(
 xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_interpolator",
         ":sol_gpu_cost_model",
@@ -135,6 +136,7 @@ cc_library(
 xla_cc_test(
     name = "sol_gpu_cost_model_test",
     srcs = ["sol_gpu_cost_model_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sol_gpu_cost_model",
         "//xla/hlo/parser:hlo_parser",
@@ -157,6 +159,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
@@ -197,6 +201,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_analysis_cache_test",
     srcs = ["fusion_analysis_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_analysis_cache",
         "//xla/hlo/parser:hlo_parser",
@@ -244,6 +249,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_cost_model_stats_collection_test",
     srcs = ["gpu_cost_model_stats_collection_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_cost_model_stats_collection",
         ":gpu_hlo_cost_analysis",
@@ -295,6 +301,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_hlo_cost_analysis_test",
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profiles",
@@ -342,6 +349,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_performance_model_base_test",
     srcs = ["gpu_performance_model_base_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
@@ -390,6 +398,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_performance_model_test",
     srcs = ["gpu_performance_model_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -445,6 +454,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_dot_fusion_cost_model_test",
     srcs = ["gpu_dot_fusion_cost_model_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":block_level_parameters",
         ":gpu_dot_fusion_cost_model",
@@ -526,6 +536,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_indexing_performance_model_test",
     srcs = ["gpu_indexing_performance_model_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -569,6 +580,7 @@ cc_library(
 xla_cc_test(
     name = "block_level_parameters_test",
     srcs = ["block_level_parameters_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":block_level_parameters",
         "//xla/service/gpu:backend_configs_cc",
@@ -609,6 +621,7 @@ cc_library(
 xla_cc_test(
     name = "triton_emitter_constraints_test",
     srcs = ["triton_emitter_constraints_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triton_emitter_constraints",
         "//xla/codegen/tiling:symbolic_tile_analysis",
@@ -658,6 +671,7 @@ cc_library(
 xla_cc_test(
     name = "coalescing_analysis_test",
     srcs = ["coalescing_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":coalescing_analysis",
         "//xla:shape_util",
@@ -721,6 +735,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_op_profiles_test",
     srcs = ["hlo_op_profiles_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_op_profiles",
         "//xla:xla_data_proto_cc",
@@ -827,6 +842,8 @@ xla_test(
     args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla:xla_data_proto_cc",
@@ -871,6 +888,7 @@ cc_library(
 xla_cc_test(
     name = "sol_gpu_cost_model_stats_collection_test",
     srcs = ["sol_gpu_cost_model_stats_collection_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sol_gpu_cost_model_stats_collection",
         "//xla:shape_util",
@@ -902,6 +920,7 @@ cc_library(
 xla_cc_test(
     name = "interpolator_test",
     srcs = ["interpolator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":interpolator",
         "@com_google_absl//absl/functional:overload",
@@ -954,6 +973,7 @@ cc_library(
 xla_cc_test(
     name = "collective_interpolator_test",
     srcs = ["collective_interpolator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_interpolator",
         ":hlo_op_profile_proto_cc",
@@ -1008,6 +1028,7 @@ cc_library(
 xla_cc_test(
     name = "collective_ptable_stats_collection_test",
     srcs = ["collective_ptable_stats_collection_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_ptable_stats_collection",
         ":hlo_op_profile_proto_cc",
@@ -1068,6 +1089,7 @@ cc_library(
 xla_cc_test(
     name = "matmul_interpolator_test",
     srcs = ["matmul_interpolator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_op_profile_proto_cc",
         ":matmul_interpolator",
@@ -1134,6 +1156,7 @@ cc_library(
 xla_cc_test(
     name = "matmul_ptable_stats_collection_test",
     srcs = ["matmul_ptable_stats_collection_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_op_profile_proto_cc",
         ":matmul_ptable_stats_collection",

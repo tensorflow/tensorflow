@@ -28,6 +28,7 @@ cc_library(
 xla_cc_test(
     name = "host_allocator_interface_impl_test",
     srcs = ["host_allocator_interface_impl_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_allocator_extension",
         ":host_allocator_interface_impl",

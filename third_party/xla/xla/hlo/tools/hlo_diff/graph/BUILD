@@ -59,6 +59,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_gumgraph_test",
     srcs = ["hlo_gumgraph_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_gumgraph",
         ":hlo_gumgraph_node",

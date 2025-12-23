@@ -63,6 +63,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_profiler_test",
     srcs = ["cpu_profiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_profiler",
         "//xla/backends/autotuner:profiler",
@@ -102,6 +103,7 @@ cc_library(
 xla_cc_test(
     name = "llvm_kernel_backend_test",
     srcs = ["llvm_kernel_backend_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_codegen_backend",
         ":llvm_kernel_backend",
@@ -148,6 +150,7 @@ cc_library(
 xla_cc_test(
     name = "llvm_kernel_autotuner_test",
     srcs = ["llvm_kernel_autotuner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":llvm_kernel_autotuner",
         "//xla/hlo/ir:hlo",
