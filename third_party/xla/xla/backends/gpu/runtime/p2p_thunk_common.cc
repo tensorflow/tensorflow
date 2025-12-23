@@ -127,8 +127,7 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   }
 
   std::vector<ReplicaGroup> replica_groups = statusor.value();
-  P2PConfig::ValidationKind validation_kind = P2PConfig::ValidationKind::kValid;
-  p2p_config.validation_kind = validation_kind;
+  p2p_config.validation_kind = P2PConfig::ValidationKind::kValid;
   for (const ReplicaGroup& replica_group : replica_groups) {
     int64_t source = replica_group.replica_ids(0);
     int64_t target = replica_group.replica_ids(1);
