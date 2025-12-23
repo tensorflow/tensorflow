@@ -108,7 +108,7 @@ template <typename ConstTensorTin, typename TensorTout>
 absl::Status AsymmetricQuantize(const ConstTensorTin& input_tensor,
                                 int32_t quantization_min_val,
                                 int32_t quantization_max_val, float& scale,
-                                int32& zero_point,
+                                int32_t& zero_point,
                                 TensorTout quantized_tensor) {
   if (quantization_min_val >= quantization_max_val) {
     // NOLINTNEXTLINE
@@ -275,9 +275,10 @@ absl::Status PerAxisRequantize(OpKernelContext* context, const Tensor& input,
         effective_shifts_data[i]));
   }
 
-  const int32* input_zero_points_data = input_zero_points.flat<int32>().data();
-  const int32* output_zero_points_data =
-      output_zero_points.flat<int32>().data();
+  const int32_t* input_zero_points_data =
+      input_zero_points.flat<int32_t>().data();
+  const int32_t* output_zero_points_data =
+      output_zero_points.flat<int32_t>().data();
 
   auto input_tensor =
       input.template flat_inner_outer_dims<Tin, 3>(quantization_axis - 1);
@@ -315,8 +316,8 @@ absl::Status EvalRequantize(
   if (input_quantization_axis == -1 && output_quantization_axis == -1) {
     return internal::PerTensorToPerTensorRequantize<Tin, Tout>(
         input, input_scales.scalar<float>()(),
-        input_zero_points.scalar<int32>()(), output_scales.scalar<float>()(),
-        output_zero_points.scalar<int32>()(), quantization_min_val,
+        input_zero_points.scalar<int32_t>()(), output_scales.scalar<float>()(),
+        output_zero_points.scalar<int32_t>()(), quantization_min_val,
         quantization_max_val, output);
   } else {
     const int quantization_axis = input_quantization_axis >= 0
