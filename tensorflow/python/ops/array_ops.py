@@ -982,8 +982,8 @@ def slice(input_, begin, size, name=None):
 
   Args:
     input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    size: An `int32` or `int64` `Tensor`.
+    begin: An `int16`, `int32` or `int64` `Tensor`.
+    size: An `int16`, `int32` or `int64` `Tensor`.
     name: A name for the operation (optional).
 
   Returns:
