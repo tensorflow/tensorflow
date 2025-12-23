@@ -83,7 +83,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     TF_RETURN_IF_ERROR(
         CredentialsFactory::CreateClientCredentials(kProtocol, &credentials));
     ChannelArguments args;
-    args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+    args.SetMaxReceiveMessageSize(std::numeric_limits<int32_t>::max());
     args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
     std::shared_ptr<Channel> channel =
         ::grpc::CreateCustomChannel(GetWorkerAddress(), credentials, args);
