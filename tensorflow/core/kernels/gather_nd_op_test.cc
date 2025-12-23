@@ -74,7 +74,7 @@ TEST_F(GatherNdOpTest, Simple) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
-  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  AddInputFromArray<int32_t>(TensorShape({2, 1}), {3, 4});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -88,7 +88,7 @@ TEST_F(GatherNdOpTest, Error_OutOfRange) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 8, 4});
-  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 5});
+  AddInputFromArray<int32_t>(TensorShape({2, 1}), {3, 5});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.message(), "indices[1] = [5] does not index into param shape [5]"))
@@ -100,7 +100,7 @@ TEST_F(GatherNdOpTest, Quantized_UINT8) {
 
   // Feed and run
   AddInputFromArray<quint8>(TensorShape({5}), {0, 1, 2, 8, 4});
-  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  AddInputFromArray<int32_t>(TensorShape({2, 1}), {3, 4});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -113,7 +113,7 @@ TEST_F(GatherNdOpTest, Quantized_INT8) {
   MakeOp(DT_QINT8, DT_INT32);
 
   AddInputFromArray<qint8>(TensorShape({5}), {0, 1, 2, 8, 4});
-  AddInputFromArray<int32>(TensorShape({2, 1}), {3, 4});
+  AddInputFromArray<int32_t>(TensorShape({2, 1}), {3, 4});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_QINT8, TensorShape({2}));
@@ -140,7 +140,7 @@ TEST_F(GatherNdOpIgnoreBadIndicesTest, IgnoreOutOfRange) {
   AddInputFromArray<float>(TensorShape({5}), {9, 1, 2, 8, 4});
   // Put the bad index in the middle to make sure others are still correctly
   // gathered.
-  AddInputFromArray<int32>(TensorShape({3, 1}), {3, 5, 1});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {3, 5, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -205,8 +205,8 @@ static Graph* GatherNd(int dim) {
       ->Arg(1000)                                                \
       ->Arg(10000)
 
-BM_GATHER_ND(cpu, int32);
-BM_GATHER_ND(gpu, int32);
+BM_GATHER_ND(cpu, int32_t);
+BM_GATHER_ND(gpu, int32_t);
 BM_GATHER_ND(cpu, int64_t);
 BM_GATHER_ND(gpu, int64_t);
 

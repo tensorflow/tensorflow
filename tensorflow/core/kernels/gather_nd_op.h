@@ -38,7 +38,7 @@ struct GatherNdSlice {
   // Returns an index to Tindices if the value at that index is out of range.
   // Returns -1 if all values of Tindices are in range.
   Index operator()(const Device& d, const Index slice_size,
-                   typename TTypes<int32>::Scalar Tscratch,
+                   typename TTypes<int32_t>::Scalar Tscratch,
                    typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
                    typename TTypes<T>::Matrix Tout);
@@ -128,7 +128,7 @@ absl::Status DoGatherNd(
     auto out_mat = out->shaped<T, 2>({N_result, slice_size});
     Tensor scratch;
     TF_RETURN_IF_ERROR(c->allocate_temp(DT_INT32, TensorShape(), &scratch));
-    auto scratch_scalar = scratch.scalar<int32>();
+    auto scratch_scalar = scratch.scalar<int32_t>();
 
     switch (indices_nd) {
 #define PARAMS_CASE(IXDIM)                                              \
