@@ -25,7 +25,7 @@ namespace tensorflow {
 
 // Fetch the exception message as a string. An exception must be set
 // (PyErr_Occurred() must be true).
-string PyExceptionFetch();
+std::string PyExceptionFetch();
 
 // Assert that Python GIL is held.
 inline void DCheckPyGilState() {
