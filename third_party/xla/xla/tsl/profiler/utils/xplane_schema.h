@@ -84,7 +84,6 @@ TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
 TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
-TF_CONST_INIT extern const absl::string_view kCounterValue;
 TF_CONST_INIT extern const absl::string_view kHostOffloadOpLineName;
 TF_CONST_INIT extern const absl::string_view kTensorCoreSyncFlagLineName;
 TF_CONST_INIT extern const absl::string_view kSparseCoreSyncsLineName;
@@ -210,7 +209,6 @@ enum StatType {
   kQueueId,
   kQueueAddr,
   kRequestId,
-  kGlobalChipId,
   kRunId,
   kReplicaId,
   kGraphType,
@@ -287,7 +285,6 @@ enum StatType {
   kBytesTransferred,
   kDmaQueue,
   kDcnCollectiveInfo,
-  kPerformanceCounterId,
   // Performance counter related.
   kRawValue,
   kScaledValue,
