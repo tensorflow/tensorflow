@@ -44,10 +44,27 @@ void RegisterProfilerFactory(ProfilerFactory factory) {
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     const tensorflow::ProfileOptions& options) {
+  // Create a copy of options to modify if circular buffer is enabled.
+  tensorflow::ProfileOptions options_to_use = options;
+  bool circular_buffer_enabled = false;
+
+  // Check if tpu_circular_buffer_tracing is enabled in advanced configuration.
+  auto it =
+      options.advanced_configuration().find("tpu_circular_buffer_tracing");
+  if (it != options.advanced_configuration().end()) {
+    circular_buffer_enabled = it->second.bool_value();
+  }
+
+  if (circular_buffer_enabled) {
+    // Disable other tracers by zeroing their levels in the local options copy.
+    options_to_use.set_host_tracer_level(0);
+    options_to_use.set_python_tracer_level(0);
+  }
+
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
   absl::MutexLock lock(mu);
   for (const auto& factory : *GetFactories()) {
-    auto profiler = factory(options);
+    auto profiler = factory(options_to_use);
     // A factory might return nullptr based on options.
     if (profiler == nullptr) continue;
     result.emplace_back(
