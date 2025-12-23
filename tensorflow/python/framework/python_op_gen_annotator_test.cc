@@ -30,10 +30,10 @@ namespace {
 
 using ::testing::StartsWith;
 
-GeneratedCodeInfo ParseMetadata(string metadata) {
+GeneratedCodeInfo ParseMetadata(std::string metadata) {
   GeneratedCodeInfo generated_code_info;
-  std::pair<string, string> p = absl::StrSplit(metadata, ':');
-  string serialized_generated_code_info;
+  std::pair<std::string, std::string> p = absl::StrSplit(metadata, ':');
+  std::string serialized_generated_code_info;
   absl::Base64Unescape(p.second, &serialized_generated_code_info);
   generated_code_info.ParseFromString(serialized_generated_code_info);
   return generated_code_info;
@@ -44,7 +44,7 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithoutSourceOffsets) {
   OpDef fakeOpDef;
   fakeOpDef.set_name("fake_op");
   annotator.AddAnnotation(fakeOpDef, "fake_op", 0);
-  string meta = annotator.BuildKytheMetadata();
+  std::string meta = annotator.BuildKytheMetadata();
   ASSERT_THAT(meta, StartsWith("# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo actual = ParseMetadata(meta);
   GeneratedCodeInfo expected;
@@ -70,7 +70,7 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithSourceOffsets) {
   annotator.AddAnnotation(fakeOpDef, "fake_op", 100);
   annotator.FillSourceOffsets(fakeOffsets);
 
-  string meta = annotator.BuildKytheMetadata();
+  std::string meta = annotator.BuildKytheMetadata();
   ASSERT_THAT(meta, StartsWith("# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo actual = ParseMetadata(meta);
 
@@ -106,7 +106,7 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithSourceOffsetsAndNonZeroBase) {
   annotator.AddAnnotation(fakeOpDef, "fake_op", 100);
   annotator.FillSourceOffsets(fakeOffsets);
 
-  string meta = annotator.BuildKytheMetadata();
+  std::string meta = annotator.BuildKytheMetadata();
   ASSERT_THAT(meta, StartsWith("# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo actual = ParseMetadata(meta);
 
@@ -149,7 +149,7 @@ TEST(PythonOpGenAnnotatorTest, AddMultipleAnnotation) {
   annotator.AddAnnotation(fakeOpDef, "fake_op_2", 100);
   annotator.FillSourceOffsets(fakeOffsets);
 
-  string meta = annotator.BuildKytheMetadata();
+  std::string meta = annotator.BuildKytheMetadata();
   ASSERT_THAT(meta, StartsWith("# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo actual = ParseMetadata(meta);
 

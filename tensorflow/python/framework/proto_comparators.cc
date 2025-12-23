@@ -39,7 +39,7 @@ struct ProtoComparisonOptions {
   bool treat_nan_as_equal;
 };
 
-bool EqualsGraphDef(string graphdef_string1, string graphdef_string2,
+bool EqualsGraphDef(std::string graphdef_string1, std::string graphdef_string2,
                     const ProtoComparisonOptions& options) {
   GraphDef graph_def_1;
   if (!graph_def_1.ParseFromString(graphdef_string1)) {
