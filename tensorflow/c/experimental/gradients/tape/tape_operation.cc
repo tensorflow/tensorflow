@@ -157,14 +157,14 @@ absl::Status TapeOperation::SetAttrFloatList(const char* attr_name,
                                              const float* values,
                                              int num_values) {
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const float>(values, num_values));
+                        absl::Span<const const float>(values, num_values));
   return parent_op_->SetAttrFloatList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrIntList(const char* attr_name,
                                            const int64_t* values,
                                            int num_values) {
   forward_op_.attrs.Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
@@ -172,7 +172,7 @@ absl::Status TapeOperation::SetAttrTypeList(const char* attr_name,
                                             const DataType* values,
                                             int num_values) {
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const DataType>(values, num_values));
+                        absl::Span<const const DataType>(values, num_values));
   return parent_op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
@@ -183,7 +183,7 @@ absl::Status TapeOperation::SetAttrBoolList(const char* attr_name,
     b[i] = values[i];
   }
   forward_op_.attrs.Set(attr_name,
-                        gtl::ArraySlice<const bool>(b.get(), num_values));
+                        absl::Span<const const bool>(b.get(), num_values));
   return parent_op_->SetAttrBoolList(attr_name, values, num_values);
 }
 absl::Status TapeOperation::SetAttrShapeList(const char* attr_name,
