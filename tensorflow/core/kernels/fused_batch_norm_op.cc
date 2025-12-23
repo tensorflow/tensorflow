@@ -704,7 +704,8 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
+  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
+      int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64_t allocate_count =
@@ -757,7 +758,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override {
+  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
+      int64_t byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
@@ -774,7 +776,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     auto memory_uint8 = DeviceMemory<uint8>::MakeFromByteSize(
         temporary_memory->template flat<T>().data(),
         temporary_memory->template flat<T>().size() * sizeof(T));
-    return StatusOr<DeviceMemory<uint8>>(memory_uint8);
+    return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(memory_uint8);
   }
 
   int64_t TotalByteSize() { return total_byte_size_; }

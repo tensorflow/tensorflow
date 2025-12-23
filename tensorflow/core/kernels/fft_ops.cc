@@ -599,11 +599,11 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return tsl::StatusOr<se::DeviceMemory<uint8>>();
+      return absl::StatusOr<stream_executor::DeviceMemory<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -611,13 +611,13 @@ class CufftScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return tsl::StatusOr<se::DeviceMemory<uint8>>();
+      return absl::StatusOr<stream_executor::DeviceMemory<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return tsl::StatusOr<se::DeviceMemory<uint8>>(
+    return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
