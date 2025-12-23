@@ -15,19 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 
-#include <cstdlib>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/list_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/core/common_runtime/direct_session.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace {
+
+using ::tsl::proto_testing::EqualsProto;
 
 class TestListener : public XlaActivityListener {
  public:
@@ -160,8 +174,8 @@ summary {
 }
 )",
       &expected_auto_clustering_activity);
-  EXPECT_EQ(listener()->auto_clustering_activity().DebugString(),
-            expected_auto_clustering_activity.DebugString());
+  EXPECT_THAT(listener()->auto_clustering_activity(),
+              EqualsProto(expected_auto_clustering_activity));
 
   EXPECT_EQ(listener()->jit_compilation_activity().cluster_name(), "cluster_0");
   EXPECT_EQ(listener()->jit_compilation_activity().compile_count(), 1);

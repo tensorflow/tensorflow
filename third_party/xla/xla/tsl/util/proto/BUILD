@@ -32,6 +32,7 @@ cc_library(
     hdrs = ["proto_matchers.h"],
     visibility = [
         "//learning/pathways:__subpackages__",
+        "//tensorflow/compiler/jit:__subpackages__",
         "//third_party/pathways:__subpackages__",  # For OSS
         "//xla:__subpackages__",
     ],

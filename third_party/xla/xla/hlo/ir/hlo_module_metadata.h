@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -71,23 +70,6 @@ struct HloStackFrame {
 class HloModuleMetadata {
  public:
   explicit HloModuleMetadata(tsl::Env* env) : env_(env) {}
-
-  HloModuleMetadata(const HloModuleMetadata& other) {
-    module_metadata_ = other.module_metadata_;
-    env_ = other.env_;
-    next_pass_id_ = other.next_pass_id_;
-    absl::flat_hash_map<const HloPassMetadata*, int64_t> ptr_to_index;
-    for (int64_t i = 0; i < other.module_metadata_.pass_metadata().size();
-         ++i) {
-      ptr_to_index[&other.module_metadata_.pass_metadata(i)] = i;
-    }
-    running_passes_.reserve(other.running_passes_.size());
-    for (HloPassMetadata* pass_metadata : other.running_passes_) {
-      running_passes_.push_back(
-          module_metadata_.mutable_pass_metadata(ptr_to_index[pass_metadata]));
-    }
-    prepartitioning_metadata_ = other.prepartitioning_metadata_;
-  }
 
   const HloModuleMetadataProto& proto() const { return module_metadata_; }
 
