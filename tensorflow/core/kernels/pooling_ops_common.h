@@ -314,12 +314,12 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
                      const Tensor& input, Tensor* output) {
 #if GOOGLE_CUDA
     bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
-        reinterpret_cast<const int32*>(input.flat<qint8>().data()),
+        reinterpret_cast<const int32_t*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
         params.depth, params.out_height, params.out_width, params.window_rows,
         params.window_cols, params.row_stride, params.col_stride,
         params.pad_top, params.pad_left,
-        reinterpret_cast<int32*>(output->flat<qint8>().data()),
+        reinterpret_cast<int32_t*>(output->flat<qint8>().data()),
         context->eigen_gpu_device());
     if (!status) {
       context->SetStatus(errors::Internal(

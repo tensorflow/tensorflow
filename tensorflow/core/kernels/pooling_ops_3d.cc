@@ -816,9 +816,9 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 template <typename T>
 struct LaunchPoolingOp<GPUDevice, T, AVG> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, window,
@@ -829,9 +829,9 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
 template <typename T>
 struct LaunchPoolingOp<GPUDevice, T, MAX> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
     DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, window,
@@ -843,10 +843,10 @@ template <typename T>
 struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
   static void launch(OpKernelContext* context, const Tensor& tensor_in,
                      const Tensor& tensor_out, const Tensor& out_backprop,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& out,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& out,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
     DnnPooling3dGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
@@ -861,10 +861,10 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
   static void launch(OpKernelContext* context,
                      const TensorShape& tensor_in_shape,
                      const Tensor& out_backprop,
-                     const std::array<int64, 3>& window,
-                     const std::array<int64, 3>& stride,
-                     const std::array<int64, 3>& out,
-                     const std::array<int64, 3>& padding,
+                     const std::array<int64_t, 3>& window,
+                     const std::array<int64_t, 3>& stride,
+                     const std::array<int64_t, 3>& out,
+                     const std::array<int64_t, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
         context, se::dnn::PoolingMode::kAverage, window, stride, padding, out,

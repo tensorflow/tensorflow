@@ -366,7 +366,7 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   typedef Eigen::GpuDevice Device;
 
   explicit MaxPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -412,16 +412,16 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
 
     TensorShape output_shape = tensor_in.shape();
 
-    std::vector<int32> ksize = ksize_;
-    std::vector<int32> stride = stride_;
+    std::vector<int32_t> ksize = ksize_;
+    std::vector<int32_t> stride = stride_;
     if (context->num_inputs() == 5) {
       const Tensor& tensor_ksize = context->input(3);
-      auto value_ksize = tensor_ksize.flat<int32>();
+      auto value_ksize = tensor_ksize.flat<int32_t>();
       ksize.resize(tensor_ksize.shape().num_elements());
       std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
       const Tensor& tensor_stride = context->input(4);
-      auto value_stride = tensor_stride.flat<int32>();
+      auto value_stride = tensor_stride.flat<int32_t>();
       stride.resize(tensor_stride.shape().num_elements());
       std::copy_n(&value_stride(0), stride.size(), stride.begin());
     }
@@ -452,8 +452,8 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
@@ -698,7 +698,7 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
 
   explicit MaxPoolingGradGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -739,16 +739,16 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, tensor_out.shape(), &output));
 
-    std::vector<int32> ksize = ksize_;
-    std::vector<int32> stride = stride_;
+    std::vector<int32_t> ksize = ksize_;
+    std::vector<int32_t> stride = stride_;
     if (context->num_inputs() == 5) {
       const Tensor& tensor_ksize = context->input(3);
-      auto value_ksize = tensor_ksize.flat<int32>();
+      auto value_ksize = tensor_ksize.flat<int32_t>();
       ksize.resize(tensor_ksize.shape().num_elements());
       std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
       const Tensor& tensor_stride = context->input(4);
-      auto value_stride = tensor_stride.flat<int32>();
+      auto value_stride = tensor_stride.flat<int32_t>();
       stride.resize(tensor_stride.shape().num_elements());
       std::copy_n(&value_stride(0), stride.size(), stride.begin());
     }
@@ -798,8 +798,8 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool use_dnn_;
@@ -1270,7 +1270,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
   typedef GPUDevice Device;
   explicit MaxPoolingNoMaskOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -1372,8 +1372,8 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
@@ -1386,7 +1386,7 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
   typedef GPUDevice Device;
   explicit MaxPoolingNoMaskV2Op(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -1413,17 +1413,17 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
 
-    std::vector<int32> ksize = ksize_;
-    std::vector<int32> stride = stride_;
+    std::vector<int32_t> ksize = ksize_;
+    std::vector<int32_t> stride = stride_;
 
     if (context->num_inputs() != 1) {
       const Tensor& tensor_ksize = context->input(1);
-      auto value_ksize = tensor_ksize.flat<int32>();
+      auto value_ksize = tensor_ksize.flat<int32_t>();
       ksize.resize(tensor_ksize.shape().num_elements());
       std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
       const Tensor& tensor_stride = context->input(2);
-      auto value_stride = tensor_stride.flat<int32>();
+      auto value_stride = tensor_stride.flat<int32_t>();
       stride.resize(tensor_stride.shape().num_elements());
       std::copy_n(&value_stride(0), stride.size(), stride.begin());
     }
@@ -1471,8 +1471,8 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
