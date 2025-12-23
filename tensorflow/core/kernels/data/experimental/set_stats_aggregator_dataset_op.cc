@@ -31,16 +31,16 @@ namespace {
 class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
  public:
   StatsAggregatorWithTagAndPrefix(
-      std::shared_ptr<StatsAggregator> stats_aggregator, const string& tag,
-      const string& prefix)
+      std::shared_ptr<StatsAggregator> stats_aggregator, const std::string& tag,
+      const std::string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name, absl::Span<const double> values,
+  void AddToHistogram(const std::string& name, absl::Span<const double> values,
                       int64_t steps) override {
     wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
 
-  void AddScalar(const string& name, float value, int64_t steps) override {
+  void AddScalar(const std::string& name, float value, int64_t steps) override {
     wrapped_->AddScalar(TaggedName(name), value, steps);
   }
 
@@ -48,7 +48,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
     wrapped_->EncodeToProto(out_summary);
   }
 
-  void IncrementCounter(const string& name, const string& label,
+  void IncrementCounter(const std::string& name, const std::string& label,
                         int64_t val) override {
     if (!prefix_.empty()) {
       wrapped_->IncrementCounter(absl::StrCat(prefix_, "/", TaggedName(name)),
@@ -65,17 +65,18 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   }
 
  private:
-  string TaggedName(const string& name) const {
+  std::string TaggedName(const std::string& name) const {
     if (!tag_.empty()) {
-      string tagged_name = absl::StrCat(tag_, stats_utils::kDelimiter, name);
+      std::string tagged_name =
+          absl::StrCat(tag_, stats_utils::kDelimiter, name);
       return tagged_name;
     }
     return name;
   }
 
   std::shared_ptr<StatsAggregator> wrapped_;
-  string tag_;
-  string prefix_;
+  std::string tag_;
+  std::string prefix_;
   StatsAggregatorWithTagAndPrefix(const StatsAggregatorWithTagAndPrefix&) =
       delete;
   void operator=(const StatsAggregatorWithTagAndPrefix&) = delete;
@@ -106,8 +107,8 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      const Tensor& resource_handle,
-                     StatsAggregatorResource* resource, const string& tag,
-                     const string& prefix)
+                     StatsAggregatorResource* resource, const std::string& tag,
+                     const std::string& prefix)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           resource_handle_(resource_handle),
@@ -124,7 +125,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::SetStatsAggregator")});
     }
@@ -136,7 +137,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "SetStatsAggregatorDatasetOp::Dataset";
     }
 
