@@ -178,9 +178,6 @@ CollectiveConfig CollectiveConfig::FromProto(
   config.replica_groups.assign(proto.replica_groups().begin(),
                                proto.replica_groups().end());
 
-  absl::c_copy(proto.replica_groups(),
-               std::back_inserter(config.replica_groups));
-
   config.group_mode = proto.group_mode();
   config.use_symmetric_buffer = proto.use_symmetric_buffer();
   return config;
