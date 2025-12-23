@@ -57,8 +57,9 @@ class TypeIndex {
   static TypeIndex Make() {
 #ifdef PLATFORM_CLOUD_TPU
     static bool hash_bit[1];
-    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
-                     typeid(T).name());
+    return TypeIndex(
+        static_cast<uint64_t>(reinterpret_cast<intptr_t>(hash_bit)),
+        typeid(T).name());
 #endif
 #if defined(__GXX_RTTI) || defined(_CPPRTTI)
 
