@@ -3181,6 +3181,11 @@ xla_test(
     name = "determinism_test",
     srcs = ["determinism_test.cc"],
     backends = ["gpu"],
+    # TODO(b/471244513) disabled because it times out.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
