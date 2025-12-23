@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -283,7 +284,13 @@ REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:
-  explicit GatherNdOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
+  explicit GatherNdOp(OpKernelConstruction* context) : XlaOpKernel(context) {
+    // Set batch_dims_ to 0 if the attribute does not exist.
+    if (context->HasAttr("bad_indices_policy")) {
+      OP_REQUIRES_OK(context, context->GetAttr("bad_indices_policy",
+                                               &bad_indices_policy_));
+    }
+  }
 
   void Compile(XlaOpKernelContext* context) override {
     DataType params_type = context->input_type(0);
@@ -312,8 +319,58 @@ class GatherNdOp : public XlaOpKernel {
                                       indices_shape, /*axis=*/0,
                                       /*indices_are_nd=*/true, params_type,
                                       indices_type, builder, &gather));
+    // By default, XLA clips OOB indices, while "IGNORE" policy demands to fill
+    // 0s to the output. The following code implements the "IGNORE" policy by
+    // masking the gather result with the valid indices mask.
+    if (bad_indices_policy_ == "IGNORE") {
+      xla::XlaOp valid_mask;
+      for (int i = 0; i < num_index_dims; ++i) {
+        xla::XlaOp i_limit = XlaHelpers::IntegerLiteral(
+            builder, indices_type, params_shape.dim_size(i));
+        xla::XlaOp i_zero = XlaHelpers::Zero(builder, indices_type);
+        xla::XlaOp indices_i =
+            xla::SliceInDim(indices, i, i + 1, 1, indices_shape.dims() - 1);
+
+        xla::XlaOp indices_i_good =
+            xla::And(xla::Ge(indices_i, i_zero), xla::Lt(indices_i, i_limit));
+        if (i == 0) {
+          valid_mask = indices_i_good;
+        } else {
+          valid_mask = xla::And(valid_mask, indices_i_good);
+        }
+      }
+      auto gather_shape = builder->GetShape(gather);
+      OP_REQUIRES_OK(context, gather_shape.status());
+
+      std::vector<int64_t> valid_mask_dims(
+          gather_shape->dimensions().begin(),
+          gather_shape->dimensions().end() - 1);
+      valid_mask = xla::Reshape(valid_mask, valid_mask_dims);
+      if (indices_shape.dims() != gather_shape->dimensions().size()) {
+        OP_REQUIRES(
+            context,
+            gather_shape->dimensions().size() == indices_shape.dims() - 1,
+            errors::InvalidArgument(
+                "Indices rank must be equal to output rank (with channel "
+                "dimension) or 1 less (w/o channel dimension)"));
+      } else {
+        std::vector<int64_t> broadcast_dims(valid_mask_dims.size(), 1);
+        for (int i = 0; i < broadcast_dims.size(); ++i) {
+          broadcast_dims[i] = i;
+        }
+        valid_mask = xla::BroadcastInDim(valid_mask, gather_shape->dimensions(),
+                                         broadcast_dims);
+      }
+
+      gather =
+          xla::Select(valid_mask, gather,
+                      xla::Broadcast(XlaHelpers::Zero(builder, params_type),
+                                     gather_shape->dimensions()));
+    }
     context->SetOutput(0, gather);
   }
+
+  std::string bad_indices_policy_;
 };
 
 REGISTER_XLA_OP(Name("GatherNd"), GatherNdOp);
