@@ -369,7 +369,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
 
   const std::string& device_type = device_base->device_type();
   if (device_type == DEVICE_CPU) {
@@ -404,7 +404,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
                          custom_allocator);
 }
 
-std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
+std::shared_ptr<stream_executor::DeviceAddressAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info) {
   if (platform_info.custom_allocator()) {
