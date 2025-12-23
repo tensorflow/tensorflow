@@ -103,7 +103,8 @@ KernelArgsPacking CreateDefaultArgsPacking() {
   using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
-    auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
+    auto* mem_args =
+        se::Cast<stream_executor::KernelArgsDeviceAddressArray>(&args);
 
     return se::PackKernelArgs(mem_args->device_memory_args(),
                               args.number_of_shared_bytes());
