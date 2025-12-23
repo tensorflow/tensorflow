@@ -126,7 +126,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
   std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   SwapGraph(graph.get());
 
-  std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(absl::IsInvalidArgument(status)) << status.ToString();
@@ -137,7 +137,7 @@ TEST_F(PartitioningUtilsTest, OneDevice) {
   SwapGraph(graph.get(), true);
   int num_nodes = graph->num_op_nodes();
 
-  std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(status.ok()) << status.ToString();
@@ -152,7 +152,7 @@ TEST_F(PartitioningUtilsTest, TwoDevices) {
   std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
   TwoDeviceSwapGraph(graph.get());
 
-  std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+  std::unordered_map<std::string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
   ASSERT_TRUE(status.ok()) << status.ToString();
@@ -331,7 +331,7 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   CheckAlloc({false}, arg_alloc_attrs);
   CheckAlloc({false}, ret_alloc_attrs);
 
-  std::unordered_map<string, Node*> nodes = graph->BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> nodes = graph->BuildNodeNameIndex();
   ASSERT_EQ(1, nodes.count("x"));
   CheckIndex(*nodes["x"], 0);
   ASSERT_EQ(1, nodes.count("retval1"));
