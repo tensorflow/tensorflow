@@ -28,8 +28,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/service_executable_run_options.h"
@@ -153,7 +157,21 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   Thunk::InitializeParams init_params;
   init_params.executor = executor_;
   init_params.stream = stream_.get();
-  auto execute_params = Thunk::ExecuteParams::Create(
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream_.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor_->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor_, collective_params.global_device_id);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor_,
+                                      &allocations};
+
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
       /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
@@ -166,7 +184,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
-  TF_ASSERT_OK(thunk.Prepare(Thunk::PrepareParams{}));
+  TF_ASSERT_OK(thunk.Prepare(prepare_params));
   TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
                           device_log.ReadFromDevice(*stream_));

@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -138,6 +138,12 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config,
       const HloParserOptions& parser_options = HloParserOptions()) const;
+
+  // Builds an HLO module from the given XlaComputation using the given
+  // execution options.
+  absl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromXlaComputation(
+      const XlaComputation& computation,
+      const ExecutionOptions& execution_options) const;
 
   // Builds an HLO module from the given XlaBuilder using the given
   // execution options.

@@ -232,7 +232,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -244,7 +243,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -803,9 +801,12 @@ xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
     shard_count = 2,
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:error_spec",
@@ -814,11 +815,14 @@ xla_test(
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
     ],
 )

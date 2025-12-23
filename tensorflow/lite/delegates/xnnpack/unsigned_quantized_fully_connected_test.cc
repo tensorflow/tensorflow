@@ -20,16 +20,17 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/quantized_fully_connected_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-struct UnsignedQuantizedFullyConnected : DelegateTest {};
+TEST(UnsignedQuantizedFullyConnected, 1D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
 
-TEST_F(UnsignedQuantizedFullyConnected, 1D) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -53,7 +54,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 1D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 1DKeepDims) {
+TEST(UnsignedQuantizedFullyConnected, 1DKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -78,7 +83,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 1DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 2D) {
+TEST(UnsignedQuantizedFullyConnected, 2D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -105,7 +114,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 2D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 2DKeepDims) {
+TEST(UnsignedQuantizedFullyConnected, 2DKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -133,7 +146,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 2DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 3D) {
+TEST(UnsignedQuantizedFullyConnected, 3D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -161,7 +178,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 3D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 3DReshape) {
+TEST(UnsignedQuantizedFullyConnected, 3DReshape) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -189,7 +210,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 3DReshape) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 3DKeepDims) {
+TEST(UnsignedQuantizedFullyConnected, 3DKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -218,7 +243,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 3DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 4D) {
+TEST(UnsignedQuantizedFullyConnected, 4D) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -247,7 +276,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 4D) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, 4DKeepDims) {
+TEST(UnsignedQuantizedFullyConnected, 4DKeepDims) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -277,7 +310,11 @@ TEST_F(UnsignedQuantizedFullyConnected, 4DKeepDims) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, NoBias) {
+TEST(UnsignedQuantizedFullyConnected, NoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -305,7 +342,11 @@ TEST_F(UnsignedQuantizedFullyConnected, NoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, ReluActivation) {
+TEST(UnsignedQuantizedFullyConnected, ReluActivation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -333,7 +374,11 @@ TEST_F(UnsignedQuantizedFullyConnected, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, Relu6Activation) {
+TEST(UnsignedQuantizedFullyConnected, Relu6Activation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -361,7 +406,11 @@ TEST_F(UnsignedQuantizedFullyConnected, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, ReluMinus1To1Activation) {
+TEST(UnsignedQuantizedFullyConnected, ReluMinus1To1Activation) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto zero_point_rng = std::bind(std::uniform_int_distribution<int32_t>(
@@ -389,11 +438,13 @@ TEST_F(UnsignedQuantizedFullyConnected, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST_F(UnsignedQuantizedFullyConnected, MultiThreading) {
+TEST(UnsignedQuantizedFullyConnected, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
-  UseCustomDelegate(delegate_options);
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());

@@ -237,7 +237,7 @@ tstring* GetStringBackingBuffer(const Tensor& val) {
 
 absl::Status ParseEntryProto(absl::string_view key, absl::string_view value,
                              protobuf::MessageLite* out) {
-  if (!out->ParseFromArray(value.data(), value.size())) {
+  if (!out->ParseFromString(value)) {
     return errors::DataLoss("Entry for key ", key, " not parseable.");
   }
   return absl::OkStatus();
@@ -1225,7 +1225,7 @@ string BundleReader::DebugString() {
   BundleEntryProto entry;
   Seek(kHeaderEntryKey);
   for (Next(); Valid(); Next()) {
-    CHECK(entry.ParseFromArray(value().data(), value().size()));
+    CHECK(entry.ParseFromString(value()));
     if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
 
     strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),

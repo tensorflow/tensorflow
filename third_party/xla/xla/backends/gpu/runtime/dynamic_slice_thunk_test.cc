@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -1940,12 +1942,21 @@ TEST_F(DynamicSliceThunkTest,
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
   se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(/*buffers=*/{lhs, rhs, out, workspace},
-                                /*device_ordinal=*/0,
+                                /*device_ordinal=*/executor->device_ordinal(),
                                 /*memory_allocator=*/&allocator);
-
-  Thunk::PrepareParams prepare_params{};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),

@@ -42,7 +42,7 @@ class ZipDatasetParams : public DatasetParams {
   ZipDatasetParams(std::vector<T> input_dataset_params,
                    DataTypeVector output_dtypes,
                    std::vector<PartialTensorShape> output_shapes,
-                   int num_input_datasets, string node_name)
+                   int num_input_datasets, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         num_input_datasets_(num_input_datasets) {
@@ -57,7 +57,8 @@ class ZipDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     for (int i = 0; i < num_input_datasets_; ++i) {
       input_names->emplace_back(
@@ -75,10 +76,12 @@ class ZipDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return ZipDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return ZipDatasetOp::kDatasetType;
+  }
 
  private:
-  int32 num_input_datasets_;
+  int32_t num_input_datasets_;
 };
 
 class ZipDatasetOpTest : public DatasetOpsTestBase {};

@@ -137,7 +137,7 @@ namespace functor {
       const Eigen::DSizes<Eigen::DenseIndex, 1>& sizes);        \
   extern template struct Slice<GPUDevice, T, 1>;
 
-DECLARE_GPU_SPEC(int32);
+DECLARE_GPU_SPEC(int32_t);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(complex64);

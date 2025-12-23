@@ -6415,7 +6415,8 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   }
 
   // Finally, try to prefetch the buffer into alternate memory.
-  if (request.allow_prefetch &&
+  if ((request.allow_prefetch ||
+       request.require_end_colored_in_alternate_memory) &&
       !request.allocation_value->requires_contiguous_allocation() &&
       !request.only_extend_existing_allocation &&
       required_memory_space_at_end != MemorySpace::kDefault &&
@@ -6490,7 +6491,18 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     result_mark(prefetch_result, allocation_result);
   }
 
-  CHECK(!request.require_end_colored_in_alternate_memory);
+  CHECK(!request.require_end_colored_in_alternate_memory)
+      << "Failed to allocate end in alternate memory, even though its "
+         "required. "
+         "requires_contiguous_allocation: "
+      << request.allocation_value->requires_contiguous_allocation()
+      << " only_extend_existing_allocation: "
+      << request.only_extend_existing_allocation
+      << " require_end_colored_in_default_memory: "
+      << request.require_end_colored_in_default_memory
+      << " required_memory_space_at_end: "
+      << (required_memory_space_at_end == MemorySpace::kDefault ? "default"
+                                                                : "alternate");
 
   // If the end assignment was required to be in alternate memory but that
   // wasn't possible, then this allocation is invalid.

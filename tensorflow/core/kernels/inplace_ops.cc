@@ -199,7 +199,7 @@ REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .HostMemory("value")
                             .HostMemory("update")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         ParallelConcatUpdate<CPUDevice>);
 #endif
 
@@ -463,7 +463,7 @@ REGISTER(uint8_t);
 REGISTER(int64_t);
 REGISTER(uint64_t);
 
-REGISTER_EMPTY(int32, GPU);
+REGISTER_EMPTY(int32_t, GPU);
 #undef REGISTER
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

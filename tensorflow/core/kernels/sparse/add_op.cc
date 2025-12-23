@@ -281,17 +281,18 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         beta_(beta),
         initialized_(false) {}
 
-  Status Initialize() {
+  absl::Status Initialize() {
     TF_RETURN_IF_ERROR(cuda_sparse_.Initialize());
     TF_RETURN_IF_ERROR(descrA_.Initialize());
     TF_RETURN_IF_ERROR(descrB_.Initialize());
     TF_RETURN_IF_ERROR(descrC_.Initialize());
     initialized_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
-                          const ConstCSRComponent<T>& b, size_t* bufferSize) {
+  absl::Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                                const ConstCSRComponent<T>& b,
+                                size_t* bufferSize) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -313,13 +314,13 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), null_T, null_int,
         null_int, bufferSize));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetOutputStructure(const ConstCSRComponent<T>& a,
-                            const ConstCSRComponent<T>& b,
-                            TTypes<int32>::UnalignedVec c_row_ptr,
-                            int* output_nnz, void* workspace) {
+  absl::Status GetOutputStructure(const ConstCSRComponent<T>& a,
+                                  const ConstCSRComponent<T>& b,
+                                  TTypes<int32_t>::UnalignedVec c_row_ptr,
+                                  int* output_nnz, void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -343,11 +344,12 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
       return errors::Internal(
           "CSRAdd: CsrgeamNnz returned nnzTotalDevHostPtr < 0: ", *output_nnz);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
-                 CSRComponent<T>* c, void* workspace) {
+  absl::Status Compute(const ConstCSRComponent<T>& a,
+                       const ConstCSRComponent<T>& b, CSRComponent<T>* c,
+                       void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -368,7 +370,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), c->values.data(),
         c->row_ptr.data(), c->col_ind.data(), workspace));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

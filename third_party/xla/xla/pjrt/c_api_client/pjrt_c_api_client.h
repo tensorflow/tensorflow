@@ -574,6 +574,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
         "PJRT C API does not support ReleaseDeviceMemoryOwnership");
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      Future<> dependency) override;
+
   bool IsDeleted() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(

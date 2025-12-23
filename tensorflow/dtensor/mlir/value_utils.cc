@@ -109,7 +109,7 @@ mlir::Value ReshapeSizeTypeToScalar(mlir::OpBuilder builder, mlir::Location loc,
 }
 
 mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
-                     llvm::ArrayRef<int32> values) {
+                     llvm::ArrayRef<int32_t> values) {
   auto const_type = mlir::RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder.getIntegerType(32));
   mlir::Attribute const_attr =
@@ -172,7 +172,7 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
   if (llvm::cast<mlir::RankedTensorType>(type).getElementType().isInteger(64)) {
     return Int64Const(builder, loc, values);
   } else {
-    llvm::SmallVector<int32, 4> values32(values.begin(), values.end());
+    llvm::SmallVector<int32_t, 4> values32(values.begin(), values.end());
     return IntConst(builder, loc, values32);
   }
 }

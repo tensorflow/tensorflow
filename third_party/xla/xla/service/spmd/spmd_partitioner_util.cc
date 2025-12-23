@@ -2895,7 +2895,7 @@ HloInstruction* PadDataFromWindowReshard(
   return sharded_data;
 }
 
-std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
+CollectiveDeviceList GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
   absl::Span<const int64_t> sharding_dims = sharding.dimensions();
   DCHECK_GE(sharding_dims.size(), replication_dims.size());
@@ -2939,10 +2939,10 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
         DCHECK_LT(group_id, partition_groups.size());
         partition_groups[group_id].push_back(partition);
       });
-  return partition_groups;
+  return CollectiveDeviceList(partition_groups);
 }
 
-std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
+CollectiveDeviceList GetPartitionGroupsAcrossTargetDims(
     const HloSharding& sharding, std::vector<int64_t> target_dims,
     std::vector<int64_t> group_sizes) {
   CHECK(target_dims.size() == group_sizes.size());
@@ -2966,7 +2966,7 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
     }
     groups[group_id].push_back(device);
   });
-  return groups;
+  return CollectiveDeviceList(groups);
 }
 
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(

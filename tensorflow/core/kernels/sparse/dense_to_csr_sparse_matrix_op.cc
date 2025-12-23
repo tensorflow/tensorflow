@@ -174,7 +174,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const int64_t rows = dense_tensor_shape.dim_size((rank == 2) ? 0 : 1);
     const int64_t cols = dense_tensor_shape.dim_size((rank == 2) ? 1 : 2);
 
-    ScratchSpace<int32> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
+    ScratchSpace<int32_t> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 
     Tensor nnz_per_batch_device_t;
     if (rank == 2) {
@@ -185,7 +185,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                            c->allocate_temp(DT_INT32, TensorShape({batch_size}),
                                             &nnz_per_batch_device_t),
                            done);
-      auto nnz_per_batch_device = nnz_per_batch_device_t.vec<int32>();
+      auto nnz_per_batch_device = nnz_per_batch_device_t.vec<int32_t>();
 
       functor::CalculateNNZPerBatchMatrixFromIndices<Device>
           calculate_nnz_from_indices;
@@ -194,14 +194,14 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceAddressBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_OK_ASYNC(
           c,
           stream->Memcpy(nnz_per_batch_host.mutable_data() /*host_dst*/,
                          nnz_per_batch_device_ptr /*gpu_src*/,
-                         batch_size * sizeof(int32) /*size*/),
+                         batch_size * sizeof(int32_t) /*size*/),
           done);
     }
 
@@ -216,7 +216,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       // tensor by the time we get here; we can unreference it.
       nnz_per_batch_device_ref.Unref();
 
-      auto nnz_per_batch = nnz_per_batch_host.tensor().vec<int32>();
+      auto nnz_per_batch = nnz_per_batch_host.tensor().vec<int32_t>();
 
       {
         // Ensure that within the callback, the proper GPU settings are
@@ -227,7 +227,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
         // Extract out the values.
         Tensor temp_values_t;
         OP_REQUIRES_OK_ASYNC(c,
-                             (functor::DoGatherNd<Device, T, int64>(
+                             (functor::DoGatherNd<Device, T, int64_t>(
                                  c, params_t, indices_t, &temp_values_t)),
                              done);
         const Tensor& values_t = const_cast<const Tensor&>(temp_values_t);
@@ -249,7 +249,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
         Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                            TensorShape({batch_size + 1}));
-        auto batch_ptr = batch_ptr_t.vec<int32>();
+        auto batch_ptr = batch_ptr_t.vec<int32_t>();
         auto indices = indices_t.matrix<int64_t>();
 
         batch_ptr(0) = 0;
@@ -286,9 +286,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                              &csr_row_ptr_t),
             done);
 
-        auto coo_row_ind = coo_row_ind_t.vec<int32>();
-        auto coo_col_ind = coo_col_ind_t.vec<int32>();
-        auto csr_row_ptr = csr_row_ptr_t.vec<int32>();
+        auto coo_row_ind = coo_row_ind_t.vec<int32_t>();
+        auto coo_col_ind = coo_col_ind_t.vec<int32_t>();
+        auto csr_row_ptr = csr_row_ptr_t.vec<int32_t>();
 
         // Convert SparseTensor rep to coo row ind, coo col ind.
         if (total_nnz > 0) {
@@ -302,8 +302,8 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
         // a bug if you have empty coo rows.
         // TODO(ebrevdo): File bug w/ nvidia so coo2csr can handle
         // zero-element input coo rows.
-        functor::SetZeroFunctor<Device, int32> set_zero;
-        set_zero(d, csr_row_ptr_t.flat<int32>());
+        functor::SetZeroFunctor<Device, int32_t> set_zero;
+        set_zero(d, csr_row_ptr_t.flat<int32_t>());
 
         functor::COOSparseMatrixToCSRSparseMatrix<Device> coo_to_csr;
         for (int i = 0; i < batch_size; ++i) {
@@ -313,9 +313,9 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             // handled by the SetZero above.
           } else {
             // Convert coo to csr.
-            auto coo_row_ind_i =
-                TTypes<int32>::UnalignedVec(&coo_row_ind(batch_ptr(i)), nnz_i);
-            auto csr_row_ptr_i = TTypes<int32>::UnalignedVec(
+            auto coo_row_ind_i = TTypes<int32_t>::UnalignedVec(
+                &coo_row_ind(batch_ptr(i)), nnz_i);
+            auto csr_row_ptr_i = TTypes<int32_t>::UnalignedVec(
                 &csr_row_ptr((rows + 1) * i), rows + 1);
             OP_REQUIRES_OK_ASYNC(
                 c, coo_to_csr(c, rows, cols, coo_row_ind_i, csr_row_ptr_i),
@@ -368,9 +368,9 @@ REGISTER_GPU(GPU, complex128)
 namespace functor {
 
 template <>
-Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
+absl::Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
     OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
-    TTypes<int32>::Vec nnz_per_batch);
+    TTypes<int32_t>::Vec nnz_per_batch);
 extern template struct CalculateNNZPerBatchMatrixFromIndices<GPUDevice>;
 
 template <>
@@ -384,9 +384,9 @@ extern template struct SparseTensorToCOOSparseMatrix<GPUDevice>;
 
 template <>
 struct COOSparseMatrixToCSRSparseMatrix<GPUDevice> {
-  Status operator()(OpKernelContext* c, const int rows, const int cols,
-                    TTypes<int>::UnalignedVec coo_row_ind,
-                    TTypes<int>::UnalignedVec csr_row_ptr) {
+  absl::Status operator()(OpKernelContext* c, const int rows, const int cols,
+                          TTypes<int>::UnalignedVec coo_row_ind,
+                          TTypes<int>::UnalignedVec csr_row_ptr) {
     GpuSparse cuda_sparse(c);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     return cuda_sparse.Coo2csr(coo_row_ind.data(),

@@ -3382,6 +3382,43 @@ PjRtCApiBuffer::AcquireExternalReference() {
                                                      device_memory_ptr);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiBuffer::DonateWithControlDependency(Future<> dependency) {
+  if (client_->pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      client_->pjrt_c_api()->pjrt_api_version.minor_version < 88) {
+    return Unimplemented(
+        "PJRT_Buffer_DonateWithControlDependency requires PJRT C API version "
+        "0.88 or higher.");
+  }
+  PJRT_Buffer_DonateWithControlDependency_Args args;
+  args.struct_size = PJRT_Buffer_DonateWithControlDependency_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = c_buffer();
+  const PJRT_Api* api = pjrt_c_api();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      api->PJRT_Buffer_DonateWithControlDependency(&args), api);
+
+  dependency.OnReady([callback = args.dependency_ready_callback,
+                      data = args.callback_data](absl::Status s) {
+    PJRT_Buffer_DonateWithControlDependency_Callback_Args cb_args;
+    cb_args.struct_size =
+        PJRT_Buffer_DonateWithControlDependency_Callback_Args_STRUCT_SIZE;
+    cb_args.callback_data = data;
+    if (s.ok()) {
+      cb_args.error_code = PJRT_Error_Code_OK;
+      cb_args.error_message = nullptr;
+      cb_args.error_message_size = 0;
+    } else {
+      cb_args.error_code = pjrt::StatusCodeToPjrtErrorCode(s.code());
+      cb_args.error_message = s.message().data();
+      cb_args.error_message_size = s.message().size();
+    }
+    callback(&cb_args);
+  });
+  return std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(client_, args.out_buffer));
+}
+
 void PjRtCApiBuffer::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   PJRT_CrossHostTransfers_Extension* extension =

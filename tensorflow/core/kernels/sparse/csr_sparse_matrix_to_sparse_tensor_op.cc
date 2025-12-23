@@ -222,20 +222,20 @@ REGISTER_GPU(complex128)
 namespace functor {
 template <>
 struct COOSparseMatrixToSparseTensor<GPUDevice> {
-  Status operator()(OpKernelContext* ctx,
-                    TTypes<int64_t>::ConstVec host_dense_shape,
-                    TTypes<int>::ConstVec host_batch_ptrs,
-                    TTypes<int>::Vec coo_row_ind,
-                    TTypes<int>::ConstVec coo_col_ind,
-                    TTypes<int64_t>::Matrix indices);
+  absl::Status operator()(OpKernelContext* ctx,
+                          TTypes<int64_t>::ConstVec host_dense_shape,
+                          TTypes<int>::ConstVec host_batch_ptrs,
+                          TTypes<int>::Vec coo_row_ind,
+                          TTypes<int>::ConstVec coo_col_ind,
+                          TTypes<int64_t>::Matrix indices);
 };
 extern template struct COOSparseMatrixToSparseTensor<GPUDevice>;
 
 template <>
 struct CSRSparseMatrixToCOOSparseMatrix<GPUDevice> {
-  Status operator()(OpKernelContext* c,
-                    TTypes<const int>::UnalignedVec csr_row_ptr,
-                    TTypes<int>::UnalignedVec coo_row_ind);
+  absl::Status operator()(OpKernelContext* c,
+                          TTypes<const int>::UnalignedVec csr_row_ptr,
+                          TTypes<int>::UnalignedVec coo_row_ind);
 };
 extern template struct CSRSparseMatrixToCOOSparseMatrix<GPUDevice>;
 

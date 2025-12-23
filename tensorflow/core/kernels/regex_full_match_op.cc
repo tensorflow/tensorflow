@@ -41,7 +41,7 @@ class RegexFullMatchOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pattern_tensor->shape()),
                 errors::InvalidArgument("Pattern must be scalar, but received ",
                                         pattern_tensor->shape().DebugString()));
-    const string pattern = pattern_tensor->flat<tstring>()(0);
+    const std::string pattern = pattern_tensor->flat<tstring>()(0);
     std::shared_ptr<RE2> regex = CachedRE2(pattern);
     OP_REQUIRES(ctx, regex->ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
@@ -57,7 +57,7 @@ class RegexFullMatchOp : public OpKernel {
   }
 
  private:
-  std::shared_ptr<RE2> CachedRE2(const string& pattern) {
+  std::shared_ptr<RE2> CachedRE2(const std::string& pattern) {
     {
       tf_shared_lock l(mu_);
       if (regex_ != nullptr && regex_->pattern() == pattern) {
@@ -88,7 +88,7 @@ REGISTER_KERNEL_BUILDER(Name("RegexFullMatch").Device(DEVICE_CPU),
 class StaticRegexFullMatchOp : public OpKernel {
  public:
   explicit StaticRegexFullMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string pattern;
+    std::string pattern;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
     re_ = std::make_unique<RE2>(pattern);
     OP_REQUIRES(ctx, re_->ok(),
