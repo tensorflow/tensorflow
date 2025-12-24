@@ -631,12 +631,8 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_int4_device_test",
-<<<<<<< HEAD
-    srcs = if_gpu_is_configured(["fusion_emitter_int4_device_test.cc"]),
-=======
     size = "large",
     srcs = ["fusion_emitter_int4_device_test.cc"],
->>>>>>> upstream/master
     backends = [
         "a100",
         "h100",
@@ -839,12 +835,8 @@ cc_library(
 
 xla_test(
     name = "fusion_emitter_large_test",
-<<<<<<< HEAD
-    srcs = if_gpu_is_configured(["fusion_emitter_large_test.cc"]),
-=======
     size = "large",
     srcs = ["fusion_emitter_large_test.cc"],
->>>>>>> upstream/master
     backends = [
         "a100",
         "h100",
