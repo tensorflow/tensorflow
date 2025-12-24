@@ -115,7 +115,7 @@ cc_library(
         ":protocol_proto_cc",
         "//xla:util",
         "//xla/pjrt:utils",
-        "//xla/pjrt/gpu:gpu_topology_proto_cc",
+        "//xla/service:gpu_topology_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

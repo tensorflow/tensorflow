@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/service/gpu_topology.h"
 
 #include <memory>
 
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/service/gpu_topology.pb.h"
 
 namespace xla {
 

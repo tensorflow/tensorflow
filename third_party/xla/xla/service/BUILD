@@ -6257,6 +6257,31 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "gpu_topology_proto",
+    srcs = ["gpu_topology.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "gpu_topology",
+    srcs = ["gpu_topology.cc"],
+    hdrs = ["gpu_topology.h"],
+    visibility = internal_visibility([
+        "//xla/pjrt:__subpackages__",
+        "//third_party/pathways:__subpackages__",
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//learning/brain/research/jax:__subpackages__",
+        "//learning/pathways/compilation_service:__subpackages__",
+        "//tensorflow/core/common_runtime/eager:__subpackages__",
+        ":__subpackages__",
+    ]),
+    deps = [
+        ":gpu_topology_proto_cc",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
 cc_library(
     name = "matmul_indexing_utils",
     srcs = ["matmul_indexing_utils.cc"],

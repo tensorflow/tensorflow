@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package xla;
 
+option java_multiple_files = true;
+option java_outer_classname = "GpuTopologyProto";
+
 // A proto used to serialize GpuTopology instances.
 message GpuTopologyProto {
   reserved 1;  // Was: device_ids

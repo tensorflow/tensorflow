@@ -5,7 +5,6 @@ load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
-load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # Integrate with PJRT rather than the GPU client directly.
@@ -56,8 +55,6 @@ cc_library(
     deps = [
         ":gpu_helpers",
         ":gpu_metrics",
-        ":gpu_topology",
-        ":gpu_topology_proto_cc",
         ":se_gpu_topology_description",
         "//xla:executable_run_options",
         "//xla:future",
@@ -112,6 +109,8 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
+        "//xla/service:gpu_topology",
+        "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -204,8 +203,6 @@ xla_test(
     backends = ["gpu"],
     tags = ["nofixdeps"],
     deps = [
-        ":gpu_topology",
-        ":gpu_topology_proto_cc",
         ":se_gpu_pjrt_client",
         ":se_gpu_topology_description",
         "//xla:debug_options_flags",
@@ -243,6 +240,8 @@ xla_test(
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/profiling/test_util:mock_device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/service:gpu_topology",
+        "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
         "//xla/service/gpu:gpu_memory_space_assignment",
         "//xla/stream_executor:device_address",
@@ -377,7 +376,6 @@ xla_test(
         "XLA_FLAGS": "--xla_gpu_experimental_enable_nvshmem=true",
     },
     deps = [
-        ":gpu_topology_proto_cc",
         ":se_gpu_pjrt_client",
         "//xla:shape_util",
         "//xla:util",
@@ -399,6 +397,7 @@ xla_test(
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/distributed:service",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
@@ -428,26 +427,6 @@ xla_test(
         ":se_gpu_pjrt_client",
         "//xla/pjrt:pjrt_client_test_common",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-tf_proto_library(
-    name = "gpu_topology_proto",
-    srcs = ["gpu_topology.proto"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "gpu_topology",
-    srcs = ["gpu_topology.cc"],
-    hdrs = ["gpu_topology.h"],
-    visibility = internal_visibility([
-        "//xla/pjrt/gpu:legacy_gpu_topology_users",
-        ":__subpackages__",
-    ]),
-    deps = [
-        ":gpu_topology_proto_cc",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -566,7 +545,6 @@ xla_test(
     srcs = ["se_gpu_pjrt_compiler_test.cc"],
     backends = ["gpu"],
     deps = [
-        ":gpu_topology",
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler_impl",
         ":se_gpu_topology_description",
@@ -580,6 +558,7 @@ xla_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/service:gpu_topology",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
@@ -636,8 +615,6 @@ cc_library(
         ":__subpackages__",
     ]),
     deps = [
-        ":gpu_topology",
-        ":gpu_topology_proto_cc",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_common",
@@ -646,6 +623,8 @@ cc_library(
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/service:gpu_topology",
+        "//xla/service:gpu_topology_proto_cc",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -664,13 +643,13 @@ xla_cc_test(
     name = "se_gpu_topology_description_test",
     srcs = ["se_gpu_topology_description_test.cc"],
     deps = [
-        ":gpu_topology",
         ":se_gpu_topology_description",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
+        "//xla/service:gpu_topology",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],

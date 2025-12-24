@@ -454,7 +454,6 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
         "//xla/pjrt/gpu:gpu_helpers",
-        "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
@@ -464,6 +463,7 @@ cc_library(
         "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
         "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",
+        "//xla/service:gpu_topology",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",

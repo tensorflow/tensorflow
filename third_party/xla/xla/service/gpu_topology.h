@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_GPU_GPU_TOPOLOGY_H_
-#define XLA_PJRT_GPU_GPU_TOPOLOGY_H_
+#ifndef XLA_SERVICE_GPU_TOPOLOGY_H_
+#define XLA_SERVICE_GPU_TOPOLOGY_H_
 
 #include <cstdint>
 #include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/service/gpu_topology.pb.h"
 
 namespace xla {
+
 class GpuTopology {
  public:
   explicit GpuTopology(absl::string_view platform_version,
@@ -77,4 +78,4 @@ class GpuTopology {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_GPU_GPU_TOPOLOGY_H_
+#endif  // XLA_SERVICE_GPU_TOPOLOGY_H_
