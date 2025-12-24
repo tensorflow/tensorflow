@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -1849,6 +1850,82 @@ CommandBufferCmd::BufferUseVector CuDnnCmd::buffers() const {
     buffer_usage.push_back(BufferUse::Read(args_[i]));
   }
   buffer_usage.push_back(BufferUse::Write(args_.back()));
+  return buffer_usage;
+}
+
+//===----------------------------------------------------------------------===//
+// ConvolutionCmd
+//===----------------------------------------------------------------------===//
+
+ConvolutionCmd::ConvolutionCmd(GpuConvConfig config,
+                               std::vector<ShapedSlice> operand_slices,
+                               std::vector<ShapedSlice> result_slices,
+                               BufferAllocation::Slice scratch_slice)
+    : TracedCommandBufferCmd(CommandBufferCmdType::kConvolutionCmd),
+      config_(std::move(config)),
+      operand_slices_(std::move(operand_slices)),
+      result_slices_(std::move(result_slices)),
+      scratch_slice_(scratch_slice) {}
+
+GenericConvRunner& ConvolutionCmd::GetOrCreateRunner(
+    const stream_executor::Stream* stream) {
+  absl::MutexLock lock(mu_);
+  auto it = runner_cache_.find(stream);
+  bool runner_created = (it == runner_cache_.end());
+  if (runner_created) {
+    it = runner_cache_
+             .insert({stream, std::make_unique<GenericConvRunner>(config_)})
+             .first;
+  }
+  return *it->second;
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> ConvolutionCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  const auto& buffer_allocations = *execute_params.buffer_allocations;
+
+  std::vector<se::DeviceAddressBase> operand_se_buffers, result_se_buffers;
+  operand_se_buffers.reserve(operand_slices_.size());
+  for (const ShapedSlice& buffer : operand_slices_) {
+    operand_se_buffers.push_back(
+        buffer_allocations.GetDeviceAddress(buffer.slice));
+  }
+
+  result_se_buffers.reserve(result_slices_.size());
+  for (const ShapedSlice& buffer : result_slices_) {
+    result_se_buffers.push_back(
+        buffer_allocations.GetDeviceAddress(buffer.slice));
+  }
+
+  se::DeviceAddressBase scratch =
+      buffer_allocations.GetDeviceAddress(scratch_slice_);
+
+  return RecordTracedCommand(
+      execute_params, record_params, std::move(record_action), command_buffer,
+      [&](se::Stream* stream) {
+        RunConvOptions opts;
+        opts.runner_cache = &GetOrCreateRunner(stream);
+
+        return RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
+                          absl::MakeSpan(result_se_buffers), scratch, stream,
+                          opts);
+      });
+}
+
+CommandBufferCmd::BufferUseVector ConvolutionCmd::buffers() const {
+  CommandBufferCmd::BufferUseVector buffer_usage;
+  buffer_usage.reserve(operand_slices_.size() + result_slices_.size() + 1);
+
+  for (const ShapedSlice& slice : operand_slices_) {
+    buffer_usage.push_back(BufferUse::Read(slice.slice, slice.shape));
+  }
+  for (const ShapedSlice& slice : result_slices_) {
+    buffer_usage.push_back(BufferUse::Write(slice.slice, slice.shape));
+  }
+  buffer_usage.emplace_back(scratch_slice_, BufferUse::MemoryAccess::kWrite,
+                            BufferUse::ContentValidity::kUndefined);
   return buffer_usage;
 }
 

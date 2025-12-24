@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -59,6 +61,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 
 namespace xla {
 namespace gpu {
@@ -67,7 +70,7 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::Pointee;
-
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 MATCHER_P(ThunkKindIs, kind, "") { return arg.kind() == kind; }
 
 template <typename... Matchers>
@@ -214,6 +217,77 @@ std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {
       /*fingerprint=*/"fingeprint", Thunk::ThunkInfo(),
       /*args=*/std::vector<BufferAllocation::Slice>{slice0},
       /*output_args=*/std::vector<bool>{true});
+}
+
+std::unique_ptr<ConvolutionThunk> CreateConvolutionThunk(
+    const BufferAllocation& alloc0) {
+  BufferAllocation::Slice slice0(&alloc0, 0, 1024);
+  ShapedSlice shaped_slice{slice0, ShapeUtil::MakeShape(F32, {1, 1, 1, 1})};
+
+  auto proto = ParseTextProtoOrDie<GpuConvDescriptorProto>(R"pb(
+    kind: FORWARD
+    backend_config { conv_result_scale: 1 }
+    operand0_shape {
+      element_type: F32
+      dimensions: [ 1, 1, 1, 1 ]
+      layout { minor_to_major: [ 3, 2, 1, 0 ] }
+    }
+    operand1_shape {
+      element_type: F32
+      dimensions: [ 1, 1, 1, 1 ]
+      layout { minor_to_major: [ 3, 2, 1, 0 ] }
+    }
+    result_shape {
+      element_type: F32
+      dimensions: [ 1, 1, 1, 1 ]
+      layout { minor_to_major: [ 3, 2, 1, 0 ] }
+    }
+    dnums {
+      input_batch_dimension: 0
+      input_feature_dimension: 1
+      input_spatial_dimensions: [ 2, 3 ]
+      kernel_output_feature_dimension: 0
+      kernel_input_feature_dimension: 1
+      kernel_spatial_dimensions: [ 2, 3 ]
+      output_batch_dimension: 0
+      output_feature_dimension: 1
+      output_spatial_dimensions: [ 2, 3 ]
+    }
+    scratch_size: 0
+    feature_group_count: 1
+    window {
+      dimensions {
+        size: 1
+        stride: 1
+        padding_low: 0
+        padding_high: 0
+        window_dilation: 1
+        base_dilation: 1
+        window_reversal: false
+      }
+      dimensions {
+        size: 1
+        stride: 1
+        padding_low: 0
+        padding_high: 0
+        window_dilation: 1
+        base_dilation: 1
+        window_reversal: false
+      }
+    }
+  )pb");
+
+  auto descriptor_status = GpuConvDescriptor::FromProto(proto);
+  CHECK_OK(descriptor_status.status());
+  auto descriptor = descriptor_status.value();
+
+  auto thunk = ConvolutionThunk::Create(
+      Thunk::ThunkInfo(), descriptor, {shaped_slice, shaped_slice},  // operands
+      {shaped_slice},                                                // results
+      slice0                                                         // scratch
+  );
+  CHECK_OK(thunk.status());
+  return std::move(thunk).value();
 }
 
 std::unique_ptr<PartitionIdThunk> CreatePartitionIdThunk(
@@ -829,6 +903,44 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCuDnn));
 }
+
+TEST(CommandBufferConversionPassTest,
+     ConvertsConvolutionThunkToCommandBufferThunk) {
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Create a ConvolutionThunk
+  BufferAllocation alloc0(0, 1024, 0);
+  thunks.push_back(CreateConvolutionThunk(alloc0));
+
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+  DebugOptions debug_options;
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  // Reuse CUDNN for Convolution
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  FakeErrorAllocator allocator;
+
+  ASSERT_EQ(root_thunk->thunks().size(), 1);
+
+  CommandBufferConversionPass pass{"test"};
+
+  // The expected transformation is: SequentialThunk(ConvolutionThunk) ->
+  // SequentialThunk(CommandBufferThunk(ConvolutionThunk))
+  ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
+
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
+
+  const auto& thunks_in_command_buffer =
+      command_buffer_thunk->thunks()->thunks();
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kConvolution));
+}
+
 TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   CommandBufferConversionPass pass{"test"};
 

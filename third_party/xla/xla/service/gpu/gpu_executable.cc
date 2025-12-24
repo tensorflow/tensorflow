@@ -1288,7 +1288,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
         symbol_resolver) {
   Params params;
   params.debug_options = std::move(debug_options);
-  params.enable_debug_info_manager = false;
+  params.enable_debug_info_manager =
+      params.debug_options.xla_gpu_executable_embed_debug_info();
   params.asm_text = proto.asm_text();
   const std::string& binary = proto.binary();
   params.binary.assign(binary.begin(), binary.end());

@@ -76,6 +76,17 @@ class ConvolutionThunk : public Thunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  const GpuConvConfig& config() const { return config_; }
+  const std::vector<ShapedSlice>& operand_buffers() const {
+    return operand_buffers_;
+  }
+  const std::vector<ShapedSlice>& result_buffers() const {
+    return result_buffers_;
+  }
+  const BufferAllocation::Slice& scratch_buffer() const {
+    return scratch_buffer_;
+  }
+
  private:
   ConvolutionThunk(ThunkInfo thunk_info, GpuConvDescriptor descriptor,
                    GpuConvConfig config,
