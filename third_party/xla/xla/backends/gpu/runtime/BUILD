@@ -1977,16 +1977,35 @@ cc_library(
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
+        "//xla/service:buffer_assignment",
         "//xla/service:computation_placer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "recv_thunk_test",
+    srcs = ["recv_thunk_test.cc"],
+    deps = [
+        ":collective_thunk",
+        ":recv_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -2988,6 +3007,7 @@ cc_library(
         ":norm_thunk",
         ":outfeed_thunk",
         ":ragged_all_to_all_thunk",
+        ":recv_thunk",
         ":replica_id_thunk",
         ":send_thunk",
         ":sequential_thunk",
