@@ -64,7 +64,7 @@ struct BlasLtMatmulPlanMap {
 
   template <class K, class... Args>
   auto try_emplace(K&& k, Args&&... args) {
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     return map_.try_emplace(std::forward<K>(k), std::forward<Args>(args)...);
   }
 
