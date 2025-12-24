@@ -757,10 +757,10 @@ def depthwise_conv2d(input,
       rate = [1, 1]
 
     if any([_>1 for _ in rate]) and any([_!=1 for _ in strides]):
-      raise ValueError("When dilation rate is greater than 1, "
-                       "then all values of strides must be 1. "
-                       f"Received: `dilation rate` {rate} and "
-                       f"`strides` {strides}")
+      warnings.warn("When dilation rate is greater than 1, "
+                    "then all values of strides must be 1. "
+                    f"Received: `dilation rate` {rate} and "
+                    f"`strides` {strides}")
 
     # Use depthwise_conv2d_native if executing on TPU.
     if device_context.enclosing_tpu_context() is not None:
