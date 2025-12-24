@@ -1162,10 +1162,10 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
