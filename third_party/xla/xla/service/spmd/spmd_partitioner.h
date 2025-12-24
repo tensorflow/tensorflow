@@ -203,7 +203,8 @@ struct SPMDCollectiveOpsCreator {
   // Function used to create a cross-partition all-reduce HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
-      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id)>
+      const std::vector<std::vector<int64_t>>& partition_subgroups,
+      int64_t channel_id)>
       create_cross_partition_all_reduce;
 
   // Function used to create a cross-partition all-reduce HLO using device list
@@ -226,8 +227,8 @@ struct SPMDCollectiveOpsCreator {
   // Function used to create a cross-partition all-to-all HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
-      std::optional<int64_t> split_dimension)>
+      const std::vector<std::vector<int64_t>>& partition_subgroups,
+      int64_t channel_id, std::optional<int64_t> split_dimension)>
       create_cross_partition_all_to_all;
 
   // Function used to create a cross-partition all-to-all HLO using device list
@@ -243,8 +244,8 @@ struct SPMDCollectiveOpsCreator {
   // if it is nullptr, the partitioner will use all-reduce instead.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
-      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
-      int64_t all_gather_dimension)>
+      const std::vector<std::vector<int64_t>>& partition_subgroups,
+      int64_t channel_id, int64_t all_gather_dimension)>
       create_cross_partition_all_gather;
 
   // Function used to create a cross-partition all-gather HLO using device list
