@@ -179,6 +179,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:device_proto_cc",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
         "//xla/python/pjrt_ifrt:xla_executable_version",
