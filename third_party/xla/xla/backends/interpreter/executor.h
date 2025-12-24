@@ -136,8 +136,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     return std::make_unique<InterpreterStream>(this);
   }
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override {
-    if (type == MemoryType::kHost) {
+      MemorySpace type) override {
+    if (type == MemorySpace::kHost) {
       return std::make_unique<GenericMemoryAllocator>(
           [](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
