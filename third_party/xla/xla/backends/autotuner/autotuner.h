@@ -87,6 +87,8 @@ struct AutotuneConfig {
   // If true, dump the autotuned instructions to the modules's xla_dump_to or
   // to stdout if not set.
   bool dump_hlos = false;
+
+  std::string ToString() const;
 };
 
 class Autotuner {

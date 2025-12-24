@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/literal.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,7 +33,7 @@ namespace xla::cpu {
 
 struct LiteralBackedCpuBuffers : public InputBuffers {
   std::vector<Literal> backing_literals;
-  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<MaybeOwningDeviceAddress> buffers;
 };
 
 class CpuProfiler : public Profiler {
@@ -60,7 +60,7 @@ class CpuProfiler : public Profiler {
   explicit CpuProfiler(ProfileOptions options) : options_(options) {}
 
   absl::Status Execute(Executable* executable,
-                       absl::Span<const MaybeOwningDeviceMemory> buffers,
+                       absl::Span<const MaybeOwningDeviceAddress> buffers,
                        ExecutionProfile* profile);
 
  private:

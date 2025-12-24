@@ -70,6 +70,13 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              const HloBenchmarkOptions& benchmark_options = {});
 
+// Same as above, except that it runs the module exactly once and does not
+// have a benchmark::State parameter, which makes it suitable for unit tests.
+absl::Status RunHloBenchmarkOnce(
+    std::unique_ptr<HloModule> hlo_module,
+    absl::Span<const Literal* const> args,
+    const HloBenchmarkOptions& benchmark_options = {});
+
 // Benchmarks the given HLO's compilation time.
 //
 // Takes the same options as RunHloBenchmark, except no arguments since the

@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -2070,27 +2071,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
-      auto is_async_shape_correct = [](const Shape& shape) {
-        return shape.IsTuple() && shape.tuple_shapes().size() >= 2 &&
-               shape.tuple_shapes(0).IsTuple();
-      };
-      // Verify operand/resulting shapes
-      if (opcode == HloOpcode::kAsyncUpdate ||
-          opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 ||
-            !is_async_shape_correct(operands[0]->shape())) {
+      if (opcode == HloOpcode::kAsyncStart) {
+        if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
+            !shape->tuple_shapes(0).IsTuple()) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single operand in the form "
-              "of ((async-operands), async-outputs, state).");
-          return nullptr;
-        }
-      }
-      if (opcode == HloOpcode::kAsyncStart ||
-          opcode == HloOpcode::kAsyncUpdate) {
-        if (!is_async_shape_correct(*shape)) {
-          TokenError(
-              "AsyncStart and AsyncUpdate expect the op shape to be in the "
-              "form of "
+              "AsyncStart expects the op shape to be in the form of "
               "((async-operands), async-outputs, state).");
           return nullptr;
         }
@@ -2099,17 +2084,20 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 ||
-            !is_async_shape_correct(operands[0]->shape())) {
+        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
+            operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single operand in the form "
-              "of ((async-operands), async-outputs, state).");
+              "AsyncUpdate and AsyncDone expect a single async op as their "
+              "operand.");
           return nullptr;
         }
-        if (!operands[0]->IsAsynchronous()) {
+      }
+      // For AsyncUpdate, the operand and the result should have the same shape.
+      if (opcode == HloOpcode::kAsyncUpdate) {
+        if (operands[0]->shape() != *shape) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect their operand to be the "
-              "previous async op.");
+              "AsyncUpdate expects the op shape to be the same as the operand "
+              "shape.");
           return nullptr;
         }
       }

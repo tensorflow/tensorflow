@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/types/fp16.h"
+#include "tensorflow/lite/types/half.h"
 
 #ifdef __ARM_NEON
 #include <arm_neon.h>
@@ -99,17 +101,9 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 }
 
 template <typename ToT>
-void copyCast(const Eigen::half* in, ToT* out, int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) {
-    return static_cast<ToT>(Eigen::half_impl::half_to_float(a));
-  });
-}
-
-template <>
-void copyCast(const Eigen::half* in, std::complex<float>* out,
-              int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) {
-    return std::complex<float>(Eigen::half_impl::half_to_float(a));
+void copyCast(const half* in, ToT* out, int num_elements) {
+  std::transform(in, in + num_elements, out, [](half a) {
+    return static_cast<ToT>(fp16_ieee_to_fp32_value(a));
   });
 }
 
@@ -122,33 +116,26 @@ void copyCast(const Eigen::bfloat16* in, std::complex<float>* out,
 }
 
 template <typename FromT>
-void copyCastToFloat16(const FromT* in, Eigen::half* out, int num_elements) {
+void copyCastToFloat16(const FromT* in, half* out, int num_elements) {
   std::transform(in, in + num_elements, out, [](FromT a) {
-    return Eigen::half_impl::float_to_half_rtne(static_cast<float>(a));
+    return half::from_bits(fp16_ieee_from_fp32_value(static_cast<float>(a)));
   });
 }
 
 template <>
-void copyCastToFloat16(const std::complex<float>* in, Eigen::half* out,
+void copyCastToFloat16(const std::complex<float>* in, half* out,
                        int num_elements) {
   std::transform(in, in + num_elements, out, [](std::complex<float> a) {
-    return Eigen::half_impl::float_to_half_rtne(std::real(a));
+    return half::from_bits(fp16_ieee_from_fp32_value(std::real(a)));
   });
 }
 
 template <>
-void copyCastToFloat16(const Eigen::half* in, Eigen::half* out,
-                       int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) { return a; });
-}
-
-template <>
-void copyCastToFloat16(const Eigen::bfloat16* in, Eigen::half* out,
-                       int num_elements) {
+void copyCastToFloat16(const Eigen::bfloat16* in, half* out, int num_elements) {
   // bfloat16 -> float -> half (fp16)
   std::transform(in, in + num_elements, out, [](Eigen::bfloat16 a) {
-    return Eigen::half_impl::float_to_half_rtne(
-        Eigen::bfloat16_impl::bfloat16_to_float(a));
+    return half::from_bits(
+        fp16_ieee_from_fp32_value(Eigen::bfloat16_impl::bfloat16_to_float(a)));
   });
 }
 
@@ -310,7 +297,7 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       copyCast(in, out->data.int8, num_elements);
       break;
     case kTfLiteFloat16:
-      copyCastToFloat16(in, reinterpret_cast<Eigen::half*>(out->data.f16),
+      copyCastToFloat16(in, reinterpret_cast<half*>(out->data.f16),
                         num_elements);
       break;
     case kTfLiteBFloat16:

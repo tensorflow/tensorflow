@@ -70,12 +70,12 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
 
   // First compute a local reduce
   if (reduce_op == kReduceOpAdd) {
-    local_reduce = builder.create<mlir::TF::SumOp>(
-        input.getLoc(), input, reduction_indices,
+    local_reduce = mlir::TF::SumOp::create(
+        builder, input.getLoc(), input, reduction_indices,
         /*keep_dims=*/builder.getBoolAttr(true));
   } else if (reduce_op == kReduceOpMax) {
-    local_reduce = builder.create<mlir::TF::MaxOp>(
-        input.getLoc(), input, reduction_indices,
+    local_reduce = mlir::TF::MaxOp::create(
+        builder, input.getLoc(), input, reduction_indices,
         /*keep_dims=*/builder.getBoolAttr(true));
   } else {
     return errors::Unimplemented("reduction ", reduce_op, " not implemented");
@@ -107,8 +107,8 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
     // dimension attribute type. Everything else is OK with int32_t dimensions.
     std::vector<int64_t> reduce_dim_array_64(reduced_dims.begin(),
                                              reduced_dims.end());
-    global_reduce = builder.create<mlir::TF::SqueezeOp>(
-        input.getLoc(), new_type, global_reduce->getResult(0),
+    global_reduce = mlir::TF::SqueezeOp::create(
+        builder, input.getLoc(), new_type, global_reduce->getResult(0),
         builder.getI64ArrayAttr(reduce_dim_array_64));
   }
   return global_reduce->getResult(0);
@@ -143,9 +143,9 @@ absl::Status ComputeExpAndSum(mlir::OpBuilder& builder,
 
   // Subtract max from local copy of logits.
   shifted_logits =
-      builder.create<mlir::TF::SubOp>(loc, logits, max_logits).getResult();
+      mlir::TF::SubOp::create(builder, loc, logits, max_logits).getResult();
   exp_of_shifted_logits =
-      builder.create<mlir::TF::ExpOp>(loc, shifted_logits).getResult();
+      mlir::TF::ExpOp::create(builder, loc, shifted_logits).getResult();
 
   // Sum the exponential.
   TF_ASSIGN_OR_RETURN(
@@ -162,8 +162,9 @@ mlir::Value ComputeSoftmax(mlir::OpBuilder& builder,
                            const mlir::Value& exp_of_shifted_logits,
                            const mlir::Value& sum_of_exp) {
   // For Softmax, we compute exp(shifted_logits)/sum(exp(shifted_logits))
-  auto softmax = builder.create<mlir::TF::DivOp>(
-      exp_of_shifted_logits.getLoc(), exp_of_shifted_logits, sum_of_exp);
+  auto softmax =
+      mlir::TF::DivOp::create(builder, exp_of_shifted_logits.getLoc(),
+                              exp_of_shifted_logits, sum_of_exp);
   return softmax.getResult();
 }
 
@@ -174,9 +175,9 @@ mlir::Value ComputeLogSoftmax(mlir::OpBuilder& builder,
                               const mlir::Value& sum_of_exp) {
   // For LogSoftmax, we compute shifted_logs - log(sum(exp(shifted_logits)))
   auto log_of_sum =
-      builder.create<mlir::TF::LogOp>(shifted_logits.getLoc(), sum_of_exp);
-  auto log_softmax = builder.create<mlir::TF::SubOp>(
-      shifted_logits.getLoc(), shifted_logits, log_of_sum.getResult());
+      mlir::TF::LogOp::create(builder, shifted_logits.getLoc(), sum_of_exp);
+  auto log_softmax = mlir::TF::SubOp::create(
+      builder, shifted_logits.getLoc(), shifted_logits, log_of_sum.getResult());
   return log_softmax.getResult();
 }
 
@@ -223,12 +224,11 @@ StatusOr<mlir::Value> GetFPConstOfType(mlir::OpBuilder& builder,
                                        const mlir::Value& input, float value) {
   if (mlir::TensorType type =
           mlir::dyn_cast<mlir::TensorType>(input.getType())) {
-    return builder
-        .create<mlir::TF::ConstOp>(
-            input.getLoc(),
-            mlir::DenseFPElementsAttr::get<float>(
-                mlir::RankedTensorType::get({}, type.getElementType()),
-                {value}))
+    return mlir::TF::ConstOp::create(
+               builder, input.getLoc(),
+               mlir::DenseFPElementsAttr::get<float>(
+                   mlir::RankedTensorType::get({}, type.getElementType()),
+                   {value}))
         .getOutput();
   } else {
     return errors::Unimplemented("non tensor type for labels is not supported");
@@ -290,23 +290,23 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
 
   // Slice out the [1,1] for mesh_dim_index.
   mlir::Value shard_id =
-      builder
-          .create<mlir::TF::SliceOp>(
-              loc, mlir::RankedTensorType::get({1, 1}, builder.getI32Type()),
-              mesh_coordinates,
-              IntConst(builder, input.getLoc(), {0, mesh_dim_index}),
-              IntConst(builder, input.getLoc(), {1, 1}))
+      mlir::TF::SliceOp::create(
+          builder, loc,
+          mlir::RankedTensorType::get({1, 1}, builder.getI32Type()),
+          mesh_coordinates,
+          IntConst(builder, input.getLoc(), {0, mesh_dim_index}),
+          IntConst(builder, input.getLoc(), {1, 1}))
           .getOutput();
 
-  shard_id = builder
-                 .create<mlir::TF::SqueezeOp>(
-                     loc, mlir::RankedTensorType::get({}, builder.getI32Type()),
-                     shard_id, builder.getI64ArrayAttr({0, 1}))
-                 .getOutput();
+  shard_id =
+      mlir::TF::SqueezeOp::create(
+          builder, loc, mlir::RankedTensorType::get({}, builder.getI32Type()),
+          shard_id, builder.getI64ArrayAttr({0, 1}))
+          .getOutput();
 
   // `new_indices` = `input` - `shard_id` * (classes/num_shards)
   mlir::Value id_offset =
-      builder.create<mlir::TF::MulOp>(loc, shard_id, depth).getZ();
+      mlir::TF::MulOp::create(builder, loc, shard_id, depth).getZ();
 
   // Note that the type of id_offset (int32) may not match the type of input.
   // So we insert a cast in this case.
@@ -314,25 +314,23 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
       mlir::dyn_cast<mlir::TensorType>(input.getType());
   if (!input_type) return errors::InvalidArgument("input is not a TensorType");
   if (!input_type.getElementType().isInteger(32))
-    id_offset =
-        builder
-            .create<mlir::TF::CastOp>(
-                loc,
-                mlir::RankedTensorType::get({}, input_type.getElementType()),
-                id_offset)
-            .getY();
+    id_offset = mlir::TF::CastOp::create(builder, loc,
+                                         mlir::RankedTensorType::get(
+                                             {}, input_type.getElementType()),
+                                         id_offset)
+                    .getY();
 
   mlir::Value indices =
-      builder.create<mlir::TF::SubOp>(loc, input, id_offset).getZ();
+      mlir::TF::SubOp::create(builder, loc, input, id_offset).getZ();
 
   TF_ASSIGN_OR_RETURN(mlir::Value on_value,
                       GetFPConstOfType(builder, features, 1.0));
   TF_ASSIGN_OR_RETURN(mlir::Value off_value,
                       GetFPConstOfType(builder, features, 0.0));
 
-  return builder
-      .create<mlir::TF::OneHotOp>(input.getLoc(), indices, depth, on_value,
-                                  off_value, builder.getI64IntegerAttr(1))
+  return mlir::TF::OneHotOp::create(builder, input.getLoc(), indices, depth,
+                                    on_value, off_value,
+                                    builder.getI64IntegerAttr(1))
       .getOutput();
 }
 
@@ -530,7 +528,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::MaybeRelayoutOutputs(
   llvm::SmallVector<mlir::Value, 4> values = {new_loss, new_backprop};
 
   mlir::TF::IdentityNOp identity_op =
-      builder.create<mlir::TF::IdentityNOp>(loss.getLoc(), types, values);
+      mlir::TF::IdentityNOp::create(builder, loss.getLoc(), types, values);
 
   newly_created_ops.insert(identity_op);
 
@@ -627,17 +625,15 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
                       GetFPConstOfType(builder, labels, 0.0));
 
   const mlir::Value is_labels_zero =
-      builder
-          .create<mlir::TF::EqualOp>(op->getLoc(), labels, labels_zero,
-                                     builder.getBoolAttr(true))
+      mlir::TF::EqualOp::create(builder, op->getLoc(), labels, labels_zero,
+                                builder.getBoolAttr(true))
           .getZ();
   const mlir::Value safe_softmax =
-      builder
-          .create<mlir::TF::SelectV2Op>(op->getLoc(), is_labels_zero,
-                                        features_zero, log_softmax)
+      mlir::TF::SelectV2Op::create(builder, op->getLoc(), is_labels_zero,
+                                   features_zero, log_softmax)
           .getOutput();
   const mlir::Value prod =
-      builder.create<mlir::TF::MulOp>(op->getLoc(), labels, safe_softmax)
+      mlir::TF::MulOp::create(builder, op->getLoc(), labels, safe_softmax)
           .getZ();
 
   // Compute the reduce sum
@@ -648,10 +644,10 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
 
   builder.setInsertionPointAfterValue(positive_loss);
   mlir::Value loss =
-      builder.create<mlir::TF::NegOp>(op->getLoc(), positive_loss).getY();
+      mlir::TF::NegOp::create(builder, op->getLoc(), positive_loss).getY();
 
   mlir::Value backprop =
-      builder.create<mlir::TF::SubOp>(op->getLoc(), softmax, labels);
+      mlir::TF::SubOp::create(builder, op->getLoc(), softmax, labels);
 
   return MaybeRelayoutOutputs(op, loss, backprop, internal_layout,
                               output_layouts[0], output_layouts[1]);

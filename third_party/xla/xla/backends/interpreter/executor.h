@@ -60,14 +60,14 @@ class InterpreterStream : public host::HostStream {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                       uint64_t size) override {
     void *src_mem = gpu_src.opaque();
     memcpy(host_dst, src_mem, size);
     return absl::OkStatus();
   }
 
-  absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override {
     void *dst_mem = gpu_dst->opaque();
     memcpy(dst_mem, host_src, size);
@@ -84,8 +84,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
 
   int device_ordinal() const override { return device_ordinal_; };
 
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void Deallocate(DeviceMemoryBase *mem) override;
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
+  void Deallocate(DeviceAddressBase* mem) override;
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
@@ -97,15 +97,15 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  absl::Status SynchronousMemZero(DeviceMemoryBase *location,
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override {
     return absl::InternalError("Interpreter can not memzero");
   }
 
-  absl::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
-                                 const void *host_src, uint64_t size) override;
-  absl::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &dev_src,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* dev_dst,
+                                 const void* host_src, uint64_t size) override;
+  absl::Status SynchronousMemcpy(void* host_dst,
+                                 const DeviceAddressBase& dev_src,
                                  uint64_t size) override;
 
   void DeallocateStream(Stream *stream) override {}
@@ -136,8 +136,8 @@ class XlaInterpreterExecutor : public StreamExecutorCommon {
     return std::make_unique<InterpreterStream>(this);
   }
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override {
-    if (type == MemoryType::kHost) {
+      MemorySpace type) override {
+    if (type == MemorySpace::kHost) {
       return std::make_unique<GenericMemoryAllocator>(
           [](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {

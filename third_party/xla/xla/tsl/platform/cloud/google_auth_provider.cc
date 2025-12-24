@@ -151,7 +151,7 @@ GoogleAuthProvider::GoogleAuthProvider(
       env_(env) {}
 
 absl::Status GoogleAuthProvider::GetToken(string* t) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
   if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {

@@ -1657,7 +1657,7 @@ TEST_F(ModelTimingTest, TestDefaultParallelismInParallelInterleave) {
   const int32_t parallelism = 1;
   const int32_t deterministic = 1;
   const int32_t cycle_length = 3;
-  ComputeModelTiming(strings::Printf(
+  ComputeModelTiming(absl::StrFormat(
       R"pb(
         nodes: {
           key: 1
@@ -1841,7 +1841,7 @@ TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
   const int32_t parallelism = std::get<0>(GetParam());
   const int32_t deterministic = std::get<1>(GetParam());
   const int32_t cycle_length = std::get<2>(GetParam());
-  ComputeModelTiming(strings::Printf(
+  ComputeModelTiming(absl::StrFormat(
       R"pb(
         nodes: {
           key: 1

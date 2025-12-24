@@ -150,10 +150,10 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
     Value value = tf_op.getOutputs();
-    auto quantize = rewriter.create<quantfork::QuantizeCastOp>(
-        tf_op.getLoc(), qtype.getValue(), value);
-    auto dequantize = rewriter.create<quantfork::DequantizeCastOp>(
-        tf_op.getLoc(), res_type, quantize.getResult());
+    auto quantize = quantfork::QuantizeCastOp::create(rewriter, tf_op.getLoc(),
+                                                      qtype.getValue(), value);
+    auto dequantize = quantfork::DequantizeCastOp::create(
+        rewriter, tf_op.getLoc(), res_type, quantize.getResult());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 

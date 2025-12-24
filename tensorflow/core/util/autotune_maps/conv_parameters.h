@@ -90,16 +90,16 @@ class ConvParameters {
   bool operator!=(const ConvParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const ConvParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   ConvParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 class MatmulParameters {
@@ -127,16 +127,16 @@ class MatmulParameters {
   bool operator!=(const MatmulParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const MatmulParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   MatmulParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 }  // namespace tensorflow

@@ -1095,9 +1095,10 @@ void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
 
 template <typename T>
 Tensor::Tensor(T value, host_scalar_tag tag) {
-  auto* value_and_buf = static_cast<Tensor::ValueAndTensorBuffer<T>*>(
-      port::AlignedMalloc(sizeof(typename Tensor::ValueAndTensorBuffer<T>),
-                          EIGEN_MAX_ALIGN_BYTES));
+  auto* value_and_buf =
+      static_cast<Tensor::ValueAndTensorBuffer<T>*>(tsl::port::AlignedMalloc(
+          sizeof(typename Tensor::ValueAndTensorBuffer<T>),
+          static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES)));
   new (&value_and_buf->value) T(std::move(value));
   new (&value_and_buf->tensor_buffer)
       typename Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer(

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/service/buffer_assignment.proto";
 
 // Dimensions of the convolution filter.
@@ -20,6 +21,6 @@ message ConvolutionFilterDimensions {
 // Buffers for the bias input and output of the convolution reorder thunk.
 // Serialized version of xla::gpu::ConvolutionReorderThunk::BiasBuffers.
 message ConvolutionReorderBiasBuffers {
-  xla.buffer_assignment.BufferAllocationSliceProto bias_input = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto bias_output = 2;
+  ShapedSliceProto bias_input = 1;
+  ShapedSliceProto bias_output = 2;
 }

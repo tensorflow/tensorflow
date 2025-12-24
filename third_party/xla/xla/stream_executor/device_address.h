@@ -41,7 +41,7 @@ namespace stream_executor {
 // check for `opaque` being null to determine if the device address is null.
 class DeviceAddressBase {
  public:
-  // Default constructor instantiates a null-pointed, zero-sized device memory
+  // Default constructor instantiates a null-pointed, zero-sized device address
   // region. An opaque pointer may be provided -- see header for details on the
   // opacity of that pointer.
   explicit DeviceAddressBase(void* opaque = nullptr, uint64_t size = 0)
@@ -53,9 +53,11 @@ class DeviceAddressBase {
     //  explicit DeviceAddressBase(void *opaque) = delete;
   }
 
-  // Returns whether the backing memory is the null pointer.
+  // Returns whether the backing address is the null pointer.
   // A `== nullptr` convenience method is also provided.
   bool is_null() const { return opaque_ == nullptr; }
+
+  explicit operator bool() const { return !is_null(); }
 
   bool operator==(std::nullptr_t other) const { return is_null(); }
   bool operator!=(std::nullptr_t other) const { return !is_null(); }
@@ -64,7 +66,7 @@ class DeviceAddressBase {
     return opaque_ == other.opaque_ && size_ == other.size_;
   }
 
-  // Provides a partial order between device memory values.
+  // Provides a partial order between device address values.
   //
   // This operator is provided so that this object can be used as a key in an
   // ordered map.
@@ -72,14 +74,14 @@ class DeviceAddressBase {
     return std::tie(opaque_, size_) < std::tie(other.opaque_, other.size_);
   }
 
-  // Returns the size, in bytes, for the backing memory.
+  // Returns the size, in bytes, for the backing address range.
   uint64_t size() const { return size_; }
 
   // Warning: note that the pointer returned is not necessarily directly to
   // device virtual address space, but is platform-dependent.
   void* opaque() const { return opaque_; }
 
-  // Returns the payload of this memory region.
+  // Returns the payload of this address range.
   uint64_t payload() const { return payload_; }
 
   // Sets payload to given value.
@@ -91,60 +93,58 @@ class DeviceAddressBase {
     return opaque() == other.opaque() && size() == other.size();
   }
 
-  // Creates a memory region (slice) inside another allocated memory region.
-  // Offset and size are in bytes.
+  // Creates and address range slice at the given offset and size. Offset and
+  // size are in bytes.
   ABSL_ATTRIBUTE_ALWAYS_INLINE DeviceAddressBase
   GetByteSlice(uint64_t offset_bytes, uint64_t size_bytes) const {
     DCHECK(offset_bytes + size_bytes <= size_)
-        << "requested slice allocation (offset + size) is greater "
-        << "than parent allocation size: (" << offset_bytes << " + "
-        << size_bytes << ") vs. (" << size_ << ")";
+        << "requested address slice (offset + size) is out of bounds "
+        << "of parent address: (" << offset_bytes << " + " << size_bytes
+        << ") vs. (" << size_ << ")";
 
     return DeviceAddressBase(
         reinterpret_cast<std::byte*>(opaque_) + offset_bytes, size_bytes);
   }
 
  private:
-  void* opaque_;   // Platform-dependent value representing addressable memory.
-  uint64_t size_;  // Size in bytes of this allocation.
-  uint64_t payload_ = 0;  // Payload data associated with this allocation.
+  void* opaque_;          // Platform-dependent value representing base address.
+  uint64_t size_;         // Size in bytes of this address range.
+  uint64_t payload_ = 0;  // Payload data associated with this address.
 };
 
 // Typed wrapper around "void *"-like DeviceAddressBase.
 //
 // For example, DeviceAddress<int32_t> is a simple wrapper around
-// DeviceAddressBase that represents one or more integers in Device memory.
+// DeviceAddressBase that represents one or more integers on Device.
 template <typename T>
 class DeviceAddress final : public DeviceAddressBase {
  public:
-  // Default constructor instantiates a null-pointed, zero-sized memory region.
+  // Default constructor instantiates a null-pointed, zero-sized addess range.
   DeviceAddress() : DeviceAddressBase(nullptr, 0) {}
   explicit DeviceAddress(std::nullptr_t) : DeviceAddress() {}
 
-  // Typed device memory regions may be constructed from untyped device memory
-  // regions, this effectively amounts to a cast from a void*.
+  // Typed device address range may be constructed from untyped device address
+  // range, this effectively amounts to a cast from a void*.
   explicit DeviceAddress(const DeviceAddressBase& other)
-      : DeviceAddressBase(const_cast<DeviceAddressBase&>(other).opaque(),
-                          other.size()) {
+      : DeviceAddressBase(other.opaque(), other.size()) {
     SetPayload(other.payload());
   }
 
-  // Returns the number of elements of type T that constitute this
-  // allocation.
+  // Returns the number of elements of type T that constitute this address.
   uint64_t ElementCount() const { return size() / sizeof(T); }
 
-  // Returns pointer to the allocated data
+  // Returns a base pointer to the data.
   T* base() const { return reinterpret_cast<T*>(opaque()); }
 
   // Creates a typed area of DeviceAddress with a given opaque pointer and the
-  // quantity of bytes in the allocation. This function is broken out to
+  // quantity of bytes in the address range. This function is broken out to
   // distinguish bytes from an element count.
   static DeviceAddress<T> MakeFromByteSize(void* opaque, uint64_t bytes) {
     return DeviceAddress<T>(opaque, bytes);
   }
 
-  // Creates a memory region (slice) inside another allocated memory region.
-  // Offset and size are specified in terms of T elements.
+  // Creates and address range slice at the given offset and count. Offset and
+  // count are specified in terms of T elements.
   DeviceAddress<T> GetSlice(uint64_t element_offset, uint64_t element_count) {
     return DeviceAddress<T>(
         GetByteSlice(sizeof(T) * element_offset, sizeof(T) * element_count));

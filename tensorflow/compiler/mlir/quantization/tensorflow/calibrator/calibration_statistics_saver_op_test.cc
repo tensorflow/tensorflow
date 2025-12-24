@@ -19,11 +19,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status_matchers.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -55,11 +55,11 @@ TEST_F(CalibrationStatisticsSaverTest, MissingOutputPath) {
   inputs.emplace_back("min", 0, DT_FLOAT);
   inputs.emplace_back("max", 0, DT_FLOAT);
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Finalize(node_def()));
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Finalize(node_def()));
   ASSERT_THAT(InitOp(),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
@@ -75,12 +75,12 @@ TEST_F(CalibrationStatisticsSaverTest, WrongNumInputs) {
   inputs.emplace_back("min", 0, DT_FLOAT);
   inputs.emplace_back("max", 0, DT_FLOAT);
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", "/tmp/statistics.pbtxt")
-                  .Finalize(node_def()));
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", "/tmp/statistics.pbtxt")
+               .Finalize(node_def()));
   ASSERT_THAT(InitOp(),
               absl_testing::StatusIs(
                   tsl::error::ABORTED,
@@ -98,12 +98,12 @@ TEST_F(CalibrationStatisticsSaverTest, WrongInputTypes) {
   inputs.emplace_back("max", 0, DT_FLOAT);
   inputs.emplace_back("histogram", 0, DT_FLOAT);
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", "/tmp/statistics.pbtxt")
-                  .Finalize(node_def()));
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", "/tmp/statistics.pbtxt")
+               .Finalize(node_def()));
   ASSERT_THAT(InitOp(),
               absl_testing::StatusIs(
                   tsl::error::ABORTED,
@@ -123,24 +123,23 @@ TEST_F(CalibrationStatisticsSaverTest, SimpleMinMax) {
   const std::string dir = testing::TmpDir();
   const std::string output_file_path = io::JoinPath(dir, "statistics.pbtxt");
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", output_file_path)
-                  .Finalize(node_def()));
-  TF_CHECK_OK(InitOp());
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", output_file_path)
+               .Finalize(node_def()));
+  CHECK_OK(InitOp());
 
   AddInputFromArray<float>(TensorShape({}), {1.f});
   AddInputFromArray<float>(TensorShape({}), {5.f});
   AddInputFromArray<int64_t>(TensorShape({0}), {});
 
-  TF_CHECK_OK(RunOpKernel());
+  CHECK_OK(RunOpKernel());
   kernel_.reset();
 
   CalibrationStatisticsMap statistics_map;
-  TF_CHECK_OK(
-      ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
+  CHECK_OK(ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
   ASSERT_THAT(statistics_map.statistics(), SizeIs(1));
   ASSERT_THAT(statistics_map.statistics(), ElementsAre(Key("1")));
 
@@ -163,24 +162,23 @@ TEST_F(CalibrationStatisticsSaverTest, SimpleAverageMinMax) {
   const std::string dir = testing::TmpDir();
   const std::string output_file_path = io::JoinPath(dir, "statistics.pbtxt");
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", output_file_path)
-                  .Finalize(node_def()));
-  TF_CHECK_OK(InitOp());
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", output_file_path)
+               .Finalize(node_def()));
+  CHECK_OK(InitOp());
 
   AddInputFromArray<float>(TensorShape({}), {1.f});
   AddInputFromArray<float>(TensorShape({}), {5.f});
   AddInputFromArray<int64_t>(TensorShape({0}), {});
 
-  TF_CHECK_OK(RunOpKernel());
+  CHECK_OK(RunOpKernel());
   kernel_.reset();
 
   CalibrationStatisticsMap statistics_map;
-  TF_CHECK_OK(
-      ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
+  CHECK_OK(ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
   ASSERT_THAT(statistics_map.statistics(), SizeIs(1));
   ASSERT_THAT(statistics_map.statistics(), ElementsAre(Key("1")));
 
@@ -204,24 +202,23 @@ TEST_F(CalibrationStatisticsSaverTest, SimpleHistogram) {
   const std::string dir = testing::TmpDir();
   const std::string output_file_path = io::JoinPath(dir, "statistics.pbtxt");
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", output_file_path)
-                  .Finalize(node_def()));
-  TF_CHECK_OK(InitOp());
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", output_file_path)
+               .Finalize(node_def()));
+  CHECK_OK(InitOp());
 
   AddInputFromArray<float>(TensorShape({}), {1.f});
   AddInputFromArray<float>(TensorShape({}), {5.f});
   AddInputFromArray<int64_t>(TensorShape({8}), {1, 4, 6, 7, 3, 2, 1, 0});
 
-  TF_CHECK_OK(RunOpKernel());
+  CHECK_OK(RunOpKernel());
   kernel_.reset();
 
   CalibrationStatisticsMap statistics_map;
-  TF_CHECK_OK(
-      ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
+  CHECK_OK(ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
   ASSERT_THAT(statistics_map.statistics(), SizeIs(1));
   ASSERT_THAT(statistics_map.statistics(), ElementsAre(Key("1")));
 
@@ -250,13 +247,13 @@ TEST_F(CalibrationStatisticsSaverTest, MultipleStats) {
   const std::string dir = testing::TmpDir();
   const std::string output_file_path = io::JoinPath(dir, "statistics.pbtxt");
 
-  TF_CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
-                  .Input(inputs)
-                  .Attr("ids", ids)
-                  .Attr("calibration_methods", calibration_methods)
-                  .Attr("output_file_path", output_file_path)
-                  .Finalize(node_def()));
-  TF_CHECK_OK(InitOp());
+  CHECK_OK(NodeDefBuilder("op", "CalibrationStatisticsSaver")
+               .Input(inputs)
+               .Attr("ids", ids)
+               .Attr("calibration_methods", calibration_methods)
+               .Attr("output_file_path", output_file_path)
+               .Finalize(node_def()));
+  CHECK_OK(InitOp());
 
   AddInputFromArray<float>(TensorShape({}), {1.f});
   AddInputFromArray<float>(TensorShape({}), {5.f});
@@ -265,12 +262,11 @@ TEST_F(CalibrationStatisticsSaverTest, MultipleStats) {
   AddInputFromArray<float>(TensorShape({}), {5.f});
   AddInputFromArray<int64_t>(TensorShape({8}), {1, 4, 6, 7, 3, 2, 1, 0});
 
-  TF_CHECK_OK(RunOpKernel());
+  CHECK_OK(RunOpKernel());
   kernel_.reset();
 
   CalibrationStatisticsMap statistics_map;
-  TF_CHECK_OK(
-      ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
+  CHECK_OK(ReadBinaryProto(Env::Default(), output_file_path, &statistics_map));
   ASSERT_THAT(statistics_map.statistics(), SizeIs(2));
   ASSERT_THAT(statistics_map.statistics(), Contains(Key("1")));
   ASSERT_THAT(statistics_map.statistics(), Contains(Key("2")));

@@ -34,21 +34,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-string IOColocationGroups::DebugString() const {
-  std::unordered_map<int, std::vector<string>> group_members;
+std::string IOColocationGroups::DebugString() const {
+  std::unordered_map<int, std::vector<std::string>> group_members;
   for (int arg_index = 0; arg_index < input_groups.size(); ++arg_index) {
     int group_id = input_groups[arg_index];
-    group_members[group_id].push_back(strings::StrCat("i:", arg_index));
+    group_members[group_id].push_back(absl::StrCat("i:", arg_index));
   }
   for (int ret_index = 0; ret_index < output_groups.size(); ++ret_index) {
     int group_id = output_groups[ret_index];
-    group_members[group_id].push_back(strings::StrCat("o:", ret_index));
+    group_members[group_id].push_back(absl::StrCat("o:", ret_index));
   }
 
-  std::vector<string> group_strings;
+  std::vector<std::string> group_strings;
   for (const auto& it : group_members) {
     int group_id = it.first;
-    const std::vector<string>& members = it.second;
+    const std::vector<std::string>& members = it.second;
     const PossibleDevices& devices = group_devices[group_id];
     group_strings.push_back(strings::StrCat(
         "Group(", group_id, " members = [", absl::StrJoin(members, ", "),
@@ -57,11 +57,11 @@ string IOColocationGroups::DebugString() const {
         "\" resource_device_name = \"",
         DeviceNameUtils::ParsedNameToString(devices.resource_device_name),
         "\" device_types = [",
-        absl::StrJoin(
-            devices.device_types, ", ",
-            [](string* out, const std::pair<DeviceType, int32>& type_and_pref) {
-              out->append(DeviceTypeString(type_and_pref.first));
-            }),
+        absl::StrJoin(devices.device_types, ", ",
+                      [](std::string* out,
+                         const std::pair<DeviceType, int32_t>& type_and_pref) {
+                        out->append(DeviceTypeString(type_and_pref.first));
+                      }),
         "])"));
   }
 

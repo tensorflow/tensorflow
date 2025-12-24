@@ -81,9 +81,9 @@ absl::Status TFRTOpKernelConstruction::GetAttr(absl::string_view attr_name,
 
 template <>
 absl::Status TFRTOpKernelConstruction::GetAttr(
-    absl::string_view attr_name, std::vector<int32>* value) const {
-  llvm::ArrayRef<int32> arrayref;
-  bool success = attributes_.GetArray<int32>(
+    absl::string_view attr_name, std::vector<int32_t>* value) const {
+  llvm::ArrayRef<int32_t> arrayref;
+  bool success = attributes_.GetArray<int32_t>(
       llvm::StringRef(attr_name.data(), attr_name.size()), &arrayref);
   if (!success) {
     return MissingAttributeError(attr_name);
@@ -239,7 +239,7 @@ TFRTOpMetaBuilder& TFRTOpMetaBuilder::Attr(absl::string_view attr_spec) {
   return *this;
 }
 
-const string& TFRTOpMetaBuilder::op_name() const { return op_name_; }
+const std::string& TFRTOpMetaBuilder::op_name() const { return op_name_; }
 
 TFRTOpMeta TFRTOpMetaBuilder::BuildMeta() const {
   return TFRTOpMeta(output_types_);

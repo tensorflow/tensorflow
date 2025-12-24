@@ -33,6 +33,10 @@ absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
     absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs);
 
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
+EmitYnnConvolutionBuilder(const HloConvolutionInstruction* conv);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_YNN_EMITTER_H_

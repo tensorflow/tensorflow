@@ -57,8 +57,9 @@ LogicalResult TFXLADeviceSpecificTransforms::ConvertGetAlgOp(
 
   OpBuilder opbuilder(get_alg_op);
 
-  auto tf_const = opbuilder.create<TF::ConstOp>(
-      get_alg_op->getLoc(), opbuilder.getI32IntegerAttr((int)tensorflow_rng));
+  auto tf_const =
+      TF::ConstOp::create(opbuilder, get_alg_op->getLoc(),
+                          opbuilder.getI32IntegerAttr((int)tensorflow_rng));
 
   get_alg_op->replaceAllUsesWith(tf_const);
   get_alg_op->erase();

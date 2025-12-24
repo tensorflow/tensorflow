@@ -35,7 +35,7 @@ namespace stream_executor {
 class StreamExecutorAllocator : public tsl::SubAllocator {
  public:
   StreamExecutorAllocator(std::unique_ptr<MemoryAllocator> memory_allocator,
-                          MemoryType memory_type, int index,
+                          MemorySpace memory_type, int index,
                           const std::vector<Visitor>& alloc_visitors = {},
                           const std::vector<Visitor>& free_visitors = {});
 
@@ -48,7 +48,7 @@ class StreamExecutorAllocator : public tsl::SubAllocator {
 
  private:
   std::unique_ptr<MemoryAllocator> memory_allocator_;
-  MemoryType memory_type_;
+  MemorySpace memory_type_;
   int index_;
 
   StreamExecutorAllocator(const StreamExecutorAllocator&) = delete;

@@ -52,8 +52,8 @@ class DoubleOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("Double").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    DoubleOp<int32>);
+    Name("Double").Device(DEVICE_CPU).TypeConstraint<int32_t>("T"),
+    DoubleOp<int32_t>);
 REGISTER_KERNEL_BUILDER(
     Name("Double").Device(DEVICE_CPU).TypeConstraint<float>("T"),
     DoubleOp<float>);

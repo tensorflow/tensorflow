@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -238,6 +239,7 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
   std::vector<std::unique_ptr<BackendConfig>> configs;
   int plan_count = CuDnnFusionCompiler::GetAvailablePlanCount(
       *stream_executor, *DynCast<HloFusionInstruction>(&instr));
+  VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);
   for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
     CudnnBackendConfig config;

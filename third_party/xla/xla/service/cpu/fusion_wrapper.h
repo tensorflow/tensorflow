@@ -28,8 +28,9 @@ namespace cpu {
 // kick in.
 class FusionWrapper : public emitters::FusionWrapperBase {
  public:
-  explicit FusionWrapper(bool using_new_fusion_emitter)
-      : using_new_fusion_emitter_(using_new_fusion_emitter) {}
+  explicit FusionWrapper(bool using_new_fusion_emitter, bool use_tiled_emitter)
+      : using_new_fusion_emitter_(using_new_fusion_emitter),
+        use_tiled_emitter_(use_tiled_emitter) {}
   ~FusionWrapper() override = default;
 
   absl::string_view name() const override { return "fusion-wrapper"; }
@@ -38,6 +39,7 @@ class FusionWrapper : public emitters::FusionWrapperBase {
 
  private:
   bool using_new_fusion_emitter_;
+  bool use_tiled_emitter_;
 };
 
 }  // namespace cpu

@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 
 #include <fcntl.h>
+
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
 #if defined(_MSC_VER)
 #include <io.h>
 #define F_OK 0
@@ -22,7 +25,9 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <cerrno>  // IWYU pragma: keep
+#include <cinttypes>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -33,32 +38,15 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "experimental.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#define XNNPACK_ABORT_CHECK(TEST, ...)                      \
-  if (!(TEST)) {                                            \
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, __VA_ARGS__); \
-    std::abort();                                           \
-  }
-
-#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
-
-#define XNNPACK_RETURN_CHECK(TEST, ...)                              \
-  if (!(TEST)) {                                                     \
-    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) { \
-      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,                      \
-                      "XNNPack weight cache: " __VA_ARGS__);         \
-    }                                                                \
-    return false;                                                    \
-  }
 
 namespace tflite::xnnpack {
 
@@ -90,6 +78,20 @@ size_t Align(size_t offset, const size_t alignment) {
 [[nodiscard]]
 bool FileExists(const char* path) {
   return access(path, F_OK) != -1;
+}
+
+bool CheckFingerprints(const cache::schema::BufferList* buffer_list) {
+  if (buffer_list->fingerprints()) {
+    for (uint64_t cache_fingerprint : *buffer_list->fingerprints()) {
+      xnn_fingerprint fingerprint;
+      static_assert(sizeof(fingerprint) == sizeof(cache_fingerprint));
+      std::memcpy(&fingerprint, &cache_fingerprint, sizeof(fingerprint));
+      XNNPACK_RETURN_CHECK(
+          xnn_check_fingerprint(fingerprint) == xnn_status_success,
+          "fingerprint (id: 0x%x) could not be matched", fingerprint.id);
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -134,12 +136,17 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
   XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
   header.buffer_list_offset = sizeof(header);
 
-  XNNPACK_RETURN_CHECK(fd_.Truncate(0), "could not truncate weight cache");
+  XNNPACK_RETURN_CHECK(fd_.Truncate(0), "could not truncate weight cache.");
+  XNNPACK_RETURN_CHECK(fd_.SetPos(0) == 0, "couldn't move to file start.");
   XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
                        "could not write initial cache header in %s: %s.",
                        file_path_.c_str(), strerror(errno));
 
   schema_.base_offset = Align(sizeof(header), kMinAlignment);
+
+  XNNPACK_RETURN_CHECK(StartBuildStep(), "failed to start initial write step.");
+  XNNPACK_RETURN_CHECK(StopBuildStep(), "failed to write initial step.");
+
   return true;
 }
 
@@ -191,7 +198,8 @@ void* WeightCacheBuilder::Reserve(size_t size) {
 }
 
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
-                                          const void* data, uint64_t size) {
+                                          const void* data, uint64_t size,
+                                          int32_t fingerprint_id) {
   XNNPACK_ABORT_CHECK(is_build_step_,
                       "cannot append data to an unstarted builder.");
   // Add some padding so that the cache file can be mmaped and the buffer
@@ -209,6 +217,34 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   buffer.offset = loc.offset;
   buffer.size = loc.size;
   schema_.buffers.push_back(std::make_unique<cache::schema::BufferT>(buffer));
+
+  // Not passing a fingerprint id is a logic error on XNNPack's side. If we
+  // don't have a fingerprint for an operation, we have no way of ensuring that
+  // the generation of the cached data hasn't changed when reloading the cache.
+  //
+  // If we just log this and continue on with the work. This run will build a
+  // cache with cached data that can't be checked in the future. This will lead,
+  // in future runs that reuse the cache, to crashes that are impossible to
+  // debug or outputs that are nonsensical without any chance of linking this
+  // back to this error.
+  //
+  // We abort because we have no way of making that failure bubble up to the
+  // calling code to handle it gracefully...
+  XNNPACK_ABORT_CHECK(fingerprint_id != 0,
+                      "XNNPack weight cache: no fingerprint identifier was set "
+                      "when appending a buffer to the cache file.");
+  const xnn_fingerprint* fingerprint = xnn_get_fingerprint(fingerprint_id);
+  XNNPACK_ABORT_CHECK(fingerprint,
+                      "XNNPack weight cache: could not find a fingerprint with "
+                      "id 0x%x when appending a buffer to the cache file.",
+                      fingerprint_id);
+  uint64_t fingerprint_value;
+  static_assert(sizeof(fingerprint_value) == sizeof(*fingerprint));
+  std::memcpy(&fingerprint_value, fingerprint, sizeof(*fingerprint));
+  if (std::find(schema_.fingerprints.begin(), schema_.fingerprints.end(),
+                fingerprint_value) == schema_.fingerprints.end()) {
+    schema_.fingerprints.push_back(fingerprint_value);
+  }
 
   if (!fd_.Write(data, size)) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
@@ -242,16 +278,7 @@ bool WeightCacheBuilder::StopBuildStep() {
   XNNPACK_RETURN_CHECK(fd_.SetPos(layout_offset) != -1,
                        "could not move in the file: %s", strerror(errno));
 
-  XNNPACK_RETURN_CHECK(
-      sizeof(XNNPackCacheHeader::xnnpack_build_identifier) ==
-          xnn_experimental_get_build_identifier_size(),
-      "cache file ('%s') header cannot hold XNNPack's build identifier: %s.",
-      file_path_.c_str(), strerror(errno));
-
   XNNPackCacheHeader header{XNNPackCacheHeader::kVersion};
-  memcpy(header.xnnpack_build_identifier,
-         xnn_experimental_get_build_identifier_data(),
-         xnn_experimental_get_build_identifier_size());
   header.buffer_list_offset = fd_.GetPos();
   header.buffer_list_size = builder.GetSize();
 
@@ -339,7 +366,8 @@ bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path,
   }
   const char* const safe_path = Sanitize(path);
   FileDescriptor build_fd = fd.Duplicate();
-  if (!IsInMemoryCachePath(safe_path) && Load(safe_path, std::move(fd))) {
+  if (!IsInMemoryCachePath(safe_path) && !IsFileEmpty(safe_path, fd) &&
+      Load(safe_path, std::move(fd))) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache loaded from '%s'.", safe_path);
     return true;
@@ -409,15 +437,9 @@ bool MMapWeightCacheProvider::Load() {
   }();
 
   XNNPACK_RETURN_CHECK(header.version == XNNPackCacheHeader::kVersion,
-                       "incompatible header version. Got %zd, expected %zd. "
-                       "Cache needs to be built again.",
+                       "incompatible header version. Got %" PRIu64
+                       ", expected %" PRIu64 ". Cache needs to be built again.",
                        header.version, XNNPackCacheHeader::kVersion);
-
-  XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
-                           header.xnnpack_build_identifier,
-                           sizeof(header.xnnpack_build_identifier)),
-                       "XNNPack weight cache: incompatible XNNPack version. "
-                       "Cache needs to be built again.");
 
   XNNPACK_RETURN_CHECK(header.buffer_list_offset < mmap_handle.size(),
                        "invalid offset for buffer list descriptor.");
@@ -437,6 +459,8 @@ bool MMapWeightCacheProvider::Load() {
       mmap_handle.data() + header.buffer_list_offset);
   XNNPACK_RETURN_CHECK(buffer_list,
                        "could not get packed weights from flatbuffer.");
+
+  XNNPACK_RETURN_CHECK(CheckFingerprints(buffer_list));
 
   mmap_buffer_base_offset_ = buffer_list->base_offset();
   if (const auto buffers = buffer_list->buffers(); buffers) {
@@ -592,7 +616,8 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
     return offset_it->second.offset;
   }
 
-  const BufferLocation location = builder_.Append(pack_id, ptr, size);
+  const BufferLocation location =
+      builder_.Append(pack_id, ptr, size, cache_key->fingerprint_id);
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
@@ -682,17 +707,39 @@ bool IsCompatibleCacheFile(const char* path) {
   FileDescriptor fd = FileDescriptor::Open(path, O_RDONLY);
   XNNPACK_RETURN_CHECK(fd.IsValid(), "Could not open file: %s: %s.", path,
                        strerror(errno));
+  return IsCompatibleCacheFile(std::move(fd));
+}
+
+bool IsCompatibleCacheFile(FileDescriptorView fd) {
+  XNNPACK_RETURN_CHECK(fd.IsValid(), "Invalid file descriptor: %d.",
+                       fd.Value());
+  const size_t current_pos = fd.GetPos();
+  ScopeGuard reset_pos_on_return(
+      [current_pos, &fd] { fd.SetPos(current_pos); });
+  XNNPACK_RETURN_CHECK(fd.SetPos(0) != -1,
+                       "Couldn't move to the start of the file.");
+
   XNNPackCacheHeader header;
   XNNPACK_RETURN_CHECK(fd.Read(&header, sizeof(header)),
                        "Couldn't read file header.");
-  XNNPACK_RETURN_CHECK(
-      header.version == XNNPackCacheHeader::kVersion,
-      "Cache header version is incompatible. Expected %llu, got %llu.",
-      XNNPackCacheHeader::kVersion, header.version);
-  XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
-                           header.xnnpack_build_identifier,
-                           sizeof(header.xnnpack_build_identifier)),
-                       "Cache header build identifier is different.");
+  XNNPACK_RETURN_CHECK(header.version == XNNPackCacheHeader::kVersion,
+                       "Cache header version is incompatible. Expected %" PRIu64
+                       ", got %" PRIu64 ".",
+                       XNNPackCacheHeader::kVersion, header.version);
+
+  fd.SetPos(header.buffer_list_offset);
+  auto buffer = std::make_unique<uint8_t[]>(header.buffer_list_size);
+  XNNPACK_RETURN_CHECK(fd.Read(buffer.get(), header.buffer_list_size));
+
+  flatbuffers::Verifier verifier(buffer.get(), header.buffer_list_size);
+  XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
+                       "buffer list validation failed.");
+
+  const cache::schema::BufferList* buffer_list =
+      cache::schema::GetBufferList(buffer.get());
+  XNNPACK_RETURN_CHECK(buffer_list,
+                       "could not get packed weights from flatbuffer.");
+  XNNPACK_RETURN_CHECK(CheckFingerprints(buffer_list));
   return true;
 }
 

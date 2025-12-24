@@ -28,13 +28,13 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 // Creates a fingerprint given the name and the vector of shapes.
-uint64 CreateFingerprintWithNameAndShapes(
-    uint64 name, const std::vector<tensorflow::TensorShape>& shapes);
+uint64_t CreateFingerprintWithNameAndShapes(
+    uint64_t name, const std::vector<tensorflow::TensorShape>& shapes);
 
 // Creates a unique compilation cache `key`.
 TpuCompilationCacheKey CreateCompilationCacheKey(
-    absl::string_view function_name, uint64 function_library_fingerprint,
-    uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
+    absl::string_view function_name, uint64_t function_library_fingerprint,
+    uint64_t mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
     const TpuMeshStateInterface& mesh_state, uint64_t session_id = 0,

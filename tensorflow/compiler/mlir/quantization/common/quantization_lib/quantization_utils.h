@@ -288,10 +288,10 @@ struct ConvertStatsToQDQs
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q =
-        rewriter.create<QuantizeOpT>(op.getLoc(), result_type, op.getArg());
+        QuantizeOpT::create(rewriter, op.getLoc(), result_type, op.getArg());
     q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
 
-    auto dq = rewriter.create<DequantizeOpT>(op.getLoc(), op.getType(), q);
+    auto dq = DequantizeOpT::create(rewriter, op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.getArg());
     op.erase();
@@ -644,8 +644,8 @@ class QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<arith::ConstantOp>(
-                quantized_op->getLoc(), attr);
+            auto cst = arith::ConstantOp::create(rewriter,
+                                                 quantized_op->getLoc(), attr);
             quantizing_op->setOperand(i, cst.getResult());
           }
         }

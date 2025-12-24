@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
@@ -60,9 +61,11 @@ absl::StatusOr<CollectiveParams> CollectiveParams::Create(
   const GpuExecutableRunOptions* gpu_options =
       run_options.run_options().gpu_executable_run_options();
 
+  const std::string& platform_name =
+      run_options.run_options().stream()->parent()->GetPlatform()->Name();
   auto* collectives = gpu_options && gpu_options->collectives()
                           ? gpu_options->collectives()
-                          : GpuCollectives::Default();
+                          : GpuCollectives::Default(platform_name);
 
   auto* device_id_map = gpu_options && gpu_options->gpu_global_device_ids()
                             ? &*gpu_options->gpu_global_device_ids()

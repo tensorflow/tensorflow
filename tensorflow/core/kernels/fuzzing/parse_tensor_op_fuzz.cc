@@ -53,7 +53,8 @@ class FuzzParseTensor : public FuzzSession {
     // detects another similar OOM.
     // After adding `-fsanitize=null` to ASAN (cl/317376103), the memory
     // footprint increased, so we lower the maximum threshold to 2^18.
-    string as_string = string(reinterpret_cast<const char*>(data), size);
+    std::string as_string =
+        std::string(reinterpret_cast<const char*>(data), size);
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, as_string)) {
       LOG(WARNING) << "Unable to parse proto of tensor\n";

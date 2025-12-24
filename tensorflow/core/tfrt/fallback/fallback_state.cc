@@ -51,8 +51,9 @@ namespace tfrt_stub {
 
 namespace {
 
-string DeviceName(absl::string_view name_prefix, absl::string_view device_type,
-                  int32_t task_id, size_t device_id) {
+std::string DeviceName(absl::string_view name_prefix,
+                       absl::string_view device_type, int32_t task_id,
+                       size_t device_id) {
   return strings::StrCat(absl::StripSuffix(name_prefix, "0"), task_id,
                          "/device:", device_type, ":", device_id);
 }

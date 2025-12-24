@@ -94,7 +94,6 @@ cc_library(
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
     deps = [
-        ":cpu_features",
         ":kernel_api_ir_builder",
         ":polynomial_approximations",
         "//xla:util",
@@ -133,7 +132,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -195,6 +193,7 @@ cc_library(
         "//xla/codegen:trace_pass_instrumentation",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
+        "//xla/codegen/emitters/transforms:lower_to_llvm_cpu_pass",
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
@@ -351,7 +350,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
@@ -557,9 +555,7 @@ cc_library(
     hdrs = ["object_loader.h"],
     deps = [
         ":compiled_function_library",
-        ":contiguous_section_memory_manager",
         ":execution_engine",
-        ":jit_memory_mapper",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -716,7 +712,6 @@ cc_library(
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_cluster",
@@ -776,7 +771,6 @@ py_strict_test(
         "//third_party/py/numpy",
         "//xla/backends/cpu/testlib",
         "//xla/codegen/testlib",
-        "//xla/python:xla_extension",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

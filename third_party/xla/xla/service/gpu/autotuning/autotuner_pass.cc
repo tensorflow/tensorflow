@@ -64,7 +64,8 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       !debug_options.xla_gpu_cublas_fallback();
   autotune_config.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
     // If we are running on a deviceless target, we want to use default configs.
@@ -80,10 +81,12 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   return autotune_config;
 }
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options) {
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 const AutotuneConfig& autotune_config) {
   ProfileOptions profile_options;
   profile_options.redzone_padding_bytes =
       debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = autotune_config.check_buffers;
   return profile_options;
 }
 
@@ -101,10 +104,12 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   bool is_deviceless = stream_executor == nullptr;
   AutotuneConfig autotune_config =
       GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
+  VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
-    profiler = GpuProfiler::Create(stream_executor,
-                                   GetProfileOptions(debug_options), allocator);
+    profiler = GpuProfiler::Create(
+        stream_executor, GetProfileOptions(debug_options, autotune_config),
+        allocator);
   }
 
   std::unique_ptr<AutotunerCacheInterface> cache =

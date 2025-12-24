@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {

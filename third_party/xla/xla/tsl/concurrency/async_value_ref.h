@@ -357,7 +357,7 @@ class AsyncValueRef {
     SetError(absl::InternalError(message_view));
   }
 
-  explicit operator bool() const { return value_.get() != nullptr; }
+  explicit operator bool() const { return value_ != nullptr; }
   bool operator==(const AsyncValueRef& r) const { return value_ == r.value_; }
   bool operator!=(const AsyncValueRef& r) const { return value_ != r.value_; }
 

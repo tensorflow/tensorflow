@@ -76,8 +76,9 @@ class RewriteNchwConvolutionToNhwc
     const TensorType new_input_tensor_type = GetTransposedTensorType(
         mlir::cast<TensorType>(input.getType()), kNchwToNhwcPermutation);
 
-    auto input_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
-        op.getLoc(), /*resultType0=*/new_input_tensor_type, /*operand=*/input,
+    auto input_transpose_op = mlir::stablehlo::TransposeOp::create(
+        rewriter, op.getLoc(), /*resultType0=*/new_input_tensor_type,
+        /*operand=*/input,
         rewriter.getDenseI64ArrayAttr(kNchwToNhwcPermutation));
 
     // Transpose the filter tensor: [o, i, 0, 1] => [0, 1, i, o]
@@ -85,8 +86,9 @@ class RewriteNchwConvolutionToNhwc
     const TensorType new_filter_tensor_type = GetTransposedTensorType(
         mlir::cast<TensorType>(filter.getType()), kOihwToHwioPermutation);
 
-    auto filter_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
-        op.getLoc(), /*resultType0=*/new_filter_tensor_type, /*operand=*/filter,
+    auto filter_transpose_op = mlir::stablehlo::TransposeOp::create(
+        rewriter, op.getLoc(), /*resultType0=*/new_filter_tensor_type,
+        /*operand=*/filter,
         rewriter.getDenseI64ArrayAttr(kOihwToHwioPermutation));
 
     // [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
@@ -108,8 +110,8 @@ class RewriteNchwConvolutionToNhwc
     // reused without modification because the ordering of spatial dimensions
     // is not modified (i.e. before: [b, f, 0, 1], after: [b, 0, 1, f] => the
     // spatial dimension is still ordered as {0, 1}).
-    auto new_convolution_op = rewriter.create<mlir::stablehlo::ConvolutionOp>(
-        op.getLoc(), /*resultType0=*/new_conv_output_tensor_type,
+    auto new_convolution_op = mlir::stablehlo::ConvolutionOp::create(
+        rewriter, op.getLoc(), /*resultType0=*/new_conv_output_tensor_type,
         /*lhs=*/input_transpose_op,
         /*rhs=*/filter_transpose_op,
         /*window_strides=*/op.getWindowStridesAttr(),
@@ -125,8 +127,9 @@ class RewriteNchwConvolutionToNhwc
     // Transpose the output of the `ConvolutionOp` back to the original op's
     // output shape so that users' shapes match.
     // [b, 0, 1, f] => [b, f, 0, 1]
-    auto output_transpose_op = rewriter.create<mlir::stablehlo::TransposeOp>(
-        new_convolution_op.getLoc(), /*resultType0=*/output_tensor_type,
+    auto output_transpose_op = mlir::stablehlo::TransposeOp::create(
+        rewriter, new_convolution_op.getLoc(),
+        /*resultType0=*/output_tensor_type,
         /*operand=*/new_convolution_op,
         rewriter.getDenseI64ArrayAttr(kNhwcToNchwPermutation));
 

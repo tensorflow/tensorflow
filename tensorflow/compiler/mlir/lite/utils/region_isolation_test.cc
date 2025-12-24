@@ -85,7 +85,7 @@ TEST(RegionIsolationTest, CaseOp) {
 
   OpBuilder b(&ctx);
 
-  OwningOpRef<ModuleOp> root(b.create<ModuleOp>(b.getUnknownLoc()));
+  OwningOpRef<ModuleOp> root(ModuleOp::create(b, b.getUnknownLoc()));
 
   {
     auto& block = root->getBodyRegion().front();

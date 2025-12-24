@@ -176,7 +176,7 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
 
   // Convert result buffer back to literal.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> axpy_result_literal,
-                          axpy_result[0][0]->ToLiteralSync());
+                          axpy_result[0][0]->ToLiteral().Await());
 
   // Check to make sure that our results match what we expect.
   xla::LiteralTestUtil::ExpectR1Near<float>({13.64f, 26.78f, 39.92f, 53.06f},

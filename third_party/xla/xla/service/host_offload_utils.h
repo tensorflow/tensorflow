@@ -111,6 +111,10 @@ bool IsMoveToHostWithDynamicUpdateSlice(const HloInstruction* instr);
 
 bool IsMoveToDeviceWithDynamicSlice(const HloInstruction* instr);
 
+// Scans while loop body for DS/DUS, traces their index operands back to GTEs
+// and marks corresponding tuple indices as dynamic variables.
+absl::Status MarkDynamicVariables(HloInstruction* while_loop);
+
 }  // namespace host_offload_utils
 }  // namespace xla
 

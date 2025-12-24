@@ -749,9 +749,11 @@ add_library(tensorflow-lite
 set(_ALL_TFLITE_HDRS ${_ALL_TFLITE_SRCS})
 list(FILTER _ALL_TFLITE_HDRS INCLUDE REGEX ".*\\.h$")
 target_include_directories(tensorflow-lite
-  PUBLIC $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-  PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
-  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..
+  PUBLIC
+    $<BUILD_INTERFACE:${TENSORFLOW_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
 )
 target_link_libraries(tensorflow-lite
   PUBLIC
@@ -879,7 +881,9 @@ target_compile_options(_pywrap_tensorflow_interpreter_wrapper
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
 
-target_compile_options(xnnpack-delegate
-  PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
-  PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
-)
+if(TFLITE_ENABLE_XNNPACK)
+  target_compile_options(xnnpack-delegate
+    PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+    PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+  )
+endif()

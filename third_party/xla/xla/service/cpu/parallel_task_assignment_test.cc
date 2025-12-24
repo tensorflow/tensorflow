@@ -247,7 +247,7 @@ TEST_F(ParallelTaskAssignmentTest, ConstantNotParallelized) {
 
 TEST_F(ParallelTaskAssignmentTest, CustomFusionUnchanged) {
   constexpr absl::string_view hlo_string = R"(
-HloModule jit_xnn_bin_ops
+HloModule jit_ynn_bin_ops
 
 fused_computation (matrix_a: f32[1000,1000], matrix_b: f32[1000,1000]) -> f32[1000,1000] {
   matrix_a = f32[1000,1000] parameter(0)
@@ -260,7 +260,7 @@ fused_computation (matrix_a: f32[1000,1000], matrix_b: f32[1000,1000]) -> f32[10
 ENTRY main (input_x: f32[1000,1000], input_y: f32[1000,1000]) -> f32[1000,1000] {
   input_x = f32[1000,1000] parameter(0)
   input_y = f32[1000,1000] parameter(1)
-  ROOT fused_result = f32[1000,1000] fusion(input_x, input_y), kind=kCustom, calls=fused_computation, backend_config={"outer_dimension_partitions":[],"fusion_config":{"kind":"__xnn_fusion"}}
+  ROOT fused_result = f32[1000,1000] fusion(input_x, input_y), kind=kCustom, calls=fused_computation, backend_config={"outer_dimension_partitions":[],"fusion_config":{"kind":"__ynn_fusion"}}
 }
 )";
 

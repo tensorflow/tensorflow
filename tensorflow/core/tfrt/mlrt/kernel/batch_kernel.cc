@@ -244,7 +244,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const final { return "MlrtBatchResource"; }
+  std::string DebugString() const final { return "MlrtBatchResource"; }
 
   mlrt::bc::Function batch_function() const { return batch_function_; }
 
@@ -461,6 +461,7 @@ REGISTER_KERNEL_BUILDER(
     Name(kMlrtBatchFunctionName).Device(DEVICE_GPU),
     tfrt_stub::BatchFunctionFallbackKernel<MlrtBatchResource>);
 
+// LINT.IfChange
 // Identical to BatchFunction except it has 2 extra TFRT attributes and it does
 // not have `f` attribute. Users will not invoke this op directly.
 REGISTER_OP(kMlrtBatchFunctionName)
@@ -475,6 +476,43 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("batching_queue: string = ''")
+    // A separate set of batch options for the low priority requests, which is
+    // used for priority queue batching.
+    .Attr("low_priority_max_batch_size: int = 0")
+    .Attr("low_priority_batch_timeout_micros: int = 0")
+    .Attr("low_priority_allowed_batch_sizes: list(int) = []")
+    .Attr("low_priority_max_enqueued_batches: int = 0")
+    // Policy that determines the mixed priority batching behavior when low
+    // priority batch parameters are present.
+    //
+    // low_priority_padding_with_next_allowed_batch_size: If high priority
+    // batches time out without reaching the max batch size, low priority inputs
+    // pad the high priority batches up to the next allowed batch size. A low
+    // priority only batch gets schedule only when the low priority input times
+    // out or reaches the max batch size while there is no high priority input
+    // waiting to be processed.
+    // low_priority_padding_with_max_batch_size: Same as above but pad up to the
+    // max batch size.
+    // priority_isolation: High priority and low priority inputs never share the
+    // same batch, i.e., no low priority input padding high priority batches.
+    // Low priority inputs get scheduled only as part of low priority only
+    // batches as described above.
+    // priority_merge: High and low priority inputs are queued separately but
+    // when a batch needs to be scheduled, the two queues are treated as one
+    // merged flat list of inputs with high priority inputs at the front of the
+    // list of tasks to use for the next batch. If all inputs are of the same
+    // priority, the behavior is the same as disabling prioritization.
+    .Attr(
+        "mixed_priority_policy: "
+        "{'low_priority_padding_with_max_batch_size', "
+        "'low_priority_padding_with_next_allowed_batch_size', "
+        "'priority_isolation', 'priority_merge'} = "
+        "'low_priority_padding_with_max_batch_size'")
+    // See the description of the batch_padding_policy attribute of
+    // BatchFunction in core/ops/batch_ops.cc.
+    .Attr(
+        "batch_padding_policy: "
+        "{'PAD_UP', 'BATCH_DOWN', 'MINIMIZE_TPU_COST_PER_REQUEST'} = 'PAD_UP'")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
@@ -484,6 +522,8 @@ REGISTER_OP(kMlrtBatchFunctionName)
     // function.
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);
+
+// LINT.ThenChange(//tensorflow/core/runtime_fallback/runtime/runtime_fallback_batch_tf_opkernels.cc)
 
 }  // namespace
 

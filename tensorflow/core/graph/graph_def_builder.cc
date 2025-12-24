@@ -44,12 +44,12 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
     absl::string_view name) {
-  name_ = string(name);
+  name_ = std::string(name);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDeviceImpl(
     absl::string_view device) {
-  device_ = string(device);
+  device_ = std::string(device);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputImpl(
@@ -72,7 +72,7 @@ absl::Status GraphDefBuilder::ToGraphDef(GraphDef* graph_def) const {
   return status_;
 }
 
-string GraphDefBuilder::Options::GetNameForOp(absl::string_view op) const {
+std::string GraphDefBuilder::Options::GetNameForOp(absl::string_view op) const {
   if (name_.empty()) return graph_->NewName(op);
   return name_;
 }
@@ -99,14 +99,15 @@ void GraphDefBuilder::Options::UpdateStatus(const absl::Status& status) const {
 
 namespace ops {
 
-Node* SourceOp(const string& op_name, const GraphDefBuilder::Options& opts) {
+Node* SourceOp(const std::string& op_name,
+               const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
                            opts.op_registry());
   return opts.FinalizeBuilder(&node_builder);
 }
 
-Node* UnaryOp(const string& op_name, NodeOut input,
+Node* UnaryOp(const std::string& op_name, NodeOut input,
               const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
@@ -115,7 +116,7 @@ Node* UnaryOp(const string& op_name, NodeOut input,
   return opts.FinalizeBuilder(&node_builder);
 }
 
-Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
+Node* BinaryOp(const std::string& op_name, NodeOut a, NodeOut b,
                const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
@@ -124,7 +125,7 @@ Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
   return opts.FinalizeBuilder(&node_builder);
 }
 
-Node* TernaryOp(const string& op_name, NodeOut a, NodeOut b, NodeOut c,
+Node* TernaryOp(const std::string& op_name, NodeOut a, NodeOut b, NodeOut c,
                 const GraphDefBuilder::Options& opts) {
   if (opts.HaveError()) return nullptr;
   NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,

@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/maybe_owning.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
@@ -51,9 +50,10 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -154,7 +154,7 @@ std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
 absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
     se::StreamExecutor* executor, const GpuAllocatorConfig& allocator_config);
 
-absl::StatusOr<MaybeOwning<se::DeviceMemoryAllocator>> CreateDeviceAllocator(
+absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     LocalClient* xla_client, const GpuAllocatorConfig& allocator_config,
     const std::vector<std::unique_ptr<TfrtGpuDevice>>& devices);
 

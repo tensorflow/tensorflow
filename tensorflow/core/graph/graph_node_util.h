@@ -29,12 +29,12 @@ class OpDef;
 
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
-string SummarizeNode(const Node& node);
+std::string SummarizeNode(const Node& node);
 
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
-string FormatNodeForError(const Node& node);
+std::string FormatNodeForError(const Node& node);
 
 // Merges the original node names from the debug information of 'from' to the
 // debug information of 'to'.

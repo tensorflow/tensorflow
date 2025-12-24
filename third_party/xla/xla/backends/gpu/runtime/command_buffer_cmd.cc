@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -1323,13 +1324,19 @@ CommandBufferCmd::BufferUseVector CustomKernelLaunchCmd::buffers() const {
 // MemcpyDeviceToDeviceCmd
 //===----------------------------------------------------------------------===//
 
-MemcpyDeviceToDeviceCmd::MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
-                                                 BufferAllocation::Slice src,
+MemcpyDeviceToDeviceCmd::MemcpyDeviceToDeviceCmd(ShapedSlice dst,
+                                                 ShapedSlice src,
                                                  int64_t num_bytes)
     : CommandBufferCmd(CommandBufferCmdType::kMemcpyDeviceToDeviceCmd),
       dst_(dst),
       src_(src),
-      num_bytes_(num_bytes) {}
+      num_bytes_(num_bytes) {
+  CHECK_EQ(ShapeUtil::ByteSizeOfElements(src_.shape),
+           ShapeUtil::ByteSizeOfElements(dst_.shape));
+  CHECK_LE(num_bytes, dst_.slice.size());
+  CHECK_LE(num_bytes, src_.slice.size());
+  CHECK_GE(src_.slice.size(), ShapeUtil::ByteSizeOf(src_.shape));
+}
 
 absl::StatusOr<const se::CommandBuffer::Command*>
 MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
@@ -1337,9 +1344,9 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
                                 RecordAction record_action,
                                 se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase dst =
-      execute_params.buffer_allocations->GetDeviceAddress(dst_);
+      execute_params.buffer_allocations->GetDeviceAddress(dst_.slice);
   se::DeviceAddressBase src =
-      execute_params.buffer_allocations->GetDeviceAddress(src_);
+      execute_params.buffer_allocations->GetDeviceAddress(src_.slice);
 
   VLOG(5) << "MemcpyDeviceToDeviceCmd: num_bytes = " << num_bytes_;
   VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
@@ -1362,14 +1369,15 @@ MemcpyDeviceToDeviceCmd::Record(const Thunk::ExecuteParams& execute_params,
 }
 
 CommandBufferCmd::BufferUseVector MemcpyDeviceToDeviceCmd::buffers() const {
-  return {BufferUse::Write(dst_), BufferUse::Read(src_)};
+  return {BufferUse::Write(dst_.slice, dst_.shape),
+          BufferUse::Read(src_.slice, src_.shape)};
 }
 
 //===----------------------------------------------------------------------===//
 // MemzeroCmd
 //===----------------------------------------------------------------------===//
 
-MemzeroCmd::MemzeroCmd(BufferAllocation::Slice dst)
+MemzeroCmd::MemzeroCmd(ShapedSlice dst)
     : CommandBufferCmd(CommandBufferCmdType::kMemzeroCmd), dst_(dst) {}
 
 absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
@@ -1377,12 +1385,12 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase dst =
-      execute_params.buffer_allocations->GetDeviceAddress(dst_);
+      execute_params.buffer_allocations->GetDeviceAddress(dst_.slice);
 
   VLOG(5) << "MemzeroCmd:";
   VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
 
-  if (dst_.size() == 0) {
+  if (dst_.slice.size() == 0) {
     VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
     return nullptr;
   }
@@ -1391,17 +1399,17 @@ absl::StatusOr<const se::CommandBuffer::Command*> MemzeroCmd::Record(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateMemset(&dst, uint8_t{0},
-                                            /*num_elements=*/dst_.size(),
+                                            /*num_elements=*/dst_.slice.size(),
                                             dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateMemset(command, &dst, uint8_t{0},
-                                            /*num_elements=*/dst_.size());
+                                            /*num_elements=*/dst_.slice.size());
       });
 }
 
 CommandBufferCmd::BufferUseVector MemzeroCmd::buffers() const {
-  return {BufferUse::Write(dst_)};
+  return {BufferUse::Write(dst_.slice, dst_.shape)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1497,11 +1505,11 @@ absl::StatusOr<const se::CommandBuffer::Command*> ChildCmd::Record(
 // CaseCmd
 //===----------------------------------------------------------------------===//
 
-CaseCmd::CaseCmd(BufferAllocation::Slice index, bool index_is_bool,
+CaseCmd::CaseCmd(ShapedSlice index,
                  std::vector<CommandBufferCmdExecutor> branches)
     : CommandBufferCmd(CommandBufferCmdType::kCaseCmd),
       index_(index),
-      index_is_bool_(index_is_bool),
+      index_is_bool_(index.shape.element_type() == PRED),
       branches_(std::move(branches)) {}
 
 absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
@@ -1517,7 +1525,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase index =
-      execute_params.buffer_allocations->GetDeviceAddress(index_);
+      execute_params.buffer_allocations->GetDeviceAddress(index_.slice);
 
   VLOG(5) << "CaseCmd:";
   VLOG(5) << "  index: " << index_ << " (" << index.opaque() << ")";
@@ -1560,7 +1568,7 @@ bool CaseCmd::force_update() {
 
 CommandBufferCmd::BufferUseVector CaseCmd::buffers() const {
   absl::flat_hash_set<BufferUse> buffers;
-  buffers.emplace(BufferUse::Read(index_));
+  buffers.emplace(BufferUse::Read(index_.slice, index_.shape));
   for (auto& branch : branches_) {
     buffers.insert(branch.buffers().begin(), branch.buffers().end());
   }
@@ -1693,7 +1701,7 @@ bool WhileCmd::force_update() {
 
 CommandBufferCmd::BufferUseVector WhileCmd::buffers() const {
   absl::flat_hash_set<BufferUse> buffers;
-  buffers.emplace(BufferUse::Write(pred_));
+  buffers.emplace(BufferUse::Read(pred_, ShapeUtil::MakeShape(PRED, {})));
   buffers.insert(cond_commands_.buffers().begin(),
                  cond_commands_.buffers().end());
   buffers.insert(body_commands_.buffers().begin(),
@@ -2570,7 +2578,7 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
     std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets,
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
-    std::vector<std::optional<uint64_t>> offset_byte_sizes,
+    std::vector<std::optional<PrimitiveType>> offset_primitive_types,
     std::optional<
         const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
         offset_as_function_of_indvar_metadata)
@@ -2580,15 +2588,15 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
       offset_as_function_of_indvar_metadata_(
           std::move(offset_as_function_of_indvar_metadata)) {
   // Zip all arguments together to create a list of SliceDef.
-  for (auto [arg, offset, orig_shape, sliced_shape, offset_byte_size] :
+  for (auto [arg, offset, orig_shape, sliced_shape, offset_primitive_type] :
        llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
-                       offset_byte_sizes)) {
+                       offset_primitive_types)) {
     slices_.push_back(DynamicSliceThunk::SliceDef{
         std::move(arg),
         std::move(offset),
         std::move(orig_shape),
         std::move(sliced_shape),
-        std::move(offset_byte_size),
+        std::move(offset_primitive_type),
     });
   }
 
@@ -2649,7 +2657,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
       TF_RET_CHECK(slice.embedded_thunk_argument.has_value());
       TF_RET_CHECK(slice.orig_shape.has_value());
       TF_RET_CHECK(slice.sliced_shape.has_value());
-      TF_RET_CHECK(slice.offset_byte_size.has_value());
+      TF_RET_CHECK(slice.offset_primitive_type.has_value());
       TF_RET_CHECK(slice.orig_shape->IsArray());
       TF_RET_CHECK(slice.sliced_shape->IsArray());
       TF_RET_CHECK(slice.offsets->size() ==
@@ -2763,8 +2771,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 
         // Copy the `offset_idx`-th component of the offset for the
         // `argument_idx`-th argument from device to host.
-        TF_RETURN_IF_ERROR(
-            stream.Memcpy(offset_dst, offset_src, *slice.offset_byte_size));
+        TF_RETURN_IF_ERROR(stream.Memcpy(
+            offset_dst, offset_src,
+            ShapeUtil::ByteSizeOfPrimitiveType(*slice.offset_primitive_type)));
         ++num_transfers;
       }
     }

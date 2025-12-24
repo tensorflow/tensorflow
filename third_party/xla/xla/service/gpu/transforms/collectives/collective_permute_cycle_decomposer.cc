@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -142,29 +141,11 @@ std::pair<CycleType, std::set<int>> GetCycleTypeAndIndicesArray(
   return GetCycleTypeAndIndices(pairs);
 }
 
-// Copies the frontend attributes from the original CP and splits the
-// _xla_send_recv_validation attribute;
+// Copies the frontend attributes from the original CP.
 absl::StatusOr<std::pair<FrontendAttributes, FrontendAttributes>>
 DecomposeFrontendAttributes(const FrontendAttributes& orig,
                             const CycleType cycle_type) {
   FrontendAttributes attr1 = orig, attr2 = orig;
-  auto it = orig.map().find(kSendRecvValidationAttr);
-  if (it == orig.map().end() || it->second == "invalid") {
-    return std::make_pair(attr1, attr2);
-  }
-
-  TF_ASSIGN_OR_RETURN(SourceTargetPairs bounds,
-                      SourceTargetPairs::FromString(it->second));
-  int64_t num_pairs = bounds.size();
-  if (num_pairs < 2) {
-    return Internal("Invalid number of replica groups");
-  }
-
-  // TODO: b/391377472 - this also need to be able to work with multiple cycles.
-  auto [cp1_bounds, cp2_bounds] =
-      collective_permute_cycle::SplitEdges(bounds, cycle_type);
-  (*attr1.mutable_map())[kSendRecvValidationAttr] = cp1_bounds.ToString();
-  (*attr2.mutable_map())[kSendRecvValidationAttr] = cp2_bounds.ToString();
   return std::make_pair(attr1, attr2);
 }
 

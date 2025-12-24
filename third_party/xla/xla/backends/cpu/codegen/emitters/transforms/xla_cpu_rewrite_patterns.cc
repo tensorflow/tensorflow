@@ -90,24 +90,24 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
     auto kernel_arg = KernelArgType(b.getContext());
 
     // Get a pointer to the first `KernelArg` struct.
-    auto cast = b.create<mlir::UnrealizedConversionCastOp>(op.getLoc(), ptr,
-                                                           op.getCallFrame())
+    auto cast = mlir::UnrealizedConversionCastOp::create(b, op.getLoc(), ptr,
+                                                         op.getCallFrame())
                     .getResult(0);
-    auto args_gep = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_call_frame, cast,
+    auto args_gep = mlir::LLVM::GEPOp::create(
+        b, ptr, kernel_call_frame, cast,
         llvm::SmallVector<mlir::LLVM::GEPArg, 2>{mlir::LLVM::GEPArg(0),
                                                  mlir::LLVM::GEPArg(3)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
-    auto args_ptr = b.create<mlir::LLVM::LoadOp>(ptr, args_gep);
+    auto args_ptr = mlir::LLVM::LoadOp::create(b, ptr, args_gep);
     args_ptr.setInvariant(true);
 
     // Get a pointer to the `KernelArg` at the given index.
-    auto arg_gep = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_arg, args_ptr,
+    auto arg_gep = mlir::LLVM::GEPOp::create(
+        b, ptr, kernel_arg, args_ptr,
         llvm::SmallVector<mlir::LLVM::GEPArg, 2>{
             mlir::LLVM::GEPArg(op.getIndex()), mlir::LLVM::GEPArg(0)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
-    auto arg_ptr = b.create<mlir::LLVM::LoadOp>(ptr, arg_gep);
+    auto arg_ptr = mlir::LLVM::LoadOp::create(b, ptr, arg_gep);
     arg_ptr.setInvariant(true);
 
     if (auto dereferenceable = op->getAttrOfType<mlir::IntegerAttr>(
@@ -121,12 +121,12 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
       mlir::LLVMTypeConverter converter(rewriter.getContext());
       mlir::Value memref_desc = mlir::MemRefDescriptor::fromStaticShape(
           b, op.getLoc(), converter, memref_type, arg_ptr);
-      auto memref_cast = b.create<mlir::UnrealizedConversionCastOp>(
-          op.getLoc(), op.getResult().getType(), memref_desc);
+      auto memref_cast = mlir::UnrealizedConversionCastOp::create(
+          b, op.getLoc(), op.getResult().getType(), memref_desc);
       rewriter.replaceOp(op, memref_cast);
     } else {
-      auto arg_ptr_cast = b.create<mlir::UnrealizedConversionCastOp>(
-          op.getLoc(), op.getResult().getType(), arg_ptr.getResult());
+      auto arg_ptr_cast = mlir::UnrealizedConversionCastOp::create(
+          b, op.getLoc(), op.getResult().getType(), arg_ptr.getResult());
       rewriter.replaceOp(op, arg_ptr_cast.getResult(0));
     }
     return mlir::success();
@@ -149,26 +149,25 @@ struct LowerExtractWorkgroupIdOp
     auto i64_ty = builder.getI64Type();
 
     // Get a pointer to the `WorkGroupThread` struct.
-    auto cast = builder
-                    .create<mlir::UnrealizedConversionCastOp>(ptr_type,
-                                                              op.getCallFrame())
+    auto cast = mlir::UnrealizedConversionCastOp::create(builder, ptr_type,
+                                                         op.getCallFrame())
                     .getResult(0);
-    auto workgroup_gep = builder.create<mlir::LLVM::GEPOp>(
-        ptr_type, kernel_call_frame, cast,
+    auto workgroup_gep = mlir::LLVM::GEPOp::create(
+        builder, ptr_type, kernel_call_frame, cast,
         mlir::ArrayRef<mlir::LLVM::GEPArg>{mlir::LLVM::GEPArg(0),
                                            mlir::LLVM::GEPArg(1)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto workgroup_ptr =
-        builder.create<mlir::LLVM::LoadOp>(ptr_type, workgroup_gep);
+        mlir::LLVM::LoadOp::create(builder, ptr_type, workgroup_gep);
 
     int32_t workgroup_dim_idx = static_cast<int32_t>(op.getDimension());
-    auto workgroup_dim_gep = builder.create<mlir::LLVM::GEPOp>(
-        ptr_type, kernel_dim, workgroup_ptr,
+    auto workgroup_dim_gep = mlir::LLVM::GEPOp::create(
+        builder, ptr_type, kernel_dim, workgroup_ptr,
         mlir::ArrayRef<mlir::LLVM::GEPArg>{
             mlir::LLVM::GEPArg(0), mlir::LLVM::GEPArg(workgroup_dim_idx)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto workgroup_dim_load =
-        builder.create<mlir::LLVM::LoadOp>(i64_ty, workgroup_dim_gep);
+        mlir::LLVM::LoadOp::create(builder, i64_ty, workgroup_dim_gep);
     workgroup_dim_load.setInvariant(true);
 
     mlir::Value workgroup_dim = workgroup_dim_load.getResult();
@@ -176,11 +175,12 @@ struct LowerExtractWorkgroupIdOp
         mlir::DataLayout::closest(builder.getInsertionBlock()->getParentOp())
             .getTypeSizeInBits(mlir::IndexType::get(context)));
     if (index_ty != i64_ty) {
-      workgroup_dim = builder.create<mlir::LLVM::TruncOp>(
-          index_ty, workgroup_dim, mlir::LLVM::IntegerOverflowFlags::nsw);
+      workgroup_dim =
+          mlir::LLVM::TruncOp::create(builder, index_ty, workgroup_dim,
+                                      mlir::LLVM::IntegerOverflowFlags::nsw);
     }
-    auto workgroup_dim_cast = builder.create<mlir::UnrealizedConversionCastOp>(
-        mlir::IndexType::get(context), workgroup_dim);
+    auto workgroup_dim_cast = mlir::UnrealizedConversionCastOp::create(
+        builder, mlir::IndexType::get(context), workgroup_dim);
 
     rewriter.replaceOp(op, workgroup_dim_cast.getResult(0));
 
@@ -252,8 +252,8 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
     llvm::SmallVector<mlir::Type> new_operands{ptr};
     rewriter.setInsertionPointToStart(&op.getBody().front());
 
-    auto cast = rewriter.create<mlir::UnrealizedConversionCastOp>(
-        op.getLoc(), func_type.getInput(0), op.getArgument(0));
+    auto cast = mlir::UnrealizedConversionCastOp::create(
+        rewriter, op.getLoc(), func_type.getInput(0), op.getArgument(0));
     op.getArgument(0).replaceAllUsesExcept(cast.getResult(0), cast);
     op.setFunctionType(rewriter.getFunctionType(new_operands, {ptr}));
     auto& entry = op->getRegion(0).front();
@@ -301,8 +301,9 @@ class WrapEntryWithCallFrame
 
     auto call_frame_type = CallFrameType::get(context);
     auto error_type = ErrorType::get(context);
-    mlir::func::FuncOp kernel_func = builder.create<mlir::func::FuncOp>(
-        kernel_name, rewriter.getFunctionType({call_frame_type}, {error_type}));
+    mlir::func::FuncOp kernel_func = mlir::func::FuncOp::create(
+        builder, kernel_name,
+        rewriter.getFunctionType({call_frame_type}, {error_type}));
 
     builder.setInsertionPointToStart(kernel_func.addEntryBlock());
 
@@ -316,7 +317,7 @@ class WrapEntryWithCallFrame
       mlir::DictionaryAttr arg_attr =
           arg_attrs ? mlir::dyn_cast<mlir::DictionaryAttr>(arg_attrs[idx])
                     : nullptr;
-      LoadOp load = builder.create<LoadOp>(arg.getType(), call_frame_arg, idx);
+      LoadOp load = LoadOp::create(builder, arg.getType(), call_frame_arg, idx);
       if (arg_attr) {
         load->setAttrs(arg_attr);
       }
@@ -325,16 +326,17 @@ class WrapEntryWithCallFrame
 
     for (auto workgroup_id : {WorkGroupDimension::x, WorkGroupDimension::y,
                               WorkGroupDimension::z}) {
-      call_args.push_back(builder.create<ExtractWorkgroupIdOp>(
-          mlir::IndexType::get(context), call_frame_arg, workgroup_id));
+      call_args.push_back(
+          ExtractWorkgroupIdOp::create(builder, mlir::IndexType::get(context),
+                                       call_frame_arg, workgroup_id));
     }
 
     // Use func::call here rather than pure call to avoid the entry function
     // being DCEd.
-    builder.create<mlir::func::CallOp>(op, call_args);
+    mlir::func::CallOp::create(builder, op, call_args);
 
-    auto error = builder.create<cpu::SuccessOp>(error_type);
-    builder.create<mlir::func::ReturnOp>(error.getResult());
+    auto error = cpu::SuccessOp::create(builder, error_type);
+    mlir::func::ReturnOp::create(builder, error.getResult());
 
     op->setAttr("xla.cpu.is_wrapped", builder.getUnitAttr());
     op.setPrivate();

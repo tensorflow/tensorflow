@@ -65,7 +65,8 @@ class GenericTransferManagerTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor_);
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            stream_executor_);
   }
 
   ScopedShapedBuffer AllocateBuffer(const Shape& shape) {

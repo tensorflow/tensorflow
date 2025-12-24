@@ -44,7 +44,7 @@ limitations under the License.
 namespace mlir {
 namespace stablehlo_ext {
 
-constexpr char kShardingAttr[] = "stablehlo.sharding";
+constexpr char kShardingAttr[] = "mhlo.sharding";
 
 #define GEN_PASS_DEF_STABLEHLOPREPAREFORHLOEXPORTPASS
 #include "stablehlo_ext/transforms/passes.h.inc"
@@ -72,13 +72,13 @@ static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
     assert(mlir::isa<FloatType>(complexTy.getElementType()) &&
            "unexpected int complex in StableHLO");
     auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
-    cst = b.create<stablehlo::ConstantOp>(
-        DenseElementsAttr::get(tensorType, complexVal));
+    cst = stablehlo::ConstantOp::create(
+        b, DenseElementsAttr::get(tensorType, complexVal));
   } else {
-    cst = b.create<stablehlo::ConstantOp>(attr.getSplatValue<Attribute>());
+    cst = stablehlo::ConstantOp::create(b, attr.getSplatValue<Attribute>());
   }
-  auto broadcast = b.create<stablehlo::BroadcastInDimOp>(
-      returnType, cst, b.getDenseI64ArrayAttr({}));
+  auto broadcast = stablehlo::BroadcastInDimOp::create(
+      b, returnType, cst, b.getDenseI64ArrayAttr({}));
   if (auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr)) {
     // The added broadcast inherits the kShardingAttr from op.
     broadcast->setAttr(kShardingAttr, sharding);
@@ -103,8 +103,8 @@ static void prepareBroadcastInDim(stablehlo::BroadcastInDimOp bcast) {
   llvm::sort(transposedDim,
              [&](int64_t lhs, int64_t rhs) { return dims[lhs] < dims[rhs]; });
   OpBuilder builder(bcast);
-  bcast.setOperand(builder.create<stablehlo::TransposeOp>(
-      bcast.getLoc(), bcast.getOperand(),
+  bcast.setOperand(stablehlo::TransposeOp::create(
+      builder, bcast.getLoc(), bcast.getOperand(),
       mlir::DenseI64ArrayAttr::get(builder.getContext(), transposedDim)));
   // Now reuse the original broadcast_dimensions and sort it.
   transposedDim.assign(dims.begin(), dims.end());

@@ -41,7 +41,7 @@ class OpRegistryInterface;
 // Options passed to the worker_cache_factory function.
 struct WorkerCacheFactoryOptions {
   ClusterDef cluster_def;
-  string job_name;
+  std::string job_name;
   int task_index;
   int replica_index = 0;
   RPCOptions rpc_options;
@@ -96,7 +96,7 @@ struct MasterEnv {
       std::unique_ptr<std::vector<std::unique_ptr<Device>>>,
       std::unique_ptr<WorkerCacheInterface>,
       std::unique_ptr<DeviceSet> device_set,
-      std::vector<string> filtered_worker_list)>
+      std::vector<std::string> filtered_worker_list)>
       master_session_factory;
 
   std::function<absl::Status(const WorkerCacheFactoryOptions&,

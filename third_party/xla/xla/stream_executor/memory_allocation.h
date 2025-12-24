@@ -18,11 +18,22 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/macros.h"
+#include "xla/stream_executor/device_address.h"
+
 namespace stream_executor {
 
-// An RAII handle for a memory allocated for a device. It can be pinned host
-// memory, unified memory, device memory, etc. depending on what kinds of
-// memories are supported by underlying device.
+// A MemoryAllocation is a block of physical memory allocated on the
+// StreamExecutor device.
+//
+// MemoryAllocation is not necessarily a physical memory on the physical device
+// (i.e. GPU), it can be a memory on the host pre-mapped for the host to device
+// communication. It can be pinned host memory, unified memory, device memory,
+// etc. depending on what kinds of memories are supported by underlying device.
+//
+// MemoryAllocation can be mapped to a DeviceAddress, which can be used to
+// access the memory from device or host. Multiple device address ranges can be
+// mapped to the same MemoryAllocation.
 class MemoryAllocation {
  public:
   MemoryAllocation() = default;
@@ -31,8 +42,16 @@ class MemoryAllocation {
   MemoryAllocation(MemoryAllocation&&) = delete;
   MemoryAllocation& operator=(MemoryAllocation&&) = delete;
 
-  virtual void* opaque() const = 0;
-  virtual uint64_t size() const = 0;
+  // A device address which gives access to the memory allocation. Can be
+  // nullptr if memory allocation is not adressable, i.e. physical allocation
+  // might not be mapped to any virtual address by default.
+  virtual DeviceAddressBase address() const = 0;
+
+  ABSL_DEPRECATE_AND_INLINE()
+  void* opaque() const { return address().opaque(); }
+
+  ABSL_DEPRECATE_AND_INLINE()
+  uint64_t size() const { return address().size(); }
 };
 
 }  // namespace stream_executor

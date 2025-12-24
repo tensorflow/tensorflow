@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -79,28 +80,28 @@ TEST(FloorOpTest, MultiDims) {
 
 TEST(FloorOpTest, SingleDimFloat16) {
   FloorOpModel model({2}, TensorType_FLOAT16);
-  model.PopulateTensor<>(model.input(), {Eigen::half(8.5), Eigen::half(0.0)});
+  model.PopulateTensor<>(model.input(), {half(8.5f), half(0.0f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(model.GetOutput<Eigen::half>(), ElementsAreArray({8, 0}));
+  EXPECT_THAT(model.GetOutput<half>(), ElementsAreArray({8, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
 }
 
 TEST(FloorOpTest, MultiDimsFloat16) {
   FloorOpModel model({2, 1, 1, 5}, TensorType_FLOAT16);
-  model.PopulateTensor<Eigen::half>(model.input(), {
-                                                       Eigen::half(0.75),
-                                                       Eigen::half(8.25),
-                                                       Eigen::half(0.49),
-                                                       Eigen::half(9.99),
-                                                       Eigen::half(0.5),
-                                                       Eigen::half(-0.25),
-                                                       Eigen::half(-8.75),
-                                                       Eigen::half(-0.99),
-                                                       Eigen::half(-9.49),
-                                                       Eigen::half(-0.5),
-                                                   });
+  model.PopulateTensor<half>(model.input(), {
+                                                half(0.75f),
+                                                half(8.25f),
+                                                half(0.49f),
+                                                half(9.99f),
+                                                half(0.5f),
+                                                half(-0.25f),
+                                                half(-8.75f),
+                                                half(-0.99f),
+                                                half(-9.49f),
+                                                half(-0.5f),
+                                            });
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(model.GetOutput<Eigen::half>(),
+  EXPECT_THAT(model.GetOutput<half>(),
               ElementsAreArray({0, 8, 0, 9, 0, -1, -9, -1, -10, -1}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 5}));
 }

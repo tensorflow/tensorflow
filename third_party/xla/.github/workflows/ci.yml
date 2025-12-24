@@ -115,15 +115,14 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 60
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           path: "openxla/xla"
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
@@ -133,6 +132,7 @@ jobs:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: "Run build.py"
         working-directory: ${{ matrix.job_info.repo }}
+        timeout-minutes: 60
         run: |
           if [[ "${{ matrix.job_info.pool }}" == *windows* ]]; then
             python $GITHUB_WORKSPACE\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"

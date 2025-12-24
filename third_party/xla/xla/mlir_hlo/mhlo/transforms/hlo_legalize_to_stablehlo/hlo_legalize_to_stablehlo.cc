@@ -442,8 +442,8 @@ FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
   auto& block = region.getBlocks().front();
   auto type = rewriter.getFunctionType(
       block.getArgumentTypes(), block.getTerminator()->getOperandTypes());
-  auto funcOp = rewriter.create<func::FuncOp>(
-      region.getLoc(), op->getName().stripDialect(), type);
+  auto funcOp = func::FuncOp::create(rewriter, region.getLoc(),
+                                     op->getName().stripDialect(), type);
   symTable.insert(funcOp);
 
   // Move region into new function
@@ -685,9 +685,9 @@ class HloToStablehloOpConverter
     // for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
     if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = rewriter.create<stablehlo::CaseOp>(
-          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs,
-          hloOp.getBranches().size());
+      stablehloOp = stablehlo::CaseOp::create(
+          rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
+          stablehloAttrs, hloOp.getBranches().size());
     } else {
       stablehloOp = rewriter.create<HloToStablehloOp<HloOpTy>>(
           hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs);

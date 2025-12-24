@@ -95,10 +95,10 @@ struct AllocOpConverter : public OpConversionPattern<memref::AllocOp> {
         alloc, alloc.getType(), *ctx, adaptor.getOperands(),
         reuse_input_candidates, reuse_output_index);
     Location loc = buffer.getLoc();
-    Value cond = rewriter.create<IsValidMemRefOp>(
-        loc, rewriter.getIntegerType(1), buffer);
-    rewriter.create<TFAssertOp>(loc, *ctx, cond, ErrorCode::RESOURCE_EXHAUSTED,
-                                "failed to allocate memory");
+    Value cond = IsValidMemRefOp::create(rewriter, loc,
+                                         rewriter.getIntegerType(1), buffer);
+    TFAssertOp::create(rewriter, loc, *ctx, cond, ErrorCode::RESOURCE_EXHAUSTED,
+                       "failed to allocate memory");
     return success();
   }
 };

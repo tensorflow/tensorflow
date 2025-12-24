@@ -52,13 +52,13 @@ class BufferDebugLogTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
   }
 
   Platform* platform_;
   StreamExecutor* executor_;
   std::unique_ptr<Stream> stream_;
-  std::unique_ptr<StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_F(BufferDebugLogTest, CreateBufferDebugLogOnDevice_InitializesEmptyLog) {

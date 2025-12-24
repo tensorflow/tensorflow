@@ -202,6 +202,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LinkComputation(
   TF_ASSIGN_OR_RETURN(HloComputation * linked_clone_ptr, linker.Link());
 
   linked_module->ReplaceEntryComputation(linked_clone_ptr);
+  linked_module->mutable_config().SetComputationLayoutIfExists(
+      linked_clone_ptr->ComputeProgramShape());
   xla::HloDCE dce_pass;
   TF_RETURN_IF_ERROR(dce_pass.Run(linked_module.get()).status());
 

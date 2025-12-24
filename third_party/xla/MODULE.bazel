@@ -3,6 +3,7 @@ module(name = "xla")
 ##############################################################
 # Bazel module dependencies
 
+# go/keep-sorted start
 bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
@@ -10,8 +11,7 @@ bazel_dep(name = "bazel_skylib", version = "1.8.1")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
-bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest_upstream")
-bazel_dep(name = "xla_googletest_wrapper", version = "1.0", repo_name = "com_google_googletest")
+bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil")
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
@@ -22,12 +22,15 @@ bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "riegeli", version = "0.0.0-20250822-9f2744d", repo_name = "com_google_riegeli")
 bazel_dep(name = "rules_cc", version = "0.2.0")
+bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_python", version = "1.6.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+# go/keep-sorted end
 
 # Only for compatibility, not directly used, change repo_name to None after upgrading Bazel to latest 7.x
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = "DO_NOT_USE_eigen")
@@ -42,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-seXjBtixED5zubd438Op4GnSBmRDegMkaiNXJJYrXJQ=",
-    strip_prefix = "rules_ml_toolchain-484235be45e6843db962c45d08fe4b2b65a6a24c",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/484235be45e6843db962c45d08fe4b2b65a6a24c.tar.gz"],
+    integrity = "sha256-HCxTCgVOnos8gR7CHtimh/yGW+w6u8j/Zb64KbHWeuQ=",
+    strip_prefix = "rules_ml_toolchain-6734d2a174bf29e731d3f473743d1cc1a86100c3",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/6734d2a174bf29e731d3f473743d1cc1a86100c3.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -71,13 +74,12 @@ single_version_override(
 # Use an unreleased version of googletest
 archive_override(
     module_name = "googletest",
+    patch_strip = 1,
+    patches = [
+        "//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
+    ],
     strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
     urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
-)
-
-local_path_override(
-    module_name = "xla_googletest_wrapper",
-    path = "third_party/xla_googletest_wrapper",
 )
 
 ##############################################################

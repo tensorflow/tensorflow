@@ -71,7 +71,7 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch gemm kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
+  stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
   TF_ASSERT_OK(gemm->Launch(custom_kernel.thread_dims(),

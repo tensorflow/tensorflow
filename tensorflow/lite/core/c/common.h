@@ -1352,7 +1352,15 @@ typedef enum TfLiteDelegateFlags {
   /// operator information using `Profiler::EventType::OPERATOR_INVOKE_EVENT`
   /// and the results will appear in the operator-wise Profiling section and not
   /// in the Delegate internal section.
-  kTfLiteDelegateFlagsPerOperatorProfiling = 4
+  kTfLiteDelegateFlagsPerOperatorProfiling = 4,
+
+  // This flag can be used by callers to hint that the delegate is likely to
+  // delegate the entire graph to a single delegate so certain allocations can
+  // be skipped.
+  // This is an ADVANCED feature and should only be used if the caller has
+  // prior knowledge that the delegate will fully delegate all subgraphs
+  // to a single delegate.
+  kTfLiteDelegateFlagsHintFullyDelegatedToSingleDelegate = 8,
 } TfLiteDelegateFlags;
 
 /// WARNING: This is an experimental interface that is subject to change.

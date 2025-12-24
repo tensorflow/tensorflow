@@ -37,7 +37,7 @@ namespace tensorflow {
 PriorityQueue::PriorityQueue(int32_t capacity,
                              const DataTypeVector& component_dtypes,
                              const std::vector<TensorShape>& component_shapes,
-                             const string& name)
+                             const std::string& name)
     : TypedQueue(capacity, component_dtypes, component_shapes, name) {}
 
 absl::Status PriorityQueue::Initialize() {

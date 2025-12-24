@@ -187,11 +187,10 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   else
     new_size = Int64Const(builder, loc, sizes);
 
-  auto new_op = builder
-                    .create<mlir::TF::SliceOp>(
-                        loc, slice_op.getOutput().getType(), relayout_input,
-                        slice_op.getBegin(), new_size)
-                    .getOperation();
+  auto new_op =
+      mlir::TF::SliceOp::create(builder, loc, slice_op.getOutput().getType(),
+                                relayout_input, slice_op.getBegin(), new_size)
+          .getOperation();
   new_op = InferSPMDExpandedLocalShape(new_op);
 
   TF_ASSIGN_OR_RETURN(auto relayout_output,

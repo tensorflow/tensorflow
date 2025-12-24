@@ -50,7 +50,8 @@ struct RewriteGraphMetadata {
 class PruneRewrite {
  public:
   // `endpoint_name` and `device_info` must outlive this object.
-  PruneRewrite(const string* endpoint_name, const DeviceAttributes* device_info)
+  PruneRewrite(const std::string* endpoint_name,
+               const DeviceAttributes* device_info)
       : endpoint_name_(endpoint_name), device_info_(device_info) {}
   virtual ~PruneRewrite() {}
 
@@ -60,14 +61,14 @@ class PruneRewrite {
                                Node** out_node) = 0;
 
   // Returns the name of the tensor to which this rewrite applies.
-  const string& endpoint_name() { return *endpoint_name_; }
+  const std::string& endpoint_name() { return *endpoint_name_; }
 
  protected:
   // The device on which the new node will be created.
   const DeviceAttributes& device_info() { return *device_info_; }
 
  private:
-  const string* const endpoint_name_;          // Not owned.
+  const std::string* const endpoint_name_;     // Not owned.
   const DeviceAttributes* const device_info_;  // Not owned.
 };
 
@@ -98,9 +99,9 @@ class PruneRewrite {
 //    - fetch output "node:output_index" does not exist in "*g"
 //    - target node "node" does not exist in "*g"
 absl::Status RewriteGraphForExecution(
-    Graph* g, const absl::Span<const string>& fed_outputs,
-    const absl::Span<const string>& fetch_outputs,
-    const absl::Span<const string>& target_node_names,
+    Graph* g, const absl::Span<const std::string>& fed_outputs,
+    const absl::Span<const std::string>& fetch_outputs,
+    const absl::Span<const std::string>& target_node_names,
     const DeviceAttributes& device_info, bool use_function_convention,
     RewriteGraphMetadata* out_metadata);
 
@@ -109,7 +110,7 @@ absl::Status RewriteGraphForExecution(
 absl::Status RewriteGraphForExecution(
     Graph* g, const std::vector<std::unique_ptr<PruneRewrite>>& feed_rewrites,
     const std::vector<std::unique_ptr<PruneRewrite>>& fetch_rewrites,
-    const absl::Span<const string>& target_node_names,
+    const absl::Span<const std::string>& target_node_names,
     RewriteGraphMetadata* out_metadata);
 
 /////////////////////////////////////////////////////////
@@ -119,14 +120,14 @@ absl::Status RewriteGraphForExecution(
 // A rewrite action that adds an _Arg node for a fed tensor.
 class ArgFeedRewrite : public PruneRewrite {
  public:
-  ArgFeedRewrite(const string* endpoint_name,
+  ArgFeedRewrite(const std::string* endpoint_name,
                  const DeviceAttributes* device_info, int32_t arg_index)
       : PruneRewrite(endpoint_name, device_info), arg_index_(arg_index) {}
   absl::Status AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
                        Node** out_node) override;
 
  private:
-  const int32 arg_index_;
+  const int32_t arg_index_;
 };
 
 // A rewrite action that adds a client-terminated _Recv node for a fed tensor.
@@ -140,14 +141,14 @@ class RecvFeedRewrite : public PruneRewrite {
 // A rewrite action that adds a _Retval node for a fetched tensor.
 class RetvalFetchRewrite : public PruneRewrite {
  public:
-  RetvalFetchRewrite(const string* endpoint_name,
+  RetvalFetchRewrite(const std::string* endpoint_name,
                      const DeviceAttributes* device_info, int32_t retval_index)
       : PruneRewrite(endpoint_name, device_info), retval_index_(retval_index) {}
   absl::Status AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
                        Node** out_node) override;
 
  private:
-  const int32 retval_index_;
+  const int32_t retval_index_;
 };
 
 // A rewrite action that adds a client-terminated _Send node for a

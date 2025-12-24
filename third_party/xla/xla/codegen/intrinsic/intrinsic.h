@@ -137,7 +137,7 @@ class Intrinsic {
     mlir::OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(module.getBody());
 
-    auto decl = b.create<mlir::func::FuncOp>(module.getLoc(), name, type);
+    auto decl = mlir::func::FuncOp::create(b, module.getLoc(), name, type);
     decl.setPrivate();
     return decl;
   }

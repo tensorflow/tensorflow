@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/guard_renderer.h"
 
 #include <algorithm>
+#include <string>
 
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"

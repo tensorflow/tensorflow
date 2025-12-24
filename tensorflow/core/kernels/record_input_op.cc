@@ -30,13 +30,13 @@ class RecordInputOp : public OpKernel {
   TYPE FIELD;                \
   OP_REQUIRES_OK(ctx, ctx->GetAttr(#FIELD, &FIELD));
 
-    GETATTR(string, file_pattern);
+    GETATTR(std::string, file_pattern);
     GETATTR(int64_t, file_random_seed);
     GETATTR(float, file_shuffle_shift_ratio);
     GETATTR(int64_t, file_buffer_size);
     GETATTR(int64_t, file_parallelism);
     GETATTR(int64_t, batch_size);
-    GETATTR(string, compression_type);
+    GETATTR(std::string, compression_type);
 #undef GETATTR
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("compression_type", &compression_type));

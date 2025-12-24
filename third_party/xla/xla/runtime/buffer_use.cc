@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 

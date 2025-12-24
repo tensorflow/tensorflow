@@ -58,10 +58,9 @@ StatusOr<mlir::Operation*> TensorListReserveSPMDExpander::ExpandOp(
               mlir::RankedTensorType::get(local_shape, element_type),
               builder.getContext()));
   mlir::Value new_shape_value = Int64Const(builder, DT_LOC(op), local_shape);
-  mlir::TF::TensorListReserveOp new_op =
-      builder.create<mlir::TF::TensorListReserveOp>(
-          DT_LOC(op), new_output_type, new_shape_value,
-          tensorlist_op.getNumElements());
+  mlir::TF::TensorListReserveOp new_op = mlir::TF::TensorListReserveOp::create(
+      builder, DT_LOC(op), new_output_type, new_shape_value,
+      tensorlist_op.getNumElements());
 
   op->getResult(0).replaceAllUsesWith(new_op.getResult());
   op->erase();

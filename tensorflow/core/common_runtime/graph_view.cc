@@ -40,12 +40,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-string NodeItem::DebugString() const {
-  string ret = strings::StrCat("{name:'", kernel->name(), "' id:", node_id);
+std::string NodeItem::DebugString() const {
+  std::string ret = absl::StrCat("{name:'", kernel->name(), "' id:", node_id);
   if (is_source) {
-    strings::StrAppend(&ret, " source}");
+    absl::StrAppend(&ret, " source}");
   } else {
-    strings::StrAppend(&ret, " def:{", SummarizeNodeDef(kernel->def()), "}}");
+    absl::StrAppend(&ret, " def:{", SummarizeNodeDef(kernel->def()), "}}");
   }
   return ret;
 }
@@ -67,7 +67,7 @@ GraphView::~GraphView() {
 }
 
 namespace {
-typedef std::tuple<int32, int32> OutputAndControlEdges;
+typedef std::tuple<int32_t, int32_t> OutputAndControlEdges;
 
 OutputAndControlEdges CountOutputEdges(const Node* n) {
   DCHECK_LE(n->out_edges().size(), std::numeric_limits<int32_t>::max());
@@ -102,8 +102,8 @@ size_t GraphView::NodeItemBytes(const Node* n) {
             sizeof(ControlEdgeInfo)                // output_control_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
       + num_outputs * sizeof(int)                  // forward_from[num_outputs]
-      + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
-      + num_outputs * sizeof(uint8);               // output_type[num_outputs]
+      + num_inputs * sizeof(uint8_t)               // input_type[num_inputs]
+      + num_outputs * sizeof(uint8_t);             // output_type[num_outputs]
   static constexpr size_t kItemAlignment = sizeof(NodeItem*);
   static_assert(kItemAlignment % alignof(NodeItem) == 0,
                 "NodeItem must be aligned with kItemAlignment");
@@ -141,7 +141,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // values as "int" vs "size_t" in CHECK_LE.
   CHECK_LE(static_cast<int64_t>(ptr - space_),
            std::numeric_limits<uint32_t>::max());
-  const uint32 offset = static_cast<uint32>(ptr - space_);
+  const uint32_t offset = static_cast<uint32_t>(ptr - space_);
   node_offsets_[id] = offset;
   ptr += bytes;
 
@@ -197,10 +197,10 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   }
 
   DCHECK_LT(DataType_MAX, 255);  // Must fit in uint8
-  uint8* input_types = item->input_type_base();
+  uint8_t* input_types = item->input_type_base();
   item->is_any_input_ref_typed = false;
   for (int i = 0; i < num_inputs; i++) {
-    input_types[i] = static_cast<uint8>(n->input_type(i));
+    input_types[i] = static_cast<uint8_t>(n->input_type(i));
     DCHECK_EQ(item->input_type(i), n->input_type(i));
     item->is_any_input_ref_typed |= IsRefType(n->input_type(i));
   }
@@ -215,9 +215,9 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
         GetNodeAttr(n->attrs(), "_scoped_allocator", &scoped_allocator_attrs);
 
     int* forward_from = item->forward_from_base();
-    uint8* output_types = item->output_type_base();
+    uint8_t* output_types = item->output_type_base();
     for (int i = 0; i < num_outputs; ++i) {
-      output_types[i] = static_cast<uint8>(n->output_type(i));
+      output_types[i] = static_cast<uint8_t>(n->output_type(i));
       DCHECK_EQ(item->output_type(i), n->output_type(i));
 
       forward_from[i] = OpKernelContext::Params::kNoReservation;
@@ -264,7 +264,7 @@ absl::Status GraphView::Initialize(const Graph* g) {
     total_bytes += NodeItemBytes(n);
   }
 
-  node_offsets_ = new uint32[num_nodes];
+  node_offsets_ = new uint32_t[num_nodes];
   for (int i = 0; i < num_nodes; i++) {
     node_offsets_[i] = std::numeric_limits<uint32_t>::max();
   }
@@ -363,7 +363,7 @@ absl::Status InferAllocAttr(const Node* n, const Node* dst,
   // Note that it's possible for *n to be a Recv and *dst to be a Send,
   // so these two cases are not mutually exclusive.
   if (IsRecv(n)) {
-    string src_name;
+    std::string src_name;
     s = GetNodeAttr(n->attrs(), "send_device", &src_name);
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_src_name;
@@ -388,7 +388,7 @@ absl::Status InferAllocAttr(const Node* n, const Node* dst,
     }
   }
   if (IsSend(dst)) {
-    string dst_name;
+    std::string dst_name;
     s = GetNodeAttr(dst->attrs(), "recv_device", &dst_name);
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_dst_name;

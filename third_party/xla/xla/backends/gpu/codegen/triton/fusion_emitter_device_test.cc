@@ -104,14 +104,7 @@ class TritonEmitterTest : public GpuCodegenTest {
 
 class TmaParameterizedTritonEmitterTest
     : public TritonEmitterTest,
-      public ::testing::WithParamInterface<bool> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(GetParam());
-    return debug_options;
-  }
-};
+      public ::testing::WithParamInterface<bool> {};
 
 INSTANTIATE_TEST_SUITE_P(TmaParameterizedTritonEmitterTestSuite,
                          TmaParameterizedTritonEmitterTest, ::testing::Bool(),
@@ -123,7 +116,6 @@ class WarpSpecializationTritonEmitterTest : public TritonEmitterTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     debug_options.set_xla_gpu_experimental_enable_triton_warp_specialization(
         true);
     return debug_options;
@@ -139,15 +131,7 @@ struct TmaAndDotLayoutTestParams {
 
 class TmaAndLayoutParameterizedTritonEmitterTest
     : public TritonEmitterTest,
-      public ::testing::WithParamInterface<TmaAndDotLayoutTestParams> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(
-        GetParam().enable_tma);
-    return debug_options;
-  }
-};
+      public ::testing::WithParamInterface<TmaAndDotLayoutTestParams> {};
 
 std::string TmaAndDotLayoutTestParamsToString(
     const ::testing::TestParamInfo<TmaAndDotLayoutTestParams>& data) {
@@ -416,6 +400,32 @@ ENTRY main {
 )";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_div", R"(
 CHECK: arith.divsi {{.*}} : i32
+)"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, BitwiseNotIsEmittedCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_not {
+  param_0 = s32[100] parameter(0)
+  ROOT not = s32[100] not(param_0)
+}
+
+ENTRY main {
+  p0 = s32[100] parameter(0)
+  ROOT not = s32[100] fusion(p0), kind=kCustom, calls=fused_not,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[100]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}
+)";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fused_not", R"(
+CHECK: arith.constant dense<-1>
+CHECK: arith.xori
 )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
@@ -3083,10 +3093,10 @@ ENTRY entry_computation {
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK:     xtile.extract {{.*}} -> tensor<f32>
 CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
-CHECK:     arith.subf {{.*}} f32
+CHECK:     arith.negf {{.*}} f32
 CHECK:     xtile.extract {{.*}} -> tensor<f32>
 CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
-CHECK:     arith.subf {{.*}} f32
+CHECK:     arith.negf {{.*}} f32
 CHECK:     arith.addf {{.*}} f32
 CHECK:     arith.mulf {{.*}} f32
 CHECK:     arith.divf {{.*}} f32
@@ -3596,7 +3606,7 @@ CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
 CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
 CHECK-DAG:  xtile.extract %[[ARG0]]
 CHECK-DAG:  xtile.extract %[[ARG1]]
-CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
+CHECK-DAG:  arith.negf {{.*}} : tensor<16x32xf32>
 CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
 CHECK:      stablehlo.dot_general {{.*}} (tensor<16x32xf32>, tensor<32x64xf32>) -> tensor<16x64xf32>
 CHECK:      arith.addf {{.*}}
@@ -3617,7 +3627,7 @@ CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
 CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
 CHECK-DAG:  xtile.extract %[[ARG0]]
 CHECK-DAG:  xtile.extract %[[ARG1]]
-CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
+CHECK-DAG:  arith.negf {{.*}} : tensor<16x32xf32>
 CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
 CHECK:      tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
@@ -4351,7 +4361,9 @@ constexpr std::array kMultiDotAlgorithms = {
     PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3,
     PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6,
     PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3,
-    PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9,
+    // TODO(basioli): re-enable this algorithm testing once the attribute
+    // importer supports the conversion.
+    // PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9,
 };
 
 TEST_P(MultiDotAlgorithmEmitterTest, MultiDotAlgorithmIsEmittedCorrectly) {

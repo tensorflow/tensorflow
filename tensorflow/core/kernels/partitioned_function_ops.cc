@@ -43,9 +43,9 @@ PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
       shared_rendezvous_(false) {
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, func_.get()));
-  string deprecated_config_serialized;
+  std::string deprecated_config_serialized;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &deprecated_config_serialized));
-  string config_proto_serialized;
+  std::string config_proto_serialized;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config_proto", &config_proto_serialized));
   OP_REQUIRES(
       ctx,
@@ -232,7 +232,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   FunctionLibraryRuntime::Options run_opts;
   ResourceMgr* resource_mgr = lib->device()->resource_manager();
   ScopedStepContainer* step_container = new ScopedStepContainer(
-      run_opts.step_id, [resource_mgr](const string& name) {
+      run_opts.step_id, [resource_mgr](const std::string& name) {
         resource_mgr->Cleanup(name).IgnoreError();
       });
   run_opts.step_container = step_container;
@@ -251,13 +251,13 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   }
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
-  const string& func_name = func_->name();
+  const std::string& func_name = func_->name();
   tsl::profiler::TraceMe trace_me("PartitionedCallOp");
   lib->Run(run_opts, handle, inputs, rets,
            [rets, done = std::move(done), ctx, func_name,
             step_container](const absl::Status& status) {
              if (!status.ok()) {
-               const string function_and_msg =
+               const std::string function_and_msg =
                    absl::StrCat(errors::FormatFunctionForError(func_name), " ",
                                 status.message());
                ctx->SetStatus(

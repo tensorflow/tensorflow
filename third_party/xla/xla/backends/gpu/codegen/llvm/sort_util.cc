@@ -22,6 +22,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -34,7 +35,12 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
@@ -47,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -58,14 +65,15 @@ absl::Status EmitCompareLoopBody(
     int64_t iteration_bound, int64_t num_threads, int64_t unroll_factor,
     int64_t num_values, llvm::Value* element_pair_index, int64_t xor_mask,
     llvm::Type* index_type,
-    std::function<llvm::Value*(int64_t operand, llvm::Value* index)>
+    std::function<absl::StatusOr<llvm::Value*>(int64_t operand,
+                                               llvm::Value* index)>
         element_address,
     std::function<llvm::Type*(int64_t operand, llvm::Value* index)>
         element_address_pointee_type,
     std::function<void(int64_t operand, llvm::Value* index, llvm::Value* value)>
         write_element,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilderBase* b, bool needs_bounds_checks = true) {
+    llvm::IRBuilderBase* b, bool force_write, bool needs_bounds_checks = true) {
   auto index_typed_constant = [&](int64_t value) {
     return llvm::ConstantInt::get(index_type, value);
   };
@@ -172,16 +180,21 @@ absl::Status EmitCompareLoopBody(
 
     // if (index_is_inbounds)
     KernelSupportLibrary ksl(b);
-    TF_RETURN_IF_ERROR(
-        ksl.IfWithStatus("smaller_comparison_index", index_is_inbounds, [&]() {
+    RETURN_IF_ERROR(ksl.IfWithStatus(
+        "smaller_comparison_index", index_is_inbounds, [&]() -> absl::Status {
           std::vector<llvm::Value*> values_to_compare;
           std::vector<llvm::Type*> values_to_compare_types;
+          values_to_compare.reserve(num_values * 2);
+          values_to_compare_types.reserve(num_values * 2);
           for (int i = 0; i < num_values; ++i) {
-            values_to_compare.push_back(element_address(i, compare_keys_index));
+            ASSIGN_OR_RETURN(llvm::Value * address,
+                             element_address(i, compare_keys_index));
+            values_to_compare.push_back(address);
             values_to_compare_types.push_back(
                 element_address_pointee_type(i, compare_keys_index));
 
-            values_to_compare.push_back(element_address(i, current_keys_index));
+            ASSIGN_OR_RETURN(address, element_address(i, current_keys_index));
+            values_to_compare.push_back(address);
             values_to_compare_types.push_back(
                 element_address_pointee_type(i, current_keys_index));
           }
@@ -190,7 +203,7 @@ absl::Status EmitCompareLoopBody(
           llvm::Value* compare_return_buffer =
               llvm_ir::EmitAllocaAtFunctionEntry(pred_type,
                                                  "compare_return_buffer", b);
-          TF_RETURN_IF_ERROR(
+          RETURN_IF_ERROR(
               emit_compare_callback(values_to_compare, compare_return_buffer));
           llvm::Value* result = b->CreateLoad(pred_type, compare_return_buffer);
 
@@ -198,7 +211,18 @@ absl::Status EmitCompareLoopBody(
           llvm::Value* is_smaller_than = b->CreateICmpNE(
               result, llvm::ConstantInt::get(result->getType(), 0),
               "boolean_predicate");
-          ksl.If("is_smaller_than", is_smaller_than, [&]() {
+          auto write_original_order = [&]() {
+            for (int64_t i = 0; i < num_values; ++i) {
+              // Don't swap the values.
+              auto value1 = b->CreateLoad(values_to_compare_types[i * 2],
+                                          values_to_compare[i * 2]);
+              auto value2 = b->CreateLoad(values_to_compare_types[i * 2 + 1],
+                                          values_to_compare[i * 2 + 1]);
+              write_element(i, current_keys_index, value2);
+              write_element(i, compare_keys_index, value1);
+            }
+          };
+          auto write_swapped_order = [&]() {
             for (int64_t i = 0; i < num_values; ++i) {
               // Swap the values.
               auto value1 = b->CreateLoad(values_to_compare_types[i * 2],
@@ -208,7 +232,18 @@ absl::Status EmitCompareLoopBody(
               write_element(i, current_keys_index, value1);
               write_element(i, compare_keys_index, value2);
             }
-          });
+          };
+          if (force_write) {
+            // If we don't use shared memory, we have to make sure that values
+            // that were emitted as part of the first iteration get written to
+            // global memory, even if the comparison determined that no swap is
+            // necessary.
+            ksl.If("is_smaller_than", is_smaller_than, write_swapped_order,
+                   write_original_order);
+          } else {
+            ksl.If("is_smaller_than", is_smaller_than, write_swapped_order);
+          }
+
           return absl::OkStatus();
         }));
   }
@@ -216,13 +251,15 @@ absl::Status EmitCompareLoopBody(
 }
 
 absl::Status EmitTiledCompareLoop(
-    const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
+    const IrArray::Index& tiled_keys_index, const HloSortInstruction* sort,
     int64_t dimension_to_sort_bound, int64_t num_threads,
     absl::Span<const int64_t> xor_masks, absl::Span<const IrArray> params,
+    bool emit_iota_operands,
     const std::vector<llvm::GlobalVariable*>& param_shmem_buffers,
     int64_t tile_size, int64_t unroll_factor,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilderBase* b) {
+    llvm::Module* module, llvm::IRBuilderBase* b) {
+  int64_t dimension_to_sort = sort->sort_dimension();
   KernelSupportLibrary ksl(b);
   llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
@@ -232,50 +269,61 @@ absl::Status EmitTiledCompareLoop(
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
                                /*isSigned=*/true, "thread.id.x");
 
-  auto copy_loop_body =
-      [&](std::function<void(llvm::Value * cache_index, llvm::Value * index)>
-              read_or_write) {
-        auto unroll = tiled_keys_index.GetConstantWithIndexType(unroll_factor);
-        auto base_keys_index =
-            b->CreateMul(tiled_keys_index[dimension_to_sort], unroll,
-                         "base_keys_index", /*HasNUW=*/true, /*HasNSW=*/true);
-        auto base_cache_index =
-            b->CreateMul(thread_id, unroll, "base_cache_index", /*HasNUW=*/true,
-                         /*HasNSW=*/true);
-        // We want to copy `unroll_factor` many adjacent elements.
-        for (int i = 0; i < unroll_factor; ++i) {
-          auto offset = tiled_keys_index.GetConstantWithIndexType(i);
-          auto current_keys_index =
-              b->CreateAdd(base_keys_index, offset, "current_keys_index",
-                           /*HasNUW=*/true, /*HasNSW=*/true);
-          // We check whether the index position is within bounds.
-          ksl.If("smaller_keys_index",
-                 b->CreateICmpSLT(current_keys_index,
-                                  tiled_keys_index.GetConstantWithIndexType(
-                                      dimension_to_sort_bound)),
-                 [&]() {
-                   auto cache_index =
-                       b->CreateAdd(base_cache_index, offset, "cache_index",
-                                    /*HasNUW=*/true, /*HasNSW=*/true);
-                   read_or_write(cache_index, current_keys_index);
-                 });
-        }
-      };
+  auto copy_loop_body = [&](std::function<absl::Status(
+                                llvm::Value * cache_index, llvm::Value * index)>
+                                read_or_write) -> absl::Status {
+    auto unroll = tiled_keys_index.GetConstantWithIndexType(unroll_factor);
+    auto base_keys_index =
+        b->CreateMul(tiled_keys_index[dimension_to_sort], unroll,
+                     "base_keys_index", /*HasNUW=*/true, /*HasNSW=*/true);
+    auto base_cache_index =
+        b->CreateMul(thread_id, unroll, "base_cache_index", /*HasNUW=*/true,
+                     /*HasNSW=*/true);
+    // We want to copy `unroll_factor` many adjacent elements.
+    for (int i = 0; i < unroll_factor; ++i) {
+      auto offset = tiled_keys_index.GetConstantWithIndexType(i);
+      auto current_keys_index =
+          b->CreateAdd(base_keys_index, offset, "current_keys_index",
+                       /*HasNUW=*/true, /*HasNSW=*/true);
+      // We check whether the index position is within bounds.
+      RETURN_IF_ERROR(ksl.IfWithStatus(
+          "smaller_keys_index",
+          b->CreateICmpSLT(current_keys_index,
+                           tiled_keys_index.GetConstantWithIndexType(
+                               dimension_to_sort_bound)),
+          [&]() {
+            auto cache_index =
+                b->CreateAdd(base_cache_index, offset, "cache_index",
+                             /*HasNUW=*/true, /*HasNSW=*/true);
+            return read_or_write(cache_index, current_keys_index);
+          }));
+    }
+    return absl::OkStatus();
+  };
 
   // Copy operand tiles from the operand buffers to shared memory.
   std::vector<llvm::Value*> keys_multi_index = tiled_keys_index.multidim();
   for (int64_t i = 0; i < params.size(); ++i) {
-    copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
+    RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
+                                       llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
-      auto value = params[i].EmitReadArrayElement(keys_index, b);
+      llvm::Value* value;
+      if (emit_iota_operands &&
+          HloPredicateIsOp<HloOpcode::kIota>(sort->operand(i))) {
+        ASSIGN_OR_RETURN(value,
+                         EmitIota(sort->operand(i), keys_index, module, b));
+      } else {
+        value = params[i].EmitReadArrayElement(keys_index, b);
+      }
       b->CreateStore(
           value,
           b->CreateGEP(
               param_shmem_buffers[i]->getValueType(), param_shmem_buffers[i],
               {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
-    });
+      return absl::OkStatus();
+    }));
   }
   // Wait until all reads have happened.
   gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {}, b);
@@ -319,7 +367,7 @@ absl::Status EmitTiledCompareLoop(
     if (dimension_to_sort_bound % tile_size) {
       // Otherwise we need a bounds check for the last tile. The last tile has
       // size 'dimension_to_sort_bound' % 'tile_size'.
-      TF_RETURN_IF_ERROR(ksl.IfWithStatus(
+      RETURN_IF_ERROR(ksl.IfWithStatus(
           "is_last_tile",
           b->CreateICmpUGE(
               b->CreateMul(
@@ -333,22 +381,22 @@ absl::Status EmitTiledCompareLoop(
                 unroll_factor / 2, params.size(), element_pair_index, xor_mask,
                 tiled_keys_index.GetType(), element_address,
                 element_address_pointee_type, write_element,
-                emit_compare_callback, b);
+                emit_compare_callback, b, /*force_write=*/false);
           },
           [&]() {
             return EmitCompareLoopBody(
                 tile_size, num_threads, unroll_factor / 2, params.size(),
                 element_pair_index, xor_mask, tiled_keys_index.GetType(),
                 element_address, element_address_pointee_type, write_element,
-                emit_compare_callback, b,
+                emit_compare_callback, b, /*force_write=*/false,
                 /*needs_bounds_checks=*/false);
           }));
     } else {
-      TF_RETURN_IF_ERROR(EmitCompareLoopBody(
+      RETURN_IF_ERROR(EmitCompareLoopBody(
           tile_size, num_threads, unroll_factor / 2, params.size(),
           element_pair_index, xor_mask, tiled_keys_index.GetType(),
           element_address, element_address_pointee_type, write_element,
-          emit_compare_callback, b,
+          emit_compare_callback, b, /*force_write=*/false,
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
@@ -358,7 +406,8 @@ absl::Status EmitTiledCompareLoop(
 
   // Copy the operand tiles back from shared memory to the operand buffers.
   for (int64_t i = 0; i < params.size(); ++i) {
-    copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
+    RETURN_IF_ERROR(copy_loop_body([&](llvm::Value* cache_index,
+                                       llvm::Value* index) {
       keys_multi_index[dimension_to_sort] = index;
       IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
                                 tiled_keys_index.GetType());
@@ -370,7 +419,8 @@ absl::Status EmitTiledCompareLoop(
           {tiled_keys_index.GetConstantWithIndexType(0), cache_index});
       auto value = b->CreateLoad(gep_type, gep);
       params[i].EmitWriteArrayElement(keys_index, value, b);
-    });
+      return absl::OkStatus();
+    }));
   }
   // We should normally synchronize here to make sure all writes have happened.
   // However the very next thing each thread does is reading `unroll_factor`
@@ -386,8 +436,9 @@ absl::Status EmitTiledCompareLoop(
 }  // namespace
 
 absl::Status EmitSortInPlace(
-    int64_t dimension_to_sort, absl::Span<const IrArray> values_arrays,
-    absl::string_view name, absl::Span<const int64_t> xor_masks,
+    const HloSortInstruction* sort, absl::Span<const IrArray> values_arrays,
+    bool emit_iota_operands, absl::string_view name,
+    absl::Span<const int64_t> xor_masks, llvm::Module* module,
     llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
     int64_t unroll_factor,
@@ -404,6 +455,7 @@ absl::Status EmitSortInPlace(
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64_t rank = keys_shape.dimensions().size();
   int64_t num_threads = std::max(int64_t{1}, tile_size / unroll_factor);
+  int64_t dimension_to_sort = sort->sort_dimension();
   int64_t dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   std::vector<int64_t> dimensions_in_iteration_order(rank);
   std::vector<int64_t> iteration_order_to_logical_order(rank);
@@ -459,17 +511,38 @@ absl::Status EmitSortInPlace(
     if (xor_masks.size() > 1) {
       IrArray::Index keys_index(keys_multi_index, values_arrays[0].GetShape(),
                                 tiles_index.GetType());
-      TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
-          keys_index, dimension_to_sort, dimension_to_sort_bound, num_threads,
-          xor_masks, values_arrays, param_shmem_buffers, tile_size,
-          unroll_factor, emit_compare_callback, b));
+      RETURN_IF_ERROR(EmitTiledCompareLoop(
+          keys_index, sort, dimension_to_sort_bound, num_threads, xor_masks,
+          values_arrays, emit_iota_operands, param_shmem_buffers, tile_size,
+          unroll_factor, emit_compare_callback, module, b));
     } else {
-      auto element_address = [&](int64_t operand, llvm::Value* index) {
+      auto element_address =
+          [&](int64_t operand,
+              llvm::Value* index) -> absl::StatusOr<llvm::Value*> {
         keys_multi_index[dimension_to_sort] = index;
         IrArray::Index keys_index(keys_multi_index,
                                   values_arrays[operand].GetShape(),
                                   tiles_index.GetType());
-        return values_arrays[operand].EmitArrayElementAddress(keys_index, b);
+        PrimitiveType element_type =
+            values_arrays[operand].GetShape().element_type();
+        llvm::Value* element;
+        if (emit_iota_operands &&
+            HloPredicateIsOp<HloOpcode::kIota>(sort->operand(operand))) {
+          ASSIGN_OR_RETURN(
+              element, EmitIota(sort->operand(operand), keys_index, module, b));
+        } else {
+          if (!primitive_util::IsSubByteNonPredType(element_type)) {
+            return values_arrays[operand].EmitArrayElementAddress(keys_index,
+                                                                  b);
+          }
+          element = values_arrays[operand].EmitReadArrayElement(keys_index, b);
+        }
+        auto llvm_element_type =
+            llvm_ir::PrimitiveTypeToIrType(element_type, b->getContext());
+        llvm::Value* element_buffer = llvm_ir::EmitAllocaAtFunctionEntry(
+            llvm_element_type, "element_buffer", b);
+        b->CreateStore(element, element_buffer);
+        return element_buffer;
       };
       auto element_address_pointee_type = [&](int64_t operand, llvm::Value*) {
         return values_arrays[operand].GetElementLlvmType();
@@ -482,11 +555,12 @@ absl::Status EmitSortInPlace(
                                   tiles_index.GetType());
         values_arrays[operand].EmitWriteArrayElement(keys_index, value, b);
       };
-      TF_RETURN_IF_ERROR(EmitCompareLoopBody(
+      RETURN_IF_ERROR(EmitCompareLoopBody(
           dimension_to_sort_bound, /*num_threads=*/1, unroll_factor / 2,
           values_arrays.size(), tiles_index[rank - 1], xor_masks[0],
           tiles_index.GetType(), element_address, element_address_pointee_type,
-          write_element, emit_compare_callback, b));
+          write_element, emit_compare_callback, b,
+          /*force_write=*/emit_iota_operands));
     }
     return absl::OkStatus();
   };

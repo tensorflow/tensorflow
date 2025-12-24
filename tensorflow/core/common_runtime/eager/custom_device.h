@@ -37,13 +37,14 @@ class CustomDeviceTensorHandle;
 class CustomDevice {
  public:
   virtual ~CustomDevice() = default;
-  virtual const string& name() = 0;
+  virtual const std::string& name() = 0;
   virtual absl::Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* tensor,
       ImmediateExecutionTensorHandle** result) = 0;
 
   virtual absl::Status CopyTensorFromDevice(
-      ImmediateExecutionTensorHandle* tensor, const string& target_device_name,
+      ImmediateExecutionTensorHandle* tensor,
+      const std::string& target_device_name,
       ImmediateExecutionTensorHandle** result) = 0;
 
   virtual absl::Status Execute(const ImmediateExecutionOperation* op,

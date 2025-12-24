@@ -477,6 +477,7 @@ RPC(LoadedExecutableMpmdCostAnalysis, loaded_executable_mpmd_cost_analysis);
 RPC(LoadedExecutableHumanReadableProgramText,
     loaded_executable_human_readable_program_text);
 RPC(LoadedExecutableExecute, loaded_executable_execute);
+RPC(LoadedExecutableFetchExecuteResult, loaded_executable_fetch_execute_result);
 RPC(LoadedExecutableDelete, loaded_executable_delete);
 RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);
 RPC(LoadedExecutableDestruct, loaded_executable_destruct);

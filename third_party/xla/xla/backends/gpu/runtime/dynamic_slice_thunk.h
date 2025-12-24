@@ -118,7 +118,7 @@ class DynamicSliceThunk : public Thunk {
       std::vector<std::optional<std::vector<Offset>>> offsets,
       std::vector<std::optional<Shape>> orig_shapes,
       std::vector<std::optional<Shape>> sliced_shapes,
-      std::vector<std::optional<uint64_t>> offset_byte_sizes,
+      std::vector<std::optional<PrimitiveType>> offset_primitive_types,
       std::optional<OffsetAsFunctionOfIndvarModulesMetadata>
           offset_as_function_of_indvar_metadata = std::nullopt);
   DynamicSliceThunk(const DynamicSliceThunk&) = delete;
@@ -137,7 +137,7 @@ class DynamicSliceThunk : public Thunk {
     std::optional<std::vector<Offset>> offsets;
     std::optional<Shape> orig_shape;
     std::optional<Shape> sliced_shape;
-    std::optional<uint64_t> offset_byte_size;
+    std::optional<PrimitiveType> offset_primitive_type;
     std::string ToString() const;
   };
 
@@ -165,8 +165,8 @@ class DynamicSliceThunk : public Thunk {
     return sliced_shapes_;
   }
 
-  std::vector<std::optional<uint64_t>> get_offset_byte_sizes() const {
-    return offset_byte_sizes_;
+  std::vector<std::optional<PrimitiveType>> offset_primitive_types() const {
+    return offset_primitive_types_;
   }
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
@@ -204,7 +204,7 @@ class DynamicSliceThunk : public Thunk {
   std::vector<std::optional<std::vector<Offset>>> offsets_;
   std::vector<std::optional<Shape>> orig_shapes_;
   std::vector<std::optional<Shape>> sliced_shapes_;
-  std::vector<std::optional<uint64_t>> offset_byte_sizes_;
+  std::vector<std::optional<PrimitiveType>> offset_primitive_types_;
 
   std::vector<SliceDef> slices_;
 

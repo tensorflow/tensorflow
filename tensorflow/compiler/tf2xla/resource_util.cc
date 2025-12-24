@@ -15,13 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_util.h"
 
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -204,8 +218,8 @@ absl::Status PropagateThroughCallOp(
   // Instantiate associated function to get function body.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(InstantiateFunctionCall(n.def(), lib_runtime, &handle));
-  auto release_handle_on_return = gtl::MakeCleanup(
-      [&] { TF_CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
+  auto release_handle_on_return =
+      gtl::MakeCleanup([&] { CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
 
   // Recursively analyze called function for resource sources and users.

@@ -1206,9 +1206,9 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
       auto aot_thunk_result_temp,
       xla::cpu::CpuAotCompilationResult::FromString(serialized, nullptr));
 
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      std::move(*aot_thunk_result_temp).LoadExecutable(nullptr, nullptr));
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      std::move(*aot_thunk_result_temp)
+                          .LoadExecutable(/*stream_exec=*/nullptr));
 
   xla::cpu::CpuExecutable* cpu_executable =
       tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());

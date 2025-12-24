@@ -64,12 +64,16 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
 absl::StatusOr<bool> IsDotSupportedByYnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape);
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the reduce op is supported by YNNPACK.
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
 
 // Returns true if the reduce op will be offloaded to YNNPACK.
 bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
+
+// Returns true if the convolution op is supported by YNNPACK.
+bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);
 
 // Convert XLA options to YNNPACK flags.
 uint32_t YnnFlags(const DebugOptions& debug_options);

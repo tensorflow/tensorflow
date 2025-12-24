@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -47,8 +47,7 @@ class XlaCustomCallOp : public XlaOpKernel {
     }
 
     xla::Shape output_shape;
-    TF_CHECK_OK(
-        TensorShapeToXLAShape(output_type_, output_shape_, &output_shape));
+    CHECK_OK(TensorShapeToXLAShape(output_type_, output_shape_, &output_shape));
     xla::XlaOp output = xla::CustomCall(ctx->builder(), target_name_, inputs,
                                         output_shape, backend_config_);
     ctx->SetOutput(0, output);

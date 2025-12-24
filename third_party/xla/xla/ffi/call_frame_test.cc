@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -34,8 +34,8 @@ limitations under the License.
 namespace xla::ffi {
 
 TEST(CallFrameTest, UpdateCallFrame) {
-  se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x12345678), 1024);
-  se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x87654321), 1024);
+  se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x12345678), 1024);
+  se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x87654321), 1024);
 
   std::vector<int64_t> dims = {1, 2, 3, 4};
 
@@ -116,7 +116,7 @@ TEST(CallFrameTest, UpdateCallFrame) {
 void BM_AddBufferArg(benchmark::State& state) {
   size_t num_args = state.range(0);
 
-  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
+  se::DeviceAddressBase memory(reinterpret_cast<void*>(0x12345678), 1024);
   std::vector<int64_t> dims = {1, 2, 3, 4};
 
   for (auto _ : state) {
@@ -151,17 +151,17 @@ void BM_AddAttributes(benchmark::State& state) {
 void BM_UpdateCallFrame(benchmark::State& state) {
   size_t num_args = state.range(0);
 
-  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
+  se::DeviceAddressBase memory(reinterpret_cast<void*>(0x12345678), 1024);
   std::vector<int64_t> dims = {1, 2, 3, 4};
 
   CallFrameBuilder builder(num_args, /*num_rets=*/0);
   for (size_t i = 0; i < num_args; ++i) {
-    builder.AddBufferArg(se::DeviceMemoryBase(nullptr, 1024),
+    builder.AddBufferArg(se::DeviceAddressBase(nullptr, 1024),
                          PrimitiveType::F32, dims);
   }
   CallFrame call_frame = builder.Build();
 
-  std::vector<se::DeviceMemoryBase> updated_args(num_args, memory);
+  std::vector<se::DeviceAddressBase> updated_args(num_args, memory);
 
   for (auto _ : state) {
     auto updated_call_frame =
@@ -173,17 +173,17 @@ void BM_UpdateCallFrame(benchmark::State& state) {
 void BM_UpdateCallFrameInPlace(benchmark::State& state) {
   size_t num_args = state.range(0);
 
-  se::DeviceMemoryBase memory(reinterpret_cast<void*>(0x12345678), 1024);
+  se::DeviceAddressBase memory(reinterpret_cast<void*>(0x12345678), 1024);
   std::vector<int64_t> dims = {1, 2, 3, 4};
 
   CallFrameBuilder builder(num_args, /*num_rets=*/0);
   for (size_t i = 0; i < num_args; ++i) {
-    builder.AddBufferArg(se::DeviceMemoryBase(nullptr, 1024),
+    builder.AddBufferArg(se::DeviceAddressBase(nullptr, 1024),
                          PrimitiveType::F32, dims);
   }
   CallFrame call_frame = builder.Build();
 
-  std::vector<se::DeviceMemoryBase> updated_args(num_args, memory);
+  std::vector<se::DeviceAddressBase> updated_args(num_args, memory);
 
   for (auto _ : state) {
     benchmark::DoNotOptimize(

@@ -57,11 +57,11 @@ void ConvertNMSPaddedFunc::RewriteFunc() {
   auto output_type1 = func_.getFunctionType().getResult(1);
 
   OpBuilder builder(func_.getBody());
-  auto op = builder.create<mlir::TFL::NonMaxSuppressionV4Op>(
-      func_.getLoc(), output_type0, output_type1, boxes, scores,
+  auto op = mlir::TFL::NonMaxSuppressionV4Op::create(
+      builder, func_.getLoc(), output_type0, output_type1, boxes, scores,
       max_output_size, iou_threshold, score_threshold);
 
-  builder.create<mlir::func::ReturnOp>(func_.getLoc(), op.getResults());
+  mlir::func::ReturnOp::create(builder, func_.getLoc(), op.getResults());
 }
 
 LogicalResult ConvertNMSPaddedFunc::VerifySignature() {
@@ -102,11 +102,11 @@ LogicalResult ConvertSSDPostProcessFunc::RewriteFunc() {
                                     custom_option_buffer))) {
     return failure();
   }
-  auto op = builder.create<CustomOp>(
-      func_.getLoc(), func_.getFunctionType().getResults(),
-      func_.getArguments(), kCustomSSDPostprocessing,
-      CustomOption(&builder, custom_option_buffer));
-  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
+  auto op = CustomOp::create(builder, func_.getLoc(),
+                             func_.getFunctionType().getResults(),
+                             func_.getArguments(), kCustomSSDPostprocessing,
+                             CustomOption(&builder, custom_option_buffer));
+  func::ReturnOp::create(builder, func_.getLoc(), op.getResults());
 
   return success();
 }

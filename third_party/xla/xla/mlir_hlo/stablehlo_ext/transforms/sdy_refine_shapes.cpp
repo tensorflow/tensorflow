@@ -176,8 +176,8 @@ LogicalResult refineValues(
     };
     if (llvm::none_of(value.getUses(), isFuncReturn)) continue;
     rewriter.setInsertionPointAfter(manualComputation);
-    auto castToUnrefinedType = rewriter.create<UnrealizedConversionCastOp>(
-        manualComputation->getLoc(), unrefinedType, value);
+    auto castToUnrefinedType = UnrealizedConversionCastOp::create(
+        rewriter, manualComputation->getLoc(), unrefinedType, value);
     value.replaceUsesWithIf(castToUnrefinedType.getOutputs()[0], isFuncReturn);
   }
 

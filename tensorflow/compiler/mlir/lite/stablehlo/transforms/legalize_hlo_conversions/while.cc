@@ -51,9 +51,10 @@ class LeagalizeWhileOp : public OpConversionPattern<mhlo::WhileOp> {
     // currently doesn't support stateless, so this
     // parameters are set to the default values.
     auto is_stateless = rewriter.getBoolAttr(false);
-    auto new_while = rewriter.create<TFL::WhileOp>(
-        while_op.getLoc(), while_op->getResultTypes(), while_op->getOperands(),
-        /*is_stateless=*/is_stateless);
+    auto new_while = TFL::WhileOp::create(rewriter, while_op.getLoc(),
+                                          while_op->getResultTypes(),
+                                          while_op->getOperands(),
+                                          /*is_stateless=*/is_stateless);
     new_while.getCond().takeBody(while_op.getCond());
     new_while.getBody().takeBody(while_op.getBody());
     TFLReplaceReturnOp(new_while.getCond(), rewriter);

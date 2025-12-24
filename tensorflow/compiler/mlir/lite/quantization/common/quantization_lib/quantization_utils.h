@@ -346,10 +346,10 @@ void CreateVerifier(mlir::Operation* quantizing_op,
   BoolAttr log =
       rewriter.getBoolAttr(quant_params.numeric_verify_spec.log_if_failed_flag);
   // Verify the quantized value by sending the result to the verifier.
-  rewriter.create<VerifierT>(
-      quantizing_op->getLoc(), quantized_op->getResult(result_idx).getType(),
-      quantized_op->getResult(result_idx), quantizing_op->getResult(result_idx),
-      tolerance, log);
+  VerifierT::create(rewriter, quantizing_op->getLoc(),
+                    quantized_op->getResult(result_idx).getType(),
+                    quantized_op->getResult(result_idx),
+                    quantizing_op->getResult(result_idx), tolerance, log);
 }
 
 template <>
@@ -645,8 +645,8 @@ class QuantizationPattern : public RewritePattern {
             if (!matchPattern(q.getOperand(), m_Constant(&attr))) {
               continue;
             }
-            auto cst = rewriter.create<arith::ConstantOp>(
-                quantized_op->getLoc(), attr);
+            auto cst = arith::ConstantOp::create(rewriter,
+                                                 quantized_op->getLoc(), attr);
             quantizing_op->setOperand(i, cst.getResult());
           }
         }

@@ -264,5 +264,13 @@ def ArithFP8ConversionToTritonPass
     "::mlir::triton::TritonDialect",
   ];
 }
+def UnsupportedElementwiseToTritonPass
+    : Pass<"unsupported-elementwise-to-triton"> {
+  let summary =
+    "Converts unsupported elementwise operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+  ];
+}
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

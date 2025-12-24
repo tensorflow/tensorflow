@@ -38,6 +38,7 @@ class CublasLtMatmulThunk : public Thunk {
   CublasLtMatmulThunk(Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
                       GemmConfig gemm_config,
                       se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+                      int64_t autotune_workspace_size,
                       BufferAllocation::Slice a, BufferAllocation::Slice b,
                       BufferAllocation::Slice c, BufferAllocation::Slice d,
                       BufferAllocation::Slice bias /* may be null */,
@@ -75,6 +76,7 @@ class CublasLtMatmulThunk : public Thunk {
   GemmConfig gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
+  int64_t autotune_workspace_size_;
   std::string canonical_hlo_;
   BufferAllocation::Slice a_;
   BufferAllocation::Slice b_;

@@ -370,7 +370,7 @@ void AppendFunctionResults(func::FuncOp func, int num_resources,
   // function.
   OpBuilder builder(graph_op);
   auto new_graph_op =
-      builder.create<GraphOp>(graph_op.getLoc(), new_result_types);
+      GraphOp::create(builder, graph_op.getLoc(), new_result_types);
   new_graph_op.getRegion().takeBody(graph_op.getRegion());
   graph_op->replaceAllUsesWith(
       new_graph_op->getResults().drop_back(num_resources));
@@ -388,14 +388,15 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
                       OpBuilder builder) {
   assert(sub_op);
   auto control_type = ControlType::get(builder.getContext());
-  auto island = builder.create<IslandOp>(
-      sub_op->getLoc(), sub_op->getResultTypes(), control_type, control_inputs);
+  auto island =
+      IslandOp::create(builder, sub_op->getLoc(), sub_op->getResultTypes(),
+                       control_type, control_inputs);
   island.getBody().push_back(new Block);
   Block* block = &island.getBody().back();
   builder.setInsertionPointToEnd(block);
   sub_op->replaceAllUsesWith(island.getOutputs());
   sub_op->moveBefore(block, block->begin());
-  builder.create<YieldOp>(sub_op->getLoc(), sub_op->getResults());
+  YieldOp::create(builder, sub_op->getLoc(), sub_op->getResults());
   return island;
 }
 
@@ -429,12 +430,12 @@ void ChainResourceOps(
     // Create chain source and sink identity islands for current equivalence
     // class.
     auto chain_arg = func.getArgument(chain_index++);
-    auto src_identity = builder_chain_src.create<TF::IdentityOp>(
-        chain_arg.getLoc(), chain_arg.getType(), chain_arg);
+    auto src_identity = TF::IdentityOp::create(
+        builder_chain_src, chain_arg.getLoc(), chain_arg.getType(), chain_arg);
     auto chain_src_island = CreateIsland(src_identity, {}, builder_chain_src);
 
-    auto sink_identity = builder_chain_sink.create<TF::IdentityOp>(
-        chain_arg.getLoc(), chain_arg.getType(), chain_arg);
+    auto sink_identity = TF::IdentityOp::create(
+        builder_chain_sink, chain_arg.getLoc(), chain_arg.getType(), chain_arg);
     auto chain_sink_island =
         CreateIsland(sink_identity, {}, builder_chain_sink);
 
@@ -477,7 +478,7 @@ void ChainResourceOps(
 IslandOp GetDummyConstant(OpBuilder builder, ShapedType const_type,
                           Location loc) {
   DenseIntElementsAttr val = DenseIntElementsAttr::get(const_type, 1);
-  auto const_op = builder.create<TF::ConstOp>(loc, val);
+  auto const_op = TF::ConstOp::create(builder, loc, val);
   auto const_island = CreateIsland(const_op, {}, builder);
   return const_island;
 }
@@ -506,8 +507,9 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   }
 
   // Replace old while op with new while op.
-  auto new_while_op = builder.create<TF::WhileOp>(
-      while_op.getLoc(), new_result_types, new_operands, while_op->getAttrs());
+  auto new_while_op =
+      TF::WhileOp::create(builder, while_op.getLoc(), new_result_types,
+                          new_operands, while_op->getAttrs());
   auto new_while_wrapper =
       CreateIsland(new_while_op, while_wrapper.getControlInputs(), builder);
   for (auto result : while_wrapper.getOutputs()) {

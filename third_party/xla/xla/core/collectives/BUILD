@@ -73,7 +73,7 @@ cc_library(
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

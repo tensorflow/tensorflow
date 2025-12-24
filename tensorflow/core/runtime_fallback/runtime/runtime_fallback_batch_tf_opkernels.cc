@@ -193,7 +193,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const final { return "FallbackBatchResource"; }
+  std::string DebugString() const final { return "FallbackBatchResource"; }
 
   const tsl::RCReference<const tfrt::Function>& batch_function() const {
     return bef_func_;
@@ -407,6 +407,7 @@ REGISTER_KERNEL_BUILDER(
 
 // Identical to BatchFunction except it has 2 extra TFRT attributes and it does
 // not have `f` attribute. Users will not invoke this op directly.
+// LINT.IfChange
 REGISTER_OP("_BatchFunctionFallback")
     .Input("in_tensors: Tin")
     .Input("captured_tensors: Tcaptured")
@@ -467,6 +468,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// LINT.ThenChange(//tensorflow/core/tfrt/mlrt/kernel/batch_kernel.cc)
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow

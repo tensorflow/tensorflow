@@ -141,7 +141,7 @@ class NcclTestBase : public ::testing::Test {
       if (VLOG_IS_ON(3)) {
         string str_buf;
         for (const auto& x : expected) {
-          strings::StrAppend(&str_buf, " ", x);
+          absl::StrAppend(&str_buf, " ", x);
         }
         VLOG(3) << "Expected output " << str_buf;
       }

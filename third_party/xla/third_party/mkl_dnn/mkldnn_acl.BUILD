@@ -156,13 +156,5 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@compute_library//:arm_compute",
-    ] + select({
-        # When using MKL-DNN on the AArch64 architecture, OpenMP is required
-        # for parallelization. Because the Hermetic C++ build environment uses
-        # the -nodefaultlibs flag, simply passing -fopenmp is insufficient.
-        # OpenMP's dependencies must be explicitly linked to ensure correct
-        # inclusion, as automatic linking is disabled.
-        "@rules_ml_toolchain//common:is_hermetic_cc_enabled": ["@rules_ml_toolchain//cc/sysroots:openmp"],
-        "//conditions:default": [],
-    }),
+    ],
 )

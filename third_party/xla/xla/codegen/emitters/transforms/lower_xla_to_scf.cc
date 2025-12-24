@@ -77,13 +77,14 @@ struct RewritePredicatedInsert : mlir::OpRewritePattern<PredicatedInsertOp> {
     rewriter.replaceOpWithNewOp<mlir::scf::IfOp>(
         op, op.getCondition(),
         [&](mlir::OpBuilder& b, mlir::Location loc) {
-          b.create<mlir::scf::YieldOp>(
-              loc, b.create<mlir::tensor::InsertOp>(
-                        loc, op.getValue(), op.getDest(), op.getIndices())
-                       .getResult());
+          mlir::scf::YieldOp::create(
+              b, loc,
+              mlir::tensor::InsertOp::create(b, loc, op.getValue(),
+                                             op.getDest(), op.getIndices())
+                  .getResult());
         },
         [&](mlir::OpBuilder& b, mlir::Location loc) {
-          b.create<mlir::scf::YieldOp>(loc, op.getDest());
+          mlir::scf::YieldOp::create(b, loc, op.getDest());
         });
     return success();
   }
@@ -99,13 +100,13 @@ struct RewritePredicatedExtract : mlir::OpRewritePattern<PredicatedExtractOp> {
     rewriter.replaceOpWithNewOp<mlir::scf::IfOp>(
         op, op.getCondition(),
         [&](mlir::OpBuilder& b, mlir::Location loc) {
-          b.create<mlir::scf::YieldOp>(
-              loc, b.create<mlir::tensor::ExtractOp>(loc, op.getSrc(),
-                                                     op.getIndices())
-                       .getResult());
+          mlir::scf::YieldOp::create(b, loc,
+                                     mlir::tensor::ExtractOp::create(
+                                         b, loc, op.getSrc(), op.getIndices())
+                                         .getResult());
         },
         [&](mlir::OpBuilder& b, mlir::Location loc) {
-          b.create<mlir::scf::YieldOp>(loc, op.getFallback());
+          mlir::scf::YieldOp::create(b, loc, op.getFallback());
         });
     return success();
   }
@@ -222,8 +223,8 @@ struct RewriteXlaLoop : mlir::OpRewritePattern<LoopOp> {
           mlir::ImplicitLocOpBuilder nested_b(loc, nested_builder);
           auto is_in_bounds = emitters::CheckConstraints(
               indexing_map, op.getDims(), symbol_values, nested_b);
-          auto if_op = nested_b.create<mlir::scf::IfOp>(
-              is_in_bounds,
+          auto if_op = mlir::scf::IfOp::create(
+              nested_b, is_in_bounds,
               [&](OpBuilder& then_builder, Location then_loc) -> void {
                 ImplicitLocOpBuilder then_b(then_loc, then_builder);
                 mlir::IRMapping mapping;

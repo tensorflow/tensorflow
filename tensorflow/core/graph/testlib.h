@@ -39,7 +39,7 @@ void ToGraphDef(Graph* g, GraphDef* def);
 
 // Adds a node in "g" producing a constant "tensor".
 Node* Constant(Graph* g, const Tensor& tensor);
-Node* Constant(Graph* g, const Tensor& tensor, const string& name);
+Node* Constant(Graph* g, const Tensor& tensor, const std::string& name);
 
 // Adds a node in "g" producing a constant "tensor" on the host.
 // The given node which, unlike the regular Constant above, always
@@ -47,26 +47,27 @@ Node* Constant(Graph* g, const Tensor& tensor, const string& name);
 // in GPU tests where the test Op in question runs on the device
 // but requires some arguments to be pinned to the host.
 Node* HostConstant(Graph* g, const Tensor& tensor);
-Node* HostConstant(Graph* g, const Tensor& tensor, const string& name);
+Node* HostConstant(Graph* g, const Tensor& tensor, const std::string& name);
 
 // Adds a variable in "g" of the given "shape" and "dtype".
 Node* Var(Graph* g, DataType dtype, const TensorShape& shape);
 Node* Var(Graph* g, DataType dtype, const TensorShape& shape,
-          const string& name);
+          const std::string& name);
 
 // Adds an assign node in "g" which assigns "val" into "var".
 Node* Assign(Graph* g, Node* var, Node* val);
 
 // Adds a send node "g" sending "input" as a named "tensor" from
 // "sender" to "receiver".
-Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
-           uint64 sender_incarnation, const string& receiver);
+Node* Send(Graph* g, Node* input, const std::string& tensor,
+           const std::string& sender, uint64_t sender_incarnation,
+           const std::string& receiver);
 
 // Adds a recv node in "g" receiving a named "tensor" from "sender"
 // to "receiver".
-Node* Recv(Graph* g, const string& tensor, const string& type,
-           const string& sender, uint64 sender_incarnation,
-           const string& receiver);
+Node* Recv(Graph* g, const std::string& tensor, const std::string& type,
+           const std::string& sender, uint64_t sender_incarnation,
+           const std::string& receiver);
 
 // Adds a cumsum "node" in "g" doing cumsum(data, axes).
 Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
@@ -74,7 +75,7 @@ Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
 
 // Adds a reduction "node" in "g" doing sum(data, axes).  "reduce" is
 // a reduction, e.g., Sum, Max, Min, Mean, etc.
-Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
+Node* Reduce(Graph* g, const std::string& reduce, Node* data, Node* axes,
              bool keep_dims = false);
 
 // Adds a Matmul node in g doing in0.contract(in1).
@@ -89,17 +90,17 @@ Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y);
 Node* QuantizeToUINT8(Graph* g, Node* data);
 
 // Adds a unary function "func" "node" in "g" taking "input".
-Node* Unary(Graph* g, const string& func, Node* input, int index = 0);
+Node* Unary(Graph* g, const std::string& func, Node* input, int index = 0);
 
 // Adds an identity node in "g" taking "input" and producing an
 // identity copy.
 Node* Identity(Graph* g, Node* input, int index = 0);
 
 // Adds a binary function "func" node in "g" taking "in0" and "in1".
-Node* Binary(Graph* g, const string& func, Node* in0, Node* in1);
+Node* Binary(Graph* g, const std::string& func, Node* in0, Node* in1);
 
 // Adds a function "func" node in "g" taking inputs "ins".
-Node* Multi(Graph* g, const string& func, absl::Span<Node* const> ins);
+Node* Multi(Graph* g, const std::string& func, absl::Span<Node* const> ins);
 
 // Adds a binary add node in "g" doing in0 + in1.
 Node* Add(Graph* g, Node* in0, Node* in1);
@@ -131,7 +132,7 @@ Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always
 // generates an error with the given error message "errmsg".
-Node* Error(Graph* g, Node* input, const string& errmsg,
+Node* Error(Graph* g, Node* input, const std::string& errmsg,
             bool log_error = false);
 
 // Adds a node that generates a invalid ref output.
@@ -150,7 +151,7 @@ Node* NoOp(Graph* g, const std::vector<Node*>& control_inputs);
 Node* Switch(Graph* g, Node* in0, Node* in1);
 
 // Adds an Enter node in "g", which enters a new frame.
-Node* Enter(Graph* g, Node* input, const string& frame_name);
+Node* Enter(Graph* g, Node* input, const std::string& frame_name);
 
 // Adds an Exit node in "g", which exits a frame.
 Node* Exit(Graph* g, Node* input);
@@ -160,11 +161,11 @@ Node* Merge(Graph* g, Node* in0, Node* in1);
 
 // Adds a Merge node in "g". The first input is "in0", the remaining
 // inputs are only given by their names in remaining_in.
-Node* Merge(Graph* g, Node* in0, absl::Span<const string> remaining_in);
+Node* Merge(Graph* g, Node* in0, absl::Span<const std::string> remaining_in);
 
 // Adds a NextIteration node in "g", which makes its input available
 // to the next iteration.
-Node* Next(Graph* g, const string& name, Node* input);
+Node* Next(Graph* g, const std::string& name, Node* input);
 
 // Adds a LoopCond node in "g", representing the "pivot" termination
 // condition of a loop.
@@ -215,7 +216,7 @@ Node* Diag(Graph* g, Node* in, DataType type);
 Node* DiagPart(Graph* g, Node* in, DataType type);
 
 // Add a CheckNumerics node in "g".
-Node* CheckNumerics(Graph* g, Node* in, const string& message);
+Node* CheckNumerics(Graph* g, Node* in, const std::string& message);
 
 // Add an _Arg node in "g".
 Node* Arg(Graph* g, int64_t index, DataType type);

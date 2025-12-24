@@ -447,7 +447,8 @@ class HloModule {
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
-  void PrintStackFrameIndex(Printer* printer) const;
+  void PrintStackFrameIndex(Printer* printer,
+                            const HloPrintOptions& options) const;
 
  public:
   // Prints a string representation of the module.
@@ -821,6 +822,11 @@ class HloModule {
   // Setter for the stack frame index.
   void set_stack_frame_index(StackFrameIndexProto stack_frame_index) {
     stack_frame_index_ = std::move(stack_frame_index);
+  }
+
+  // Getter for the stack frame index.
+  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
+    return stack_frame_index_;
   }
 
   // Finalizes this module by destroying internal data structures that might be

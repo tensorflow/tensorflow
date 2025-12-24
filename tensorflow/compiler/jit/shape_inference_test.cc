@@ -17,27 +17,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/shape_inference.h"
 
+#include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -55,7 +56,7 @@ TEST(ShapeInferenceTest, Basics) {
   auto g = ops::AddN(root.WithOpName("G"), std::initializer_list<Output>{e, f});
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   GraphShapeInfo shape_info;
   TF_ASSERT_OK(InferShapes(graph.get(), /*arg_shapes=*/{},
@@ -84,7 +85,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSize) {
   b.node()->AddAttr("_index", 1);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   std::map<int, InferredShape> arg_shapes;
   arg_shapes[0].shape = TensorShape({2, 3});
@@ -118,7 +119,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSizeIncompleteUserArgs) {
   b.node()->AddAttr("_index", 0);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   std::map<int, InferredShape> arg_shapes;
   arg_shapes[0].shape = TensorShape({2, 3});

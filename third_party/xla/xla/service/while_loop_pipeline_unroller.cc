@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -34,8 +35,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/while_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 /*static*/
@@ -125,8 +125,9 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     }
   }
 
-  std::vector<HloInstruction*> original_roots;
   for (auto&& [while_instruction, unroll_factor] : while_instructions) {
+    VLOG(1) << "Unrolling: " << while_instruction->name()
+            << " unroll_factor: " << unroll_factor;
     HloComputation* body = while_instruction->while_body();
     HloComputation* condition = while_instruction->while_condition();
 
@@ -138,16 +139,15 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
         b.AddInstruction(HloInstruction::CreateParameter(
             0, while_instruction->shape(), "input_tuple"));
     HloComputation* unrolled_body = module->AddEmbeddedComputation(b.Build());
+    HloInstruction* unrolled_root = input_tuple;
     for (int64_t step = 0; step < unroll_factor; ++step) {
       HloComputation* loop_step = module->AddEmbeddedComputation(body->Clone(
           absl::StrFormat("unrolled_%dx_step_%d", unroll_factor, step)));
       input_tuple = unrolled_body->AddInstruction(HloInstruction::CreateCall(
           while_instruction->shape(), {input_tuple}, loop_step));
-      original_roots.push_back(input_tuple);
+      unrolled_root = input_tuple;
     }
     // The final original root is now the root of the unrolled loop.
-    HloInstruction* unrolled_root = original_roots.back();
-    original_roots.pop_back();
     unrolled_body->set_root_instruction(unrolled_root);
 
     // We need the unrolled loop and the remainder (original) loop to execute
@@ -167,12 +167,16 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
         while_instruction->parent()->AddInstruction(HloInstruction::CreateWhile(
             while_instruction->shape(), unrolled_condition, body,
             while_instruction->mutable_operand(0)));
-    TF_RETURN_IF_ERROR(WhileUtil::IncrementWhileLoopTripCount(
-        *unrolled_while_instruction, -(unroll_factor - 1)));
+    absl::Status status = WhileUtil::IncrementWhileLoopTripCount(
+        *unrolled_while_instruction, -(unroll_factor - 1));
     unrolled_while_instruction->set_while_body(unrolled_body);
 
-    TF_RETURN_IF_ERROR(
-        while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
+    if (status.ok()) {
+      RETURN_IF_ERROR(
+          while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
+    } else {
+      VLOG(1) << "Failed to unroll: " << while_instruction->name();
+    }
   }
 
   const bool changed = !while_instructions.empty();
@@ -181,9 +185,9 @@ absl::StatusOr<bool> WhileLoopPipelineUnroller::RunImpl(
     // recursively clone all the nested computations. FCG will take care of this
     // for us.
     FlattenCallGraph fcg;
-    TF_RETURN_IF_ERROR(fcg.Run(module).status());
+    RETURN_IF_ERROR(fcg.Run(module).status());
     HloDCE dce;
-    TF_RETURN_IF_ERROR(dce.Run(module).status());
+    RETURN_IF_ERROR(dce.Run(module).status());
   }
 
   return changed;

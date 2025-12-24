@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -227,8 +227,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   }
 
   builder.setInsertionPointToStart(fusion_module.getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
+  auto entry_func = FuncOp::create(
+      builder, loc, entry_function_name,
       mlir::FunctionType::get(context, param_types, result_types),
       /*sym_visibility=*/mlir::StringAttr{},
       mlir::ArrayAttr::get(context, arg_attrs),

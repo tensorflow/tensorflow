@@ -124,12 +124,19 @@ class GpuHloScheduleTest : public HloTestBase {
                                        GetModuleConfig(test_config));
   }
 
-  static bool HasValidFingerprint(HloModule* module) {
+  static std::optional<std::string> ValidFingerprint(HloModule* module) {
     // Verify that the fingerprint of HLO prior to LHS is present.
     const FrontendAttributes& attrs = module->frontend_attributes();
     auto it = attrs.map().find(kFingerprintBeforeLHS);
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
-    return it != attrs.map().end() && it->second.size() == 128 / 4;
+    if (it != attrs.map().end() && it->second.size() == 128 / 4) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  static bool HasValidFingerprint(HloModule* module) {
+    return ValidFingerprint(module).has_value();
   }
 };
 
@@ -1790,6 +1797,44 @@ TEST_F(GpuHloScheduleTest, AsyncOps) {
               ElementsAre(HloOpcode::kParameter, HloOpcode::kAsyncStart,
                           HloOpcode::kAsyncStart, HloOpcode::kAsyncDone,
                           HloOpcode::kAsyncDone, HloOpcode::kAdd));
+}
+
+TEST_F(GpuHloScheduleTest, MetadataIgnoredInFingerprint) {
+  absl::string_view hlo = R"(
+HloModule test
+
+FileNames
+1 "$0"
+
+FunctionNames
+1 "<module>"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=1 end_line=2 column=0 end_column=1}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+
+fused_computation {
+  param_0 = f32[1024,1024]{1,0} parameter(0)
+  ROOT exponential.1 = f32[1024,1024]{1,0} exponential(param_0), metadata={stack_frame_id=1}
+}
+
+ENTRY e {
+  p = f32[1024,1024]{1,0} parameter(0)
+  ROOT wrapped_exp = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation
+})";
+  ASSERT_OK_AND_ASSIGN(auto mod1, ParseAndReturnVerifiedModule(
+                                      absl::Substitute(hlo, "filename1.py")));
+  ASSERT_OK_AND_ASSIGN(auto mod2, ParseAndReturnVerifiedModule(
+                                      absl::Substitute(hlo, "filename2.py")));
+  CHECK_OK(ScheduleGpuModule(mod1.get()).status());
+  CHECK_OK(ScheduleGpuModule(mod2.get()).status());
+  const std::optional<std::string> fp1 = ValidFingerprint(mod1.get());
+  const std::optional<std::string> fp2 = ValidFingerprint(mod2.get());
+  EXPECT_TRUE(fp1.has_value());
+  EXPECT_TRUE(fp2.has_value());
+  EXPECT_EQ(*fp1, *fp2);
 }
 
 // This test verifies that the latency hiding scheduler overlaps host memory

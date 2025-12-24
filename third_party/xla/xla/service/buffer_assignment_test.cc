@@ -399,7 +399,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   Shape f32a100x10_ = ShapeUtil::MakeShape(F32, {100, 10});
   Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
   Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
-  const AliasInfo alias_info_;
+  AliasInfo alias_info_;
 };
 
 // Returns true if the buffers assigned to instructions in "a" are distinct
@@ -2504,6 +2504,10 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
   // Verify 'weights1' and read-only use while1{1} alias.
   EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).value(),
             assignment->GetUniqueSlice(while1, {1}).value());
+
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape,
+                          assignment->GetShapeForUniqueSlice(while1, {1}));
+  EXPECT_EQ(shape, data_shape_);
 }
 
 // Tests that two colocated buffer sets are not merged if an entry parameter

@@ -50,8 +50,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cudnn",
-        "//xla/backends/gpu/codegen/triton:tma_utils",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -70,7 +68,6 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -78,6 +75,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
@@ -100,7 +98,6 @@ cc_library(
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/pjrt/distributed:key_value_store_interface",
@@ -119,6 +116,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@local_config_rocm//rocm:rocm_headers",
     ],
 )
@@ -187,6 +185,7 @@ cc_library(
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:gemm_rewriter",
+        "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:priority_fusion",
         "//xla/service/gpu/transforms:scaled_dot_rewriter",
@@ -258,7 +257,6 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/autotuner:gpu_codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
@@ -317,6 +315,7 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/core:bits",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -411,11 +410,7 @@ cc_library(
 xla_cc_test(
     name = "autotune_cache_key_test",
     srcs = ["autotune_cache_key_test.cc"],
-    data = [
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     deps = [
         ":autotune_cache_key",
         "//xla/hlo/ir:hlo",
@@ -496,7 +491,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:ir_emission_utils",
@@ -678,14 +673,8 @@ tf_proto_library(
 xla_cc_test(
     name = "autotuner_util_test",
     srcs = ["autotuner_util_test.cc"],
-    data = [
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_40.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/a100_sxm_80.txtpb",
-        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-    ],
-    tags = [
-        "gpu",
-    ],
+    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
+    tags = ["gpu"],
     deps = [
         ":autotune_cache_key",
         ":autotuner_status_key",
@@ -759,6 +748,16 @@ cc_library(
 
 cc_library(
     name = "triton_configs",
+    srcs = ["triton_configs.cc"],
     hdrs = ["triton_configs.h"],
-    deps = ["//xla/service/gpu:matmul_utils"],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla/service/gpu:matmul_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+    ],
 )

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -34,7 +33,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -66,9 +65,9 @@ static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
   dst->size = src.size();
   if (dst->size > TPU_C_API_MAX_INLINED) {
     dst->heap = new Dst[dst->size];
-    std::copy(src.begin(), src.end(), dst->heap);
+    absl::c_copy(src, dst->heap);
   } else {
-    std::copy(src.begin(), src.end(), dst->inlined);
+    absl::c_copy(src, dst->inlined);
   }
 }
 
@@ -158,14 +157,14 @@ xla::ShapedBuffer FromC(XLA_ShapedBuffer* c_buffer) {
   return xla_shaped_buffer;
 }
 
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
-                               bool aliased) {
-  SE_MaybeOwningDeviceMemory se_mem;
+SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
+                                bool aliased) {
+  SE_MaybeOwningDeviceAddress se_mem;
   se_mem.owned = mem.HasOwnership();
-  se_mem.memory = ApiConverter::ToC(mem.AsDeviceMemoryBase());
+  se_mem.memory = ApiConverter::ToC(mem.AsDeviceAddress());
   if (mem.HasOwnership()) {
-    const stream_executor::OwningDeviceAddress* owned =
-        mem.AsOwningDeviceMemory();
+    const stream_executor::ScopedDeviceAddress<uint8_t>* owned =
+        mem.AsScopedDeviceAddress();
     se_mem.device_ordinal = owned->device_ordinal();
     se_mem.allocator = ApiConverter::ToC(owned->allocator());
     if (!aliased) {
@@ -180,15 +179,16 @@ SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem,
   return se_mem;
 }
 
-xla::MaybeOwningDeviceMemory FromC(
-    SE_MaybeOwningDeviceMemory* se_mem,
+xla::MaybeOwningDeviceAddress FromC(
+    SE_MaybeOwningDeviceAddress* se_mem,
     stream_executor::DeviceAddressAllocator* allocator) {
   if (se_mem->owned) {
-    return xla::MaybeOwningDeviceMemory(stream_executor::OwningDeviceAddress(
-        ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
-        allocator));
+    return xla::MaybeOwningDeviceAddress(
+        stream_executor::ScopedDeviceAddress<uint8_t>(
+            ApiConverter::FromC(se_mem->memory), se_mem->device_ordinal,
+            allocator));
   } else {
-    return xla::MaybeOwningDeviceMemory(ApiConverter::FromC(se_mem->memory));
+    return xla::MaybeOwningDeviceAddress(ApiConverter::FromC(se_mem->memory));
   }
 }
 
@@ -244,8 +244,9 @@ stream_executor::DeviceAddressAllocator* FromC(
       c_allocator.ctx);
 }
 
-SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceAddress* mem) {
-  SE_MaybeOwningDeviceMemory se_mem;
+SE_MaybeOwningDeviceAddress ToC(
+    stream_executor::ScopedDeviceAddress<uint8_t>* mem) {
+  SE_MaybeOwningDeviceAddress se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
   se_mem.memory = ApiConverter::ToC(mem->Release());
   se_mem.allocator = ApiConverter::ToC(mem->allocator());

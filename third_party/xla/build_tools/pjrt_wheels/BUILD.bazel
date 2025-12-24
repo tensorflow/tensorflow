@@ -1,6 +1,8 @@
 load("@cuda_cudart//:version.bzl", cuda_major_version = "VERSION")
 load("@nightly_timestamp//:timestamp.bzl", "XLA_NIGHTLY_TIMESTAMP")
 load("@rc_number//:rc_number.bzl", "XLA_RC_NUMBER")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 
 # This ensures we can only build plugins for selected CUDA versions.

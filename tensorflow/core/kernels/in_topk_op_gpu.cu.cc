@@ -39,7 +39,7 @@ template <typename T, typename TargetT>
 __global__ void ComputePredictionMaskKernel(
     const T* __restrict__ predictions,    // dims: [ num_targets x num_classes ]
     const TargetT* __restrict__ targets,  // dims: [ num_targets ]
-    int64* __restrict__ mask,             // dims: [ num_targets x num_classes ]
+    int64_t* __restrict__ mask,           // dims: [ num_targets x num_classes ]
     int num_targets, int num_classes) {
   GPU_1D_KERNEL_LOOP(i, num_targets * num_classes) {
     const int batch_index = i / num_classes;
@@ -67,7 +67,8 @@ __global__ void ComputePredictionMaskKernel(
 // larger than the target, or to '-1' if target class in invalid of predictions
 // in a batch have non-finite values.
 struct MaskSum {
-  __host__ __device__ int64 operator()(const int64& a, const int64& b) const {
+  __host__ __device__ int64_t operator()(const int64_t& a,
+                                         const int64_t& b) const {
     if (a < 0 || b < 0)
       return -1;
     else
@@ -77,8 +78,8 @@ struct MaskSum {
 
 namespace reduction_op_helper {
 template <>
-struct IdentityValue<int64, MaskSum> {
-  int64 operator()() { return 0; }
+struct IdentityValue<int64_t, MaskSum> {
+  int64_t operator()() { return 0; }
 };
 
 }  // namespace reduction_op_helper
@@ -138,8 +139,8 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
       auto in = predictions_mask.matrix<int64_t>();
       auto out = num_larger_prediction.flat<int64_t>();
 
-      ReduceImpl<int64, MaskSum, int64*, int64*, Dims<1>>(
-          context, (int64*)out.data(), (int64*)in.data(), in.rank(),
+      ReduceImpl<int64_t, MaskSum, int64_t*, int64_t*, Dims<1>>(
+          context, (int64_t*)out.data(), (int64_t*)in.data(), in.rank(),
           in.dimension(0), in.rank() >= 2 ? in.dimension(1) : 1,
           in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), Dims<1>(1),
           MaskSum());
@@ -152,8 +153,9 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
       if (k.k_tensor->dtype() == DT_INT32) {
         output.device(d) =
             (cnt >= cnt.constant(0)) &&
-            (cnt < k.k_tensor->flat<int32>().template cast<int64_t>().broadcast(
-                       Dims<1>(num_targets)));
+            (cnt <
+             k.k_tensor->flat<int32_t>().template cast<int64_t>().broadcast(
+                 Dims<1>(num_targets)));
       } else {
         output.device(d) =
             (cnt >= cnt.constant(0)) &&

@@ -18,17 +18,21 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/refcount.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
@@ -65,7 +69,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceMetadata) {
 
   Device* device = device_setup_.GetDevice(DEVICE_XLA_GPU);
   const XlaDevice::Metadata* metadata = nullptr;
-  TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
+  CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -91,7 +95,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerXlaDeviceCacheEnabled) {
 
   Device* device = device_setup_.GetDevice(DEVICE_XLA_GPU);
   const XlaDevice::Metadata* metadata = nullptr;
-  TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
+  CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -134,7 +138,7 @@ TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerXlaDevice) {
 
   Device* device = device_setup_.GetDevice(device_type.type());
   const XlaDevice::Metadata* metadata = nullptr;
-  TF_CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
+  CHECK_OK(XlaDevice::GetMetadataFromDevice(device, &metadata));
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
   ResourceMgr resource_mgr("");
@@ -254,7 +258,7 @@ TEST_F(XlaPlatformInfoTest,
   xla::CpuClientOptions options;
   options.asynchronous = true;
   options.cpu_device_count = 1;
-  TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
+  CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
       device_type, xla::GetXlaPjrtCpuClient(options).value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
 

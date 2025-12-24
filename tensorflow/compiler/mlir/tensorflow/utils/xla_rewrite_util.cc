@@ -83,8 +83,8 @@ int MovePreservedParallelExecuteChildren(
   // `num_moved_children` is the number of children that will be preserved.
   const size_t num_moved_children =
       old_parallel_execute.getRegions().size() - 1;
-  *new_parallel_execute = builder->create<mlir::tf_device::ParallelExecuteOp>(
-      old_parallel_execute->getLoc(),
+  *new_parallel_execute = mlir::tf_device::ParallelExecuteOp::create(
+      *builder, old_parallel_execute->getLoc(),
       num_moved_children + num_cores_per_replica, concatenated_output_types);
 
   // `cluster_idx` is the index of the child with the `ClusterFuncOp`, which
@@ -118,12 +118,12 @@ mlir::tf_device::LaunchOp WrapOpInLaunch(mlir::OpBuilder* builder,
                                          llvm::StringRef device) {
   mlir::OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
 
-  auto launch = builder->create<mlir::tf_device::LaunchOp>(
-      loc, builder->getStringAttr(device), op->getResultTypes());
+  auto launch = mlir::tf_device::LaunchOp::create(
+      *builder, loc, builder->getStringAttr(device), op->getResultTypes());
   launch.getBody().push_back(new mlir::Block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
-  builder->create<mlir::tf_device::ReturnOp>(loc, op->getResults());
+  mlir::tf_device::ReturnOp::create(*builder, loc, op->getResults());
 
   // Move op inside cluster.
   op->moveBefore(launch.GetBody().getTerminator());

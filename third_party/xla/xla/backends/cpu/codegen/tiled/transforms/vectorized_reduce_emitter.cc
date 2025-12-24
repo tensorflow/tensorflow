@@ -73,7 +73,7 @@ static void InsertValue(mlir::OpBuilder& builder, mlir::Location loc,
   llvm::SmallVector<mlir::Value> padded_indices(indices);
   while (padded_indices.size() < buffer.getType().getRank()) {
     padded_indices.push_back(
-        builder.create<mlir::arith::ConstantIndexOp>(loc, 0));
+        mlir::arith::ConstantIndexOp::create(builder, loc, 0));
   }
 
   if (mlir::isa<mlir::VectorType>(value.getType())) {
@@ -105,14 +105,14 @@ static std::array<llvm::SmallVector<mlir::Value>, 3> GetLoopBounds(
     llvm::ArrayRef<int64_t> upper_bounds, int64_t lower_bound = 0) {
   llvm::SmallVector<mlir::Value> lbs(
       upper_bounds.size(),
-      builder.create<mlir::arith::ConstantIndexOp>(loc, lower_bound));
+      mlir::arith::ConstantIndexOp::create(builder, loc, lower_bound));
   llvm::SmallVector<mlir::Value> ubs =
       llvm::map_to_vector(upper_bounds, [&](int64_t size) -> mlir::Value {
-        return builder.create<mlir::arith::ConstantIndexOp>(loc, size);
+        return mlir::arith::ConstantIndexOp::create(builder, loc, size);
       });
   llvm::SmallVector<mlir::Value> step(
       upper_bounds.size(),
-      builder.create<mlir::arith::ConstantIndexOp>(loc, 1));
+      mlir::arith::ConstantIndexOp::create(builder, loc, 1));
   return {lbs, ubs, step};
 }
 

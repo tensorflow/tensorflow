@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -85,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace {
@@ -323,7 +323,7 @@ absl::Status SetOutputForConstant(
     }
     ctx->op_device_context()->CopyCPUTensorToDevice(
         &const_tensor, device, output_tensor,
-        [&](absl::Status status) { TF_CHECK_OK(status); });
+        [&](absl::Status status) { CHECK_OK(status); });
 
     if (device->device_type() == DEVICE_GPU) {
       // The GPUDeviceContext enqueues the host->device transfer in a
@@ -562,7 +562,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
-  TF_CHECK_OK(CreateVariableInfoLookup(variable_args, variable_info_lookup));
+  CHECK_OK(CreateVariableInfoLookup(variable_args, variable_info_lookup));
   for (int64_t input_num = 0; input_num < inputs.size(); ++input_num) {
     const Tensor* input = inputs[input_num];
     XlaCompiler::Argument& arg = out.emplace_back();

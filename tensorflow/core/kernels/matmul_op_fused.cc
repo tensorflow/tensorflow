@@ -199,7 +199,7 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
 namespace {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
+absl::StatusOr<stream_executor::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
     return se::gpu::BlasLt::Epilogue::kBias;
@@ -235,7 +235,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
       // scratch space is deallocated between runs.
       BlasScratchAllocator scratch_allocator(context);
 
-      Status cublaslt_launch =
+      absl::Status cublaslt_launch =
           launch_func(scratch_allocator, i, &profile_result);
 
       VLOG(4) << "  Autotune algorithm " << i
@@ -265,7 +265,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
 #endif
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
+absl::StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -292,10 +292,10 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
 
     TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     se::dnn::ProfileResult profile_result;
-    Status cudnn_launch_status =
+    absl::Status cudnn_launch_status =
         actually_do_autotune
             ? launch_func(allocator_used, runner, &profile_result)
-            : OkStatus();
+            : absl::OkStatus();
     if (!actually_do_autotune) {
       // Make the result valid according to `is_valid`.
       profile_result.set_algorithm(desc);
@@ -329,7 +329,7 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
 }
 
 struct FusedMatmulAutotuneGroup {
-  static string name() { return "FusedMatmul"; }
+  static std::string name() { return "FusedMatmul"; }
 };
 
 typedef AutotuneSingleton<FusedMatmulAutotuneGroup, MatmulParameters,
@@ -337,7 +337,8 @@ typedef AutotuneSingleton<FusedMatmulAutotuneGroup, MatmulParameters,
     FusedMatmulAutotuneMap;
 
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedMatmulOp>>
+AutotuneFusedMatmul(
     bool cudnn_use_autotune,
     AutotuneMap<MatmulParameters, AutotuneEntry<se::dnn::FusedMatmulOp>>*
         autotune_map,
@@ -350,7 +351,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
   AutotuneEntry<se::dnn::FusedMatmulOp> autotune_entry;
   auto* stream = ctx->op_device_context()->stream();
   if (!autotune_map->Find(params, &autotune_entry)) {
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
@@ -371,7 +372,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedMatmulRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, a_ptr, b_ptr, bias_ptr,
@@ -562,8 +563,9 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       auto runner_and_scratch = std::move(runner_and_scratch_or).value();
       auto& runner =
           *std::get<const se::dnn::FusedMatmulRunner*>(runner_and_scratch);
-      Status cudnn_launch_status = runner(
-          stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
+      absl::Status cudnn_launch_status = runner(
+          stream, nullptr,
+          std::get<stream_executor::DeviceAddressBase>(runner_and_scratch),
           a_ptr, b_ptr, bias_ptr, c_ptr);
       OP_REQUIRES_OK(context, cudnn_launch_status);
       return;

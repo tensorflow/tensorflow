@@ -75,7 +75,7 @@ Value BuildIntArrayConstOp(ImplicitLocOpBuilder& builder,
     }
     const_value_raw = rewriter.getI32TensorAttr(const_i32_vec);
   }
-  Value result_const = builder.create<ConstOpT>(const_value_raw);
+  Value result_const = ConstOpT::create(builder, const_value_raw);
   return result_const;
 }
 

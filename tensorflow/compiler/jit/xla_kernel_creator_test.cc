@@ -15,16 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_properties.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -63,7 +70,7 @@ class XlaKernelCreatorTest : public ::testing::Test {
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 1});
     std::vector<std::unique_ptr<Device>> devices;
-    TF_CHECK_OK(DeviceFactory::AddDevices(
+    CHECK_OK(DeviceFactory::AddDevices(
         options, "/job:localhost/replica:0/task:0", &devices));
 
     FunctionDefLibrary proto;

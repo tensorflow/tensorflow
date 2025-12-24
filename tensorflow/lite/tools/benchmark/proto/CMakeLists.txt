@@ -17,8 +17,8 @@ find_package(Protobuf REQUIRED)
 add_library(benchmark_result_proto benchmark_result.proto)
 
 list(APPEND benchmark_result_generated_files
-    ${CMAKE_BINARY_DIR}/tflite/tools/benchmark/proto/benchmark_result.pb.cc
-    ${CMAKE_BINARY_DIR}/tflite/tools/benchmark/proto/benchmark_result.pb.h)
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.cc
+    ${CMAKE_BINARY_DIR}/tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h)
 
 # Generate benchmark_result.pb.cc and benchmark_result.pb.h from
 # benchmark_result.proto using protoc. Once the protobuf package version is
@@ -26,7 +26,7 @@ list(APPEND benchmark_result_generated_files
 add_custom_command(
     OUTPUT ${benchmark_result_generated_files}
     COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/../../../.. tflite/tools/benchmark/proto/benchmark_result.proto
+    ARGS --cpp_out=${CMAKE_BINARY_DIR} --proto_path=${TENSORFLOW_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_result.proto
     DEPENDS ${Protobuf_PROTOC_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_result.proto
 )
 

@@ -84,7 +84,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
 
     auto byte_strides = ShapeUtil::ByteStrides(src_shape_);
     CHECK(byte_strides.has_value());
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    options.input_striding = TransposePlan::Striding{*byte_strides};
 
     absl::InlinedVector<int64_t, 4> permutation(options.dims.size());
     absl::c_reverse_copy(dst_shape_.layout().minor_to_major(),

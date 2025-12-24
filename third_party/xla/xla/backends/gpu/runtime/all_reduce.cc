@@ -217,6 +217,7 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 ReductionKind reduction_kind,
                                 AllReduceStrategy all_reduce_strategy) {
   if (!IsElementReductionSupported(element_type, reduction_kind)) {
+    VLOG(3) << "Element type and reduction kind combination is not supported.";
     return false;
   }
   const int64_t alignment_requirement =
@@ -226,6 +227,8 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
           : se::gpu::kNumElementsPerThread * num_ranks;
 
   if (num_elements % alignment_requirement != 0) {
+    VLOG(3)
+        << "Number of elements is not aligned to the alignment requirement.";
     return false;
   }
 

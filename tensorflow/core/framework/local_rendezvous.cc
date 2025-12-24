@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/logging.h"
 #include "tensorflow/core/activity_watcher/activity.h"
@@ -404,8 +405,13 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     mutex_lock l(mu_);
     status_.Update(status);
   }
-  LOG_EVERY_POW_2(INFO) << "Local rendezvous is aborting with status: "
-                        << status;
+
+  // OUT_OF_RANGE implies a normal end of sequence (e.g. for tf.data),
+  // so we suppress the warning to avoid log noise.
+  if (status.code() != absl::StatusCode::kOutOfRange) {
+    LOG_EVERY_POW_2(WARNING)
+        << "Local rendezvous is aborting with status: " << status;
+  }
 
   // Keeps one Item to make sure the current rendezvous won't be destructed.
   std::unique_ptr<Item> to_delete;

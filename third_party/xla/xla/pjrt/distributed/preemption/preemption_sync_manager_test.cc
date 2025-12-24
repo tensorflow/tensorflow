@@ -38,12 +38,12 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 namespace {
 using tensorflow::CoordinatedJob;
 using tensorflow::CoordinatedTask;
-using tensorflow::CoordinationServiceConfig;
 
 constexpr char kJobName[] = "test_worker";
 
@@ -144,13 +144,12 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
   std::unique_ptr<CoordinationService> EnableCoordinationService() {
-    CoordinationServiceConfig config;
-    config.set_service_type("standalone");
-    CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
-    job->set_name(kJobName);
-    job->set_num_tasks(2);
-    return CoordinationService::Create(tsl::Env::Default(), config,
-                                       /*cache=*/nullptr);
+    CoordinationService::Config config;
+    CoordinatedJob job;
+    job.set_name(kJobName);
+    job.set_num_tasks(2);
+    config.coordinated_job_list.push_back(job);
+    return std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
   void InitializeAndConnectCoordinationAgents() {
     std::unique_ptr<CoordinationClient> coord_client =
@@ -162,14 +161,18 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     auto error_fn = [](const absl::Status& status) {
       LOG(ERROR) << "Coordination service agent in error status: " << status;
     };
-    CoordinationServiceConfig coord_config;
-    coord_config.set_service_leader("test_leader");
-    CHECK_OK(coord_agent_->Initialize(tsl::Env::Default(), kJobName,
-                                      /*task_id=*/0, coord_config,
-                                      std::move(coord_client), error_fn));
-    CHECK_OK(coord_agent2_->Initialize(tsl::Env::Default(), kJobName,
-                                       /*task_id=*/1, coord_config,
-                                       std::move(coord_client2), error_fn));
+    CoordinationServiceAgent::Config coord_config;
+    coord_config.service_leader = "test_leader";
+    coord_agent_ =
+        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+                                         /*task_id=*/0, coord_config,
+                                         std::move(coord_client), error_fn)
+            .value();
+    coord_agent2_ =
+        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+                                         /*task_id=*/1, coord_config,
+                                         std::move(coord_client2), error_fn)
+            .value();
     CHECK_OK(coord_agent_->Connect());
     CHECK_OK(coord_agent2_->Connect());
   }
@@ -181,12 +184,10 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
   // Owned by task 1.
-  std::unique_ptr<CoordinationServiceAgent> coord_agent_ =
-      CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationServiceAgent> coord_agent_;
   FakePreemptionNotifier* preempt_notifier_;
   // Owned by task 2.
-  std::unique_ptr<CoordinationServiceAgent> coord_agent2_ =
-      CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationServiceAgent> coord_agent2_;
   FakePreemptionNotifier* preempt_notifier2_;
 };
 

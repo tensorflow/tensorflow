@@ -21,33 +21,50 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/jit/device_compilation_profiler.h"
 #include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -93,11 +110,11 @@ class PjRtExecutionUtilTest : public OpsTestBase {
     xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 1;
-    TF_CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
+    CHECK_OK(SetPjRtClientInTFGlobalResourceManager(
         device_type, xla::GetXlaPjrtCpuClient(options).value()));
 
     // device_context_ should be a PjRtDeviceContext.
-    TF_CHECK_OK(device_->TryGetDeviceContext(&device_context_));
+    CHECK_OK(device_->TryGetDeviceContext(&device_context_));
 
     // Get the host allocator.
     AllocatorAttributes host_alloc_attr;
@@ -111,7 +128,7 @@ class PjRtExecutionUtilTest : public OpsTestBase {
 
     // Create the DeviceCompiler to help with compiling executables.
     auto pjrt_client_or = GetOrCreatePjRtClient(device_type_);
-    TF_CHECK_OK(pjrt_client_or.status());
+    CHECK_OK(pjrt_client_or.status());
     pjrt_client_ = pjrt_client_or.value();
     device_compiler_ = new PjRtDeviceCompiler(
         std::make_unique<PjRtDeviceExecutablePersistor>(

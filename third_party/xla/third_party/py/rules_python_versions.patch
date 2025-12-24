@@ -1,8 +1,60 @@
 diff --git a/python/versions.bzl b/python/versions.bzl
-index 30929f82..8e79225a 100644
+index 30929f82..c0856d70 100644
 --- a/python/versions.bzl
 +++ b/python/versions.bzl
-@@ -855,6 +855,51 @@ TOOL_VERSIONS = {
+@@ -810,6 +810,51 @@ TOOL_VERSIONS = {
+             "x86_64-unknown-linux-gnu-freethreaded": "python/install",
+         },
+     },
++    "3.13.11": {
++        "url": "20251209/cpython-{python_version}+20251209-{platform}-{build}.{ext}",
++        "sha256": {
++            "aarch64-apple-darwin": "295a9f7bc899ea1cc08baf60bbf511bdd1e4a29b2dd7e5f59b48f18bfa6bf585",
++            "aarch64-unknown-linux-gnu": "ea1e678e6e82301bb32bf3917732125949b6e46d541504465972024a3f165343",
++            "ppc64le-unknown-linux-gnu": "7660e53aad9d35ee256913c6d98427f81f078699962035c5fa8b5c3138695109",
++            "riscv64-unknown-linux-gnu": "763fa1548e6a432e9402916e690c74ea30f26dcd2e131893dd506f72b87c27c9",
++            "s390x-unknown-linux-gnu": "ffb6af51fbfabfc6fbc4e7379bdec70c2f51e972b1d2f45c053493b9da3a1bbe",
++            "x86_64-apple-darwin": "dac4a0a0a9b71f6b02a8b0886547fa22814474239bffb948e3e77185406ea136",
++            "x86_64-pc-windows-msvc": "87822417007045a28a7eccc47fe67b8c61265b99b10dbbfa24d231a3622b1c27",
++            "aarch64-pc-windows-msvc": "ba646d0c3b7dd7bdfb770d9b2ebd6cd2df02a37fda90c9c79a7cf59c7df6f165",
++            "aarch64-pc-windows-msvc-freethreaded": "6daf6d092c7294cfe68c4c7bf2698ac134235489c874b3bf796c7972b9dbba30",
++            "x86_64-unknown-linux-gnu": "1ffa06d714a44aea14c0c54c30656413e5955a6c92074b4b3cb4351dcc28b63b",
++            "x86_64-unknown-linux-musl": "969fe24017380b987c4e3ce15e9edf82a4618c1e61672b2cc9b021a1c98eae78",
++            "aarch64-apple-darwin-freethreaded": "4213058b7fcd875596c12b58cd46a399358b0a87ecde4b349cbdd00cf87ed79a",
++            "aarch64-unknown-linux-gnu-freethreaded": "290ca3bd0007db9e551f90b08dfcb6c1b2d62c33b2fc3e9a43e77d385d94f569",
++            "ppc64le-unknown-linux-gnu-freethreaded": "09d4b50f8abb443f7e3af858c920aa61c2430b0954df465e861caa7078e55e69",
++            "riscv64-unknown-linux-gnu-freethreaded": "5406f2a7cacafbd2aac3ce2de066a0929aab55423824276c36e04cb83babc36c",
++            "s390x-unknown-linux-gnu-freethreaded": "3984b67c4292892eaccdd1c094c7ec788884c4c9b3534ab6995f6be96d5ed51d",
++            "x86_64-apple-darwin-freethreaded": "d6f489464045d6895ae68b0a04a9e16477e74fe3185a75f3a9a0af8ccd25eade",
++            "x86_64-pc-windows-msvc-freethreaded": "bb9a29a7ba8f179273b79971da6aaa7be592d78c606a63f99eff3e4c12fb0fae",
++            "x86_64-unknown-linux-gnu-freethreaded": "33f89c957d986d525529b8a980103735776f4d20cf52f55960a057c760188ac3",
++        },
++        "strip_prefix": {
++            "aarch64-apple-darwin": "python",
++            "aarch64-unknown-linux-gnu": "python",
++            "ppc64le-unknown-linux-gnu": "python",
++            "s390x-unknown-linux-gnu": "python",
++            "riscv64-unknown-linux-gnu": "python",
++            "x86_64-apple-darwin": "python",
++            "x86_64-pc-windows-msvc": "python",
++            "aarch64-pc-windows-msvc": "python",
++            "x86_64-unknown-linux-gnu": "python",
++            "x86_64-unknown-linux-musl": "python",
++            "aarch64-apple-darwin-freethreaded": "python/install",
++            "aarch64-unknown-linux-gnu-freethreaded": "python/install",
++            "ppc64le-unknown-linux-gnu-freethreaded": "python/install",
++            "riscv64-unknown-linux-gnu-freethreaded": "python/install",
++            "s390x-unknown-linux-gnu-freethreaded": "python/install",
++            "x86_64-apple-darwin-freethreaded": "python/install",
++            "x86_64-pc-windows-msvc-freethreaded": "python/install",
++            "aarch64-pc-windows-msvc-freethreaded": "python/install",
++            "x86_64-unknown-linux-gnu-freethreaded": "python/install",
++        },
++    },
+     "3.14.0rc1": {
+         "url": "20250808/cpython-{python_version}+20250808-{platform}-{build}.{ext}",
+         "sha256": {
+@@ -855,6 +900,51 @@ TOOL_VERSIONS = {
              "x86_64-unknown-linux-gnu-freethreaded": "python/install",
          },
      },
@@ -54,16 +106,18 @@ index 30929f82..8e79225a 100644
  }
  
  # buildifier: disable=unsorted-dict-items
-@@ -865,7 +910,7 @@ MINOR_MAPPING = {
+@@ -864,8 +954,8 @@ MINOR_MAPPING = {
+     "3.10": "3.10.18",
      "3.11": "3.11.13",
      "3.12": "3.12.11",
-     "3.13": "3.13.6",
+-    "3.13": "3.13.6",
 -    "3.14": "3.14.0rc1",
++    "3.13": "3.13.11",
 +    "3.14": "3.14.0",
  }
  
  def _generate_platforms():
-@@ -1045,29 +1090,25 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+@@ -1045,29 +1135,25 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
      for u in url:
          p, _, _ = platform.partition(FREETHREADED)
  

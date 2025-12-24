@@ -385,13 +385,13 @@ struct RewriteTensorInsert : OpRewritePattern<InsertOp> {
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto tensor_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     auto new_insert =
-        b.create<InsertOp>(op.getScalar(), tensor_1D, linear_index);
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        tensor_type, new_insert.getResult());
+        InsertOp::create(b, op.getScalar(), tensor_1D, linear_index);
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, tensor_type, new_insert.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -411,13 +411,13 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
     auto indices = mv::getAsValues(rewriter, loc, op.getMixedPosition());
     auto linear_index = LinearizeIndex(loc, vector_type, indices, rewriter);
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto vector_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(vector_type), vector)
+    auto vector_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(vector_type), vector)
                          .getResult(0);
     auto new_insert =
-        b.create<mv::InsertOp>(op.getValueToStore(), vector_1D, linear_index);
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        vector_type, new_insert.getResult());
+        mv::InsertOp::create(b, op.getValueToStore(), vector_1D, linear_index);
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, vector_type, new_insert.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -435,10 +435,10 @@ struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
     }
     auto loc = op.getLoc();
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto new_from_elements = b.create<mv::FromElementsOp>(
-        GetFlattenedType(vector_type), op.getElements());
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        vector_type, new_from_elements.getResult());
+    auto new_from_elements = mv::FromElementsOp::create(
+        b, GetFlattenedType(vector_type), op.getElements());
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, vector_type, new_from_elements.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -458,14 +458,14 @@ struct RewriteAtomicRMW : OpRewritePattern<AtomicRMWOp> {
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto tensor_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
-    auto new_atomic_rmw = b.create<AtomicRMWOp>(tensor_1D, linear_index);
+    auto new_atomic_rmw = AtomicRMWOp::create(b, tensor_1D, linear_index);
     rewriter.inlineRegionBefore(op.getRegion(),
                                 &new_atomic_rmw.getRegion().front());
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        tensor_type, new_atomic_rmw.getResult());
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, tensor_type, new_atomic_rmw.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }

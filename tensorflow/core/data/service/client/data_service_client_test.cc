@@ -82,7 +82,7 @@ class TestDataServiceContext : public DataServiceContext {
   TestDataServiceContext() = default;
   ~TestDataServiceContext() override = default;
 
-  std::unique_ptr<Thread> StartThread(const string& name,
+  std::unique_ptr<Thread> StartThread(const std::string& name,
                                       std::function<void()> fn) override {
     return absl::WrapUnique(
         Env::Default()->StartThread({}, name, std::move(fn)));

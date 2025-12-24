@@ -36,26 +36,25 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-
-string EchoProgram() {
+std::string EchoProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_echo");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
-string EchoArgv1Program() {
+std::string EchoArgv1Program() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_echo_argv_1");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
-string NoopProgram() {
+std::string NoopProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_noop");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
-string StdErrProgram() {
+std::string StdErrProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_stderr");
   return tsl::io::AppendDotExeIfWindows(path);
@@ -77,7 +76,7 @@ TEST_F(SubProcessTest, NoOutput) {
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  string out, err;
+  std::string out, err;
   int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
@@ -94,7 +93,7 @@ TEST_F(SubProcessTest, Stdout) {
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  string out, err;
+  std::string out, err;
   int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
@@ -124,7 +123,7 @@ TEST_F(SubProcessTest, Stderr) {
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  string out, err;
+  std::string out, err;
   int status = proc.Communicate(nullptr, &out, &err);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_NE(0, WEXITSTATUS(status));
@@ -151,7 +150,7 @@ TEST_F(SubProcessTest, Stdin) {
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  string in = "foobar\nbarfoo\nhaha\n";
+  std::string in = "foobar\nbarfoo\nhaha\n";
   int status = proc.Communicate(&in, nullptr, nullptr);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
@@ -164,8 +163,8 @@ TEST_F(SubProcessTest, StdinStdout) {
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
-  string in = "foobar\nbarfoo\nhaha\n";
-  string out;
+  std::string in = "foobar\nbarfoo\nhaha\n";
+  std::string out;
   int status = proc.Communicate(&in, &out, nullptr);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));
@@ -182,7 +181,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 
   // Verify that the parent handles the child exiting immediately as the
   // parent is trying to write a large string to the child's stdin.
-  string in;
+  std::string in;
   in.reserve(1000000);
   for (int i = 0; i < 100000; i++) {
     in += "hello xyz\n";
@@ -202,13 +201,13 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 
   // Verify that the parent handles multiplexed reading/writing to the child
   // process.  The string is large enough to exceed the buffering of the pipes.
-  string in;
+  std::string in;
   in.reserve(1000000);
   for (int i = 0; i < 100000; i++) {
     in += "hello xyz\n";
   }
 
-  string out;
+  std::string out;
   int status = proc.Communicate(&in, &out, nullptr);
   EXPECT_TRUE(WIFEXITED(status));
   EXPECT_EQ(0, WEXITSTATUS(status));

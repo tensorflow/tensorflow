@@ -89,8 +89,8 @@ void ConvertQuantizedOpToFloat(mlir::func::FuncOp func, OpBuilder* builder) {
         auto dequantized_input_type =
             mlir::quant::QuantizedType::castToExpressedType(input_type);
         builder->setInsertionPoint(op);
-        auto dequantize_op = builder->create<TFL::DequantizeOp>(
-            op->getLoc(), dequantized_input_type, input.get());
+        auto dequantize_op = TFL::DequantizeOp::create(
+            *builder, op->getLoc(), dequantized_input_type, input.get());
         dequantized_inputs.push_back(dequantize_op);
       } else {
         dequantized_inputs.push_back(input.get());
@@ -126,8 +126,9 @@ void ConvertQuantizedOpToFloat(mlir::func::FuncOp func, OpBuilder* builder) {
       Value new_result = new_op->getResult(i);
       if (IsQI8Type(result_type) || IsQUI8Type(result_type)) {
         builder->setInsertionPoint(op);
-        TFL::QuantizeOp quant_op = builder->create<TFL::QuantizeOp>(
-            op->getLoc(), result_type, new_result, TypeAttr::get(result_type));
+        TFL::QuantizeOp quant_op =
+            TFL::QuantizeOp::create(*builder, op->getLoc(), result_type,
+                                    new_result, TypeAttr::get(result_type));
         new_result = quant_op.getResult();
       }
 

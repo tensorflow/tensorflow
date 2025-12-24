@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -131,7 +129,7 @@ ENTRY AddDotsFunc {
     return ParseAndReturnVerifiedModule(hlo_text, config);
   };
 
-  se::StreamExecutorMemoryAllocator allocator(
+  stream_executor::StreamExecutorAddressAllocator allocator(
       backend().default_stream_executor());
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> optimized_module,
@@ -586,10 +584,9 @@ ENTRY AddDotsFunc {
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[3,2,5], {{.*}}: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,5]{2,1,0} parameter(0)
+; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} fusion([[P0]])
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
-; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} transpose([[P0]])
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[FUSION]], [[P1]]),
-; CHECK:           custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
+; CHECK:         {{[^ ]+}} = {{.*}} custom-call([[FUSION]], [[P1]]), custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
 ; CHECK-DAG:         "alpha_imag":0
@@ -1275,7 +1272,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1299,7 +1298,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1323,7 +1324,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -1344,7 +1347,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1368,7 +1373,9 @@ ENTRY test {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1396,7 +1403,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1424,7 +1433,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1454,7 +1465,9 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  GemmRewriter pass(Capability(), GetToolkitVersion());
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
@@ -1476,8 +1489,9 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                             GetOptimizedModule(hlo));
     if (allocator_ == nullptr) {
-      allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-          backend().default_stream_executor());
+      allocator_ =
+          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+              backend().default_stream_executor());
     }
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
@@ -1546,8 +1560,7 @@ ENTRY DotFunc {
 ; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[3,3], {{.*}}: f32[3,3]) -> f32[3,3] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,3]{1,0} parameter(1)
-; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} dot([[P0]], [[P1]]),
-; CHECK:           lhs_contracting_dims={1}, rhs_contracting_dims={0}
+; CHECK-NEXT:    ROOT {{[^ ]+}} = f32[3,3]{1,0} fusion([[P0]], [[P1]]), kind=kLoop
 )");
 }
 

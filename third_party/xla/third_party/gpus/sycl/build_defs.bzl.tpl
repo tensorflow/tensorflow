@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Macros for building SYCL code.
 def if_sycl(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with SYCL.
@@ -40,7 +42,7 @@ def if_sycl_build_is_configured(x, y):
 
 def sycl_library(copts = [], linkopts = [], tags = [], deps = [], **kwargs):
     """Wrapper over cc_library which adds default SYCL options."""
-    native.cc_library(copts = sycl_default_copts() + copts,
+    cc_library(copts = sycl_default_copts() + copts,
                       linkopts = sycl_default_linkopts() + linkopts,
                       tags = tags + ["gpu"],
                       deps = deps + if_sycl_is_configured([

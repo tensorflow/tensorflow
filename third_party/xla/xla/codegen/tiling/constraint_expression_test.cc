@@ -16,19 +16,21 @@ limitations under the License.
 #include "xla/codegen/tiling/constraint_expression.h"
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ExplainMatchResult;
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 using Constraint = ConstraintExpression::Constraint;
 
@@ -94,6 +96,34 @@ TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
       (GetConstraint("d1", 3, 4) && GetConstraint("d0", 1, 2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "d0 in [1, 2] && d1 in [3, 4] || d2 in [5, 6]"));
+}
+
+TEST_F(ConstraintExpressionTest, PrintUnsatisfiedConstraints) {
+  Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
+  Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
+  Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
+  ConstraintExpression constraints = (c0 && c1) || (c1 && c2);
+
+  // (c0 && c1) is satisfied.
+  std::vector<int64_t> lhs_satisfied({6, 8});
+  ASSERT_TRUE(constraints.IsSatisfiedBy(lhs_satisfied));
+  std::stringstream ss;
+  constraints.PrintUnsatisfiedConstraints(lhs_satisfied, ss);
+
+  EXPECT_THAT(ss.str(), HasSubstr("Unsatisfied conjunction: #1"));
+  EXPECT_THAT(ss.str(), HasSubstr("d0 mod 13 in [0, 0]. Value: 6"));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("d1 mod 8 in [0, 0]")));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("d0 mod 6 in [0, 0]")));
+
+  // (c1 && c2) is satisfied.
+  std::vector<int64_t> rhs_satisfied({13, 8});
+  ASSERT_TRUE(constraints.IsSatisfiedBy(rhs_satisfied));
+  ss.str("");
+  constraints.PrintUnsatisfiedConstraints(rhs_satisfied, ss);
+  EXPECT_THAT(ss.str(), HasSubstr("Unsatisfied conjunction: #0"));
+  EXPECT_THAT(ss.str(), HasSubstr("d0 mod 6 in [0, 0]. Value: 1"));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("d0 mod 13 in [0, 0]")));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("d1 mod 8 in [0, 0]")));
 }
 
 TEST_F(ConstraintExpressionTest,

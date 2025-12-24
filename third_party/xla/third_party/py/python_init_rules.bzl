@@ -1,6 +1,5 @@
 """Hermetic Python initialization. Consult the WORKSPACE on how to use it."""
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def python_init_rules(extra_patches = []):
@@ -11,15 +10,14 @@ def python_init_rules(extra_patches = []):
         set of patches.
     """
 
-    http_archive(
+    tf_http_archive(
         name = "rules_cc",
-        urls = ["https://github.com/bazelbuild/rules_cc/archive/refs/tags/0.1.0.tar.gz"],
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/archive/refs/tags/0.1.0.tar.gz"),
         strip_prefix = "rules_cc-0.1.0",
         sha256 = "4b12149a041ddfb8306a8fd0e904e39d673552ce82e4296e96fac9cbf0780e59",
-        patches = [
-            Label("//third_party/py:rules_cc_protobuf.patch"),
+        patch_file = [
+            "@local_xla//third_party/py:rules_cc_protobuf.patch",
         ],
-        patch_args = ["-p1"],
     )
 
     tf_http_archive(
@@ -34,15 +32,14 @@ def python_init_rules(extra_patches = []):
         },
     )
 
-    http_archive(
+    tf_http_archive(
         name = "rules_python",
         sha256 = "fa7dd2c6b7d63b3585028dd8a90a6cf9db83c33b250959c2ee7b583a6c130e12",
         strip_prefix = "rules_python-1.6.0",
-        url = "https://github.com/bazelbuild/rules_python/releases/download/1.6.0/rules_python-1.6.0.tar.gz",
-        patch_args = ["-p1"],
-        patches = [
-            Label("//third_party/py:rules_python_pip_version.patch"),
-            Label("//third_party/py:rules_python_freethreaded.patch"),
-            Label("//third_party/py:rules_python_versions.patch"),
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/1.6.0/rules_python-1.6.0.tar.gz"),
+        patch_file = [
+            "@local_xla//third_party/py:rules_python_pip_version.patch",
+            "@local_xla//third_party/py:rules_python_freethreaded.patch",
+            "@local_xla//third_party/py:rules_python_versions.patch",
         ] + extra_patches,
     )

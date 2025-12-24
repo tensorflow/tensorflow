@@ -102,13 +102,13 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
 
     ApiConverter::ToC(arg.shape(), &se_args[i]->shape_tree.shape);
     auto* arg_buffers = arg.MutableBuffers();
-    absl::InlinedVector<SE_MaybeOwningDeviceMemory, 2> se_buffers;
+    absl::InlinedVector<SE_MaybeOwningDeviceAddress, 2> se_buffers;
     for (auto& pair : *arg_buffers) {
       bool aliased = arg.unowned_indices().count(pair.first) > 0;
       se_buffers.push_back(ApiConverter::ToC(pair.second, aliased));
     }
     se_args[i]->shape_tree.buffers =
-        new SE_MaybeOwningDeviceMemory[se_buffers.size()];
+        new SE_MaybeOwningDeviceAddress[se_buffers.size()];
     for (int j = 0; j < se_buffers.size(); ++j) {
       se_args[i]->shape_tree.buffers[j] = se_buffers[j];
     }
@@ -166,7 +166,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutable::ExecuteAsyncOnStream(
             .Release()
             .value());
   }
-  ExecutorApiFn()->TpuExecutable_FreeMaybeOwningDeviceMemoryArrayFn(
+  ExecutorApiFn()->TpuExecutable_FreeMaybeOwningDeviceAddressArrayFn(
       se_execution_output.to_be_released);
 
   return output;

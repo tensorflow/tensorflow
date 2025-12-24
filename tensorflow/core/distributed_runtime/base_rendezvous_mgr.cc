@@ -257,9 +257,10 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
   AllocationAttributes allocation_attr;
-  uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+  uint64_t safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
   bool sync_dst_compute = (safe_alloc_frontier == 0);
-  std::function<uint64()> freed_by_func = [dst_device, &safe_alloc_frontier]() {
+  std::function<uint64_t()> freed_by_func = [dst_device,
+                                             &safe_alloc_frontier]() {
     safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
     return safe_alloc_frontier;
   };

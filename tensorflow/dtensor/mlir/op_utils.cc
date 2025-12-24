@@ -116,8 +116,8 @@ mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
 
       // Replace DTensorLayout op with identity op.
       mlir::OpBuilder builder(input_layout_op);
-      auto new_identity = builder.create<mlir::TF::IdentityOp>(
-          input_layout_op->getLoc(), input_layout_op.getType(),
+      auto new_identity = mlir::TF::IdentityOp::create(
+          builder, input_layout_op->getLoc(), input_layout_op.getType(),
           input_layout_op.getInput());
       input_layout_op.getOutput().replaceAllUsesWith(new_identity.getOutput());
       input_layout_op.erase();

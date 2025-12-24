@@ -74,9 +74,11 @@ bool IsSupportedRfftOp(mhlo::FftOp fft_op) {
 // concatenate with other dimension sizes.
 Value GetDimensionSizeTensor(OpBuilder& rewriter, Location loc, Value input,
                              int64_t dim) {
-  auto size_scalar = rewriter.create<mhlo::GetDimensionSizeOp>(loc, input, dim);
-  return rewriter.create<mhlo::ReshapeOp>(
-      loc, RankedTensorType::get({1}, rewriter.getI32Type()), size_scalar);
+  auto size_scalar =
+      mhlo::GetDimensionSizeOp::create(rewriter, loc, input, dim);
+  return mhlo::ReshapeOp::create(
+      rewriter, loc, RankedTensorType::get({1}, rewriter.getI32Type()),
+      size_scalar);
 }
 
 // Convert rfft to rfft2d.
@@ -154,13 +156,13 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
           expanded_input_shape_values.push_back(GetDimensionSizeTensor(
               rewriter, fft_op.getLoc(), fft_operand, i));
         }
-        expanded_input_shape_values.push_back(rewriter.create<mhlo::ConstantOp>(
-            fft_op.getLoc(), rewriter.getI32TensorAttr({1})));
+        expanded_input_shape_values.push_back(mhlo::ConstantOp::create(
+            rewriter, fft_op.getLoc(), rewriter.getI32TensorAttr({1})));
         expanded_input_shape_values.push_back(GetDimensionSizeTensor(
             rewriter, fft_op.getLoc(), fft_operand, input_shape.size() - 1));
 
-        auto expanded_input_shape_tensor = rewriter.create<mhlo::ConcatenateOp>(
-            fft_op.getLoc(),
+        auto expanded_input_shape_tensor = mhlo::ConcatenateOp::create(
+            rewriter, fft_op.getLoc(),
             RankedTensorType::get(
                 {static_cast<int64_t>(expanded_input_shape_values.size())},
                 rewriter.getI32Type()),
@@ -168,12 +170,12 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
 
         // Create a new mhlo.dynamic_reshape op with the expanded input and
         // expanded input shape. SHAPE tensor is created in the previous step.
-        fft_operand = rewriter.create<mhlo::DynamicReshapeOp>(
-            fft_op.getLoc(), expanded_input_type, fft_operand,
+        fft_operand = mhlo::DynamicReshapeOp::create(
+            rewriter, fft_op.getLoc(), expanded_input_type, fft_operand,
             expanded_input_shape_tensor);
       } else {
-        fft_operand = rewriter.create<mhlo::ReshapeOp>(
-            fft_op.getLoc(), expanded_input_type, fft_operand);
+        fft_operand = mhlo::ReshapeOp::create(rewriter, fft_op.getLoc(),
+                                              expanded_input_type, fft_operand);
       }
 
       SmallVector<int64_t, 6> new_output_shape = {output_shape.begin(),
@@ -186,8 +188,8 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
     }
 
     auto new_fft =
-        rewriter.create<mhlo::FftOp>(fft_op.getLoc(), output_type, fft_operand,
-                                     fft_op.getFftType(), new_fft_lengths_attr);
+        mhlo::FftOp::create(rewriter, fft_op.getLoc(), output_type, fft_operand,
+                            fft_op.getFftType(), new_fft_lengths_attr);
 
     if (input_shape[input_shape.size() - 2] != 1) {
       // Squeeze the output dimensions back to 2D.
@@ -202,19 +204,20 @@ class ConvertNDFftTo2DFftOp : public OpRewritePattern<mhlo::FftOp> {
             rewriter, fft_op.getLoc(), new_fft.getResult(),
             new_fft.getResult().getType().getShape().size() - 1));
 
-        auto shape_tensor = rewriter.create<mhlo::ConcatenateOp>(
-            fft_op.getLoc(),
+        auto shape_tensor = mhlo::ConcatenateOp::create(
+            rewriter, fft_op.getLoc(),
             RankedTensorType::get(
                 {static_cast<int64_t>(output_shape_values.size())},
                 rewriter.getI32Type()),
             output_shape_values, 0);
-        auto squeeze_op = rewriter.create<mhlo::DynamicReshapeOp>(
-            fft_op.getLoc(), fft_op.getResult().getType(), new_fft.getResult(),
-            shape_tensor);
+        auto squeeze_op = mhlo::DynamicReshapeOp::create(
+            rewriter, fft_op.getLoc(), fft_op.getResult().getType(),
+            new_fft.getResult(), shape_tensor);
         rewriter.replaceOp(fft_op, squeeze_op.getResult());
       } else {
-        auto squeeze_op = rewriter.create<mhlo::ReshapeOp>(
-            fft_op.getLoc(), fft_op.getResult().getType(), new_fft.getResult());
+        auto squeeze_op = mhlo::ReshapeOp::create(rewriter, fft_op.getLoc(),
+                                                  fft_op.getResult().getType(),
+                                                  new_fft.getResult());
         rewriter.replaceOp(fft_op, squeeze_op.getResult());
       }
     } else {
@@ -256,9 +259,10 @@ class LegalizeRfftOp : public OpConversionPattern<mhlo::FftOp> {
 
     auto output_type = mlir::cast<ShapedType>(fft_op.getResult().getType());
     auto fft_len_const =
-        rewriter.create<arith::ConstantOp>(fft_op.getLoc(), fft_len_f32_attr);
-    auto tfl_rfft2d = rewriter.create<TFL::RFFT2dOp>(
-        fft_op.getLoc(), output_type, fft_op.getOperand(), fft_len_const);
+        arith::ConstantOp::create(rewriter, fft_op.getLoc(), fft_len_f32_attr);
+    auto tfl_rfft2d =
+        TFL::RFFT2dOp::create(rewriter, fft_op.getLoc(), output_type,
+                              fft_op.getOperand(), fft_len_const);
 
     rewriter.replaceOp(fft_op, tfl_rfft2d.getResult());
 

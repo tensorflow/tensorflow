@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "Eigen/Core"
 #include "rocm/include/hip/library_types.h"
 #include "rocm/include/hipblas/hipblas.h"
 #include "rocm/include/hipblaslt/hipblaslt.h"
@@ -55,7 +54,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/ml_dtypes.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -326,10 +324,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type,
-                        gpu::GetBlasComputationType(
-                            cfg.precision_algorithm, lhs_layout.dtype,
-                            output_layout.dtype, cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(
+        compute_type,
+        gpu::GetBlasComputationType(
+            cfg.precision_algorithm, lhs_layout.dtype, output_layout.dtype,
+            cfg.compute_precision,
+            parent_->GetDeviceDescription().gpu_compute_capability()));
   }
 
   if (lhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {

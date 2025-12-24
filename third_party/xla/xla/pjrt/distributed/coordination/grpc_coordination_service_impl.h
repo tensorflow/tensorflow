@@ -85,13 +85,9 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
                        /*supports_cancel=*/false);                            \
   }
   HANDLER(RegisterTask);
-  HANDLER(WaitForAllTasks);
   HANDLER(ShutdownTask);
   HANDLER(ResetTask);
   HANDLER(Heartbeat);
-  HANDLER(ReportErrorToTask);
-  HANDLER(ReportErrorToService);
-  HANDLER(GetTaskState);
   HANDLER(WatchJobState);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);

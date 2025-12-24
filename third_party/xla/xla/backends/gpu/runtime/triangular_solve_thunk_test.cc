@@ -48,15 +48,24 @@ TEST(TriangularSolveThunkTest, ProtoRoundTrip) {
             unit_diagonal: false
             transpose_a: TRANSPOSE
           }
-          a_buffer { offset: 0 size: 256 buffer_allocation_index: 0 }
-          b_buffer { offset: 0 size: 256 buffer_allocation_index: 1 }
-          temp_buffer { offset: 0 size: 128 buffer_allocation_index: 2 }
-          type: F32
-          batch_size: 1
-          m: 32
-          n: 32
-          a_batch_stride: 0
-          b_batch_stride: 1
+          a_buffer {
+            slice { offset: 0 size: 256 buffer_allocation_index: 0 }
+            shape {}
+          }
+          b_buffer {
+            slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+            shape {
+              element_type: F32
+              dimensions: 32
+              dimensions: 32
+              is_dynamic_dimension: false
+              is_dynamic_dimension: false
+            }
+          }
+          temp_buffer {
+            slice { offset: 0 size: 128 buffer_allocation_index: 2 }
+            shape {}
+          }
         }
       )pb",
       &proto));

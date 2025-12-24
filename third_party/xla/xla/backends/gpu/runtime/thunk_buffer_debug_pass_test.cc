@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -58,6 +59,7 @@ namespace {
 
 using testing::ElementsAre;
 using testing::Eq;
+using testing::IsEmpty;
 using testing::Pair;
 using testing::Pointer;
 using testing::SizeIs;
@@ -102,17 +104,16 @@ using SliceList =
 class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
  public:
   absl::StatusOr<BufferAllocation*> NewEmptyAllocation(int64_t size) override {
-    if (CreatedAlloc()) {
-      return absl::InvalidArgumentError("Expected only one allocation");
-    }
-    alloc_ = std::make_unique<BufferAllocation>(0, size, 0);
-    return alloc_.get();
+    allocs_.push_back(std::make_unique<BufferAllocation>(0, size, 0));
+    return allocs_.back().get();
   }
 
-  bool CreatedAlloc() { return alloc_ != nullptr; }
+  const std::vector<std::unique_ptr<BufferAllocation>>& allocs() const {
+    return allocs_;
+  }
 
  private:
-  std::unique_ptr<BufferAllocation> alloc_;
+  std::vector<std::unique_ptr<BufferAllocation>> allocs_;
 };
 
 class FakeThunk : public Thunk {
@@ -188,6 +189,7 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
   EXPECT_THAT(root_thunk->thunks(), ElementsAre(Pointer(fake_thunk_ptr)));
+  EXPECT_THAT(allocator.allocs(), IsEmpty());
 }
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
@@ -256,6 +258,8 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
                                                 {2, slice_io},
                                             }))),
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
+
+  EXPECT_THAT(allocator.allocs(), SizeIs(1));
 }
 
 TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
@@ -297,11 +301,13 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       SequentialThunk::FromThunk(std::move(conditional_branch0_thunk)));
   branch_thunks.push_back(
       SequentialThunk::FromThunk(std::move(conditional_branch1_thunk)));
+
+  Shape condition_shape = ShapeUtil::MakeShape(PRED, {});
+  BufferAllocation::Slice condition_slice = CreateSlice();
+
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
-      Thunk::ThunkInfo(),
-      /*branch_index_buffer_index=*/BufferAllocation::Slice(),
-      std::move(branch_thunks),
-      /*branch_index_is_bool=*/true);
+      Thunk::ThunkInfo(), ShapedSlice{condition_slice, condition_shape},
+      std::move(branch_thunks));
   const Thunk* const conditional_thunk_ptr = conditional_thunk.get();
   std::vector<std::unique_ptr<Thunk>> while_body_thunks;
   while_body_thunks.push_back(std::move(while_body_fake_thunk));
@@ -461,6 +467,8 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
                     Pointer(branch1_thunk_ptr),
                     IsChecksumThunkChecking(SliceList{{0, slice_branch1}})));
   }
+
+  EXPECT_THAT(allocator.allocs(), SizeIs(1));
 }
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
@@ -544,6 +552,9 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
       static_cast<const BuffersDebugFloatCheckThunk&>(*sub_thunks[1]);
   EXPECT_THAT(buffer_debug_after_fake_thunk.buffer_slices(),
               UnorderedElementsAre(Pair(1, slice_o), Pair(2, slice_io)));
+
+  // 1 for the log buffer, 1 per wrapped thunk for the temp buffer
+  EXPECT_THAT(allocator.allocs(), SizeIs(2));
 }
 
 TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {

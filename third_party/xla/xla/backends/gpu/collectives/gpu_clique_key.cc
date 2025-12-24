@@ -86,6 +86,11 @@ bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
 
 GlobalDeviceId GpuCliqueKey::root_device() const { return root_device_; }
 
+std::vector<std::vector<GlobalDeviceId>> GpuCliqueKey::ParticipantGroups()
+    const {
+  return participant_groups_;
+};
+
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
   if (other_gpu == nullptr) {

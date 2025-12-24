@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -3412,8 +3411,10 @@ TEST_F(DynamicSliceFusionTest,
       ROOT while = (s32[], s32[32,32], s32[32,32]) while(tuple), body=body, condition=condition
     }
   )";
+  HloModuleConfig config = GetModuleConfigWithoutCommandBuffer();
+  config.mutable_debug_options().set_xla_gpu_enable_dynamic_slice_fusion(true);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> fused_module,
-                          ParseAndReturnVerifiedModule(hlo_fused));
+                          ParseAndReturnVerifiedModule(hlo_fused, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
                           CreateExecutable(fused_module->Clone(), false));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,

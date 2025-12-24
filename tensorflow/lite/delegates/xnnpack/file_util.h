@@ -76,6 +76,14 @@ class FileDescriptorView {
   // WARNING: the file descriptor must be valid and the file must be opened.
   Offset MovePos(Offset offset) const;
 
+  // Returns the size of the file.
+  Offset Size() const {
+    Offset pos = GetPos();
+    Offset size = SetPosFromEnd(0);
+    SetPos(pos);
+    return size;
+  }
+
   // Reads `count` bytes from the file at the current position to `dst`.
   //
   // Returns true if all the data available in the file was read to the buffer
@@ -166,6 +174,11 @@ class FileDescriptor : public FileDescriptorView {
 // Checks if the current build and system support creating an in-memory file
 // descriptor.
 bool InMemoryFileDescriptorAvailable();
+
+// Returns true if the file is empty (the file may exist)
+//
+// Note: if `fd` is valid, then `path` is ignored.
+bool IsFileEmpty(const char* path, const FileDescriptor& fd);
 
 // Creates a new file descriptor that isn't backed by a file system. The file
 // will be automatically cleaned up when the last file descriptor pointing to it

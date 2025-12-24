@@ -16,9 +16,11 @@ limitations under the License.
 // XLA-specific reduction Ops.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -30,14 +32,12 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -125,7 +125,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   // Construct the builder for the reduction lambda.
   xla::XlaBuilder r(absl::StrCat(desc, "-reduction"));
   xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
+  CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
   auto data = xla::ConvertElementType(ctx->Input(0), type);
   // Call virtual method to get the initial value.

@@ -1,0 +1,12 @@
+diff --git a/ynnpack/kernels/unary/BUILD b/ynnpack/kernels/unary/BUILD
+index 9c46262..2e5ac81 100644
+--- a/ynnpack/kernels/unary/BUILD
++++ b/ynnpack/kernels/unary/BUILD
+@@ -197,6 +197,7 @@ ynn_cc_library(
+         "x86_avx.inc",
+         "x86_avx2.inc",
+         "x86_avx512f.inc",
++        "x86_f16c.inc",
+         "x86_fma3.inc",
+         "x86_sse2.inc",
+         "x86_sse41.inc",

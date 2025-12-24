@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -165,19 +165,19 @@ SmallVector<Value> EmitScatterComputation(
     ret.reserve(reduced_values.size());
     for (const auto& [reduced_value, output_tensor] :
          llvm::zip(reduced_values, output_tensors)) {
-      ret.push_back(b.create<mlir::tensor::InsertOp>(reduced_value,
-                                                     output_tensor, indices));
+      ret.push_back(mlir::tensor::InsertOp::create(b, reduced_value,
+                                                   output_tensor, indices));
     }
     return ret;
   }
   Value output_tensor = output_tensors.front();
   Value update_elem = update_elems.front();
-  auto atomic_rmw = b.create<AtomicRMWOp>(output_tensor, indices);
+  auto atomic_rmw = AtomicRMWOp::create(b, output_tensor, indices);
   mlir::OpBuilder body_builder = atomic_rmw.getBodyBuilder();
   auto reduced_val =
       emitters::InlineBlock(body_builder, reducer.getBody().front(),
                             {atomic_rmw.getCurrentValue(), update_elem})[0];
-  body_builder.create<xla::YieldOp>(reducer->getLoc(), reduced_val);
+  xla::YieldOp::create(body_builder, reducer->getLoc(), reduced_val);
   return {atomic_rmw->getResult(0)};
 }
 
@@ -444,7 +444,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
                           updated_outputs);
                     },
                     [&](mlir::OpBuilder& else_b, mlir::Location else_loc) {
-                      else_b.create<scf::YieldOp>(else_loc, output_tensors);
+                      scf::YieldOp::create(else_b, else_loc, output_tensors);
                     })
                 .getResults();
         return predicated_updates;

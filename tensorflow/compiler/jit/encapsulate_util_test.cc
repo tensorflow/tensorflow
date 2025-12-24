@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 
+#include <vector>
+
+#include "absl/log/check.h"
+#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -35,16 +42,16 @@ TEST(PerformStaticShapeInferenceBeforeEncapsulationTest, Basic) {
   Output add = ops::Add(s.WithOpName("add"), const_0, const_1);
   Output identity = ops::Identity(s.WithOpName("identity"), add);
   Graph g(OpRegistry::Global());
-  TF_CHECK_OK(s.ToGraph(&g));
+  CHECK_OK(s.ToGraph(&g));
 
-  TF_CHECK_OK(PerformStaticShapeInferenceBeforeEncapsulation(&g));
+  CHECK_OK(PerformStaticShapeInferenceBeforeEncapsulation(&g));
 
   // Check that "add" node now has _xla_inferred_shapes attr.
   auto node_index = g.BuildNodeNameIndex();
   Node *add_node = node_index["add"];
   std::vector<PartialTensorShape> output_shapes;
-  TF_CHECK_OK(GetNodeAttr(add_node->attrs(), kXlaInferredShapesAttrName,
-                          &output_shapes));
+  CHECK_OK(GetNodeAttr(add_node->attrs(), kXlaInferredShapesAttrName,
+                       &output_shapes));
   EXPECT_EQ(output_shapes.size(), 1);
   TensorShapeProto shape_proto;
   output_shapes[0].AsProto(&shape_proto);

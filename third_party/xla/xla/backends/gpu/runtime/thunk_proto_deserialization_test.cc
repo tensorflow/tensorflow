@@ -101,8 +101,24 @@ TEST(ThunkProtoDeserializationTest, CopyThunk) {
           execution_stream_id: 123
         }
         copy_thunk {
-          source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
-          destination_buffer { offset: 0 size: 256 buffer_allocation_index: 1 }
+          source_buffer {
+            slice { offset: 128 size: 384 buffer_allocation_index: 0 }
+            shape {
+              dimensions: 64
+              element_type: S32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
+          destination_buffer {
+            slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+            shape {
+              dimensions: 64
+              element_type: S32
+              is_dynamic_dimension: false
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            }
+          }
           mem_size: 256
         }
       )pb");
@@ -130,11 +146,29 @@ TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
         }
         device_to_host_copy_thunk {
           copy_thunk {
-            source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
+            source_buffer {
+              slice { offset: 128 size: 384 buffer_allocation_index: 0 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
+            }
             destination_buffer {
-              offset: 0
-              size: 256
-              buffer_allocation_index: 1
+              slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
             }
             mem_size: 256
           }
@@ -164,11 +198,29 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
         }
         host_to_device_copy_thunk {
           copy_thunk {
-            source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
+            source_buffer {
+              slice { offset: 128 size: 384 buffer_allocation_index: 0 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
+            }
             destination_buffer {
-              offset: 0
-              size: 256
-              buffer_allocation_index: 1
+              slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
             }
             mem_size: 256
           }
@@ -198,11 +250,29 @@ TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
         }
         device_to_device_copy_thunk {
           copy_thunk {
-            source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
+            source_buffer {
+              slice { offset: 128 size: 384 buffer_allocation_index: 0 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
+            }
             destination_buffer {
-              offset: 0
-              size: 256
-              buffer_allocation_index: 1
+              slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+              shape {
+                dimensions: 64
+                element_type: S32
+                is_dynamic_dimension: false
+                layout {
+                  minor_to_major: 0
+                  tail_padding_alignment_in_elements: 1
+                }
+              }
             }
             mem_size: 256
           }
@@ -243,18 +313,30 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { buffer_allocation_index: 0 }
-                destination_buffer { buffer_allocation_index: 1 }
-              }
-            }
-            thunks {
-              thunk_info {
-                profile_annotation: "profile_annotation"
-                execution_stream_id: 123
-              }
-              copy_thunk {
-                source_buffer { buffer_allocation_index: 1 }
-                destination_buffer { buffer_allocation_index: 2 }
+                source_buffer {
+                  slice { offset: 128 size: 384 buffer_allocation_index: 0 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+                destination_buffer {
+                  slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
               }
             }
           }
@@ -265,8 +347,30 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { buffer_allocation_index: 2 }
-                destination_buffer { buffer_allocation_index: 3 }
+                source_buffer {
+                  slice { offset: 128 size: 384 buffer_allocation_index: 2 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+                destination_buffer {
+                  slice { offset: 0 size: 256 buffer_allocation_index: 3 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
               }
             }
             thunks {
@@ -275,8 +379,30 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { buffer_allocation_index: 3 }
-                destination_buffer { buffer_allocation_index: 4 }
+                source_buffer {
+                  slice { offset: 128 size: 384 buffer_allocation_index: 3 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+                destination_buffer {
+                  slice { offset: 0 size: 256 buffer_allocation_index: 4 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
               }
             }
           }
@@ -310,7 +436,10 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
           execution_stream_id: 123
         }
         conditional_thunk {
-          branch_index_buffer { offset: 8 size: 256 buffer_allocation_index: 5 }
+          branch_index_buffer {
+            slice { offset: 8 size: 1 buffer_allocation_index: 5 }
+            shape { element_type: PRED }
+          }
           branch_thunks {
             thunks {
               thunk_info {
@@ -318,11 +447,29 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { offset: 0 size: 256 buffer_allocation_index: 0 }
+                source_buffer {
+                  slice { offset: 0 size: 256 buffer_allocation_index: 0 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
                 destination_buffer {
-                  offset: 1
-                  size: 257
-                  buffer_allocation_index: 1
+                  slice { offset: 1 size: 257 buffer_allocation_index: 1 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
                 }
               }
             }
@@ -332,11 +479,29 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { offset: 2 size: 258 buffer_allocation_index: 1 }
+                source_buffer {
+                  slice { offset: 2 size: 258 buffer_allocation_index: 1 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
                 destination_buffer {
-                  offset: 3
-                  size: 259
-                  buffer_allocation_index: 2
+                  slice { offset: 3 size: 259 buffer_allocation_index: 2 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
                 }
               }
             }
@@ -348,11 +513,29 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { offset: 4 size: 260 buffer_allocation_index: 2 }
+                source_buffer {
+                  slice { offset: 4 size: 260 buffer_allocation_index: 3 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
                 destination_buffer {
-                  offset: 5
-                  size: 261
-                  buffer_allocation_index: 3
+                  slice { offset: 5 size: 261 buffer_allocation_index: 3 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
                 }
               }
             }
@@ -362,16 +545,33 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
                 execution_stream_id: 123
               }
               copy_thunk {
-                source_buffer { offset: 6 size: 262 buffer_allocation_index: 3 }
+                source_buffer {
+                  slice { offset: 6 size: 262 buffer_allocation_index: 3 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
                 destination_buffer {
-                  offset: 7
-                  size: 263
-                  buffer_allocation_index: 4
+                  slice { offset: 7 size: 263 buffer_allocation_index: 4 }
+                  shape {
+                    dimensions: 64
+                    element_type: S32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
                 }
               }
             }
           }
-          branch_index_is_bool: true
         }
       )pb");
 
@@ -564,6 +764,7 @@ TEST(ThunkProtoDeserializationTest, CustomCallThunk) {
             }
           }
           called_computation: "called_computation"
+          execution_state {}
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {

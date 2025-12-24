@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
 #include <memory>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -90,11 +89,11 @@ TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kUnified));
+      executor->CreateMemoryAllocator(MemorySpace::kUnified));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -104,11 +103,11 @@ TEST(RocmExecutorTest, CreateHostMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
-                          executor->CreateMemoryAllocator(MemoryType::kHost));
+                          executor->CreateMemoryAllocator(MemorySpace::kHost));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -119,11 +118,11 @@ TEST(RocmExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kCollective));
+      executor->CreateMemoryAllocator(MemorySpace::kCollective));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -132,7 +131,7 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemorySpace::kDevice),
               Not(absl_testing::IsOk()));
 }
 

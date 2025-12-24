@@ -53,10 +53,10 @@ absl::Status GetInitializableLookupTable(absl::string_view input_name,
 // table's data types.
 absl::Status CheckTableDataTypes(const LookupInterface& table,
                                  DataType key_dtype, DataType value_dtype,
-                                 const string& table_name);
+                                 const std::string& table_name);
 
 // Initializes `table` from `filename`.
-absl::Status InitializeTableFromTextFile(const string& filename,
+absl::Status InitializeTableFromTextFile(const std::string& filename,
                                          int64_t vocab_size, char delimiter,
                                          int32_t key_index, int32_t value_index,
                                          int64_t offset, Env* env,
@@ -65,7 +65,7 @@ absl::Status InitializeTableFromTextFile(const string& filename,
 // Initializes `table` from `filename`. `func` may specify how to represent the
 // initializer as a graphdef, so that the table can be serialized as metadata.
 absl::Status InitializeTableFromTextFile(
-    const string& filename, int64_t vocab_size, char delimiter,
+    const std::string& filename, int64_t vocab_size, char delimiter,
     int32_t key_index, int32_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
     InitializableLookupTable* table);

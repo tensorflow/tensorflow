@@ -120,7 +120,6 @@ cc_library(
         ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
-        ":ifrt_tensor_utils",
         ":sharding_utils",
         ":tf_host_callback",
         "//tensorflow/compiler/mlir/tensorflow",

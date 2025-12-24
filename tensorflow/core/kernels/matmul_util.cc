@@ -36,8 +36,7 @@ int64_t GetWorkspaceLimit(int64_t default_value_in_bytes) {
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
     int64_t scratch_limit_in_mb = -1;
-    if (strings::safe_strto64(workspace_limit_in_mb_str,
-                              &scratch_limit_in_mb)) {
+    if (absl::SimpleAtoi(workspace_limit_in_mb_str, &scratch_limit_in_mb)) {
       return scratch_limit_in_mb * (1 << 20);
     } else {
       LOG(WARNING) << "Invalid value for TF_CUBLAS_WORKSPACE_LIMIT_IN_MB: "
@@ -77,7 +76,7 @@ struct BlasLtMatmulPlanMap {
 
 int MatmulMaxAutotuneAlgorithmCount() {
   int64_t value;
-  Status status =
+  absl::Status status =
       ReadInt64FromEnvVar("TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS", 10, &value);
   if (!status.ok()) {
     LOG(ERROR) << status.message();
@@ -90,7 +89,7 @@ int MatmulMaxAutotuneAlgorithmCount() {
   return value;
 }
 
-StatusOr<se::blas::ComputationType> GetBlasComputationType(
+absl::StatusOr<stream_executor::blas::ComputationType> GetBlasComputationType(
     se::blas::DataType dtype) {
   using se::blas::ComputationType;
   static bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
@@ -114,9 +113,11 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
 }  // namespace
 
-/* static */ StatusOr<const PlanAndAlgorithms*> PlanAndAlgorithms::GetOrCreate(
-    se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
+/* static */ absl::StatusOr<const PlanAndAlgorithms*>
+PlanAndAlgorithms::GetOrCreate(se::Stream* stream,
+                               const BlasLtMatmulPlanParams& params,
+                               absl::Mutex** ppmu,
+                               std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
@@ -189,25 +190,27 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
   return ptr->second.get();
 }
 
-Status PlanAndAlgorithms::ExecuteOnStream(
-    se::Stream* stream, const se::DeviceMemoryBase& a,
-    const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
-    size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
-    const se::DeviceMemoryBase& bias,
+absl::Status PlanAndAlgorithms::ExecuteOnStream(
+    se::Stream* stream, const stream_executor::DeviceAddressBase& a,
+    const stream_executor::DeviceAddressBase& b,
+    stream_executor::DeviceAddressBase& c, size_t algorithm_idx,
+    se::ScratchAllocator& scratch_allocator,
+    const stream_executor::DeviceAddressBase& bias,
     se::blas::ProfileResult* profile_result) const {
   if (!plan || algorithm_idx >= algorithms.size()) {
     return errors::Internal("MatmulPlan or algorithms are not initialized!");
   }
   TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx]));
-  return plan->ExecuteOnStream(stream, a, b, c, c,
-                               bias,                    // bias_buffer
-                               se::DeviceMemoryBase{},  // aux_buffer
-                               se::DeviceMemoryBase{},  // a_scale_buffer
-                               se::DeviceMemoryBase{},  // b_scale_buffer
-                               se::DeviceMemoryBase{},  // c_scale_buffer
-                               se::DeviceMemoryBase{},  // d_scale_buffer
-                               se::DeviceMemoryBase{},  // d_amax_buffer
-                               scratch_allocator, profile_result);
+  return plan->ExecuteOnStream(
+      stream, a, b, c, c,
+      bias,                                  // bias_buffer
+      stream_executor::DeviceAddressBase{},  // aux_buffer
+      stream_executor::DeviceAddressBase{},  // a_scale_buffer
+      stream_executor::DeviceAddressBase{},  // b_scale_buffer
+      stream_executor::DeviceAddressBase{},  // c_scale_buffer
+      stream_executor::DeviceAddressBase{},  // d_scale_buffer
+      stream_executor::DeviceAddressBase{},  // d_amax_buffer
+      scratch_allocator, profile_result);
 }
 
 }  // namespace tensorflow

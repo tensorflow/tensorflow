@@ -167,17 +167,5 @@ class OriginalValue {
       data_;
 };
 
-// Copies the original value of the source to the destination instruction if the
-// shapes of the source and destination are compatible. This performs a deep
-// copy if clone is set to true. Otherwise, it performs a shallow copy. Print a
-// warning if the shapes are not compatible and issue_warning is set to true.
-void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone,
-                       bool issue_warning);
-
-// Removes duplicates of original value objects referenced in the module to save
-// memory storage.
-void DeduplicateOriginalValues(HloModule* module);
 }  // namespace xla
-
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

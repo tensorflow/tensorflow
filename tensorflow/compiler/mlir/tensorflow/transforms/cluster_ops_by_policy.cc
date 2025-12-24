@@ -575,7 +575,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
   OpBuilder builder(back);
 
   auto cluster_op =
-      builder.create<tf_device::ClusterOp>(loc, return_types, policy);
+      tf_device::ClusterOp::create(builder, loc, return_types, policy);
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
@@ -585,7 +585,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Add 'tf_device::ReturnOp' at the end of the block.
   builder.setInsertionPointToEnd(block);
-  builder.create<tf_device::ReturnOp>(loc, return_values.getArrayRef());
+  tf_device::ReturnOp::create(builder, loc, return_values.getArrayRef());
 
   // Set device attribute
   if (auto device = back->getAttr(kDeviceAttr))

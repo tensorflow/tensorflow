@@ -225,8 +225,8 @@ class MergeTfIfOpsPass
                     [](mlir::TF::IfOp op) { return op.getIsStateless(); });
 
     // Create the merged tf.If op using the new branches.
-    auto new_if_op = builder.create<mlir::TF::IfOp>(
-        loc, new_result_types, if_ops.front().getCond(),
+    auto new_if_op = mlir::TF::IfOp::create(
+        builder, loc, new_result_types, if_ops.front().getCond(),
         if_ops.front().getInput(), then_branch_name, else_branch_name,
         is_stateless);
 
@@ -249,8 +249,8 @@ class MergeTfIfOpsPass
       llvm::ArrayRef<mlir::TF::IfOp> if_ops,
       llvm::function_ref<mlir::FlatSymbolRefAttr(mlir::TF::IfOp)> get_branch) {
     std::string branch_name = absl::StrCat(branch_prefix, branch_suffix);
-    auto branch = builder.create<mlir::func::FuncOp>(loc, branch_name,
-                                                     branch_function_type);
+    auto branch = mlir::func::FuncOp::create(builder, loc, branch_name,
+                                             branch_function_type);
     branch.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
     mlir::OpBuilder::InsertionGuard guard(builder);
@@ -267,8 +267,9 @@ class MergeTfIfOpsPass
     for (auto if_op : if_ops) {
       // Create the call op to the original branch. The arguments are simply
       // the arguments from the wrapper function.
-      auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
-          if_op.getLoc(), if_op.getResultTypes(), block->getArguments(),
+      auto call_op = mlir::TF::PartitionedCallOp::create(
+          builder, if_op.getLoc(), if_op.getResultTypes(),
+          block->getArguments(),
           /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, get_branch(if_op),
           empty_string_attr, empty_string_attr, empty_string_attr);
 
@@ -276,7 +277,7 @@ class MergeTfIfOpsPass
       results.append(call_op.getOutput().begin(), call_op.getOutput().end());
     }
 
-    builder.create<mlir::func::ReturnOp>(loc, results);
+    mlir::func::ReturnOp::create(builder, loc, results);
 
     return branch.getSymName();
   }

@@ -125,8 +125,8 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
   auto split_dimension_attr =
       mlir::DenseElementsAttr::get(split_dim_type, split_dimension);
-  auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, split_dim_type, split_dimension_attr);
+  auto split_dimension_op = mlir::TF::ConstOp::create(
+      *builder, location, split_dim_type, split_dimension_attr);
 
   // Correctly set output shapes of split op output if input shape is statically
   // known.
@@ -157,8 +157,9 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
 
   // Creates a split op that splits |src_input| along |split_dimension|.
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
-  *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.getOutput(), src_input);
+  *split_op =
+      mlir::TF::SplitOp::create(*builder, location, output_types,
+                                split_dimension_op.getOutput(), src_input);
   return absl::OkStatus();
 }
 

@@ -178,7 +178,7 @@ class TpuCompileOpKernelCommon {
   std::string mlir_module_;
   // Fingerprint of the MLIR Module created once on construction to avoid paying
   // the cost on each invocation.
-  uint64 mlir_module_fingerprint_ = 0;
+  uint64_t mlir_module_fingerprint_ = 0;
 
   // Number of different programs to compile. This maps to number of cores in
   // each replica.
@@ -198,7 +198,7 @@ class TpuCompileOpKernelCommon {
 
   absl::Status RegisterXLAFingerprints(
       const std::vector<TensorShape>& arg_shapes,
-      TpuProgramGroupInterface* tpu_program_group, uint64 fingerprint);
+      TpuProgramGroupInterface* tpu_program_group, uint64_t fingerprint);
 };
 
 }  // namespace tpu

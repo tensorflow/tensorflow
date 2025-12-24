@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -53,17 +54,22 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
 
 namespace stream_executor::gpu {
 
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
  public:
-  CudaExecutor(Platform* platform, int device_ordinal)
-      : GpuExecutor(platform, device_ordinal) {}
+  CudaExecutor(Platform* platform, int device_ordinal,
+               CollectiveAllocatorType collective_allocator_type)
+      : GpuExecutor(platform, device_ordinal),
+        collective_allocator_type_(collective_allocator_type) {}
+
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
@@ -84,6 +90,7 @@ class CudaExecutor : public GpuExecutor {
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(int other_device_ordinal) override;
   bool DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
@@ -114,7 +121,7 @@ class CudaExecutor : public GpuExecutor {
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
 
-  absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -138,7 +145,7 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<TensorMap> CreateTensorMap(const TmaDescriptor& tma_desc,
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
   // Returns the granularity which is the minimum unit of memory that can be
   // allocated with VMM API. In order to map the memory slices to multicast
@@ -225,6 +232,8 @@ class CudaExecutor : public GpuExecutor {
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
 
+  CollectiveAllocatorType collective_allocator_type_;
+
   bool is_vmm_supported_ = false;
 
   bool is_rdma_supported_ = false;
@@ -310,6 +319,7 @@ class CudaExecutor : public GpuExecutor {
   int stream_priority_lowest_ = 0;
   int stream_priority_highest_ = 0;
   bool stream_priority_query_ok_ = false;
+  absl::flat_hash_map<int, bool> peer_access_cache_;
 };
 
 }  // namespace stream_executor::gpu

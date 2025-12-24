@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -88,70 +86,12 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
 
 using Interval = std::pair<int64_t, int64_t>;
 
-// Parses a string of the format `{{a,b},{c,d},{e,f}...}` to a vector of pairs.
-absl::StatusOr<std::vector<Interval>> ParseVectorOfPairs(
-    absl::string_view str) {
-  TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> replica_groups,
-                      ParseReplicaGroupsOnly(str));
-  std::vector<Interval> res;
-  res.reserve(replica_groups.size());
-  for (const ReplicaGroup& replica_group : replica_groups) {
-    TF_RET_CHECK(replica_group.replica_ids_size() == 2);
-    int64_t a = replica_group.replica_ids(0);
-    int64_t b = replica_group.replica_ids(1);
-    res.emplace_back(a, b);
-  }
-  return res;
-}
-
 // This function fixes the `_xla_send_recv_validation` attribute for peeled
 // instructions. When the loop trip count is odd, the peeled instructions are
 // moved before the loop. The collectives in these instructions correspond to
 // the first iteration of the original loop. We have to run this peeled
 // collective for all those devices that had the 0-th iteration as a valid
 // iteration.
-absl::Status SetSendRecvValidationForPeeledInstr(HloInstruction* new_instr,
-                                                 HloInstruction* old_instr) {
-  TF_RET_CHECK(
-      new_instr->opcode() == old_instr->opcode() &&
-      "cloned instruction and original instruction have different opcodes");
-  if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute,
-                          HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
-                          HloOpcode::kRecv>(old_instr)) {
-    return absl::OkStatus();
-  }
-
-  const auto& attribute_map = new_instr->frontend_attributes().map();
-  if (!attribute_map.contains(kSendRecvValidationAttr)) {
-    return absl::OkStatus();
-  }
-
-  VLOG(3) << "Original send-recv iterations: "
-          << attribute_map.at(kSendRecvValidationAttr);
-
-  TF_ASSIGN_OR_RETURN(
-      auto send_recv_validation_attr,
-      ParseVectorOfPairs(attribute_map.at(kSendRecvValidationAttr)));
-
-  uint64_t n_pairs = send_recv_validation_attr.size();
-  if (n_pairs == 0) {
-    return absl::OkStatus();
-  }
-  std::vector<Interval> send_recv_validation_attr_updated(n_pairs, {1, 0});
-  // Check which of the attributes have iteration number zero as valid
-  // iteration. For all those, set the peeled instruction to run.
-  for (std::uint64_t i = 0; i < send_recv_validation_attr.size(); i++) {
-    if (send_recv_validation_attr[i].first <= 0 &&
-        send_recv_validation_attr[i].second >= 0) {
-      send_recv_validation_attr_updated[i] = {0, 0};
-    }
-  }
-
-  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
-      /*instr=*/new_instr, /*attr_name=*/kSendRecvValidationAttr,
-      /*intervals=*/send_recv_validation_attr_updated);
-  return absl::OkStatus();
-}
 
 // This function fixes the `_xla_send_recv_validation` attribute for the two new
 // collectives inside the loop. The calculation of the new valid iterations
@@ -180,65 +120,6 @@ absl::Status SetSendRecvValidationForPeeledInstr(HloInstruction* new_instr,
 //
 // In a similar fashion we can generalize the computation of new values based on
 // the values of the old attribute as done in the logic below.
-absl::Status SetSendRecvValidation(HloInstruction* cp1, HloInstruction* cp2,
-                                   bool is_peeled) {
-  TF_RET_CHECK(
-      cp2->opcode() == cp1->opcode() &&
-      "cloned instruction and original instruction have different opcodes");
-  if (HloPredicateIsNotOp<HloOpcode::kCollectivePermute,
-                          HloOpcode::kCollectivePermuteStart, HloOpcode::kSend,
-                          HloOpcode::kRecv>(cp1)) {
-    return absl::OkStatus();
-  }
-  const auto& attribute_map = cp2->frontend_attributes().map();
-  if (!attribute_map.contains(kSendRecvValidationAttr)) {
-    return absl::OkStatus();
-  }
-  VLOG(3) << "Original send-recv iterations: "
-          << attribute_map.at(kSendRecvValidationAttr);
-
-  TF_ASSIGN_OR_RETURN(
-      auto send_recv_validation_attr,
-      ParseVectorOfPairs(attribute_map.at(kSendRecvValidationAttr)));
-
-  if (send_recv_validation_attr.size() == 0) {
-    return absl::OkStatus();
-  }
-
-  std::vector<Interval> send_recv_iterations_new_instr1,
-      send_recv_iterations_new_instr2;
-  send_recv_iterations_new_instr1.reserve(send_recv_validation_attr.size());
-  send_recv_iterations_new_instr2.reserve(send_recv_validation_attr.size());
-  for (const Interval& pair : send_recv_validation_attr) {
-    int64_t a = pair.first;
-    int64_t b = pair.second;
-    if (is_peeled) {
-      send_recv_iterations_new_instr1.emplace_back(
-          std::floor(a / 2.0), std::max(0.0, std::floor((b - 1) / 2.0)));
-      send_recv_iterations_new_instr2.emplace_back(
-          std::max(0.0, std::floor((a - 1) / 2.0)),
-          std::max(0.0, std::floor((b - 2) / 2.0)));
-    } else {
-      send_recv_iterations_new_instr1.emplace_back(std::floor((a + 1) / 2.0),
-                                                   std::floor(b / 2.0));
-      send_recv_iterations_new_instr2.emplace_back(
-          std::floor(a / 2.0), std::max(0.0, std::floor((b - 1) / 2.0)));
-    }
-  }
-
-  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
-      /*instr=*/cp1, /*attr_name=*/kSendRecvValidationAttr,
-      /*intervals=*/send_recv_iterations_new_instr1);
-  hlo_instruction_utils::AddOrUpdateVectorOfPairsAsAttribute(
-      /*instr=*/cp2, /*attr_name=*/kSendRecvValidationAttr,
-      /*intervals=*/send_recv_iterations_new_instr2);
-
-  VLOG(3) << "Updated send-recv iterations for " << cp1->name() << " : "
-          << cp1->frontend_attributes().map().at(kSendRecvValidationAttr);
-  VLOG(3) << "Updated send-recv iterations for " << cp2->name() << " : "
-          << cp2->frontend_attributes().map().at(kSendRecvValidationAttr);
-  return absl::OkStatus();
-}
 
 // Handle control predecessors/successors for every old-new instruction pair.
 // For every new instruction, we find the relevant predecessor/successor
@@ -373,8 +254,13 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
     changed = true;
   }
 
-  WhileLoopBackendConfig new_config;
+  WhileLoopBackendConfig old_config;
+  TF_ASSIGN_OR_RETURN(old_config,
+                      while_instr->backend_config<WhileLoopBackendConfig>());
+
+  WhileLoopBackendConfig new_config = old_config;
   new_config.mutable_known_trip_count()->set_n(1);
+
   TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
 
   return changed;
@@ -406,7 +292,6 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
             old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
-    CHECK_OK(SetSendRecvValidationForPeeledInstr(new_instr, old_instr));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString()
             << " to parent computation.";
@@ -498,8 +383,6 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
-    CHECK_OK(SetSendRecvValidation(old_instr, new_instr,
-                                   /*is_peeled=*/peel_one_iteration));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString();
   }
@@ -514,14 +397,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
                                                &old_loop_roots, input_parameter,
                                                skip_control_dep_injection));
 
-  WhileLoopBackendConfig new_config;
+  WhileLoopBackendConfig new_config = config;
   new_config.mutable_known_trip_count()->set_n(exact_trip_count / 2);
-
-  // Keep known induction variable metadata if it was present before.
-  if (config.has_known_induction_variable()) {
-    *new_config.mutable_known_induction_variable() =
-        config.known_induction_variable();
-  }
 
   // Update the init/step metadata if it was present before.
   if (config.has_known_init_step()) {

@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -170,6 +169,46 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr);
 // Same as above, but fusion is the parent computation of the hlo instruction.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
+// Returns the bitwidth of the given primitive type. Unfortunately,
+// primitive_util::BitWidth(PRED) return 1 instead of 8.
+int GetBitwidth(PrimitiveType type);
+
+/// Description of how to emit a given transposition.
+struct TransposeDescription {
+  // Transpose instruction.
+  const HloInstruction* instr;
+
+  // Normalized transpose dimensions.
+  absl::InlinedVector<int64_t, 3> dimensions;
+
+  // Permutations of normalized transpose dimensions.
+  // Normalized means that permutation[i] + 1 != permutation[i + 1].
+  absl::InlinedVector<int64_t, 3> permutation;
+
+  // Required amount of shared memory in bytes.
+  int64_t shmem_usage = 0;
+
+  TransposeDescription(const HloInstruction* instr,
+                       absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation,
+                       int64_t shmem_usage)
+      : instr(instr),
+        dimensions(dimensions),
+        permutation(permutation),
+        shmem_usage(shmem_usage) {}
+
+  // Transpose instruction input shape.
+  const Shape& input_shape() const { return instr->operand(0)->shape(); }
+
+  // Returns true, if both descriptions have the same dimensions and
+  // permutation, even if they're produced by different instructions.
+  bool IsEquivalent(const TransposeDescription& other) const {
+    return dimensions == other.dimensions && permutation == other.permutation &&
+           GetBitwidth(instr->shape().element_type()) ==
+               GetBitwidth(other.instr->shape().element_type());
+  }
+};
+
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& hero);
 
@@ -185,13 +224,19 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
 // 3. <8x2x32x7x6> -> <6x32x2x7x8> becomes <8x2x32x7x6x1> -> <6x32x2x7x8x1>.
 
 // TODO(b/370690811): Unify this with TransposeDescription.
-struct TransposeSpec {
-  PrimitiveType elem_type() const { return input_shape().element_type(); }
+struct PackedTransposeDescription {
+  explicit PackedTransposeDescription(const TransposeDescription& description);
 
-  const Shape& input_shape() const { return transpose->operand(0)->shape(); }
-  const Shape& output_shape() const { return transpose->shape(); }
+  PrimitiveType elem_type() const {
+    return original_input_shape().element_type();
+  }
 
-  int64_t rank() const { return input_shape().dimensions().size(); }
+  const Shape& original_input_shape() const {
+    return transpose->operand(0)->shape();
+  }
+  const Shape& original_output_shape() const { return transpose->shape(); }
+
+  int64_t rank() const { return original_input_shape().dimensions().size(); }
   int64_t canonical_rank() const { return canonical_input_shape.size(); }
 
   int64_t dim_A() const { return canonical_input_shape[dim_A_id()]; }
@@ -225,11 +270,12 @@ struct TransposeSpec {
   llvm::SmallVector<int64_t, 3> canonical_input_shape;
 };
 
-TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose);
+// Returns true if the given transpose can be emitted using the packed emitter.
+bool CanEmitPackedTranspose(const TransposeDescription& desc);
 
 // Returns the default tile sizes for the packed transpose emitter.
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
-    const TransposeSpec& spec);
+    const PackedTransposeDescription& spec);
 
 // Verify the given module, and crash if it failed.
 void VerifyModule(const llvm::Module& module);

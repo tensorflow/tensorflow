@@ -67,23 +67,23 @@ REGISTER_GPU_KERNELS(int64_t);
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(
-    Name("Max")
-        .Device(DEVICE_DEFAULT)
-        .HostMemory("reduction_indices")
-        .HostMemory("input")
-        .HostMemory("output")
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int32>("Tidx"),
-    ReductionOp<CPUDevice, int32, int32, Eigen::internal::MaxReducer<int32>>);
-REGISTER_KERNEL_BUILDER(
-    Name("Max")
-        .Device(DEVICE_DEFAULT)
-        .HostMemory("reduction_indices")
-        .HostMemory("input")
-        .HostMemory("output")
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int64_t>("Tidx"),
-    ReductionOp<CPUDevice, int32, int64, Eigen::internal::MaxReducer<int32>>);
+REGISTER_KERNEL_BUILDER(Name("Max")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("reduction_indices")
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tidx"),
+                        ReductionOp<CPUDevice, int32_t, int32_t,
+                                    Eigen::internal::MaxReducer<int32_t>>);
+REGISTER_KERNEL_BUILDER(Name("Max")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("reduction_indices")
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int64_t>("Tidx"),
+                        ReductionOp<CPUDevice, int32_t, int64_t,
+                                    Eigen::internal::MaxReducer<int32_t>>);
 
 }  // namespace tensorflow

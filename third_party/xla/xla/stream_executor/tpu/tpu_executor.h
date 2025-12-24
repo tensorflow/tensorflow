@@ -118,8 +118,8 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   // to TpuExecutorInterface.
   absl::StatusOr<std::unique_ptr<
       tensorflow::tpu::TpuExecutorInterface::TemporaryDeviceAddress>>
-  CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
-                              int64_t size) override {
+  CreateTemporaryDeviceAddress(int64_t memory_space, int64_t byte_offset,
+                               int64_t size) override {
     LOG(FATAL) << "Unimplemented.";
   }
 

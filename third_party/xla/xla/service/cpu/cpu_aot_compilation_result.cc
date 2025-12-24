@@ -146,7 +146,6 @@ CpuAotCompilationResult::CpuAotCompilationResult(
 
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable(
-    [[maybe_unused]] Compiler* compiler,
     const se::StreamExecutor* stream_exec) && {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
@@ -156,13 +155,9 @@ CpuAotCompilationResult::LoadExecutable(
 
   // Copied from cpu_compiler.cc in order to avoid dependency on cpu_compiler.
   std::function<int64_t(const BufferValue&)> buffer_size_bytes_function_getter =
-      compiler ? compiler->BufferSizeBytesFunction() : []() {
-        HloCostAnalysis::ShapeSizeFunction shape_size =
-            CpuExecutable::ShapeSizeBytes;
-        return [shape_size](const BufferValue& buffer) {
-          return shape_size(buffer.shape());
-        };
-      }();
+      [](const BufferValue& buffer) {
+        return CpuExecutable::ShapeSizeBytes(buffer.shape());
+      };
 
   // Recreate BufferAssignment from proto.
   AliasInfo alias_info;
@@ -196,8 +191,8 @@ CpuAotCompilationResult::LoadExecutable(
       cpu_executable,
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),
-                            std::move(*thunks), std::move(constants), nullptr,
-                            nullptr, target_machine_options));
+                            std::move(*thunks), std::move(constants),
+                            target_machine_options));
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.

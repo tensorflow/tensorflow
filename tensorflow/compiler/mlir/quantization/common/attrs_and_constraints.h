@@ -89,12 +89,12 @@ Value CreateConstValue(OpBuilder& builder, const Location loc,
         RankedTensorType::get(shape, builder.getIntegerType(sizeof(T) * 8));
 
     const auto attr = DenseIntElementsAttr::get(shape_type, values);
-    return builder.create<TF::ConstOp>(loc, attr);
+    return TF::ConstOp::create(builder, loc, attr);
   }
 
   const auto type = RankedTensorType::get(shape, builder.getF32Type());
   const auto value_attr = DenseFPElementsAttr::get(type, values);
-  return builder.create<TF::ConstOp>(loc, value_attr);
+  return TF::ConstOp::create(builder, loc, value_attr);
 }
 
 // Creates a 1D array with integer/float type.

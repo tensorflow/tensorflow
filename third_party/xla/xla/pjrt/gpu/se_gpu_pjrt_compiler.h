@@ -19,11 +19,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/compiler.h"
 #include "xla/stream_executor/platform.h"
 
 namespace xla {
@@ -49,6 +52,13 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
 
  private:
   std::optional<stream_executor::Platform::Id> requested_platform_id_;
+  mutable absl::Mutex compiler_mutex_;
+  std::unique_ptr<Compiler> compiler_ ABSL_GUARDED_BY(compiler_mutex_);
+
+  // Returns an instance of the compiler for the given platform (or the default
+  // GPU platform if none is specified). If one does not exist, creates one. The
+  // compiler is cached for subsequent calls.
+  absl::StatusOr<Compiler*> GetOrCreateCompiler();
 };
 }  // namespace xla
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_

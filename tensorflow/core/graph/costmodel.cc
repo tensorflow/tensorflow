@@ -35,7 +35,7 @@ void CostModel::SuppressInfrequent() {
   // Find the median of the non-zero counts, and use half of its value
   // as the cutoff for a "normal" execution mode node.
   if (count_.empty()) return;
-  std::vector<int32> non_zero;
+  std::vector<int32_t> non_zero;
   for (auto v : count_) {
     if (v > 0) non_zero.push_back(v);
   }
@@ -192,7 +192,7 @@ void CostModel::RecordCount(const Node* node, int count) {
   count_[id] += count;
 }
 
-int32 CostModel::TotalCount(const Node* node) const {
+int32_t CostModel::TotalCount(const Node* node) const {
   const int id = Id(node);
   if (id < 0) return 0;
   return (static_cast<size_t>(id) < slot_bytes_.size()) ? count_[id] : 0;
@@ -419,7 +419,7 @@ Microseconds CostModel::ComputationTimeEstimate(int64_t math_ops) {
 
 void CostModel::IncrementUpdateTimes() { update_times_++; }
 
-int32 CostModel::GetUpdateTimes() const { return update_times_; }
+int32_t CostModel::GetUpdateTimes() const { return update_times_; }
 
 // ----------------------------------------------------------------------------
 // InitCostModel

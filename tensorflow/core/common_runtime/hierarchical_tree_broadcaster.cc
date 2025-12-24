@@ -43,8 +43,8 @@ namespace tensorflow {
 
 namespace {
 // Key to be used for BufRendezvous by Broadcaster.
-string BroadcastBufKey(const string& exec_key, int subdiv, int src_rank,
-                       int dst_rank) {
+std::string BroadcastBufKey(const std::string& exec_key, int subdiv,
+                            int src_rank, int dst_rank) {
   if (READABLE_KEYS) {
     return strings::StrCat("broadcast(", exec_key, "):subdiv(", subdiv,
                            "):src(", src_rank, "):dst(", dst_rank, ")");
@@ -81,13 +81,13 @@ absl::Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
   CHECK_EQ(col_params->instance.type, BROADCAST_COLLECTIVE);
   CHECK_EQ(col_params->instance.impl_details.collective_name,
            "HierarchicalTreeBroadcast");
-  const string& device_name =
+  const std::string& device_name =
       col_params->group.members[col_params->default_rank].device.name();
   // Start by counting the devices in each task.
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
   std::vector<int> dev_per_task;
-  const string* prior_task_name = &col_params->group.members[0].task;
+  const std::string* prior_task_name = &col_params->group.members[0].task;
   int dev_count = 1;
   for (int di = 1; di < col_params->group.group_size; ++di) {
     if (col_params->group.members[di].task != *prior_task_name) {
@@ -102,8 +102,8 @@ absl::Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
   CHECK_EQ(col_params->group.num_tasks, dev_per_task.size());
 
   if (VLOG_IS_ON(2)) {
-    string dpt_buf;
-    for (int dpt : dev_per_task) strings::StrAppend(&dpt_buf, dpt, ";");
+    std::string dpt_buf;
+    for (int dpt : dev_per_task) absl::StrAppend(&dpt_buf, dpt, ";");
     VLOG(2) << "HierarchicalTreeBroadcaster::InitializeCollectiveParams device="
             << device_name << " source_rank=" << col_params->source_rank
             << " dev_per_task=" << dpt_buf;
@@ -302,9 +302,9 @@ void HierarchicalTreeBroadcaster::RunTree() {
     if (-1 == my_rank) continue;
     int source_rank = col_params_->instance.impl_details.subdiv_source_rank[si];
     if (VLOG_IS_ON(1)) {
-      string subdiv_buf;
+      std::string subdiv_buf;
       for (int r : col_params_->instance.impl_details.subdiv_permutations[si]) {
-        strings::StrAppend(&subdiv_buf, r, ",");
+        absl::StrAppend(&subdiv_buf, r, ",");
       }
       VLOG(1) << "Running Broadcast tree device=" << col_ctx_->device_name
               << " subdiv=" << si << " perm=" << subdiv_buf
@@ -318,7 +318,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     if (my_rank >= 0 && my_rank != source_rank) {
       // Begin by receiving the value.
       tsl::profiler::TraceMe activity(
-          [&] { return strings::StrCat("ReceiveValue:", si); },
+          [&] { return absl::StrCat("ReceiveValue:", si); },
           tsl::profiler::TraceMeLevel::kInfo);
       int recv_from_rank = TreeRecvFrom(*col_params_, si);
       absl::Notification note;
@@ -334,7 +334,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     // Then forward value to all descendent devices.
     {
       tsl::profiler::TraceMe activity(
-          [&] { return strings::StrCat("ForwardValue:", si); },
+          [&] { return absl::StrCat("ForwardValue:", si); },
           tsl::profiler::TraceMeLevel::kInfo);
       if (my_rank >= 0 && status_.ok()) {
         std::vector<int> send_to_ranks;
@@ -413,7 +413,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       col_params_->name, col_ctx_->step_id, "dynamic", src_tensor->dtype(),
       [src_tensor]() { return src_tensor->shape().DebugString(); });
-  string send_buf_key =
+  std::string send_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);
   int dst_idx =
       col_params_->instance.impl_details.subdiv_permutations[subdiv][dst_rank];
@@ -434,7 +434,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
 void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
                                                int dst_rank, Tensor* dst_tensor,
                                                const StatusCallback& done) {
-  string recv_buf_key =
+  std::string recv_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);
   int src_idx =
       col_params_->instance.impl_details.subdiv_permutations[subdiv][src_rank];

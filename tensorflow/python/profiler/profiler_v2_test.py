@@ -98,6 +98,14 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     file_list = gfile.ListDirectory(logdir)
     self.assertEqual(len(file_list), 1)
 
+  def test_callback(self):
+    logdir = self.get_temp_dir()
+    self.assertFalse(trace.enabled())
+    profiler.start(logdir)
+    self.assertTrue(trace.enabled())
+    profiler.stop()
+    self.assertFalse(trace.enabled())
+
 
 if __name__ == '__main__':
   test.main()

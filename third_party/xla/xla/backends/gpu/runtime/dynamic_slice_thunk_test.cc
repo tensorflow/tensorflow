@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -238,8 +240,8 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> CreateSlicedGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmProtoRoundTrip) {
@@ -411,8 +413,8 @@ CreateMultipleSlicedOperandsGemmThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}),
           ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
           std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), sizeof(int64_t),
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, S64, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemmProtoRoundTrip) {
@@ -601,7 +603,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt},
-      {sizeof(int64_t), std::nullopt});
+      {S64, std::nullopt});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -767,7 +769,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
-      {sizeof(int64_t), sizeof(int64_t)});
+      {S64, S64});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -945,8 +947,8 @@ CreateSlicedGemmArbitraryArgumentOrderThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrderProtoRoundTrip) {
@@ -1118,8 +1120,8 @@ CreateSlicedGemmArbitraryNumberOfArgumentsThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest,
@@ -1282,8 +1284,8 @@ CreateSlicedTupledOperandGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemmProtoRoundTrip) {
@@ -1475,7 +1477,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       // original slice result and not bitcasted one)
       {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
        ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
-      {sizeof(int64_t), sizeof(int64_t)});
+      {S64, S64});
 
   // Step 2:
   // Execute dynamic slice thunk.
@@ -1658,8 +1660,8 @@ CreateSlicedOperandsSameBufferGemmThunk(
       std::vector<std::optional<Shape>>{
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
           std::nullopt, std::nullopt},
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt});
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt});
 }
 
 TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemmProtoRoundTrip) {
@@ -1876,8 +1878,8 @@ CreateHostInductionVariableAndOffsetEvaluationThunk(
           ShapeUtil::MakeShape(PrimitiveType::F32, {1, 4}), std::nullopt,
           std::nullopt, std::nullopt},
       /*offset_byte_sizes=*/
-      std::vector<std::optional<uint64_t>>{sizeof(int64_t), std::nullopt,
-                                           std::nullopt, std::nullopt},
+      std::vector<std::optional<PrimitiveType>>{S64, std::nullopt, std::nullopt,
+                                                std::nullopt},
       /*offset_as_function_of_indvar_metadata=*/
       std::move(offset_as_function_of_indvar_modules_metadata));
 }
@@ -1940,12 +1942,21 @@ TEST_F(DynamicSliceThunkTest,
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
   se::StreamExecutorMemoryAllocator allocator(executor);
   BufferAllocations allocations(/*buffers=*/{lhs, rhs, out, workspace},
-                                /*device_ordinal=*/0,
+                                /*device_ordinal=*/executor->device_ordinal(),
                                 /*memory_allocator=*/&allocator);
-
-  Thunk::PrepareParams prepare_params{};
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),

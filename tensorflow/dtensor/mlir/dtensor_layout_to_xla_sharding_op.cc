@@ -112,8 +112,8 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
         // the V1 sharding attr, so set V2 sharding to "" here. It may be better
         // to set the V2 sharding attr here and then removed it when V1 is
         // removed.
-        auto sharding_op = builder.create<mlir::TF::XlaShardingOp>(
-            layout_op.getLoc(), layout_op.getOutput().getType(),
+        auto sharding_op = mlir::TF::XlaShardingOp::create(
+            builder, layout_op.getLoc(), layout_op.getOutput().getType(),
             layout_op.getInput(),
             /*sharding=*/builder.getStringAttr(""),  // Not used by tf2xla.
             /*_xlaSharding=*/sharding_attr,

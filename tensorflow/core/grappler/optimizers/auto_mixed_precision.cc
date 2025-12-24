@@ -90,12 +90,12 @@ std::pair<int, int> GetDeviceGPUArch(
   }
 
   int major, minor;
-  if (!strings::safe_strto32(split_arch_str[0], &major)) {
+  if (!absl::SimpleAtoi(split_arch_str[0], &major)) {
     return {0, 0};
   }
 
   if (split_arch_str.size() > 1) {
-    if (strings::safe_strto32(split_arch_str[1], &minor)) {
+    if (absl::SimpleAtoi(split_arch_str[1], &minor)) {
       return {major, minor};
     } else {
       return {0, 0};

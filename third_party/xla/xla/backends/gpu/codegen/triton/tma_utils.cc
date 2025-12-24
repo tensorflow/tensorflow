@@ -139,10 +139,10 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
                              GetTmaSwizzleMode(swizzle_mode));
 }
 
+// The current recommendation is based on analyzing the E2E "Nucleo" group
+// data. It might make sense to re-evaluate this recommendation later if we
+// believe there are missed opportunities.
 bool IsTmaRecommended(const TritonGemmConfig& config) {
-  // The current recommendation is based on analyzing the E2E "Nucleo" group
-  // data. It might make sense to re-evaluate this recommendation later if we
-  // believe there are missed opportunities.
   return (config.split_k == 1 || config.split_k == 16) &&
          config.num_warps <= 8 &&
          (config.num_stages == 1 || config.num_stages == 3 ||

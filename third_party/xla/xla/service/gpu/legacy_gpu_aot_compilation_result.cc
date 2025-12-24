@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +27,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
-#include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -44,7 +42,8 @@ absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromModule(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
     absl::string_view asm_text, absl::Span<const uint8_t> binary,
-    const BinaryMap& dnn_compiled_graphs, int pointer_size) {
+    const BinaryMap& dnn_compiled_graphs, int pointer_size,
+    Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromModule");
   GpuExecutableProto proto;
   *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
@@ -55,12 +54,13 @@ LegacyGpuAotCompilationResult::FromModule(
                                               dnn_compiled_graphs.cend());
   return std::unique_ptr<LegacyGpuAotCompilationResult>(
       new LegacyGpuAotCompilationResult(hlo_module->Clone(), std::move(proto),
-                                        pointer_size));
+                                        pointer_size, compiler));
 }
 
 absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
-                                          int pointer_size) {
+                                          int pointer_size,
+                                          Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromString");
   GpuExecutableProto proto;
   if (!proto.ParseFromString(serialized)) {
@@ -68,19 +68,19 @@ LegacyGpuAotCompilationResult::FromString(const std::string& serialized,
         "Failed to parse serialized LegacyGpuAotCompilationResult.");
   }
 
-  return FromProto(proto, pointer_size);
+  return FromProto(proto, pointer_size, compiler);
 }
 
 absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
 LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
-                                         int pointer_size) {
+                                         int pointer_size, Compiler* compiler) {
   tsl::profiler::TraceMe traceme("ResultFromProto");
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
   return std::unique_ptr<LegacyGpuAotCompilationResult>(
       new LegacyGpuAotCompilationResult(std::move(module), std::move(proto),
-                                        pointer_size));
+                                        pointer_size, compiler));
 }
 
 absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
@@ -90,12 +90,12 @@ absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
 
 absl::StatusOr<std::unique_ptr<Executable>>
 LegacyGpuAotCompilationResult::LoadExecutable(
-    Compiler* compiler, const se::StreamExecutor* stream_exec) && {
+    const se::StreamExecutor* stream_exec) && {
   if (stream_exec == nullptr) {
     return InvalidArgument("Stream executor is null.");
   }
 
-  return compiler->LoadExecutableFromAotResult(*this, *stream_exec);
+  return compiler_->LoadExecutableFromAotResult(*this, *stream_exec);
 }
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
@@ -114,6 +114,25 @@ LegacyGpuAotCompilationResult::buffer_assignment() const {
   AliasInfo alias_info;
   return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
                                      buffer_size_bytes_function, &alias_info);
+}
+
+absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
+    const {
+  return Unavailable(
+      "SerializeAsString() is not supported by EarlyExitCompilationResult.");
+}
+
+absl::StatusOr<std::unique_ptr<Executable>>
+EarlyExitCompilationResult::LoadExecutable(
+    const se::StreamExecutor* stream_exec) && {
+  return Unavailable(
+      "LoadExecutable() is not supported by EarlyExitCompilationResult.");
+}
+
+absl::StatusOr<std::unique_ptr<BufferAssignment>>
+EarlyExitCompilationResult::buffer_assignment() const {
+  return Unavailable(
+      "buffer_assignment() is not supported by EarlyExitCompilationResult.");
 }
 
 }  // namespace gpu

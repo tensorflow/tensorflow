@@ -284,8 +284,12 @@ static auto* mixed_priority_batching_policy_value =
 void RecordBatchParamMixedPriorityBatchingPolicy(
     MixedPriorityBatchingPolicy mixed_priority_batching_policy,
     const std::string& model_name, const std::string& op_name) {
-  mixed_priority_batching_policy_value->GetCell(model_name, op_name)
-      ->Set(absl::StrCat(mixed_priority_batching_policy));
+  auto policy_str =
+      GetMixedPriorityBatchingPolicyString(mixed_priority_batching_policy);
+  if (policy_str.ok()) {
+    mixed_priority_batching_policy_value->GetCell(model_name, op_name)
+        ->Set(std::string(*policy_str));
+  }
 }
 
 void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,

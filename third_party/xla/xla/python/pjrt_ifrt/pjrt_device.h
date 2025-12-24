@@ -43,8 +43,9 @@ class PjRtCompatibleDevice : public llvm::RTTIExtends<PjRtDevice, Device> {
 class PjRtDevice final
     : public llvm::RTTIExtends<PjRtDevice, PjRtCompatibleDevice> {
  public:
-  PjRtDevice(PjRtClient* client, DeviceId id, std::string kind,
-             std::string to_string, std::string debug_string, int process_index,
+  PjRtDevice(PjRtClient* client, DeviceId id, std::string platform_name,
+             std::string kind, std::string to_string, std::string debug_string,
+             int process_index,
              absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
              xla::PjRtDevice* pjrt_device);
 
@@ -57,6 +58,7 @@ class PjRtDevice final
 
   DeviceId Id() const final;
   const AttributeMap& Attributes() const final;
+  absl::string_view PlatformName() const final;
   absl::string_view Kind() const final;
   absl::string_view ToString() const final;
   absl::string_view DebugString() const final;
@@ -74,6 +76,7 @@ class PjRtDevice final
 
   DeviceId id_;
   AttributeMap attributes_;
+  std::string platform_name_;
   std::string kind_;
   std::string to_string_;
   std::string debug_string_;

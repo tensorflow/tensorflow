@@ -65,8 +65,8 @@ struct RankFormatter {
 }  // namespace
 
 GpuCliqueRendezvous::GpuCliqueRendezvous(
-    GpuCliqueKey clique_key, absl::btree_map<RankId, std::any> state)
-    : clique_key_(std::move(clique_key)), state_(std::move(state)) {}
+    GpuCliqueKey clique_key, absl::btree_map<RankId, std::any> values)
+    : clique_key_(std::move(clique_key)), values_(std::move(values)) {}
 
 absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> GpuCliqueRendezvous::Join(
     const GpuCliqueKey& clique_key, RankId rank, std::any data) {

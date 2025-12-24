@@ -77,9 +77,17 @@ cc_library(
     name = "device_address",
     hdrs = ["device_address.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "device_address_test",
+    srcs = ["device_address_test.cc"],
+    deps = [
+        ":device_address",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -247,6 +255,7 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_space",
         ":module_spec",
         ":platform",
         ":stream",
@@ -336,6 +345,10 @@ xla_cc_test(
 cc_library(
     name = "memory_allocation",
     hdrs = ["memory_allocation.h"],
+    deps = [
+        ":device_address",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 cc_library(
@@ -472,9 +485,11 @@ cc_library(
         ":kernel_spec",
         ":memory_allocation",
         ":memory_allocator",
+        ":memory_space",
         ":module_spec",
         ":platform",
         ":stream",
+        ":tensor_map",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
@@ -507,6 +522,12 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space",
+    hdrs = ["memory_space.h"],
+    deps = ["@com_google_absl//absl/base:core_headers"],
+)
+
+cc_library(
     name = "generic_memory_allocator",
     hdrs = ["generic_memory_allocator.h"],
     deps = [
@@ -521,6 +542,7 @@ cc_library(
     name = "generic_memory_allocation",
     hdrs = ["generic_memory_allocation.h"],
     deps = [
+        ":device_address",
         ":memory_allocation",
         "@com_google_absl//absl/functional:any_invocable",
     ],
@@ -718,8 +740,6 @@ cc_library(
     name = "kernel",
     hdrs = ["kernel.h"],
     deps = [
-        ":device_address",
-        ":device_memory",
         ":kernel_args",
         ":kernel_metadata",
         ":launch_dim",
@@ -821,7 +841,10 @@ cc_library(
     name = "allocator_stats",
     srcs = ["allocator_stats.cc"],
     hdrs = ["allocator_stats.h"],
-    deps = ["@com_google_absl//absl/strings:str_format"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:numbers",
+    ],
 )
 
 cc_library(

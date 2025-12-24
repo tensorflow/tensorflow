@@ -29,13 +29,13 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -164,9 +164,9 @@ class TransposeFusion : public TransposeFusionBase {
 };
 
 // Packed transpose is a more advanced version of the transpose emitter.
-// It considers the canonical transpose described by TransposeSpec class,
-// i.e. [T2, A, T1, B] -> [T1, A, T2, B] and tries to pack as many T1 rows into
-// shared memory as possible.
+// It considers the canonical transpose described by PackedTransposeDescription
+// class, i.e. [T2, A, T1, B] -> [T1, A, T2, B] and tries to pack as many T1
+// rows into shared memory as possible.
 //
 // Let's describe the algorithm for a concrete example.
 //   bf16 [640,100,6,1] - > bf16 [6,100,640,1]
@@ -237,7 +237,7 @@ class TransposeFusion : public TransposeFusionBase {
 class PackedTranspose : public TransposeFusionBase {
  public:
   explicit PackedTranspose(const HloFusionAnalysis& analysis,
-                           const TransposeSpec& spec,
+                           const PackedTransposeDescription& spec,
                            absl::Span<const int64_t> output_block_tile,
                            int64_t num_shmem_groups,
                            mlir::MLIRContext* mlir_context);
@@ -273,7 +273,7 @@ class PackedTranspose : public TransposeFusionBase {
   IndexingMap GetShmemReadIndexing(mlir::MLIRContext* ctx) const;
   IndexingMap GetOutputIndexing(mlir::MLIRContext* ctx) const;
 
-  TransposeSpec spec_;
+  PackedTransposeDescription spec_;
 
   // Tile sizes for the canonical input shape.
   std::vector<int64_t> output_tile_;

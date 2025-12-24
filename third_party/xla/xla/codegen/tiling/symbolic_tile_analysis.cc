@@ -459,8 +459,8 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
         SymbolicTile::FromIndexingMap(reshape_indexing_map);
 
     if (!reshape_symbolic_tile.has_value()) {
-      return FusionDecision::Forbid("Bailing out on reshape ")
-             << hlo->ToString() << " with indexing map "
+      return FusionDecision::Forbid("Bailing out on reshape")
+             << " " << hlo->ToString() << " with indexing map "
              << ToString(reshape_indexing_map);
     }
   }
@@ -1147,7 +1147,7 @@ ComposeIndexingResult ComposeInstructionIndexing(
     IndexingMap rt_map =
         ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(), rt_var.map);
     HloInstructionAdaptor hlo_adaptor =
-        instruction_adaptor.parent().GetInstruction(rt_var.hlo);
+        instruction_adaptor.parent().GetInstruction(rt_var.hlo());
     auto tiled_runtime_var = std::make_unique<SymbolicTiledHloInstruction>(
         &hlo_adaptor.instruction(), rt_map,
         tiled_hlo_instruction->runtime_variables());

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -46,8 +47,8 @@ namespace xla::gpu {
 // XLA:GPU extension of the Collectives interface with GPU-specific APIs.
 class GpuCollectives : public Collectives {
  public:
-  // Returns the default collectives implementation for GPU backend.
-  static GpuCollectives* Default();
+  // Returns the default collectives implementation for the given platform.
+  static GpuCollectives* Default(absl::string_view platform_name);
 
   // A callback to get a unique clique id.
   using CliqueIdCallback =  // NOLINT

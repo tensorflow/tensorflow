@@ -47,9 +47,9 @@ TEST(AttrUtilTest, TestGetIntAttr) {
   TF_ASSERT_OK(AddOpAttr("bar", "i32$0", &opattrs));
   TF_ASSERT_OK(AddOpAttr("baz", "i32$123", &opattrs));
 
-  ASSERT_EQ(opattrs.GetAsserting<int32>("foo"), -2);
-  ASSERT_EQ(opattrs.GetAsserting<int32>("bar"), 0);
-  ASSERT_EQ(opattrs.GetAsserting<int32>("baz"), 123);
+  ASSERT_EQ(opattrs.GetAsserting<int32_t>("foo"), -2);
+  ASSERT_EQ(opattrs.GetAsserting<int32_t>("bar"), 0);
+  ASSERT_EQ(opattrs.GetAsserting<int32_t>("baz"), 123);
 
   absl::Status s = AddOpAttr("invalid", "i32$4.5", &opattrs);
   ASSERT_FALSE(s.ok());
@@ -71,17 +71,17 @@ TEST(AttrUtilTest, TestGetIntListAttr) {
   TF_ASSERT_OK(AddOpAttr("baz", "list(i32)$1,2,3", &opattrs));
 
   // std::vector<int32> v1, v2, v3;
-  ArrayRef<int32> v1, v2, v3;
-  std::vector<int32> expected_v1;
-  std::vector<int32> expected_v2 = {1};
-  std::vector<int32> expected_v3 = {1, 2, 3};
-  ArrayRef<int32> expected_v1_ref(expected_v1);
-  ArrayRef<int32> expected_v2_ref(expected_v2);
-  ArrayRef<int32> expected_v3_ref(expected_v3);
+  ArrayRef<int32_t> v1, v2, v3;
+  std::vector<int32_t> expected_v1;
+  std::vector<int32_t> expected_v2 = {1};
+  std::vector<int32_t> expected_v3 = {1, 2, 3};
+  ArrayRef<int32_t> expected_v1_ref(expected_v1);
+  ArrayRef<int32_t> expected_v2_ref(expected_v2);
+  ArrayRef<int32_t> expected_v3_ref(expected_v3);
 
-  ASSERT_TRUE(opattrs.GetArray<int32>("foo", &v1));
-  ASSERT_TRUE(opattrs.GetArray<int32>("bar", &v2));
-  ASSERT_TRUE(opattrs.GetArray<int32>("baz", &v3));
+  ASSERT_TRUE(opattrs.GetArray<int32_t>("foo", &v1));
+  ASSERT_TRUE(opattrs.GetArray<int32_t>("bar", &v2));
+  ASSERT_TRUE(opattrs.GetArray<int32_t>("baz", &v3));
   ASSERT_EQ(v1, expected_v1_ref);
   ASSERT_EQ(v2, expected_v2_ref);
   ASSERT_EQ(v3, expected_v3_ref);

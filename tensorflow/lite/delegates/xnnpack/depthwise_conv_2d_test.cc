@@ -19,18 +19,16 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/depthwise_conv_2d_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-TEST(DepthwiseConv2D, 1x1) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
+struct DepthwiseConv2D : DelegateTest {};
 
+TEST_F(DepthwiseConv2D, 1x1) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -47,11 +45,7 @@ TEST(DepthwiseConv2D, 1x1) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, 2x2) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, 2x2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -69,11 +63,7 @@ TEST(DepthwiseConv2D, 2x2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, 3x3) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, 3x3) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -91,11 +81,7 @@ TEST(DepthwiseConv2D, 3x3) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, 3x3Stride2) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, 3x3Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -115,11 +101,7 @@ TEST(DepthwiseConv2D, 3x3Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, 5x5) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, 5x5) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -137,11 +119,7 @@ TEST(DepthwiseConv2D, 5x5) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, 5x5Stride2) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, 5x5Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
@@ -161,11 +139,7 @@ TEST(DepthwiseConv2D, 5x5Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SmallKernelWithSamePadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SmallKernelWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -188,11 +162,7 @@ TEST(DepthwiseConv2D, SmallKernelWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SmallKernelWithValidPadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SmallKernelWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -215,11 +185,7 @@ TEST(DepthwiseConv2D, SmallKernelWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, StrideWithSamePadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, StrideWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -246,11 +212,7 @@ TEST(DepthwiseConv2D, StrideWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, StrideWithValidPadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, StrideWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -277,11 +239,7 @@ TEST(DepthwiseConv2D, StrideWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, DilationWithSamePadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, DilationWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -308,11 +266,7 @@ TEST(DepthwiseConv2D, DilationWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, DilationWithValidPadding) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, DilationWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -339,11 +293,7 @@ TEST(DepthwiseConv2D, DilationWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, DepthMultiplier) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, DepthMultiplier) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -372,11 +322,7 @@ TEST(DepthwiseConv2D, DepthMultiplier) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, FP16Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, FP16Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -403,11 +349,7 @@ TEST(DepthwiseConv2D, FP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, TensorWiseQuantizedInt8Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, TensorWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -434,11 +376,7 @@ TEST(DepthwiseConv2D, TensorWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, ChannelWiseQuantizedInt8Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, ChannelWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -465,11 +403,7 @@ TEST(DepthwiseConv2D, ChannelWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SparseWeights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SparseWeights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -496,11 +430,7 @@ TEST(DepthwiseConv2D, SparseWeights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SparseFP16Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SparseFP16Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -528,11 +458,7 @@ TEST(DepthwiseConv2D, SparseFP16Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SparseTensorWiseQuantizedInt8Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SparseTensorWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -560,11 +486,7 @@ TEST(DepthwiseConv2D, SparseTensorWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, SparseChannelWiseQuantizedInt8Weights) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, SparseChannelWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -592,11 +514,7 @@ TEST(DepthwiseConv2D, SparseChannelWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, ReluActivation) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, ReluActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -623,11 +541,7 @@ TEST(DepthwiseConv2D, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, Relu6Activation) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, Relu6Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -654,11 +568,7 @@ TEST(DepthwiseConv2D, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, ReluMinus1To1Activation) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, ReluMinus1To1Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -685,11 +595,7 @@ TEST(DepthwiseConv2D, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, DISABLED_TanhActivation) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, DISABLED_TanhActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -716,11 +622,7 @@ TEST(DepthwiseConv2D, DISABLED_TanhActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, DISABLED_SignBitActivation) {
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DepthwiseConv2D, DISABLED_SignBitActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -747,13 +649,11 @@ TEST(DepthwiseConv2D, DISABLED_SignBitActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, MultiThreading) {
+TEST_F(DepthwiseConv2D, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -780,7 +680,7 @@ TEST(DepthwiseConv2D, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, WeightsCache) {
+TEST_F(DepthwiseConv2D, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -788,9 +688,7 @@ TEST(DepthwiseConv2D, WeightsCache) {
       weights_cache(TfLiteXNNPackDelegateWeightsCacheCreate(),
                     TfLiteXNNPackDelegateWeightsCacheDelete);
   delegate_options.weights_cache = weights_cache.get();
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -818,15 +716,13 @@ TEST(DepthwiseConv2D, WeightsCache) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DepthwiseConv2D, TransientIndirectionBuffer) {
+TEST_F(DepthwiseConv2D, TransientIndirectionBuffer) {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
   xnnpack_options.num_threads = 2;
   xnnpack_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(xnnpack_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());

@@ -173,7 +173,7 @@ inline bool IsOffDutyOp(absl::string_view category) {
 // to in a user's program; e.g. it could be the file and line of user code that
 // generated the op.
 struct OpSourceInfo {
-  absl::string_view source_file;
+  std::string source_file;
   int32_t source_line = -1;
   std::string stack_frame;
 

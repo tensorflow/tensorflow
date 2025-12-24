@@ -83,8 +83,8 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
   mlir::Block* then_fn_block = then_func.addEntryBlock();
   mlir::OpBuilder then_fn_builder =
       mlir::OpBuilder::atBlockBegin(then_fn_block);
-  then_fn_builder.create<mlir::TF::NoOp>(location);
-  then_fn_builder.create<mlir::func::ReturnOp>(location);
+  mlir::TF::NoOp::create(then_fn_builder, location);
+  mlir::func::ReturnOp::create(then_fn_builder, location);
 
   // Build else_func that is the branch of device_id == 0.
   // The else func is just the original op.
@@ -100,9 +100,9 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
   mlir::OpBuilder else_fn_builder =
       mlir::OpBuilder::atBlockBegin(else_fn_block);
 
-  else_fn_builder.create<T>(location, op->getResultTypes(),
-                            else_fn_block->getArguments());
-  else_fn_builder.create<mlir::func::ReturnOp>(location);
+  T::create(else_fn_builder, location, op->getResultTypes(),
+            else_fn_block->getArguments());
+  mlir::func::ReturnOp::create(else_fn_builder, location);
 
   symbol_table.insert(then_func);
   symbol_table.insert(else_func);
@@ -115,12 +115,12 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
           builder, location,
           mlir::cast<mlir::TensorType>(device_id.getType()).getElementType()));
 
-  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
-      location, device_id, zero_scalar,
+  mlir::TF::NotEqualOp not_equal = mlir::TF::NotEqualOp::create(
+      builder, location, device_id, zero_scalar,
       /*incompatible_shape_error=*/builder.getBoolAttr(false));
 
-  mlir::Operation* if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(),
+  mlir::Operation* if_op = mlir::TF::IfOp::create(
+      builder, location, then_func.getFunctionType().getResults(),
       /*cond=*/not_equal.getResult(),
       /*input=*/op->getOperands(),
       /*then_branch=*/then_func.getSymName(),

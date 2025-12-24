@@ -29,11 +29,11 @@ class CustomDeviceOpHandler {
  public:
   ~CustomDeviceOpHandler() = default;
   // Register a new custom device.
-  absl::Status RegisterCustomDevice(const string& device_name,
+  absl::Status RegisterCustomDevice(const std::string& device_name,
                                     std::unique_ptr<CustomDevice> device);
 
   // Find the custom device from given name. Return true if it finds one.
-  bool FindCustomDeviceFromName(const string& name,
+  bool FindCustomDeviceFromName(const std::string& name,
                                 CustomDevice** device) const;
 
   absl::Status Execute(ImmediateExecutionOperation* op,
@@ -53,7 +53,8 @@ class CustomDeviceOpHandler {
   void Clear();
 
  private:
-  std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
+  std::unordered_map<std::string, std::unique_ptr<CustomDevice>>
+      custom_devices_;
 };
 }  // namespace tensorflow
 

@@ -32,7 +32,8 @@ class StreamExecutorUtil {
   template <typename T>
   static se::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<char*>(t.tensor_data().data()));
-    return se::DeviceMemory<T>(se::DeviceMemoryBase(ptr, t.TotalBytes()));
+    return se::DeviceMemory<T>(
+        stream_executor::DeviceAddressBase(ptr, t.TotalBytes()));
   }
 };
 

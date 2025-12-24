@@ -60,24 +60,24 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNELS);
 // A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(
-    Name("Sum")
-        .Device(DEVICE_DEFAULT)
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int32>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int32, int32, Eigen::internal::SumReducer<int32>>);
-REGISTER_KERNEL_BUILDER(
-    Name("Sum")
-        .Device(DEVICE_DEFAULT)
-        .TypeConstraint<int32>("T")
-        .TypeConstraint<int64_t>("Tidx")
-        .HostMemory("input")
-        .HostMemory("output")
-        .HostMemory("reduction_indices"),
-    ReductionOp<CPUDevice, int32, int64, Eigen::internal::SumReducer<int32>>);
+REGISTER_KERNEL_BUILDER(Name("Sum")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tidx")
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .HostMemory("reduction_indices"),
+                        ReductionOp<CPUDevice, int32_t, int32_t,
+                                    Eigen::internal::SumReducer<int32_t>>);
+REGISTER_KERNEL_BUILDER(Name("Sum")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int64_t>("Tidx")
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .HostMemory("reduction_indices"),
+                        ReductionOp<CPUDevice, int32_t, int64_t,
+                                    Eigen::internal::SumReducer<int32_t>>);
 
 #endif
 

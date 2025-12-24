@@ -21,7 +21,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -118,27 +116,13 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
   std::vector<TritonGemmConfig> configs;
 
   if (compute_capability.IsAtLeastBlackwell()) {
-    configs = *kBlackwellConfigs;
-  } else if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
-    configs = *kHopperAmpereConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  } else if (compute_capability.IsHopper()) {
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
+  } else if (compute_capability.IsAmpere()) {
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kAmpere);
   } else {
-    configs = *kDefaultCudaConfigs;
-  }
-
-  if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
-      !stream_executor::gpu::IsTmaAvailableForDevice(
-          config_.GetDeviceDescription())) {
-    return configs;
-  }
-  std::vector<TritonGemmConfig> tma_parameterized_configs;
-  for (auto& config : configs) {
-    config.is_tma_allowed = false;
-    tma_parameterized_configs.push_back(config);
-
-    if (IsTmaRecommended(config)) {
-      config.is_tma_allowed = true;
-      tma_parameterized_configs.push_back(config);
-    }
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda);
   }
 
   // TODO(b/449668102): Currently only supporting warp specialization on
@@ -146,10 +130,10 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
   if (!debug_options_
            .xla_gpu_experimental_enable_triton_warp_specialization() ||
       !compute_capability.IsAtLeastBlackwell()) {
-    return tma_parameterized_configs;
+    return configs;
   }
   std::vector<TritonGemmConfig> warp_specialized_configs;
-  for (auto& config : tma_parameterized_configs) {
+  for (auto& config : configs) {
     config.is_warp_specialization_allowed = false;
     warp_specialized_configs.push_back(config);
 

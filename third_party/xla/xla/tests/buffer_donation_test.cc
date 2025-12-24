@@ -39,14 +39,14 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -105,7 +105,8 @@ class BufferDonationTest : public HloTestBase {
     TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
     auto& executors = backend_->stream_executors();
-    se::StreamExecutorMemoryAllocator memory_allocator(platform_, executors);
+    stream_executor::StreamExecutorAddressAllocator memory_allocator(platform_,
+                                                                     executors);
     ExecutableRunOptions run_options;
     run_options.set_stream(stream.get());
     run_options.set_allocator(&memory_allocator);
@@ -113,7 +114,7 @@ class BufferDonationTest : public HloTestBase {
         run_options, backend_->StreamBorrowerWithPriority());
 
     std::vector<ExecutionInput> args;
-    std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;
+    std::vector<ShapeTree<se::DeviceAddressBase>> inputs_buffers;
 
     CHECK_EQ(argument_literals.size(), donate_arguments.size());
 
@@ -130,14 +131,15 @@ class BufferDonationTest : public HloTestBase {
       ShapedBuffer shaped_buffer = scoped_shaped_buffer.release();
       CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
           stream.get(), argument_literal, shaped_buffer));
-      ShapeTree<se::DeviceMemoryBase> input_buffers = shaped_buffer.buffers();
+      ShapeTree<se::DeviceAddressBase> input_buffers = shaped_buffer.buffers();
       inputs_buffers.push_back(input_buffers);
-      ShapeTree<MaybeOwningDeviceMemory> owned_buffers(
+      ShapeTree<MaybeOwningDeviceAddress> owned_buffers(
           argument_literal.shape());
       owned_buffers.ForEachMutableElement(
-          [&](const ShapeIndex& index, MaybeOwningDeviceMemory* device_memory) {
+          [&](const ShapeIndex& index,
+              MaybeOwningDeviceAddress* device_memory) {
             if (donate_argument) {
-              *device_memory = se::OwningDeviceMemory(
+              *device_memory = se::ScopedDeviceAddress<uint8_t>(
                   input_buffers.element(index), executor_->device_ordinal(),
                   &memory_allocator);
             } else {
@@ -161,7 +163,7 @@ class BufferDonationTest : public HloTestBase {
     }
     ExecutionOutput output = std::move(output_status).value();
 
-    se::DeviceMemoryBase result_root_buffer = output.Result().root_buffer();
+    se::DeviceAddressBase result_root_buffer = output.Result().root_buffer();
     LOG(INFO) << "result allocation = " << result_root_buffer.opaque()
               << "             size = " << result_root_buffer.size();
 

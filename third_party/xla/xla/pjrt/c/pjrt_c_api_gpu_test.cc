@@ -212,8 +212,8 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = 0;
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -221,8 +221,9 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
-  tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
-                              size);
+  tsl::port::AlignedSizedFree(
+      args.dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
@@ -231,8 +232,8 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer_.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = size + 1;  // offset is invalid
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -376,10 +377,12 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   size_t dma_size = 1024 * 1024;
   size_t alignment = 1024 * 1024;
-  void* host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  void* host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
   auto host_dma_ptr_deleter =
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
-        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
       });
 
   PJRT_Client_DmaMap_Args dma_args;
@@ -468,7 +471,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
           &set_buffer_error_args);
   ASSERT_EQ(set_buffer_error_error, nullptr);
 
-  EXPECT_THAT(buffer_out->buffer->ToLiteralSync(),
+  EXPECT_THAT(buffer_out->buffer->ToLiteral().Await(),
               absl_testing::StatusIs(absl::StatusCode::kInternal,
                                      HasSubstr(error_message)));
 
@@ -538,7 +541,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
       transfer_args.done_with_h2d_transfer, MakeEventDeleter(api_));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                          buffer_out->buffer->ToLiteralSync());
+                          buffer_out->buffer->ToLiteral().Await());
   EXPECT_EQ(literal->element_count(), 8);
   EXPECT_THAT(literal->data<uint32_t>(), ElementsAreArray(data));
 

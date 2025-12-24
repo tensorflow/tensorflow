@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/service/gpu_topology.pb.h"
 
 namespace xla {
 

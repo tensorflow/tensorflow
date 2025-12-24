@@ -38,15 +38,16 @@ namespace tensorflow {
 namespace tfrt_compiler {
 namespace {
 
-struct RewriteStatefulPartitionedCallToXlaLaunchOnCpu
-    : public mlir::OpRewritePattern<mlir::TF::StatefulPartitionedCallOp> {
-  using OpRewritePattern::OpRewritePattern;
+template <typename OpType>
+struct RewriteFunctionCallToXlaLaunchOnCpu
+    : public mlir::OpRewritePattern<OpType> {
+ public:
+  using mlir::OpRewritePattern<OpType>::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::TF::StatefulPartitionedCallOp op,
-      mlir::PatternRewriter& rewriter) const override {
+      OpType op, mlir::PatternRewriter& rewriter) const override {
     if (auto xla_must_compile =
-            op->getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
+            op->template getAttrOfType<mlir::BoolAttr>("_XlaMustCompile");
         !xla_must_compile || !xla_must_compile.getValue()) {
       return mlir::failure();
     }
@@ -92,7 +93,11 @@ struct TfrtXlaRewritePass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
 
-    patterns.add<RewriteStatefulPartitionedCallToXlaLaunchOnCpu>(&getContext());
+    patterns
+        .add<RewriteFunctionCallToXlaLaunchOnCpu<mlir::TF::PartitionedCallOp>>(
+            &getContext());
+    patterns.add<RewriteFunctionCallToXlaLaunchOnCpu<
+        mlir::TF::StatefulPartitionedCallOp>>(&getContext());
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

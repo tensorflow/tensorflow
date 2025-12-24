@@ -106,12 +106,12 @@ class SanitizeGatherOpOutputToI4 : public OpRewritePattern<TFL::GatherOp> {
     }
 
     Builder builder(op.getContext());
-    auto new_gather_op = rewriter.create<TFL::GatherOp>(
-        op.getLoc(),
-        /*result=*/
-        mlir::cast<TensorType>(op.getResult().getType())
-            .clone(builder.getI4Type()),
-        /*operand=*/op.getOperands(), op->getAttrs());
+    auto new_gather_op =
+        TFL::GatherOp::create(rewriter, op.getLoc(),
+                              /*result=*/
+                              mlir::cast<TensorType>(op.getResult().getType())
+                                  .clone(builder.getI4Type()),
+                              /*operand=*/op.getOperands(), op->getAttrs());
     rewriter.replaceAllUsesWith(op.getResult(), new_gather_op.getResult());
 
     return success();

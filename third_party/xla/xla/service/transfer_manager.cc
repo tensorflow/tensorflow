@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -288,13 +288,14 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
 }
 
 absl::Status TransferManager::WriteRootTupleIndexTable(
-    se::Stream* stream, const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree) {
+    se::Stream* stream,
+    const ShapeTree<MaybeOwningDeviceAddress>& buffer_tree) {
   TF_RET_CHECK(buffer_tree.shape().IsTuple());
   if (ShapeUtil::TupleElementCount(buffer_tree.shape()) == 0) {
     return absl::OkStatus();
   }
   se::DeviceAddressBase device_memory =
-      buffer_tree.element({}).AsDeviceMemoryBase();
+      buffer_tree.element({}).AsDeviceAddress();
   TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
                device_memory.size());
 
@@ -302,7 +303,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
   elements.reserve(ShapeUtil::TupleElementCount(buffer_tree.shape()));
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
        ++i) {
-    elements.push_back(buffer_tree.element({i}).AsDeviceMemoryBase());
+    elements.push_back(buffer_tree.element({i}).AsDeviceAddress());
   }
   return WriteSingleTupleIndexTable(stream, elements, buffer_tree.shape(),
                                     &device_memory);

@@ -63,7 +63,7 @@ class TestEagerNode : public EagerNode {
   };
 
   void Abort(absl::Status status) override {}
-  string DebugString() const override { return "testEagerNode"; }
+  std::string DebugString() const override { return "testEagerNode"; }
 
  private:
   TestState* state_;
@@ -94,7 +94,7 @@ class TestAsyncEagerNode : public AsyncEagerNode {
   };
 
   void Abort(absl::Status status) override {}
-  string DebugString() const override { return "testAsyncEagerNode"; }
+  std::string DebugString() const override { return "testAsyncEagerNode"; }
 
  private:
   TestState* state_;

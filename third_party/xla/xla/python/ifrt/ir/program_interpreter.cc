@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/program_interpreter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,18 +25,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/Liveness.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
@@ -46,7 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
@@ -74,11 +78,19 @@ using ExecuteResult = ::xla::ifrt::LoadedExecutable::ExecuteResult;
 
 namespace {
 
+// Opaque handle that represents an array. Zero is reserved for null.
+using ArrayHandle = uintptr_t;
+
 // Array with additional metadata (e.g., if it can be donated).
 struct ArrayState {
   ArrayRef array;
   bool can_be_donated;
 };
+
+// Assigns a unique handle to the given MLIR value.
+ArrayHandle ToArrayHandle(mlir::Value value) {
+  return reinterpret_cast<ArrayHandle>(value.getAsOpaquePointer());
+}
 
 // Returns an xla::ifrt::Sharding for the given IFRT array type.
 absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
@@ -110,65 +122,23 @@ std::string PrettyPrintGeneric(mlir::Operation* op) {
                       GetPrettyLocation(op->getLoc()));
 }
 
-// Populates the cache storing a Sharding for each IfrtArrayType.
-//
-// This cache exists to avoid traversing and creating large device lists at
-// execution time.
-//
-// Note that the cache is only populated for array types returned by CopyArrays
-// and RemapArrays ops because they are the only ops that need shardings.
-absl::StatusOr<llvm::DenseMap<xla::ifrt::IfrtArrayType, xla::ifrt::ShardingRef>>
-PopulateShardingCache(mlir::func::FuncOp main_func, xla::ifrt::Client* client,
-                      const xla::ifrt::DeviceListRef& devices) {
-  llvm::DenseMap<xla::ifrt::IfrtArrayType, xla::ifrt::ShardingRef>
-      array_type_to_sharding;
-  for (const mlir::Operation& op : main_func.getOps()) {
-    if (auto copy_arrays_op = llvm::dyn_cast<xla::ifrt::CopyArraysOp>(&op);
-        copy_arrays_op != nullptr) {
-      for (const auto [idx, output] :
-           llvm::enumerate(copy_arrays_op.getOutputs())) {
-        const auto array_type =
-            llvm::cast<xla::ifrt::IfrtArrayType>(output.getType());
-        TF_RET_CHECK(array_type != nullptr)
-            << "Output array #" << idx << " is not of type `IfrtArrayType`. "
-            << PrettyPrintGeneric(copy_arrays_op);
-        if (array_type_to_sharding.find(array_type) ==
-            array_type_to_sharding.end()) {
-          TF_ASSIGN_OR_RETURN(auto sharding,
-                              GetSharding(array_type, client, devices));
-          array_type_to_sharding[array_type] = std::move(sharding);
-        }
-      }
-    } else if (auto remap_op = llvm::dyn_cast<xla::ifrt::RemapArraysOp>(&op);
-               remap_op != nullptr) {
-      for (const auto [idx, output] : llvm::enumerate(remap_op.getOutputs())) {
-        const auto array_type =
-            llvm::cast<xla::ifrt::IfrtArrayType>(output.getType());
-        TF_RET_CHECK(array_type != nullptr)
-            << "Output array #" << idx << " is not of type `IfrtArrayType`. "
-            << PrettyPrintGeneric(remap_op);
-        if (array_type_to_sharding.find(array_type) ==
-            array_type_to_sharding.end()) {
-          TF_ASSIGN_OR_RETURN(auto sharding,
-                              GetSharding(array_type, client, devices));
-          array_type_to_sharding[array_type] = std::move(sharding);
-        }
-      }
-    }
-  }
-  return array_type_to_sharding;
-}
-
 }  // namespace
 
 struct Environment {
-  // Associates array with an MLIR value.
-  void AssociateArray(mlir::Value value, ArrayState array) {
-    CHECK(value_to_array.try_emplace(value, array).second);
+  // Associates array with an opaque handle.
+  void AssociateArray(ArrayHandle handle, ArrayState array) {
+    CHECK(handle_to_array.try_emplace(handle, array).second);
   }
 
-  // Map from MLIR value to IFRT array corresponding to the value.
-  llvm::DenseMap<mlir::Value, ArrayState> value_to_array;
+  // IFRT client for execution.
+  xla::ifrt::Client* client;
+  // Name of the program.
+  std::string program_name;
+  // Set of donated program arguments, which can be deleted after their last
+  // use. Entries are removed upon deletion or if they are aliased.
+  absl::flat_hash_set<ArrayHandle> deletable_program_arguments;
+  // Map from an opaque handle to IFRT array corresponding to the value.
+  absl::flat_hash_map<ArrayHandle, ArrayState> handle_to_array;
   // Outputs of the program.
   std::vector<ArrayRef> outputs;
   // `ExecuteOptions.fill_status` passed to Execute().
@@ -179,213 +149,401 @@ struct Environment {
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
-    xla::ifrt::Client* client, std::shared_ptr<CompiledIfrtIrProgram> program,
+    xla::ifrt::Client* client, absl::string_view program_name,
+    mlir::ModuleOp mlir_module,
+    std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
     xla::ifrt::DeviceListRef devices) {
-  mlir::func::FuncOp main_func =
-      xla::ifrt::GetMainFunction(program->program->mlir_module);
+  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module);
   if (!main_func->hasAttr(xla::ifrt::kIfrtFunctionAttrName)) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "`main` function of IFRT IR program: ", program->program_name,
-        " is not an IFRT function."));
+    return absl::InvalidArgumentError(
+        absl::StrCat("`main` function of IFRT IR program: ", program_name,
+                     " is not an IFRT function."));
   }
-  TF_ASSIGN_OR_RETURN(auto array_type_to_sharding,
-                      PopulateShardingCache(main_func, client, devices));
   return std::unique_ptr<ProgramInterpreter>(new ProgramInterpreter(
-      client, std::move(program), std::move(devices), mlir::Liveness(main_func),
-      std::move(array_type_to_sharding)));
+      client, program_name, mlir_module, std::move(atom_program_executables),
+      std::move(devices), mlir::Liveness(main_func)));
 }
 
-absl::StatusOr<ExecuteResult> ProgramInterpreter::Execute(
-    absl::Span<ArrayRef> arrays, const ExecuteOptions& options,
-    std::optional<xla::ifrt::DeviceListRef> devices) {
-  TraceMe traceme([&]() {
-    return TraceMeEncode("DispatchProgram",
-                         {
-                             {"ifrt_ir_program", program_->program_name},
-                         });
-  });
-  VLOG(2) << "Started interpreting program: " << program_->program_name;
-  mlir::func::FuncOp main_func =
-      xla::ifrt::GetMainFunction(program_->program->mlir_module);
-  if (arrays.size() != main_func.getNumArguments()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "`main` function of IFRT IR program: ", program_->program_name,
-        " invoked with ", arrays.size(), " arguments, but it expects ",
-        main_func.getNumArguments(), " arguments."));
-  }
+namespace {
 
-  for (const auto& [idx, array] : llvm::enumerate(arrays)) {
-    if (array->IsDeleted()) {
+struct ProgramInterpreterState {
+  xla::ifrt::Client* client;
+  std::string program_name;
+
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<int> donated_input_indices;
+
+  std::vector<absl::AnyInvocable<absl::Status(Environment& env) const>> op_fns;
+
+  absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> Run(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+      std::optional<xla::ifrt::DeviceListRef> devices) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchProgram",
+                           {{"ifrt_ir_program", program_name}});
+    });
+    VLOG(2) << "Started interpreting program: " << program_name;
+
+    if (arrays.size() != input_handles.size()) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Input array #", idx, " of program ", program_->program_name,
-          " has already been deleted or donated."));
+          "`main` function of IFRT IR program: ", program_name,
+          " invoked with ", arrays.size(), " arguments, but it expects ",
+          input_handles.size(), " arguments."));
     }
-  }
 
-  Environment env;
-  env.fill_status = options.fill_status;
+    for (int idx = 0; idx < arrays.size(); ++idx) {
+      const xla::ifrt::ArrayRef& array = arrays[idx];
+      if (array->IsDeleted()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Input array #", idx, " of program ", program_name,
+                         " has already been deleted or donated."));
+      }
+    }
+
+    Environment env;
+    env.client = client;
+    env.fill_status = options.fill_status;
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      // Add to the environment the arrays that are used.
+      bool is_donated = donated_input_indices.contains(idx) &&
+                        !options.non_donatable_input_indices.contains(idx);
+      const ArrayHandle handle = input_handles[idx];
+      if (handle != 0) {
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/arrays[idx],
+                                       /*can_be_donated=*/is_donated,
+                                   });
+        if (is_donated) {
+          env.deletable_program_arguments.insert(handle);
+        }
+      } else if (is_donated) {
+        // If the argument is donated but not used, it can be deleted.
+        arrays[idx]->Delete();
+      }
+    }
+
+    for (const auto& op_fn : op_fns) {
+      TF_RETURN_IF_ERROR(op_fn(env));
+    }
+
+    VLOG(2) << "Finished interpreting program: " << program_name;
+    ExecuteResult result;
+    if (env.fill_status) {
+      result.status =
+          tsl::JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
+    }
+    result.outputs = std::move(env.outputs);
+    return result;
+  };
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::ExecuteFn>
+ProgramInterpreter::BuildExecuteFn() {
+  ProgramInterpreterState state;
+  state.client = client_;
+  state.program_name = program_name_;
+
+  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module_);
+
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
-    bool is_donated = main_func.getArgAttr(
-                          idx, xla::ifrt::kIfrtDonatedArgAttrName) != nullptr &&
-                      !options.non_donatable_input_indices.contains(idx);
-    if (!arg.use_empty()) {
-      env.AssociateArray(arg, ArrayState{/*array=*/arrays[idx],
-                                         /*can_be_donated=*/is_donated});
-      if (is_donated) {
-        deletable_program_arguments_.insert(arg);
-      }
-    } else if (is_donated) {
-      // If the argument is donated but not used, it can be deleted.
-      arrays[idx]->Delete();
+    const ArrayHandle handle = arg.use_empty() ? 0 : ToArrayHandle(arg);
+    state.input_handles.push_back(handle);
+    if (main_func.getArgAttr(idx, xla::ifrt::kIfrtDonatedArgAttrName) !=
+        nullptr) {
+      state.donated_input_indices.insert(idx);
     }
   }
 
-  // Walk ops one-by-one in program order, and dispatch atom program and
-  // copy arrays.
+  // Walk ops one-by-one in program order and create functions that execute each
+  // op on a given environment.
   for (mlir::Operation& op : main_func.getOps()) {
-    auto exec_op_status =
-        llvm::TypeSwitch<const mlir::Operation&, absl::Status>(op)
+    auto op_fn =
+        llvm::TypeSwitch<const mlir::Operation&, absl::StatusOr<OpFn>>(op)
             .Case<xla::ifrt::CallLoadedExecutableOp, xla::ifrt::RemapArraysOp,
                   xla::ifrt::CopyArraysOp, mlir::func::ReturnOp>(
-                [&](const auto& op) { return ExecuteOp(op, env); })
-            .Default([&](const auto& op) {
+                [this](const auto& op) { return HandleOp(op); })
+            .Default([](const mlir::Operation& op) {
               return absl::InvalidArgumentError(absl::StrCat(
                   "Interpreter found unexpected op: ", mlir::debugString(op)));
             });
-    if (!exec_op_status.ok()) {
-      tsl::errors::AppendToMessage(&exec_op_status, PrettyPrint(&op));
-      return exec_op_status;
+    if (!op_fn.ok()) {
+      absl::Status status = op_fn.status();
+      tsl::errors::AppendToMessage(&status, PrettyPrint(&op));
+      return status;
     }
+    state.op_fns.push_back(
+        [op_fn = *std::move(op_fn),
+         pretty_print = PrettyPrint(&op)](Environment& env) -> absl::Status {
+          absl::Status status = op_fn(env);
+          tsl::errors::AppendToMessage(&status, pretty_print);
+          return status;
+        });
   }
 
-  VLOG(2) << "Finished interpreting program: " << program_->program_name;
-  ExecuteResult result;
-  if (env.fill_status) {
-    result.status = tsl::JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
-  }
-  result.outputs = std::move(env.outputs);
-  return result;
+  return absl::bind_front(&ProgramInterpreterState::Run, std::move(state));
 }
 
-absl::Status ProgramInterpreter::ExecuteOp(
-    xla::ifrt::CallLoadedExecutableOp call_loaded_op, Environment& env) {
+namespace {
+
+struct CallLoadedExecutableOpState {
+  std::string pretty_print;
+  std::string atom_program_name;
+
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<int> donated_arg_idxs;
+  absl::flat_hash_set<ArrayHandle> dead_inputs;
+
+  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+  std::shared_ptr<xla::ifrt::LoadedExecutable> executable;
+
+  std::vector<ArrayHandle> output_handles;
+  bool is_leaf_op;
+
+  absl::Status Run(Environment& env) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchLoadedExecutableOp",
+                           {
+                               {"ifrt_ir_program", env.program_name},
+                               {"atom_program", atom_program_name},
+                           });
+    });
+    VLOG(3) << pretty_print;
+
+    xla::ifrt::LoadedExecutable::ExecuteOptions options = execute_options;
+    options.fill_status = env.fill_status;
+
+    // Get the inputs of the loaded executable.
+    std::vector<ArrayRef> inputs;
+    std::vector<ArrayHandle> arrays_to_remove;
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      const ArrayHandle handle = input_handles[idx];
+
+      auto array_it = env.handle_to_array.find(handle);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      if (array_it->second.array->IsDeleted()) {
+        // We explicitly check here for deletion in order to provide a more
+        // informative error message.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input array #", idx, "` has already been deleted or donated. ",
+            pretty_print));
+      }
+      inputs.push_back(array_it->second.array);
+
+      bool is_donated = donated_arg_idxs.contains(idx);
+      if (is_donated && !array_it->second.can_be_donated) {
+        VLOG(2) << "Atom program donates input #" << idx
+                << ", but it has not been donated to the IFRT IR program. "
+                   "Input will not be donated. \n"
+                << pretty_print;
+        is_donated = false;
+      }
+      if (is_donated || dead_inputs.contains(handle)) {
+        arrays_to_remove.push_back(handle);
+      }
+      if (!is_donated) {
+        options.non_donatable_input_indices.insert(idx);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
+                        executable->Execute(absl::MakeSpan(inputs), options,
+                                            /*devices=*/std::nullopt));
+    TF_RET_CHECK(result.outputs.size() == output_handles.size())
+        << "Got " << result.outputs.size() << " results, but atom program has "
+        << output_handles.size() << ". " << pretty_print;
+
+    // Remove the arrays from the environment after the inputs vector is
+    // created. This is because in situations such as `ifrt.Call(%0, %0)` the
+    // liveness analysis will return that %0 is dead, but it's used for the
+    // second argument.
+    for (const auto handle : arrays_to_remove) {
+      if (env.deletable_program_arguments.erase(handle)) {
+        // Explicitly delete donated program arguments that are not used later.
+        env.handle_to_array[handle].array->Delete();
+      }
+      env.handle_to_array.erase(handle);
+    }
+
+    for (int i = 0; i < output_handles.size(); ++i) {
+      const ArrayHandle handle = output_handles[i];
+      if (handle != 0) {
+        // The output array is kept only if it used later. This can happen if an
+        // executable has multiple output arrays, but only some of them are
+        // used.
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/std::move(result.outputs[i]),
+                                       /*can_be_donated=*/true,
+                                   });
+      }
+    }
+    if (is_leaf_op && env.fill_status) {
+      env.leaf_call_op_futures.push_back(std::move(result.status));
+    }
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    xla::ifrt::CallLoadedExecutableOp call_loaded_op) {
+  CallLoadedExecutableOpState state;
+  state.pretty_print = PrettyPrint(call_loaded_op);
+
   xla::ifrt::LoadedExecutableOp loaded_exec_op =
       call_loaded_op.getCalleeOp(symbol_table_);
-  std::string atom_program_name = loaded_exec_op.getSymName().str();
-  TraceMe traceme([&]() {
-    return TraceMeEncode("DispatchLoadedExecutableOp",
-                         {
-                             {"ifrt_ir_program", program_->program_name},
-                             {"atom_program", atom_program_name},
-                         });
-  });
-  std::string op_name = call_loaded_op->getName().getStringRef().str();
-  VLOG(3) << PrettyPrint(call_loaded_op);
-  // Get the loaded executable for the atom program.
-  auto exec_it = program_->atom_program_executables->find(atom_program_name);
-  TF_RET_CHECK(exec_it != program_->atom_program_executables->end())
-      << "Could not find executable. " << PrettyPrint(call_loaded_op);
+  state.atom_program_name = loaded_exec_op.getSymName().str();
 
-  absl::flat_hash_set<int> donated_arg_idxs(
-      call_loaded_op.getDonatedInputIndices().begin(),
-      call_loaded_op.getDonatedInputIndices().end());
+  // Get the loaded executable for the atom program.
+  auto exec_it = atom_program_executables_->find(state.atom_program_name);
+  TF_RET_CHECK(exec_it != atom_program_executables_->end())
+      << "Could not find executable. " << state.pretty_print;
+  state.executable = exec_it->second;
+
+  state.donated_arg_idxs.insert(call_loaded_op.getDonatedInputIndices().begin(),
+                                call_loaded_op.getDonatedInputIndices().end());
   for (const auto& io_alias :
        call_loaded_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
     // Insert the aliased input to the set.
-    donated_arg_idxs.insert(io_alias.asArrayRef()[0]);
+    state.donated_arg_idxs.insert(io_alias.asArrayRef()[0]);
   }
-  // Get the inputs of the loaded executable.
-  std::vector<ArrayRef> inputs;
-  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
-  execute_options.fill_status = env.fill_status;
-  llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
-  for (const auto [idx, input] : llvm::enumerate(call_loaded_op.getInputs())) {
-    auto array_it = env.value_to_array.find(input);
-    TF_RET_CHECK(array_it != env.value_to_array.end())
-        << "Input array #" << idx << " not found. "
-        << PrettyPrint(call_loaded_op);
-    if (array_it->second.array->IsDeleted()) {
-      // We explicitly check here for deletion in order to provide a more
-      // informative error message.
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Input array #", idx, "` has already been deleted or donated. ",
-          PrettyPrint(call_loaded_op)));
-    }
-    inputs.push_back(array_it->second.array);
-
-    bool is_donated = donated_arg_idxs.contains(idx);
-    if (is_donated && !array_it->second.can_be_donated) {
-      VLOG(2) << "Atom program donates input #" << idx
-              << ", but it has not been donated to the IFRT IR program. "
-                 "Input will not be donated. \n"
-              << PrettyPrint(call_loaded_op);
-      is_donated = false;
-    }
-    if (is_donated || liveness_.isDeadAfter(input, call_loaded_op)) {
-      array_values_to_gc_from_env.insert(input);
-    }
-    if (!is_donated) {
-      execute_options.non_donatable_input_indices.insert(idx);
+  for (const auto input : call_loaded_op.getInputs()) {
+    state.input_handles.push_back(ToArrayHandle(input));
+    if (liveness_.isDeadAfter(input, call_loaded_op)) {
+      state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::LoadedExecutable::ExecuteResult result,
-      exec_it->second->Execute(absl::MakeSpan(inputs), execute_options,
-                               /*devices=*/std::nullopt));
-  TF_RET_CHECK(result.outputs.size() == call_loaded_op.getOutputs().size())
-      << "Got " << result.outputs.size() << " results, but atom program has "
-      << call_loaded_op.getOutputs().size() << ". "
-      << PrettyPrint(call_loaded_op);
+  state.is_leaf_op = true;
+  for (const auto output : call_loaded_op.getOutputs()) {
+    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    state.output_handles.push_back(handle);
 
-  // Remove the arrays from the environment after the inputs vector is created.
-  // This is because in situations such as `ifrt.Call(%0, %0)` the liveness
-  // analysis will return that %0 is dead, but it's used for the second
-  // argument.
-  for (const auto& array_value : array_values_to_gc_from_env) {
-    if (deletable_program_arguments_.erase(array_value)) {
-      // Explicitly delete donated program arguments that are not used later.
-      env.value_to_array[array_value].array->Delete();
-    }
-    env.value_to_array.erase(array_value);
-  }
-
-  bool is_leaf_op = true;
-  for (const auto [output_array, output] :
-       llvm::zip(result.outputs, call_loaded_op.getOutputs())) {
-    if (!output.use_empty()) {
-      // The output array is kept only if it used later. This can happen if
-      // an executable has multiple output arrays, but only some of them are
-      // used.
-      env.AssociateArray(output, ArrayState{/*array=*/std::move(output_array),
-                                            /*can_be_donated=*/true});
-    }
-    if (is_leaf_op) {
+    if (state.is_leaf_op) {
       for (mlir::OpOperand& use : output.getUses()) {
         // An ifrt.CallOp is not a leaf if any of its outputs are not returned.
         if (llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner()) == nullptr) {
-          is_leaf_op = false;
+          state.is_leaf_op = false;
           break;
         }
       }
     }
   }
-  if (is_leaf_op && env.fill_status) {
-    env.leaf_call_op_futures.push_back(std::move(result.status));
-  }
 
-  return absl::OkStatus();
+  return absl::bind_front(&CallLoadedExecutableOpState::Run, std::move(state));
 }
 
-absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
-                                           Environment& env) {
-  TraceMe traceme([&]() {
-    return TraceMeEncode("DispatchRemapArraysOp",
-                         {{"ifrt_ir_program", program_->program_name}});
-  });
-  std::string op_name = remap_op->getName().getStringRef().str();
-  VLOG(3) << PrettyPrint(remap_op);
+namespace {
+
+struct RemapArraysOpState {
+  std::string pretty_print;
+
+  xla::ifrt::RemapPlan remap_plan;
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<ArrayHandle> dead_inputs;
+  bool remap_is_donated;
+
+  std::vector<ArrayHandle> output_handles;
+
+  absl::Status Run(Environment& env) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchRemapArraysOp",
+                           {{"ifrt_ir_program", env.program_name}});
+    });
+    VLOG(3) << pretty_print;
+
+    std::vector<ArrayRef> inputs;
+    inputs.reserve(remap_plan.input_specs.size());
+
+    std::optional<bool> is_donated;
+    std::vector<ArrayHandle> arrays_to_remove;
+
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      const ArrayHandle handle = input_handles[idx];
+
+      auto array_it = env.handle_to_array.find(handle);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      if (array_it->second.array->IsDeleted()) {
+        // We explicitly check here for deletion in order to provide a more
+        // informative error message.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input array #", idx, "` has already been deleted or donated. ",
+            pretty_print));
+      }
+      inputs.push_back(array_it->second.array);
+
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client RemapArrays API requires all input arrays have the same
+      // donation semantic.
+      if (!is_donated.has_value()) {
+        is_donated = remap_is_donated && array_it->second.can_be_donated;
+      }
+      if (*is_donated && !array_it->second.can_be_donated) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Donation semantic must be consistent across all input arrays of "
+            "RemapArraysOp. Input array #",
+            idx,
+            " cannot be donated, but previous input arrays can be donated. "
+            "It's likely due to a MPMD program argument is marked as "
+            "non-donatable. ",
+            pretty_print));
+      }
+      if (*is_donated || dead_inputs.contains(handle)) {
+        arrays_to_remove.push_back(handle);
+      }
+    }
+    TF_RET_CHECK(is_donated.has_value())
+        << "Unable to determine the donation semantic of the remap op. The "
+           "remap op has no inputs. "
+        << pretty_print;
+
+    // Apply the remap arrays operation.
+    xla::ifrt::ArrayCopySemantics copy_semantics =
+        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
+                    : xla::ifrt::ArrayCopySemantics::kReuseInput;
+    TF_ASSIGN_OR_RETURN(auto out_arrays, env.client->RemapArrays(
+                                             remap_plan, absl::MakeSpan(inputs),
+                                             copy_semantics));
+
+    for (const auto handle : arrays_to_remove) {
+      // Donated remapped arrays are pro-actively deleted, and aliased arrays
+      // cannot be deleted later. Thus, remove the arrays from the deletable
+      // program arguments set.
+      env.deletable_program_arguments.erase(handle);
+      env.handle_to_array.erase(handle);
+    }
+
+    // Store the result arrays in the environment.
+    TF_RET_CHECK(out_arrays.size() == remap_plan.output_specs.size())
+        << "Got " << out_arrays.size() << " results, but op has "
+        << remap_plan.output_specs.size() << ". " << pretty_print;
+    for (int i = 0; i < output_handles.size(); ++i) {
+      const ArrayHandle handle = output_handles[i];
+      if (handle != 0) {
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/std::move(out_arrays[i]),
+                                       /*can_be_donated=*/true,
+                                   });
+      }
+    }
+
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    xla::ifrt::RemapArraysOp remap_op) {
+  RemapArraysOpState state;
+  state.pretty_print = PrettyPrint(remap_op);
 
   // Construct the mappings of the remap plan.
   auto mappings =
@@ -410,54 +568,28 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
     }
   };
 
-  std::vector<ArrayRef> inputs;
-  std::vector<xla::ifrt::ArraySpec> input_specs;
-  inputs.reserve(remap_op.getInputs().size());
-  input_specs.reserve(remap_op.getInputs().size());
   // Get the input specs of the remap plan and the input arrays.
-  llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
-  std::optional<bool> is_donated;
+  std::vector<xla::ifrt::ArraySpec> input_specs;
+  input_specs.reserve(remap_op.getOutputs().size());
   for (const auto [idx, input] : llvm::enumerate(remap_op.getInputs())) {
-    auto array_it = env.value_to_array.find(input);
-    TF_RET_CHECK(array_it != env.value_to_array.end())
-        << "Input array #" << idx << " not found. " << PrettyPrint(remap_op);
-    if (array_it->second.array->IsDeleted()) {
-      // We explicitly check here for deletion in order to provide a more
-      // informative error message.
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Input array #", idx, " has already been deleted or donated. ",
-          PrettyPrint(remap_op)));
-    }
-    inputs.push_back(array_it->second.array);
-    input_specs.push_back(xla::ifrt::ArraySpec{
-        /*dtype=*/array_it->second.array->dtype(),
-        /*shape=*/array_it->second.array->shape(),
-        /*sharding=*/array_it->second.array->shared_ptr_sharding()});
+    state.input_handles.push_back(ToArrayHandle(input));
 
-    // The default buffer donation semantic is finalized at compilation time.
-    // Users can override the donation semantic at runtime. In the meantime, the
-    // IFRT client RemapArrays API requires all input arrays have the same
-    // donation semantic.
-    if (!is_donated.has_value()) {
-      is_donated = remap_op.getDonated() && array_it->second.can_be_donated;
-    }
-    if (*is_donated && !array_it->second.can_be_donated) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Donation semantic must be consistent across all input arrays of "
-          "RemapArraysOp. Input array #",
-          idx,
-          " cannot be donated, but previous input arrays can be donated. It's "
-          "likely due to a MPMD program argument is marked as non-donatable. ",
-          PrettyPrint(remap_op)));
-    }
-    if (*is_donated || liveness_.isDeadAfter(input, remap_op)) {
-      array_values_to_gc_from_env.insert(input);
+    const auto array_type =
+        llvm::cast<xla::ifrt::IfrtArrayType>(input.getType());
+    TF_ASSIGN_OR_RETURN(
+        xla::ifrt::DType dtype,
+        xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
+    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
+                        GetSharding(array_type, client_, devices_));
+    input_specs.push_back(xla::ifrt::ArraySpec{
+        /*dtype=*/dtype,
+        /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
+        /*sharding=*/std::move(sharding)});
+
+    if (liveness_.isDeadAfter(input, remap_op)) {
+      state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
-  TF_RET_CHECK(is_donated.has_value())
-      << "Unable to determine the donation semantic of the remap op. The remap "
-         "op has no inputs. "
-      << PrettyPrint(remap_op);
 
   // Get the output specs of the remap plan.
   std::vector<xla::ifrt::ArraySpec> output_specs;
@@ -468,153 +600,199 @@ absl::Status ProgramInterpreter::ExecuteOp(xla::ifrt::RemapArraysOp remap_op,
     TF_ASSIGN_OR_RETURN(
         xla::ifrt::DType dtype,
         xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
+    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
+                        GetSharding(array_type, client_, devices_));
     output_specs.push_back(xla::ifrt::ArraySpec{
         /*dtype=*/dtype,
         /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
-        /*sharding=*/array_type_to_sharding_.at(array_type)});
+        /*sharding=*/std::move(sharding)});
   }
 
-  // Apply the remap arrays operation.
-  xla::ifrt::ArrayCopySemantics copy_semantics =
-      *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                  : xla::ifrt::ArrayCopySemantics::kReuseInput;
-  TF_ASSIGN_OR_RETURN(
-      auto out_arrays,
-      client_->RemapArrays({
-                               /*input_specs=*/std::move(input_specs),
-                               /*output_specs=*/std::move(output_specs),
-                               /*mappings=*/std::move(mappings),
-                           },
-                           absl::MakeSpan(inputs), copy_semantics));
+  state.remap_plan = xla::ifrt::RemapPlan{
+      /*input_specs=*/std::move(input_specs),
+      /*output_specs=*/std::move(output_specs),
+      /*mappings=*/std::move(mappings),
+  };
+  state.remap_is_donated = remap_op.getDonated();
 
-  for (const auto& array_value : array_values_to_gc_from_env) {
-    // Donated remapped arrays are pro-actively deleted, and aliased arrays
-    // cannot be deleted later. Thus, remove the arrays from the deletable
-    // program arguments set.
-    deletable_program_arguments_.erase(array_value);
-    env.value_to_array.erase(array_value);
+  TF_RETURN_IF_ERROR(state.remap_plan.ComputeInputDevicesForOutputMap(client_));
+  TF_RETURN_IF_ERROR(state.remap_plan.Validate());
+
+  for (const auto output : remap_op.getOutputs()) {
+    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    state.output_handles.push_back(handle);
   }
 
-  // Store the result arrays in the environment.
-  TF_RET_CHECK(out_arrays.size() == remap_op.getOutputs().size())
-      << "Got " << out_arrays.size() << " results, but op has "
-      << remap_op.getOutputs().size() << ". " << PrettyPrint(remap_op);
-  for (const auto [output_array, output] :
-       llvm::zip(out_arrays, remap_op.getOutputs())) {
-    if (!output.use_empty()) {
-      env.AssociateArray(output, ArrayState{/*array=*/std::move(output_array),
-                                            /*can_be_donated=*/true});
-    }
-  }
-  return absl::OkStatus();
+  return absl::bind_front(&RemapArraysOpState::Run, std::move(state));
 }
 
-absl::Status ProgramInterpreter::ExecuteOp(
-    xla::ifrt::CopyArraysOp copy_arrays_op, Environment& env) {
-  TraceMe traceme([&]() {
-    return TraceMeEncode("DispatchCopyArraysOp",
-                         {{"ifrt_ir_program", program_->program_name}});
-  });
-  std::string op_name = copy_arrays_op->getName().getStringRef().str();
-  VLOG(3) << PrettyPrint(copy_arrays_op);
+namespace {
 
-  std::vector<ArrayRef> inputs;
-  inputs.reserve(copy_arrays_op.getInputs().size());
-  llvm::DenseSet<mlir::Value> array_values_to_gc_from_env;
-  std::optional<bool> is_donated;
+struct CopyArraysOpState {
+  std::string pretty_print;
+
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<ArrayHandle> dead_inputs;
+  bool copy_is_donated;
+
+  std::vector<ArrayHandle> output_handles;
+  xla::ifrt::ShardingRef new_sharding;
+
+  absl::Status Run(Environment& env) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchCopyArraysOp",
+                           {{"ifrt_ir_program", env.program_name}});
+    });
+    VLOG(3) << pretty_print;
+
+    std::vector<ArrayRef> inputs;
+    inputs.reserve(input_handles.size());
+
+    std::optional<bool> is_donated;
+    std::vector<ArrayHandle> arrays_to_remove;
+
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      const ArrayHandle handle = input_handles[idx];
+
+      auto array_it = env.handle_to_array.find(handle);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      if (array_it->second.array->IsDeleted()) {
+        // We explicitly check here for deletion in order to provide a more
+        // informative error message.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input array #", idx, " has already been deleted or donated. ",
+            pretty_print));
+      }
+      inputs.push_back(array_it->second.array);
+
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client CopyArrays API requires all input arrays have the same
+      // donation semantic.
+      if (!is_donated.has_value()) {
+        is_donated = copy_is_donated && array_it->second.can_be_donated;
+      }
+      if (*is_donated && !array_it->second.can_be_donated) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Donation semantic must be consistent across all input arrays of "
+            "CopyArraysOp. Input array #",
+            idx,
+            " cannot be donated, but previous input arrays can be donated. "
+            "It's likely due to a MPMD program argument is marked as "
+            "non-donatable. ",
+            pretty_print));
+      }
+      if (*is_donated || dead_inputs.contains(handle)) {
+        arrays_to_remove.push_back(handle);
+      }
+    }
+    TF_RET_CHECK(is_donated.has_value())
+        << "Unable to determine the donation semantic of the copy arrays op. "
+           "The copy arrays op has no inputs. "
+        << pretty_print;
+
+    auto array_copy_semantics =
+        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
+                    : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
+    // It is safe to get the devices and memory kind from the first output
+    // because all outputs use the same devices and have the same memory kind.
+    TF_ASSIGN_OR_RETURN(auto copied_arrays,
+                        env.client->CopyArrays(
+                            absl::MakeSpan(inputs), new_sharding->devices(),
+                            new_sharding->memory_kind(), array_copy_semantics));
+
+    for (const auto handle : arrays_to_remove) {
+      if (env.deletable_program_arguments.erase(handle)) {
+        // Explicitly delete donated program arguments that are not used later.
+        env.handle_to_array[handle].array->Delete();
+      }
+      env.handle_to_array.erase(handle);
+    }
+
+    TF_RET_CHECK(copied_arrays.size() == inputs.size())
+        << "Got " << copied_arrays.size() << " results, but op has "
+        << inputs.size() << ". " << pretty_print;
+    for (int i = 0; i < output_handles.size(); ++i) {
+      const ArrayHandle handle = output_handles[i];
+      if (handle != 0) {
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/std::move(copied_arrays[i]),
+                                       /*can_be_donated=*/true,
+                                   });
+      }
+    }
+
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    xla::ifrt::CopyArraysOp copy_arrays_op) {
+  CopyArraysOpState state;
+  state.pretty_print = PrettyPrint(copy_arrays_op);
+
   for (const auto [idx, input] : llvm::enumerate(copy_arrays_op.getInputs())) {
-    auto array_it = env.value_to_array.find(input);
-    TF_RET_CHECK(array_it != env.value_to_array.end())
-        << "Input array #" << idx << " not found. "
-        << PrettyPrint(copy_arrays_op);
-    if (array_it->second.array->IsDeleted()) {
-      // We explicitly check here for deletion in order to provide a more
-      // informative error message.
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Input array #", idx, " has already been deleted or donated. ",
-          PrettyPrint(copy_arrays_op)));
-    }
-    inputs.push_back(array_it->second.array);
-
-    // The default buffer donation semantic is finalized at compilation time.
-    // Users can override the donation semantic at runtime. In the meantime, the
-    // IFRT client CopyArrays API requires all input arrays have the same
-    // donation semantic.
-    if (!is_donated.has_value()) {
-      is_donated =
-          copy_arrays_op.getDonated() && array_it->second.can_be_donated;
-    }
-    if (*is_donated && !array_it->second.can_be_donated) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Donation semantic must be consistent across all input arrays of "
-          "CopyArraysOp. Input array #",
-          idx,
-          " cannot be donated, but previous input arrays can be donated. It's "
-          "likely due to a MPMD program argument is marked as non-donatable. ",
-          PrettyPrint(copy_arrays_op)));
-    }
-    if (*is_donated || liveness_.isDeadAfter(input, copy_arrays_op)) {
-      array_values_to_gc_from_env.insert(input);
+    state.input_handles.push_back(ToArrayHandle(input));
+    if (liveness_.isDeadAfter(input, copy_arrays_op)) {
+      state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
-  TF_RET_CHECK(is_donated.has_value())
-      << "Unable to determine the donation semantic of the copy arrays op. The "
-         "copy arrays op has no inputs. "
-      << PrettyPrint(copy_arrays_op);
+  state.copy_is_donated = copy_arrays_op.getDonated();
 
   const auto out_array_type = llvm::cast<xla::ifrt::IfrtArrayType>(
       copy_arrays_op.getOutputs().front().getType());
   TF_RET_CHECK(out_array_type != nullptr)
       << "Output array #0 is not of type `IfrtArrayType`. "
-      << PrettyPrint(copy_arrays_op);
-  auto new_sharding = array_type_to_sharding_.at(out_array_type);
-  auto array_copy_semantics = *is_donated
-                                  ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                                  : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
-  // It is safe to get the devices and memory kind from the first output
-  // because all outputs use the same devices and have the same memory kind.
-  TF_ASSIGN_OR_RETURN(
-      auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(inputs), new_sharding->devices(),
-                          new_sharding->memory_kind(), array_copy_semantics));
+      << state.pretty_print;
+  TF_ASSIGN_OR_RETURN(state.new_sharding,
+                      GetSharding(out_array_type, client_, devices_));
 
-  for (const auto& array_value : array_values_to_gc_from_env) {
-    if (deletable_program_arguments_.erase(array_value)) {
-      // Explicitly delete donated program arguments that are not used later.
-      env.value_to_array[array_value].array->Delete();
-    }
-    env.value_to_array.erase(array_value);
+  for (const auto output : copy_arrays_op.getOutputs()) {
+    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    state.output_handles.push_back(handle);
   }
 
-  // Store the result arrays in the environment.
-  TF_RET_CHECK(copied_arrays.size() == copy_arrays_op.getOutputs().size())
-      << "Got " << copied_arrays.size() << " results, but op has "
-      << copy_arrays_op.getOutputs().size() << ". "
-      << PrettyPrint(copy_arrays_op);
-  for (const auto [output_array, output] :
-       llvm::zip(copied_arrays, copy_arrays_op.getOutputs())) {
-    if (!output.use_empty()) {
-      env.AssociateArray(output, ArrayState{/*array=*/std::move(output_array),
-                                            /*can_be_donated=*/true});
-    }
-  }
-  return absl::OkStatus();
+  return absl::bind_front(&CopyArraysOpState::Run, std::move(state));
 }
 
-absl::Status ProgramInterpreter::ExecuteOp(mlir::func::ReturnOp return_op,
-                                           Environment& env) {
+namespace {
+
+struct ReturnOpState {
+  std::string pretty_print;
+  std::vector<ArrayHandle> output_handles;
+
+  absl::Status Run(Environment& env) const {
+    VLOG(3) << "func.return of `main` function";
+    env.outputs.reserve(output_handles.size());
+    for (int idx = 0; idx < output_handles.size(); ++idx) {
+      auto array_it = env.handle_to_array.find(output_handles[idx]);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      env.outputs.push_back(std::move(array_it->second.array));
+    }
+    env.handle_to_array.clear();
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    mlir::func::ReturnOp return_op) {
+  ReturnOpState state;
+  state.pretty_print = PrettyPrint(return_op);
+
   auto func_op = return_op->getParentOfType<mlir::func::FuncOp>();
   CHECK_EQ(func_op.getSymName().str(), "main");
-  VLOG(3) << return_op->getName().getStringRef().str() << " of `main` function";
-  env.outputs.reserve(return_op->getNumOperands());
+  state.output_handles.reserve(return_op->getNumOperands());
   for (const auto& [idx, result] : llvm::enumerate(return_op.getOperands())) {
-    auto array_it = env.value_to_array.find(result);
-    TF_RET_CHECK(array_it != env.value_to_array.end())
-        << "Input array #" << idx << " not found. " << PrettyPrint(return_op);
-    env.outputs.push_back(std::move(array_it->second.array));
+    state.output_handles.push_back(ToArrayHandle(result));
   }
-  env.value_to_array.clear();
-  return absl::OkStatus();
+
+  return absl::bind_front(&ReturnOpState::Run, std::move(state));
 }
 
 std::string ProgramInterpreter::PrettyPrint(mlir::Operation* op) {

@@ -49,7 +49,7 @@ GemmFusionAutotuner::GetPlatformCodegenBackends(
 
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  return *kDefaultRocmConfigs;
+  return GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultRocm);
 }
 
 }  // namespace gpu

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/call_inliner.h"
@@ -300,6 +301,7 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
 
   // Replace the conditional instruction itself.
   *conditional_op->mutable_shape() = new_shape;
+  CopyOriginalValue(conditional_op, conditional_op, old_to_new_mapping);
 
   // Reroute all user GTE instructions to new tuple indices.
   for (HloInstruction* user : conditional_op->users()) {
