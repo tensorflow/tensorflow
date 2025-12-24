@@ -36,14 +36,13 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -109,7 +108,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
       get_codegen_backends(stream_executor, &debug_options, compiler.get(),
                            &target_config, mlir_context);
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
+  std::unique_ptr<se::DeviceAddressAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
           stream_executor);
   auto profiler =

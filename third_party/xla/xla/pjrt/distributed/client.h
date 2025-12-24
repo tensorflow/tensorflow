@@ -33,12 +33,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/env.h"
 
-namespace tsl {
+namespace xla {
 class CoordinationServiceAgent;
-}  // namespace tsl
+}  // namespace xla
 
 namespace xla {
 
@@ -165,7 +165,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

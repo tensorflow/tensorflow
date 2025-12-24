@@ -2189,22 +2189,19 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   std::vector<int64_t> input_dnums(num_dims);
   input_dnums[0] = dnums.input_batch_dimension();
   input_dnums[1] = dnums.input_feature_dimension();
-  std::copy(dnums.input_spatial_dimensions().begin(),
-            dnums.input_spatial_dimensions().end(), input_dnums.begin() + 2);
+  absl::c_copy(dnums.input_spatial_dimensions(), input_dnums.begin() + 2);
   absl::c_sort(input_dnums);
 
   std::vector<int64_t> window_dnums(num_dims);
   window_dnums[0] = dnums.kernel_input_feature_dimension();
   window_dnums[1] = dnums.kernel_output_feature_dimension();
-  std::copy(dnums.kernel_spatial_dimensions().begin(),
-            dnums.kernel_spatial_dimensions().end(), window_dnums.begin() + 2);
+  absl::c_copy(dnums.kernel_spatial_dimensions(), window_dnums.begin() + 2);
   absl::c_sort(window_dnums);
 
   std::vector<int64_t> output_dnums(num_dims);
   output_dnums[0] = dnums.output_batch_dimension();
   output_dnums[1] = dnums.output_feature_dimension();
-  std::copy(dnums.output_spatial_dimensions().begin(),
-            dnums.output_spatial_dimensions().end(), output_dnums.begin() + 2);
+  absl::c_copy(dnums.output_spatial_dimensions(), output_dnums.begin() + 2);
   absl::c_sort(output_dnums);
 
   std::vector<int64_t> expected_dnums(num_dims);
@@ -3590,9 +3587,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> dimensions(operand.dimensions().size() +
                                   broadcast_sizes.size());
-  std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
-  std::copy(operand.dimensions().begin(), operand.dimensions().end(),
-            dimensions.begin() + broadcast_sizes.size());
+  absl::c_copy(broadcast_sizes, dimensions.begin());
+  absl::c_copy(operand.dimensions(),
+               dimensions.begin() + broadcast_sizes.size());
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));

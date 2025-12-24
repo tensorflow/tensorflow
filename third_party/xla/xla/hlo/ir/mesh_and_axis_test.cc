@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <cstdint>
-#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -348,6 +347,19 @@ TEST(MeshAndAxisTest, MaximalMesh) {
   EXPECT_EQ(Mesh(7), Mesh::FromProto(from_proto));
 
   EXPECT_EQ(maximal_mesh, Mesh::FromProto(maximal_mesh.ToProto()));
+}
+
+TEST(MeshAndAxisTest, AxisRefSize) {
+  Mesh mesh({2 * 7, 3 * 11, 5 * 13}, {"a", "b", "c"});
+  EXPECT_EQ(AxisRef(0).size(mesh), 14);
+  EXPECT_EQ(AxisRef(1).size(mesh), 33);
+  EXPECT_EQ(AxisRef(2).size(mesh), 65);
+  EXPECT_EQ(AxisRef(0, {1, 2}).size(mesh), 2);
+  EXPECT_EQ(AxisRef(0, {2, 7}).size(mesh), 7);
+  EXPECT_EQ(AxisRef(1, {1, 3}).size(mesh), 3);
+  EXPECT_EQ(AxisRef(1, {3, 11}).size(mesh), 11);
+  EXPECT_EQ(AxisRef(2, {1, 5}).size(mesh), 5);
+  EXPECT_EQ(AxisRef(2, {5, 13}).size(mesh), 13);
 }
 
 }  // namespace xla

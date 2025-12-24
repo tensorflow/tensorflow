@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -130,9 +131,18 @@ struct RemapPlan {
   static absl::StatusOr<RemapPlan> FromProto(Client* client,
                                              const RemapPlanProto& proto);
 
+  // Converts this plan to a protobuf.
+  absl::Status ToProto(
+      RemapPlanProto& proto,
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
   // Returns a `RemapPlanProto` representation.
   absl::StatusOr<RemapPlanProto> ToProto(
-      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    RemapPlanProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   std::string DebugString() const;
 

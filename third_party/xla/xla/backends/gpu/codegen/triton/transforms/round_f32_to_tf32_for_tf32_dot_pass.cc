@@ -50,10 +50,18 @@ class Tf32DotPattern : public OpRewritePattern<mt::DotOp> {
   mlir::LogicalResult matchAndRewrite(
       mt::DotOp op, PatternRewriter &rewriter) const override {
     constexpr auto tf32_args_rounded = "tf32_arguments_rounded";
-    if (op.getInputPrecision() != mt::InputPrecision::TF32) return failure();
-    if (!op.getA().getType().getElementType().isF32()) return failure();
-    if (!op.getB().getType().getElementType().isF32()) return failure();
-    if (op->hasAttr(tf32_args_rounded)) return failure();
+    if (op.getInputPrecision() != mt::InputPrecision::TF32) {
+      return failure();
+    }
+    if (!op.getA().getType().getElementType().isF32()) {
+      return failure();
+    }
+    if (!op.getB().getType().getElementType().isF32()) {
+      return failure();
+    }
+    if (op->hasAttr(tf32_args_rounded)) {
+      return failure();
+    }
 
     auto f32ToTF32 = [&](Value value) -> Value {
       return ElementwiseInlineAsmOp::create(

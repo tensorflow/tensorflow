@@ -19,12 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -157,7 +158,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
                    /*shared_mem_bytes=*/buffer_size_bytes)
           .value();
 
-  se::DeviceMemory<data_type> device_buffer =
+  se::DeviceAddress<data_type> device_buffer =
       executor->AllocateArray<data_type>(n_elements);
   std::vector<data_type> host_buffer(n_elements);
   for (int row = 0; row < n_rows; ++row) {
@@ -170,9 +171,9 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
 
   CHECK_OK(
       stream->Memcpy(&device_buffer, host_buffer.data(), buffer_size_bytes));
-  se::DeviceMemory<uint32_t> dev_n_cols = executor->AllocateScalar<uint32_t>();
+  se::DeviceAddress<uint32_t> dev_n_cols = executor->AllocateScalar<uint32_t>();
   CHECK_OK(stream->Memcpy(&dev_n_cols, &n_cols, sizeof(uint32_t)));
-  se::DeviceMemory<uint32_t> dev_n_rows = executor->AllocateScalar<uint32_t>();
+  se::DeviceAddress<uint32_t> dev_n_rows = executor->AllocateScalar<uint32_t>();
   CHECK_OK(stream->Memcpy(&dev_n_rows, &n_rows, sizeof(uint32_t)));
   CHECK_OK(stream->BlockHostUntilDone());
 

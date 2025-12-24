@@ -61,6 +61,22 @@ TEST(TensorShapeTest, ConvertsPred) {
             "tensor<4x5x6xi8>");
 }
 
+TEST(TensorShapeTest, ConvertsU1) {
+  mlir::MLIRContext ctx;
+  mlir::OpBuilder b(&ctx);
+  EXPECT_EQ(TypeToString(
+                TensorShapeToMlirType(ShapeUtil::MakeShape(U1, {4, 5, 6}), b)),
+            "tensor<4x5x6xi8>");
+}
+
+TEST(TensorShapeTest, ConvertsS1) {
+  mlir::MLIRContext ctx;
+  mlir::OpBuilder b(&ctx);
+  EXPECT_EQ(TypeToString(
+                TensorShapeToMlirType(ShapeUtil::MakeShape(S1, {4, 5, 6}), b)),
+            "tensor<4x5x6xi8>");
+}
+
 TEST(TensorShapeTest, ConvertsLayout) {
   mlir::MLIRContext ctx;
   mlir::OpBuilder b(&ctx);

@@ -22,12 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -35,8 +37,10 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -45,7 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -89,7 +92,7 @@ static constexpr auto serialize =
 // buffer cmd commands. We never execute this command, we need it only to pass
 // buffer usage vector to the command buffer cmd commands.
 struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
-  TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
+  explicit TestOnlyCommandBufferCmd(BufferUseVector buffer_usage)
       : CommandBufferCmd(CommandBufferCmdType::kUnknownCmd, {}),
         buffer_usage(buffer_usage) {}
 
@@ -249,11 +252,12 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -268,7 +272,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -309,9 +314,9 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -381,9 +386,9 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -457,9 +462,9 @@ TEST(CommandBufferCmdTest, DynamicSliceCopyFusionCmd) {
   std::vector<int32_t> a_data = {40, 41, 42, 43, 44, 45, 46, 47};
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memcpy(&a, a_data.data(), byte_length));
@@ -524,13 +529,13 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
 
-    se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
-    se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));
+    se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
+    se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));
 
     se::StreamExecutorMemoryAllocator allocator(executor);
     BufferAllocations allocations({mem0, mem1}, 0, &allocator);
 
-    se::DeviceMemory<int32_t> mem = executor->AllocateArray<int32_t>(16, 0);
+    se::DeviceAddress<int32_t> mem = executor->AllocateArray<int32_t>(16, 0);
 
     // Count how many times trace callback was called. We also need to record
     // something on the given stream because we can't leave traced command
@@ -557,7 +562,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
 
     // Check that when memory address changes we re-trace the command
     // buffer.
-    se::DeviceMemoryBase mem2(reinterpret_cast<void*>(0x23456701));
+    se::DeviceAddressBase mem2(reinterpret_cast<void*>(0x23456701));
     allocations = BufferAllocations({mem0, mem2}, 0, &allocator);
 
     TF_ASSERT_OK_AND_ASSIGN(auto* command_buffer2,
@@ -606,13 +611,14 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Device buffers: a, b, c
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c =
+  se::DeviceAddress<int32_t> c =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   // Initialize to zero.
@@ -651,7 +657,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
 
   // Executor C: c = b (memcpy)
   CommandBufferCmdSequence seq_c;
-  seq_c.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+  seq_c.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_c, shape}, ShapedSlice{slice_b, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor exec_c,
       CommandBufferCmdExecutor::Create(std::move(seq_c), serialize));
@@ -721,9 +728,14 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   // Prepare device memory for three buffers.
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
-  se::DeviceMemory<int32_t> a = stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceMemory<int32_t> b = stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceMemory<int32_t> c = stream_executor->AllocateArray<int32_t>(length);
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
+
+  se::DeviceAddress<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(length);
+  se::DeviceAddress<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(length);
+  se::DeviceAddress<int32_t> c =
+      stream_executor->AllocateArray<int32_t>(length);
 
   // Initialize a = 1s, b = 0s, c = 0s.
   TF_ASSERT_OK(stream->Memset32(&a, /*pattern=*/1, byte_length));
@@ -741,7 +753,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
 
   // Inner child: c = a (device-to-device memcpy)
   CommandBufferCmdSequence inner_seq;
-  inner_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_a, byte_length);
+  inner_seq.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_c, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor inner_executor,
       CommandBufferCmdExecutor::Create(std::move(inner_seq), serialize));
@@ -751,7 +764,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   middle_seq.Emplace<ChildCmd>(std::move(inner_executor));
   // Add a couple of extra commands that don't affect `c`.
   middle_seq.Emplace<Memset32Cmd>(slice_b, /*bit_pattern=*/3);
-  middle_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_b, byte_length);
+  middle_seq.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_b, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor middle_executor,
       CommandBufferCmdExecutor::Create(std::move(middle_seq), serialize));
@@ -760,7 +774,7 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   CommandBufferCmdSequence outer_seq;
   outer_seq.Emplace<ChildCmd>(std::move(middle_executor));
   // Add a couple more commands at the outer level that still don't affect `c`.
-  outer_seq.Emplace<MemzeroCmd>(slice_b);
+  outer_seq.Emplace<MemzeroCmd>(ShapedSlice{slice_b, shape});
   outer_seq.Emplace<EmptyCmd>();
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor outer_executor,
@@ -808,9 +822,9 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
 
   // Now update: change a and c buffers and record an update on the same command
   // buffer.
-  se::DeviceMemory<int32_t> a2 =
+  se::DeviceAddress<int32_t> a2 =
       stream_executor->AllocateArray<int32_t>(length);
-  se::DeviceMemory<int32_t> c2 =
+  se::DeviceAddress<int32_t> c2 =
       stream_executor->AllocateArray<int32_t>(length);
   TF_ASSERT_OK(stream->Memset32(&a2, /*pattern=*/7, byte_length));
   TF_ASSERT_OK(stream->MemZero(&c2, byte_length));
@@ -861,8 +875,8 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
       BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
       BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
 
-  se::DeviceMemoryBase mem0(reinterpret_cast<void*>(0x01234567));
-  se::DeviceMemoryBase mem1(reinterpret_cast<void*>(0x12345670));
+  se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
+  se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));
   se::StreamExecutorMemoryAllocator allocator(executor);
 
   std::array<BufferAllocations, 4> allocations = {
@@ -880,10 +894,10 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   absl::FunctionRef<absl::Status(se::Stream*)> trace_ref(trace);
 
   for (auto s : state) {
-    TF_CHECK_OK(traced_cmd_buffer
-                    .GetOrTraceCommandBuffer(&allocations[index++ % 4],
-                                             executor, stream.get(), trace_ref)
-                    .status());
+    CHECK_OK(traced_cmd_buffer
+                 .GetOrTraceCommandBuffer(&allocations[index++ % 4], executor,
+                                          stream.get(), trace_ref)
+                 .status());
   }
 }
 

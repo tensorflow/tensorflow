@@ -152,9 +152,9 @@ public final class InterpreterApiTest {
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
-      // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      // against the runtime ("com.google.ai.edge.litert:litert:<version>").
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
       assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
       assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
@@ -174,9 +174,9 @@ public final class InterpreterApiTest {
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
-      // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
-      assertThat(e).hasMessageThat().contains("org.tensorflow");
-      assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      // against the runtime ("com.google.ai.edge.litert:litert:<version>").
+      assertThat(e).hasMessageThat().contains("com.google.ai.edge.litert");
+      assertThat(e).hasMessageThat().contains("litert");
       assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
       assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
@@ -201,6 +201,7 @@ public final class InterpreterApiTest {
       assertThat(e).hasMessageThat().contains("com.google.android.gms");
       assertThat(e).hasMessageThat().contains("play-services-tflite-java");
       assertThat(e).hasMessageThat().doesNotContain("org.tensorflow:tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.ai.edge.litert:litert");
     }
   }
 

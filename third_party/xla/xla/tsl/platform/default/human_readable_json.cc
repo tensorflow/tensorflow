@@ -40,7 +40,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(
+    return absl::InternalError(
         absl::StrCat("Could not convert proto to JSON string: ", error_msg));
   }
   return std::move(result);
@@ -59,7 +59,7 @@ absl::Status HumanReadableJsonToProto(const std::string& str,
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(
+    return absl::InternalError(
         absl::StrCat("Could not convert JSON string to proto: ", error_msg));
   }
   return absl::OkStatus();
@@ -67,7 +67,7 @@ absl::Status HumanReadableJsonToProto(const std::string& str,
 
 absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::MessageLite* proto) {
-  return errors::Internal("Cannot parse JSON protos on Android");
+  return absl::InternalError("Cannot parse JSON protos on Android");
 }
 
 }  // namespace tsl

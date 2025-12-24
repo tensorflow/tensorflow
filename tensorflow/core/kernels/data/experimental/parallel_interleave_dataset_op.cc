@@ -112,9 +112,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         output_shapes_(output_shapes),
         traceme_metadata_(
             {{"block_length",
-              strings::Printf("%lld", static_cast<long long>(block_length))},
+              absl::StrFormat("%lld", static_cast<long long>(block_length))},
              {"cycle_length",
-              strings::Printf("%lld", static_cast<long long>(cycle_length))},
+              absl::StrFormat("%lld", static_cast<long long>(cycle_length))},
              {"deterministic",
               deterministic.IsDeterministic() || deterministic.IsDefault()
                   ? "true"
@@ -126,7 +126,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
     bool deterministic =
@@ -143,7 +143,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -949,7 +949,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     absl::Status WriteWorkerStateLocked(IteratorStateWriter* writer, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-      string iterator_name =
+      std::string iterator_name =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
       TF_RETURN_IF_ERROR(writer->WriteScalar(iterator_name, kInputSize,
                                              workers_[index].input.size()));
@@ -975,7 +975,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     absl::Status ReadWorkerStateLocked(IteratorContext* ctx,
                                        IteratorStateReader* reader, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-      string worker_prefix =
+      std::string worker_prefix =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
       // Restore inputs.
       int64_t input_size;
@@ -1009,7 +1009,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                               IteratorStateWriter* writer,
                                               int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
-      string iterator_name =
+      std::string iterator_name =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       if (worker_thread_states_[index].iterator != nullptr) {
         TF_RETURN_IF_ERROR(
@@ -1043,7 +1043,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                              IteratorStateReader* reader,
                                              int index,
                                              WorkerThreadState* state) {
-      string worker_prefix =
+      std::string worker_prefix =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       // Restore inputs.
       int64_t input_size;
@@ -1083,8 +1083,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     absl::Status WriteOutputElemLocked(IteratorStateWriter* writer,
                                        const OutputElem& output_elem,
-                                       const string& iterator_name,
-                                       const string& prefix)
+                                       const std::string& iterator_name,
+                                       const std::string& prefix)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(WriteStatusLocked(writer, iterator_name,
                                            absl::StrCat(prefix, "_", kStatus),
@@ -1103,8 +1103,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     absl::Status ReadOutputElemLocked(IteratorContext* ctx,
                                       IteratorStateReader* reader,
                                       OutputElem* output_elem,
-                                      const string& iterator_name,
-                                      const string& prefix) {
+                                      const std::string& iterator_name,
+                                      const std::string& prefix) {
       TF_RETURN_IF_ERROR(ReadStatusLocked(reader, iterator_name,
                                           absl::StrCat(prefix, "_", kStatus),
                                           &output_elem->status));
@@ -1123,8 +1123,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     absl::Status WriteStatusLocked(IteratorStateWriter* writer,
-                                   const string& iterator_name,
-                                   const string& prefix,
+                                   const std::string& iterator_name,
+                                   const std::string& prefix,
                                    const absl::Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(
@@ -1139,8 +1139,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     absl::Status ReadStatusLocked(IteratorStateReader* reader,
-                                  const string& iterator_name,
-                                  const string& prefix, absl::Status* status) {
+                                  const std::string& iterator_name,
+                                  const std::string& prefix,
+                                  absl::Status* status) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           iterator_name, absl::StrCat(prefix, "_", kCode), &code_int));

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/summary/schema.h"
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

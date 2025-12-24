@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
+#include <type_traits>
 
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace utils {
@@ -107,26 +109,8 @@ InputTensorData CreateRandomTensorData(std::string name, TfLiteType type,
           std::uniform_real_distribution<float>(low_range, high_range));
     }
     case kTfLiteFloat16: {
-      // TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
-#if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-#if __GNUC__ && \
-    (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
-      // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      return CreateInputTensorData<__fp16>(
+      return CreateInputTensorData<half>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-#else
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
-                        << " of type FLOAT16 on this platform.";
-#endif
-#else
-      // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
-      // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
-      // __gnu_f2h_ieee must be supplied.
-      TFLITE_LOG(FATAL) << "Populating the tensor " << name
-                        << " of type FLOAT16 is disabled.";
-#endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-      break;
     }
     case kTfLiteFloat64: {
       return CreateInputTensorData<double>(
@@ -219,6 +203,8 @@ TfLiteStatus TfLiteTensorToFloat32Array(const TfLiteTensor& tensor,
       return ConvertToArray<float, float>(tensor, values);
     case kTfLiteFloat64:
       return ConvertToArray<double, float>(tensor, values);
+    case kTfLiteFloat16:
+      return ConvertToArray<half, float>(tensor, values);
     default:
       return kTfLiteError;
   }

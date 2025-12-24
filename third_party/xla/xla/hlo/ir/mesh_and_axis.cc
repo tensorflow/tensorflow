@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -92,6 +94,28 @@ Mesh::Mesh(TileAssignment device_assignment,
     : device_assignment_(std::move(device_assignment)),
       axes_names_(axes_names.begin(), axes_names.end()) {
   CHECK_OK(ValidateMesh());
+}
+
+std::string Mesh::ToString() const {
+  std::string mesh_str = "@mesh";
+  // Add the mesh axes names and sizes.
+  std::vector<std::string> formatted_axes_names;
+  formatted_axes_names.reserve(axes_names_.size());
+  for (int64_t i = 0; i < axes_names_.size(); ++i) {
+    formatted_axes_names.push_back(
+        absl::StrCat(axes_names_[i], "=", device_assignment_.dim(i)));
+  }
+
+  // Add the device assignment if it is not an iota case.
+  std::optional<IotaTileAssignment> iota = device_assignment_.iota();
+  std::string device_assignment_str = "";
+  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+    device_assignment_str =
+        absl::StrCat("(", device_assignment_.ArrayToString(), ")");
+  }
+  absl::StrAppend(&mesh_str, "<", absl::StrJoin(formatted_axes_names, ","), ">",
+                  device_assignment_str);
+  return mesh_str;
 }
 
 MeshProto Mesh::ToProto() const {
@@ -168,26 +192,15 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 
-absl::Status AxisRef::Validate(const Mesh& mesh) const {
-  if (mesh_axis_index_ >= mesh.axis_names().size()) {
-    return absl::InvalidArgumentError(
-        "Axis index must be less than number of axes.");
+std::string AxisRef::ToString(const Mesh& mesh) const {
+  CHECK_GE(mesh_axis_index_, 0);
+  CHECK_LT(mesh_axis_index_, mesh.axis_names().size());
+  std::string axis_str = mesh.axis_names()[mesh_axis_index_];
+  if (sub_axis_info_.has_value()) {
+    absl::StrAppend(&axis_str, ":(", sub_axis_info_->pre_size, ")",
+                    sub_axis_info_->size);
   }
-  if (!sub_axis_info_.has_value()) {
-    return absl::OkStatus();
-  }
-
-  int64_t axis_size = mesh.axis_size(mesh_axis_index_);
-  if (axis_size % sub_axis_info_->pre_size != 0 ||
-      axis_size % sub_axis_info_->size != 0) {
-    return absl::InvalidArgumentError(
-        "Pre-size and size must divide the full axis size.");
-  }
-  if (sub_axis_info_->size >= axis_size) {
-    return absl::InvalidArgumentError(
-        "Sub-axis size must be strictly less than the full axis size.");
-  }
-  return absl::OkStatus();
+  return axis_str;
 }
 
 AxisRefProto AxisRef::ToProto() const {
@@ -307,6 +320,36 @@ bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
 
   // Sub-axes don't overlap, check if the gap is valid.
   return max_pre_size % min_next_pre_size == 0;
+}
+
+absl::Status AxisRef::Validate(const Mesh& mesh) const {
+  if (mesh_axis_index_ >= mesh.axis_names().size()) {
+    return absl::InvalidArgumentError(
+        "Axis index must be less than number of axes.");
+  }
+  if (!sub_axis_info_.has_value()) {
+    return absl::OkStatus();
+  }
+
+  int64_t axis_size = mesh.axis_size(mesh_axis_index_);
+  if (axis_size % sub_axis_info_->pre_size != 0 ||
+      axis_size % sub_axis_info_->size != 0) {
+    return absl::InvalidArgumentError(
+        "Pre-size and size must divide the full axis size.");
+  }
+  if (sub_axis_info_->size >= axis_size) {
+    return absl::InvalidArgumentError(
+        "Sub-axis size must be strictly less than the full axis size.");
+  }
+  return absl::OkStatus();
+}
+
+int64_t AxisRef::size(const Mesh& mesh) const {
+  if (sub_axis_info_.has_value()) {
+    return sub_axis_info_->size;
+  }
+
+  return mesh.axis_size(mesh_axis_index_);
 }
 
 bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {

@@ -97,12 +97,12 @@ TEST(BufferUseTest, ReadWriteSet) {
   BufferAllocation::Slice slice1(&alloc, 4, 8);
   BufferAllocation::Slice slice2(&alloc, 8, 8);
 
-  rwset.Add(BufferUse::Read(slice0));
+  rwset.Add(BufferUse::Read(slice0, slice_shape));
   EXPECT_FALSE(rwset.HasConflicts({BufferUse::Read(slice1, slice_shape)}));
   EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice1, slice_shape)}));
   EXPECT_FALSE(rwset.HasConflicts({BufferUse::Write(slice2, slice_shape)}));
 
-  rwset.Add(BufferUse::Read(slice1));
+  rwset.Add(BufferUse::Read(slice1, slice_shape));
   EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice2, slice_shape)}));
 }
 

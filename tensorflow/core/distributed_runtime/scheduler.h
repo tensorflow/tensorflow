@@ -86,7 +86,7 @@ class GreedyScheduler {
   const CostModel* cost_model_;
   const Graph* graph_;
   std::vector<int64_t>* priority_;
-  std::unordered_map<string, Sim*> device_states_;
+  std::unordered_map<std::string, Sim*> device_states_;
 
   GreedyScheduler(const GreedyScheduler&) = delete;
   void operator=(const GreedyScheduler&) = delete;

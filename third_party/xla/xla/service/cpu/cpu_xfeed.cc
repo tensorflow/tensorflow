@@ -281,7 +281,7 @@ absl::Status ReadDynamicShapesOnCpu(
   Shape original_device_shape = *device_shape;
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
-          const se::DeviceMemoryBase& buffer) -> absl::Status {
+          const se::DeviceAddressBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {

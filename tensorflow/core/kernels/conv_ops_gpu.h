@@ -16,19 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
-#include <unordered_map>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
+#include "xla/stream_executor/data_type.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -53,18 +68,18 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes() override { return memory_limit_; }
-  tsl::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
-      return tsl::Status{absl::StatusCode::kInvalidArgument,
-                         "Requested negative byte size!"};
+      return absl::Status{absl::StatusCode::kInvalidArgument,
+                          "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return tsl::Status{absl::StatusCode::kUnavailable,
-                         absl::StrCat("Requested memory size (", byte_size,
-                                      ") exceeds the max memory limit (",
-                                      memory_limit_, ").")};
+      return absl::Status{absl::StatusCode::kUnavailable,
+                          absl::StrCat("Requested memory size (", byte_size,
+                                       ") exceeds the max memory limit (",
+                                       memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
@@ -72,7 +87,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return tsl::Status{
+      return absl::Status{
           absl::StatusCode::kUnavailable,
           absl::StrCat("Failed to allocate the requested memory size (",
                        byte_size, ").")};
@@ -81,7 +96,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return tsl::StatusOr<se::DeviceMemory<uint8>>(
+    return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(
         AsDeviceMemory(temporary_memory.flat<uint8>().data(),
                        temporary_memory.flat<uint8>().size()));
   }
@@ -100,7 +115,8 @@ typedef Eigen::GpuDevice GPUDevice;
 // autotuning with a cache, or by falling back to a default if
 // 'cudnn_use_autotune' is true and cuDNN is the statically-chosen DNN backend.
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::FusedConvOp>>
+AutotuneFusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::FusedConvOp>>*
         autotune_map,
@@ -117,7 +133,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     se::DeviceMemory<T> side_input_ptr, int64_t scratch_size);
 
 template <typename T>
-StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
+absl::StatusOr<AutotuneEntry<stream_executor::dnn::ConvOp>> AutotuneUnfusedConv(
     bool cudnn_use_autotune,
     AutotuneMap<ConvParameters, AutotuneEntry<se::dnn::ConvOp>>* autotune_map,
     const ConvParameters& conv_parameters, OpKernelContext* ctx,
@@ -140,7 +156,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
 
   auto workspace_size = selected_runner->GetWorkspaceSize();
 
-  se::DeviceMemoryBase scratch_memory;
+  stream_executor::DeviceAddressBase scratch_memory;
   if (workspace_size > 0) {
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
     if (scratch_or.ok()) {
@@ -191,18 +207,44 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
                         AllocateScratchOrFallback<se::dnn::ConvOp::Signature>(
                             scratch_allocator, primary, no_scratch_fallback));
     auto& runner = *std::get<const se::dnn::ConvRunner*>(runner_and_scratch);
-    return runner(stream, nullptr,
-                  std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
-                  filter_ptr, out_ptr);
+    return runner(
+        stream, nullptr,
+        std::get<stream_executor::DeviceAddressBase>(runner_and_scratch),
+        in_ptr, filter_ptr, out_ptr);
   } else {
     auto dnn = stream->parent()->AsDnn();
     if (dnn == nullptr) {
       return absl::InternalError("No DNN for stream.");
     }
-    return dnn->ConvolveWithAlgorithm(
-        stream, kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc,
-        out_ptr, conv_desc, scratch_allocator,
-        autotune_entry.GetAlgorithmConfig(), nullptr);
+    se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+    const se::dnn::AlgorithmConfig& algo_config =
+        autotune_entry.GetAlgorithmConfig();
+    auto algo_desc = algo_config.algorithm();
+    if (!algo_desc.has_value()) {
+      return absl::InternalError("No algorithm in AlgorithmConfig");
+    }
+
+    auto runner_or = dnn->ConvolveRunnerFromDesc(
+        stream, *algo_desc, kind, element_type, element_type, input_desc,
+        filter_desc, output_desc, conv_desc);
+    if (!runner_or.ok()) {
+      return runner_or.status();
+    }
+    std::unique_ptr<const se::dnn::ConvRunner> runner =
+        std::move(runner_or).value();
+
+    stream_executor::DeviceAddressBase scratch_memory;
+    int64_t workspace_size = runner->GetWorkspaceSize();
+    if (workspace_size > 0) {
+      auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
+      if (!scratch_or.ok()) {
+        return absl::InternalError(
+            "CUDNN failed to allocate the scratch space for the runner");
+      }
+      scratch_memory = scratch_or.value();
+    }
+    return (*runner)(stream, nullptr, scratch_memory, in_ptr, filter_ptr,
+                     out_ptr);
   }
 }
 

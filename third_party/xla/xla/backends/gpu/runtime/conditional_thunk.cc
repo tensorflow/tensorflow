@@ -34,11 +34,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -48,14 +49,18 @@ namespace xla {
 namespace gpu {
 
 ConditionalThunk::ConditionalThunk(
-    ThunkInfo thunk_info,
-    const BufferAllocation::Slice& branch_index_buffer_index,
-    std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks,
-    bool branch_index_is_bool)
+    ThunkInfo thunk_info, const ShapedSlice& branch_index_buffer_index,
+    std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks)
     : Thunk(Kind::kConditional, thunk_info),
       branch_index_buffer_index_(branch_index_buffer_index),
       branch_thunks_(std::move(branch_thunks)),
-      branch_index_is_bool_(branch_index_is_bool) {}
+      branch_index_is_bool_(branch_index_buffer_index.shape.element_type() ==
+                            PRED) {
+  PrimitiveType element_type = branch_index_buffer_index.shape.element_type();
+  CHECK(element_type == PRED || element_type == S32);
+  CHECK_EQ(branch_index_buffer_index.shape.dimensions(),
+           std::vector<int64_t>{});
+}
 
 absl::Status ConditionalThunk::Prepare(const PrepareParams& params) {
   if (branch_index_is_bool_) {
@@ -110,8 +115,9 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     return handle.get<int32_t>();
   }();
 
-  se::DeviceMemoryBase branch_index_address =
-      params.buffer_allocations->GetDeviceAddress(branch_index_buffer_index_);
+  se::DeviceAddressBase branch_index_address =
+      params.buffer_allocations->GetDeviceAddress(
+          branch_index_buffer_index_.slice);
   if (branch_index_is_bool_) {
     TF_RETURN_IF_ERROR(stream.Memcpy(std::get<bool*>(branch_index_or_pred),
                                      branch_index_address, sizeof(bool)));
@@ -191,8 +197,6 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
     *conditional_thunk_proto->add_branch_thunks() =
         std::move(seq_thunk_proto).sequential_thunk();
   }
-
-  conditional_thunk_proto->set_branch_index_is_bool(branch_index_is_bool_);
   return proto;
 }
 
@@ -200,10 +204,9 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
     ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice branch_index_buffer_index,
-      BufferAllocation::Slice::FromProto(thunk_proto.branch_index_buffer(),
-                                         buffer_allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice branch_index_buffer_index,
+                      ShapedSlice::FromProto(thunk_proto.branch_index_buffer(),
+                                             buffer_allocations));
 
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
   branch_thunks.reserve(thunk_proto.branch_thunks_size());
@@ -213,9 +216,9 @@ absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
         SequentialThunk::FromProto(thunk_info, seq_thunk_proto, deserializer));
     branch_thunks.push_back(std::move(seq_thunk));
   }
-  return std::make_unique<ConditionalThunk>(
-      std::move(thunk_info), branch_index_buffer_index,
-      std::move(branch_thunks), thunk_proto.branch_index_is_bool());
+  return std::make_unique<ConditionalThunk>(std::move(thunk_info),
+                                            branch_index_buffer_index,
+                                            std::move(branch_thunks));
 }
 
 std::string ConditionalThunk::ToString(int indent) const {

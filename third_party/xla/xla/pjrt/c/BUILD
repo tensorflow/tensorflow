@@ -51,16 +51,7 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_callback_extension_hdrs",
     hdrs = ["pjrt_c_api_callback_extension.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
+    deps = ["//xla/pjrt/c:pjrt_c_api_hdrs"],
 )
 
 cc_library(
@@ -93,7 +84,6 @@ cc_library(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_registry",
         "//xla/ffi/api:c_api",
-        "//xla/ffi/api:ffi",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -286,11 +276,12 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:global_device_id",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
@@ -427,7 +418,11 @@ cc_library(
     name = "pjrt_c_api_gpu_internal",
     srcs = ["pjrt_c_api_gpu_internal.cc"],
     hdrs = ["pjrt_c_api_gpu_internal.h"],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    local_defines = (
+        if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+            "TENSORFLOW_USE_ROCM=1",
+        ])
+    ),
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
@@ -472,7 +467,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 cc_library(
@@ -537,6 +534,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -584,6 +582,7 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -656,6 +655,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

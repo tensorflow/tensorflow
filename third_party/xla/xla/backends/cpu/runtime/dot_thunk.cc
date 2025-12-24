@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -73,15 +73,15 @@ DotThunk::DotThunk(Info info, DotDimensionNumbers dot_dimensions,
 tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
     const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase lhs_data,
+      se::DeviceAddressBase lhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.lhs_buffer));
 
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase rhs_data,
+      se::DeviceAddressBase rhs_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.rhs_buffer));
 
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase out_data,
+      se::DeviceAddressBase out_data,
       params.buffer_allocations->GetDeviceAddress(dot_slices_.out_buffer));
 
   VLOG(3) << absl::StreamFormat(

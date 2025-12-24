@@ -30,9 +30,9 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
   auto host_memory_allocator =
-      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+      se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
   SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+      std::move(host_memory_allocator), stream_executor::MemorySpace::kHost, 0);
   PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
 
@@ -49,9 +49,9 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
   auto host_memory_allocator =
-      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+      se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
   SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+      std::move(host_memory_allocator), stream_executor::MemorySpace::kHost, 0);
   PoolAllocator pool(0 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
 
@@ -83,9 +83,9 @@ TEST(PoolAllocatorTest, Alignment) {
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
   auto host_memory_allocator =
-      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+      se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
   SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+      std::move(host_memory_allocator), stream_executor::MemorySpace::kHost, 0);
   PoolAllocator pool(0 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
   for (int i = 0; i < 16; ++i) {
@@ -145,9 +145,9 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
   auto host_memory_allocator =
-      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+      se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
   SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0,
+      std::move(host_memory_allocator), stream_executor::MemorySpace::kHost, 0,
       {alloc_visitor}, {free_visitor});
   PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
@@ -250,9 +250,9 @@ TEST(PoolAllocatorTest, Name) {
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   se::StreamExecutor* se = platform->ExecutorForDevice(/*ordinal=*/0).value();
   auto host_memory_allocator =
-      se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+      se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
   SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-      std::move(host_memory_allocator), stream_executor::MemoryType::kHost, 0);
+      std::move(host_memory_allocator), stream_executor::MemorySpace::kHost, 0);
   PoolAllocator pool(2 /*pool_size_limit*/, false /*auto_resize*/,
                      sub_allocator, new NoopRounder, "pool");
   EXPECT_EQ("pool", pool.Name());

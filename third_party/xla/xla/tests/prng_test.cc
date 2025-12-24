@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -24,19 +23,23 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"
 #include "unsupported/Eigen/SpecialFunctions"
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/service.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/util.h"
+#include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {

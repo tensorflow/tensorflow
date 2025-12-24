@@ -25,11 +25,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/nvshmem.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -82,7 +84,7 @@ absl::Status InitializationTestBody(const int node_id, const int num_nodes) {
   auto kv_store =
       GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
 
-  NvshmemCollectives::Default()->SetEnvInfo(node_id, num_nodes, 1, kv_store);
+  se::gpu::nvshmem::SetEnvInfo(node_id, num_nodes, 1, kv_store);
   cudaSetDevice(node_id);
   TF_ASSIGN_OR_RETURN(void* ptr, NvshmemCollectives::Default()->Allocate(1024));
   TF_RET_CHECK(ptr != nullptr);

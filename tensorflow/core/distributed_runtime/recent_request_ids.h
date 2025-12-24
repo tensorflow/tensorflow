@@ -60,11 +60,11 @@ class RecentRequestIds {
   // num_tracked_request_ids insertions. For backwards compatibility, this
   // always returns OK for request_id 0. The method_name and the request's
   // ShortDebugString are added to returned errors.
-  absl::Status TrackUnique(int64_t request_id, const string& method_name,
+  absl::Status TrackUnique(int64_t request_id, const std::string& method_name,
                            const protobuf::Message& request);
   // Overloaded version of the above function for wrapped protos.
   template <typename RequestWrapper>
-  absl::Status TrackUnique(int64_t request_id, const string& method_name,
+  absl::Status TrackUnique(int64_t request_id, const std::string& method_name,
                            const RequestWrapper* wrapper);
 
  private:
@@ -88,7 +88,7 @@ class RecentRequestIds {
 
 template <typename RequestWrapper>
 absl::Status RecentRequestIds::TrackUnique(int64_t request_id,
-                                           const string& method_name,
+                                           const std::string& method_name,
                                            const RequestWrapper* wrapper) {
   if (Insert(request_id)) {
     return absl::OkStatus();

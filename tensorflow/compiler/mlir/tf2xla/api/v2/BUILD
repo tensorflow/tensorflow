@@ -102,9 +102,9 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:status_matchers",
         "@local_xla//xla/tsl/platform:statusor",
     ],
 )
@@ -323,6 +323,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":mlir_roundtrip_flags",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -349,13 +350,13 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:function_body",
-        "//tensorflow/core/platform:crash_analysis",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -365,7 +366,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:status",
     ],
 )
 

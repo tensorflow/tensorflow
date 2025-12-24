@@ -135,6 +135,10 @@ CUptiResult CuptiWrapperStub::SetThreadIdType(CUpti_ActivityThreadIdType type) {
   return CUPTI_SUCCESS;
 }
 
+CUptiResult CuptiWrapperStub::ActivityEnableHWTrace(bool enable) {
+  return CUPTI_SUCCESS;
+}
+
 // Profiler Host APIs
 CUptiResult CuptiWrapperStub::ProfilerHostInitialize(
     CUpti_Profiler_Host_Initialize_Params* params) {

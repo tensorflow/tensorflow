@@ -225,7 +225,6 @@ cc_library(
         "stack_location_utils",
         ":hlo_utils",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo:unregistered_attributes",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

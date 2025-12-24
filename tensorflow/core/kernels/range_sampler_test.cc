@@ -157,7 +157,7 @@ static const char kVocabContent[] =
     "w9,256";
 TEST_F(RangeSamplerTest, FixedUnigramProbabilities) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
@@ -169,7 +169,7 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilities) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
   Env* env = Env::Default();
-  string fname = "NoExistingFile";
+  std::string fname = "NoExistingFile";
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   absl::Status s = test_sampler->SetDistributionSampler(env, fname);
   sampler_.reset(test_sampler);
@@ -177,7 +177,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
   absl::Status s = test_sampler->SetDistributionSampler(env, fname);
@@ -186,7 +186,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
@@ -195,7 +195,7 @@ TEST_F(RangeSamplerTest, FixedUnigramChecksum) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramHistogram) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
   TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
@@ -204,7 +204,7 @@ TEST_F(RangeSamplerTest, FixedUnigramHistogram) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(10, 0.8, 1, 1, 0);
   TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));
@@ -217,7 +217,7 @@ TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve1) {
 }
 TEST_F(RangeSamplerTest, FixedUnigramProbabilitiesReserve2) {
   Env* env = Env::Default();
-  string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
+  std::string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(11, 0.8, 2, 1, 0);
   TF_CHECK_OK(test_sampler->SetDistributionSampler(env, fname));

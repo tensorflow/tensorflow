@@ -35,7 +35,7 @@ class TestRemoteMgr : public RemoteMgr {
   TestRemoteMgr(bool is_master, EagerContext* ctx)
       : RemoteMgr(is_master, ctx) {}
 
-  uint64 OpId() {
+  uint64_t OpId() {
     tf_shared_lock l(next_id_mutex_);
     return next_op_id_;
   }
@@ -75,7 +75,7 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
 
   TensorHandle* handle = TensorHandle::CreateLocalHandle(
       std::move(t), local_device_, local_device_, ctx_);
-  const uint64 op_id = 2;
+  const uint64_t op_id = 2;
   const int output_num = 3;
   TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
                                                output_num, "", ctx_));
@@ -94,7 +94,7 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
 TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   RemoteMgr remote_mgr(false, ctx_);
 
-  const uint64 op_id = 3;
+  const uint64_t op_id = 3;
   const int output_num = 1;
   TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
       op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);
@@ -113,7 +113,7 @@ TEST_F(RemoteMgrTest, InvalidateRemoteMirrorWithClusterUpdate) {
 
   TensorHandle* handle = TensorHandle::CreateLocalHandle(
       std::move(t), local_device_, local_device_, ctx_);
-  const uint64 op_id = 2;
+  const uint64_t op_id = 2;
   const int output_num = 3;
   TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
                                                output_num, "", ctx_));
@@ -134,7 +134,7 @@ TEST_F(RemoteMgrTest, InvalidateRemoteMirrorWithClusterUpdate) {
 TEST_F(RemoteMgrTest, SetRemoteShapeWithClusterUpdate) {
   RemoteMgr remote_mgr(false, ctx_);
 
-  const uint64 op_id = 3;
+  const uint64_t op_id = 3;
   const int output_num = 1;
   TensorHandle* handle = TensorHandle::CreateUnshapedRemoteHandle(
       op_id, output_num,
@@ -157,7 +157,7 @@ TEST_F(RemoteMgrTest, SetRemoteShapeWithClusterUpdate) {
 TEST_F(RemoteMgrTest, ErrorSourcesShouldExist) {
   RemoteMgr remote_mgr(false, ctx_);
 
-  const uint64 op_id = 3;
+  const uint64_t op_id = 3;
   const int output_num = 1;
   TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
       op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);

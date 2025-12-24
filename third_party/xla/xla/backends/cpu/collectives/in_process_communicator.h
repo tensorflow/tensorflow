@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,43 +40,43 @@ class InProcessCommunicator : public Communicator {
  public:
   InProcessCommunicator(size_t rank, size_t num_ranks);
 
-  Future<> AllReduce(se::DeviceMemoryBase send_buffer,
-                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> AllReduce(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, ReductionKind reduction_kind,
                      const Executor& executor) override;
 
-  Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  Future<> CollectivePermute(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              std::optional<RankId> source_rank,
                              absl::Span<const RankId> target_ranks,
                              const Executor& executor) override;
 
-  Future<> AllToAll(absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-                    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+  Future<> AllToAll(absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+                    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
                     PrimitiveType dtype, size_t count,
                     const Executor& executor) override;
 
-  Future<> AllGather(se::DeviceMemoryBase send_buffer,
-                     se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> AllGather(se::DeviceAddressBase send_buffer,
+                     se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                      size_t count, const Executor& executor) override;
 
-  Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
+                         se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                          size_t count, ReductionKind reduction_kind,
                          const Executor& executor) override;
 
-  Future<> Broadcast(se::DeviceMemoryBase, se::DeviceMemoryBase, PrimitiveType,
-                     size_t, RankId, const Executor&) override {
+  Future<> Broadcast(se::DeviceAddressBase, se::DeviceAddressBase,
+                     PrimitiveType, size_t, RankId, const Executor&) override {
     return Future<>(Unimplemented("Broadcast is not implemented"));
   }
 
-  Future<> Send(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+  Future<> Send(se::DeviceAddressBase, PrimitiveType, size_t, RankId,
                 const Executor&) override {
     return Future<>(Unimplemented("Send is not implemented"));
   }
 
-  Future<> Recv(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
+  Future<> Recv(se::DeviceAddressBase, PrimitiveType, size_t, RankId,
                 const Executor&) override {
     return Future<>(Unimplemented("Recv is not implemented"));
   }

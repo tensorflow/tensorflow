@@ -92,9 +92,9 @@ cc_library(
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
+        ":rocm_config",
         ":rocm_headers_includes",
         ":rocm_rpath",
-        ":rocm_config",
     ],
 )
 
@@ -105,6 +105,7 @@ cc_library(
         ":hip",
         ":hipblas",
         ":hipblaslt",
+        ":hipfft",
         ":hiprand",
         ":hipsolver",
         ":hipsparse",
@@ -116,12 +117,7 @@ cc_library(
         ":rocsolver",
         ":rocsparse",
         ":roctracer",
-    ] + select_threshold(
-        above_or_eq = [":hipfft"],
-        below = [":rocfft"],
-        threshold = 40100,
-        value = rocm_version_number(),
-    ),
+    ],
 )
 
 cc_library(
@@ -150,9 +146,11 @@ cc_library(
         ],
         ":multiple_rocm_paths": [
             "-Wl,-rpath=%{rocm_lib_paths}",
+            "-Lexternal/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
         "//conditions:default": [
             "-Wl,-rpath,/opt/rocm/lib",
+            "-Lexternal/local_config_rocm/rocm/%{rocm_root}/lib",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -244,8 +242,8 @@ cc_library(
     deps = [
         ":hipblaslt",
         ":rocm_config",
-        ":roctracer",
         ":rocm_rpath",
+        ":roctracer",
     ],
 )
 
@@ -410,11 +408,15 @@ cc_library(
 cc_library(
     name = "rocsolver",
     hdrs = glob(["%{rocm_root}/include/rocsolver/**"]),
-    data = glob(["%{rocm_root}/lib/librocsolver*.so*"]),
+    data = glob([
+        "%{rocm_root}/lib/librocsolver*.so*",
+        "%{rocm_root}/lib/host-math/lib/*.so*",
+    ]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lrocsolver"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
@@ -425,14 +427,18 @@ cc_library(
 
 cc_library(
     name = "rocsparse",
-    srcs = glob(["%{rocm_root}/lib/librocsparse*.so*"]),
+    data = glob(["%{rocm_root}/lib/librocsparse*.so*"]),
     include_prefix = "rocm",
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lrocsparse"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+    ],
 )
 
 cc_library(
@@ -443,9 +449,14 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lhipsolver"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
-    deps = [":rocm_config"],
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+        ":rocsparse",
+    ],
 )
 
 cc_library(
@@ -456,6 +467,7 @@ cc_library(
     includes = [
         "%{rocm_root}/include/",
     ],
+    linkopts = ["-lhipblas"],
     strip_include_prefix = "%{rocm_root}",
     visibility = ["//visibility:public"],
     deps = [
@@ -533,7 +545,8 @@ cc_library(
 )
 
 cc_library(
-    name = "amd_comgr",
+    name = "amd_comgr_dynamic",
+    srcs = ["%{rocm_root}/lib/libamd_comgr_stub.a"],
     hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
     data = glob([
         "%{rocm_root}/lib/libamd_comgr_loader.so*",
@@ -544,18 +557,42 @@ cc_library(
     includes = [
         "%{rocm_root}/include",
     ],
-    linkopts = select({
-        ":build_hermetic": [
-            "-lamd_comgr_loader",
-        ],
-        "//conditions:default": [],
-    }),
+    linkopts = ["-lamd_comgr_loader"],
     strip_include_prefix = "%{rocm_root}",
     deps = [
         ":rocm_config",
         ":rocm_rpath",
         ":system_libs",
     ],
+)
+
+cc_library(
+    name = "amd_comgr_static",
+    hdrs = glob(["%{rocm_root}/include/amd_comgr/**"]),
+    data = glob([
+        "%{rocm_root}/lib/libamd_comgr.so*",
+    ]),
+    include_prefix = "rocm",
+    includes = [
+        "%{rocm_root}/include",
+    ],
+    linkopts = ["-lamd_comgr"],
+    strip_include_prefix = "%{rocm_root}",
+    deps = [
+        ":rocm_config",
+        ":rocm_rpath",
+        ":system_libs",
+    ],
+)
+
+alias(
+    name = "amd_comgr",
+    actual = select_threshold(
+        above_or_eq = ":amd_comgr_dynamic",
+        below = ":amd_comgr_static",
+        threshold = 71000,
+        value = rocm_version_number(),
+    ),
 )
 
 cc_library(
@@ -601,6 +638,9 @@ filegroup(
         "%{rocm_root}/lib/llvm/**",
         "%{rocm_root}/share/hip/**",
         "%{rocm_root}/amdgcn/**",
+        "%{rocm_root}/lib/rocm_sysdeps/lib/*.so*",
+        "%{rocm_root}/lib/libamd_comgr_loader.so*",
+        "%{rocm_root}/lib/libamd_comgr.so*",
     ]),
     visibility = ["//visibility:public"],
 )
@@ -608,6 +648,17 @@ filegroup(
 filegroup(
     name = "all_files",
     srcs = glob(["%{rocm_root}/**"]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "rocminfo",
+    srcs = glob([
+        "%{rocm_root}/bin/rocminfo",
+        "%{rocm_root}/lib/libhsa-runtime64.so*",
+        "%{rocm_root}/lib/rocm_sysdeps/lib/*",
+        "%{rocm_root}/lib/librocprofiler-register.so.0*",
+    ]),
     visibility = ["//visibility:public"],
 )
 

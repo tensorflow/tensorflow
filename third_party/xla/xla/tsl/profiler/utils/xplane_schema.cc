@@ -388,6 +388,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"graph_metadata_line_id", kGraphMetadataLineId},
        {"offload_core_id", kOffloadCoreId},
        {"tc_offload_start_id", kTcOffloadStartId},
+       {"offload_execution_index", kOffloadExecutionIndex},
        {"marker_payload", kMarkerPayloadString}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args_packed_vector.h"
 #include "xla/stream_executor/kernel_argument_packing_spec.pb.h"
 
@@ -73,7 +73,7 @@ class SingleArgumentPackingSpec {
   // must contain at least the number of arguments referenced in the packing
   // spec, otherwise an error will be returned.
   absl::StatusOr<std::vector<char>> BuildArgument(
-      absl::Span<const DeviceMemoryBase> args) const;
+      absl::Span<const DeviceAddressBase> args) const;
 
   // Writes a placeholder to the argument packing spec that will be replaced
   // by the runtime with the address of the argument `argument_index`th
@@ -170,7 +170,7 @@ class KernelArgumentsPackingSpec {
   // must contain at least the number of arguments referenced in the packing
   // spec, otherwise an error will be returned.
   absl::StatusOr<std::unique_ptr<KernelArgsPackedVector>> BuildArguments(
-      absl::Span<const DeviceMemoryBase> thunk_arguments,
+      absl::Span<const DeviceAddressBase> thunk_arguments,
       size_t shared_memory_bytes) const;
 
   absl::StatusOr<KernelArgumentsPackingSpecProto> ToProto() const;

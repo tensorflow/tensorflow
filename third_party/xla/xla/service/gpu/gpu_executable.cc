@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -60,9 +61,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -70,7 +73,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -82,10 +85,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -109,13 +113,14 @@ namespace {
 
 // Chooses the correct allocations to be used within the GpuExecutable code.
 std::vector<const BufferAllocation*> GatherAllocationPtrs(
-    const GpuExecutable::Params& params,
+    const std::optional<std::vector<BufferAllocation>>& mlir_allocations,
+    const BufferAssignment* buffer_assignment,
     const std::deque<BufferAllocation>& thunk_pass_allocations) {
   const std::vector<BufferAllocation>* allocation_vec = nullptr;
-  if (params.mlir_allocations.has_value()) {
-    allocation_vec = &params.mlir_allocations.value();
-  } else if (params.buffer_assignment != nullptr) {
-    allocation_vec = &params.buffer_assignment->Allocations();
+  if (mlir_allocations.has_value()) {
+    allocation_vec = &mlir_allocations.value();
+  } else if (buffer_assignment != nullptr) {
+    allocation_vec = &buffer_assignment->Allocations();
   }
 
   std::vector<const BufferAllocation*> alloc_ptrs;
@@ -198,10 +203,9 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
     pipeline.AddPass(std::make_unique<ThunkBufferDebugPass>(
         ThunkBufferDebugPass::Mode::kFloatChecker));
   }
-  if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
-    pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
-        hlo_module ? hlo_module->name() : "Anonymous"));
-  }
+  pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
+      hlo_module ? hlo_module->name() : "Anonymous"));
+
   TF_ASSIGN_OR_RETURN(bool changed,
                       pipeline.Run(root_thunk, debug_options, hlo_module,
                                    device_info, allocator));
@@ -236,38 +240,63 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
 
+  // TODO(b/461380690): Remove this once we have a better way to distinguish
+  // between compiler-generated and runtime-loaded GPU executables.
+  absl::StatusOr<ThunkProto> thunk_proto = params.executable->ToProto();
+
   TF_RETURN_IF_ERROR(RunThunkPasses(
       params.debug_options, params.device_description, params.executable.get(),
       params.debug_module.get(), allocator));
 
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(
-      std::move(params), std::move(allocator.MutableAllocations())));
+      std::move(params.debug_module), std::move(params.asm_text),
+      std::move(params.binary), std::move(params.dnn_compiled_graphs),
+      std::move(params.device_description), std::move(params.executable),
+      std::move(params.module_name), std::move(params.program_shape),
+      std::move(params.mlir_allocations), std::move(params.buffer_assignment),
+      std::move(allocator.MutableAllocations()), std::move(params.alias_info),
+      std::move(params.debug_options), std::move(params.constants),
+      std::move(params.output_info), params.enable_debug_info_manager,
+      std::move(params.module_stats), std::move(thunk_proto)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    GpuExecutable::Params params,
-    std::deque<BufferAllocation> thunk_pass_allocations)
-    : Executable(std::move(params.debug_module)),
-      text_(std::move(params.asm_text)),
-      binary_(std::move(params.binary)),
-      dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
-      gpu_version_(params.device_description.gpu_compute_capability()),
-      thunks_(std::move(params.executable)),
+    std::unique_ptr<HloModule> debug_module, std::string asm_text,
+    std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+    se::DeviceDescription device_description,
+    std::unique_ptr<SequentialThunk> executable, std::string module_name,
+    ProgramShape program_shape,
+    std::optional<std::vector<BufferAllocation>> mlir_allocations,
+    std::unique_ptr<const BufferAssignment> buffer_assignment,
+    std::deque<BufferAllocation> thunk_pass_allocations,
+    std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
+    std::vector<ConstantInfo> constants,
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+    bool enable_debug_info_manager, ModuleStats module_stats,
+    absl::StatusOr<ThunkProto> thunk_proto)
+    : Executable(std::move(debug_module)),
+      text_(std::move(asm_text)),
+      binary_(std::move(binary)),
+      dnn_compiled_graphs_(std::move(dnn_compiled_graphs)),
+      gpu_version_(device_description.gpu_compute_capability()),
+      thunks_(std::move(executable)),
       execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
-      module_name_(params.module_name),
-      program_shape_(params.program_shape),
-      allocation_ptrs_(GatherAllocationPtrs(params, thunk_pass_allocations)),
-      allocations_(std::move(params.mlir_allocations)),
-      buffer_assignment_(std::move(params.buffer_assignment)),
+      module_name_(std::move(module_name)),
+      program_shape_(std::move(program_shape)),
+      allocation_ptrs_(GatherAllocationPtrs(
+          mlir_allocations, buffer_assignment.get(), thunk_pass_allocations)),
+      allocations_(std::move(mlir_allocations)),
+      buffer_assignment_(std::move(buffer_assignment)),
       thunk_pass_allocations_(std::move(thunk_pass_allocations)),
-      alias_info_(std::move(params.alias_info)),
+      alias_info_(std::move(alias_info)),
       debug_buffer_assignment_show_max_(
-          params.debug_options.xla_debug_buffer_assignment_show_max()),
-      constants_(std::move(params.constants)),
-      output_info_(std::move(params.output_info)),
-      enable_debug_info_manager_(params.enable_debug_info_manager) {
+          debug_options.xla_debug_buffer_assignment_show_max()),
+      constants_(std::move(constants)),
+      output_info_(std::move(output_info)),
+      enable_debug_info_manager_(enable_debug_info_manager),
+      thunk_proto_(std::move(thunk_proto)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -279,6 +308,7 @@ GpuExecutable::GpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                buffer_assignment_);
   }
+  set_module_stats(std::move(module_stats));
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -425,14 +455,19 @@ absl::Status ExecuteThunksImpl(
   // Parameters for executing collective operations.
   TF_ASSIGN_OR_RETURN(
       CollectiveParams collective_params,
-      CollectiveParams::Create(*run_options, async_comms_streams,
-                               main_stream->parent()->device_ordinal(),
-                               collective_max_nchannels, p2p_max_nchannels));
+      CollectiveParams::Create(
+          *run_options, async_comms_streams,
+          LocalDeviceId(main_stream->parent()->device_ordinal()),
+          collective_max_nchannels, p2p_max_nchannels));
 
   CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests};
+    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                        &multimem_registry, executor,
+                                        &buffer_allocations};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     TF_RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
@@ -458,6 +493,8 @@ absl::Status ExecuteThunksImpl(
                 : false));
   }
 
+  TF_RETURN_IF_ERROR(multimem_registry.Build());
+
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
         executor,
@@ -467,6 +504,7 @@ absl::Status ExecuteThunksImpl(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
+        &multimem_registry,
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count()};
 
@@ -490,11 +528,11 @@ absl::Status ExecuteThunksImpl(
       command_buffer_trace_stream, &collective_params, &collective_cliques,
       std::move(additional_execution_streams));
 
-  VLOG(1) << "[" << run_options->device_ordinal() << "] "
-          << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
+  XLA_VLOG_DEVICE(1, run_options->device_ordinal())
+      << "Start GpuExecutable::ExecuteOnStream module: " << module_name;
   TF_RETURN_IF_ERROR(thunk_sequence.ExecuteOnStream(execute_params));
-  VLOG(1) << "[" << run_options->device_ordinal() << "] "
-          << "End GpuExecutable::ExecuteOnStream module: " << module_name;
+  XLA_VLOG_DEVICE(1, run_options->device_ordinal())
+      << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
   if (collective_params.need_barrier) {
     TF_RETURN_IF_ERROR(BarrierAfterExecutable(debug_options, main_stream));
@@ -662,12 +700,12 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   int submitted_mem_copies = 0;
 
   for (const ConstantInfo& info : constants_) {
-    absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
+    absl::StatusOr<stream_executor::DeviceAddressBase> global_status;
     if (static_cast<bool>(module_handle)) {
       global_status = executor->GetSymbol(info.symbol_name, module_handle);
     }
 
-    se::DeviceMemoryBase global;
+    se::DeviceAddressBase global;
     if (static_cast<bool>(module_handle) && global_status.ok()) {
       // The constant was defined in the PTX and has been allocated by the CUDA
       // driver.
@@ -716,17 +754,17 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       .first->second.get();
 }
 
-absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
+absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
-    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal,
     int64_t arg_idx) {
   if (allocation.is_thread_local()) {
-    return se::DeviceMemoryBase{};
+    return se::DeviceAddressBase{};
   } else if (allocation.is_entry_computation_parameter()) {
     int64_t param_no = allocation.parameter_number();
-    se::DeviceMemoryBase registered_buffer = [&] {
+    se::DeviceAddressBase registered_buffer = [&] {
       if (auto unowned_shapedbuffers =
               std::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
         return (*unowned_shapedbuffers)[param_no]->buffers().element(
@@ -749,17 +787,17 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   } else if (allocation.is_constant()) {
     auto it = globals->find(arg_idx);
     if (it == globals->end()) {
-      return se::DeviceMemoryBase();
+      return se::DeviceAddressBase();
     }
     return it->second;
   } else {
     // Allocate each allocation that might escape, or is the temp buffer.
     CHECK(allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer());
     const int64_t buffer_size = allocation.size();
-    se::DeviceMemoryBase buffer_address;
+    se::DeviceAddressBase buffer_address;
     if (buffer_size > 0) {
       TF_ASSIGN_OR_RETURN(
-          se::OwningDeviceMemory buffer,
+          se::ScopedDeviceAddress<uint8_t> buffer,
           memory_allocator->Allocate(device_ordinal, buffer_size,
                                      /*retry_on_failure=*/true,
                                      /*memory_space=*/allocation.color()));
@@ -770,7 +808,7 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
 }
 
 static absl::Status CheckAlignment(const BufferAllocation& allocation,
-                                   se::DeviceMemoryBase buffer, int arg_idx) {
+                                   se::DeviceAddressBase buffer, int arg_idx) {
   const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
@@ -793,14 +831,14 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
 absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-    se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
+    se::DeviceAddressAllocator* const memory_allocator, int device_ordinal) {
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
   const int64_t num_buffers = allocations.size();
-  std::vector<se::DeviceMemoryBase> buffers;
+  std::vector<se::DeviceAddressBase> buffers;
   buffers.reserve(num_buffers);
   for (int64_t i = 0; i < num_buffers; ++i) {
     const BufferAllocation& allocation = *allocations[i];
@@ -832,7 +870,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     VariantArguments arguments) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
-  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
   se::StreamExecutor* executor = run_options->stream()->parent();
 
   // GpuExecutable always bound to a single GpuContext during its execution, so
@@ -878,7 +916,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   VLOG(3) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
-  std::set<se::DeviceMemoryBase> buffers_in_result;
+  std::set<se::DeviceAddressBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {
     for (auto& p : result.MutableResult()->buffers().leaves()) {
@@ -901,14 +939,14 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
         allocations[output_info.allocation_index];
-    se::DeviceMemoryBase& result_buffer = p.second;
+    se::DeviceAddressBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
             << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
-      MaybeOwningDeviceMemory* maybe_owning_memory =
-          [&]() -> xla::MaybeOwningDeviceMemory* {
+      MaybeOwningDeviceAddress* maybe_owning_memory =
+          [&]() -> xla::MaybeOwningDeviceAddress* {
         // ScopedBuffer is never an owned buffer.
         if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
                 arguments)) {
@@ -929,13 +967,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             output_info.allocation_index);
       }
       if (maybe_owning_memory && maybe_owning_memory->HasOwnership()) {
-        std::optional<tensorflow::se::OwningDeviceMemory> owning =
+        std::optional<tensorflow::se::ScopedDeviceAddress<uint8_t>> owning =
             maybe_owning_memory->Release();
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
         // donate a buffer; the aliasing information describes which buffers
         // may alias, not buffers that must alias.
-        se::DeviceMemoryBase argument_buffer = owning->Release();
+        se::DeviceAddressBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
         // The caller is giving us the
@@ -957,7 +995,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(program_shape_.result(), index));
-        absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
+        absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,
                                        /*memory_space=*/allocation->color());
@@ -965,7 +1003,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
           return VerboseAllocationError(allocated_buffer.status());
         }
         result_buffer = allocated_buffer->Release();
-        se::DeviceMemoryBase& aliased_buffer =
+        se::DeviceAddressBase& aliased_buffer =
             buffer_allocations.GetMutableDeviceAddress(
                 output_info.allocation_index);
         CHECK_EQ(aliased_buffer.size(), result_buffer.size());
@@ -1025,7 +1063,7 @@ absl::Status GpuExecutable::ExecuteThunks(
     // (no command buffer update cost).
     absl::MutexLock lock(module_handle_mutex_);
     if (module_allocations_.find(executor) == module_allocations_.end()) {
-      std::vector<se::DeviceMemoryBase> allocs_addr;
+      std::vector<se::DeviceAddressBase> allocs_addr;
       allocs_addr.reserve(buffer_allocations.size());
       for (int i = 0; i < buffer_allocations.size(); i++) {
         allocs_addr.push_back(buffer_allocations.GetDeviceAddress(i));
@@ -1039,12 +1077,19 @@ absl::Status GpuExecutable::ExecuteThunks(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_;
+        const BufferAllocation& allocation =
+            buffer_assignment_->GetAllocation(i);
+        const char* allocation_type =
+            allocation.is_entry_computation_parameter() ? "parameter"
+            : allocation.maybe_live_out()               ? "live-out"
+                                                        : "temp";
+        VLOG(5) << "Gpu address changed for module " << module_name_
+                << ", allocation " << i << " (" << allocation_type << ")";
       }
     }
   }
 
-  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  se::DeviceAddressAllocator* const memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
@@ -1200,7 +1245,10 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   *proto.mutable_gpu_compute_capability() = gpu_version_.ToProto();
 
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunks_->ToProto());
+  // TODO(b/461380690): Generate the proto on-the-fly once we have a better way
+  // to distinguish between compiler-generated and runtime-loaded GPU
+  // executables.
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunk_proto_);
 
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
@@ -1213,8 +1261,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
         allocation->ToProto());
   }
 
-  if (hlo_module_ != nullptr) {
-    *proto.mutable_hlo_module_with_config() = hlo_module_->ToProtoWithConfig();
+  if (has_module()) {
+    *proto.mutable_hlo_module_with_config() = module().ToProtoWithConfig();
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());
@@ -1235,7 +1283,9 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
     const GpuExecutableProto& proto,
     const se::DeviceDescription& device_description,
-    absl::string_view platform_name) {
+    absl::string_view platform_name,
+    const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver) {
   Params params;
   params.enable_debug_info_manager = false;
   params.asm_text = proto.asm_text();
@@ -1278,7 +1328,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto.thunk(), params.mlir_allocations.value(),
-                            params.debug_module.get(), platform_name));
+                            params.debug_module.get(), platform_name,
+                            symbol_resolver));
 
   if (dynamic_cast<const SequentialThunk*>(thunk.get()) == nullptr) {
     return absl::InvalidArgumentError(

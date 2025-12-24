@@ -24,12 +24,10 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -66,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1389,7 +1388,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     a.fp8_input = PadOperandToMultipleOf16(a_batch_dims, a.fp8_input);
     b.fp8_input = PadOperandToMultipleOf16(b_batch_dims, b.fp8_input);
     std::vector<int64_t> out_batch_dims(num_batch_dims);
-    std::iota(out_batch_dims.begin(), out_batch_dims.end(), 0);
+    absl::c_iota(out_batch_dims, 0);
     Shape new_output_shape =
         PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 
@@ -2048,10 +2047,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction& instr,
       const GemmBackendConfig& gemm_backend_config) const {
-    if (!instr.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_cublaslt()) {
+    if (!options_.enable_cublaslt) {
       // cublasLt is not enabled.
       return absl::string_view(kGemmCallTarget);
     }
@@ -2099,7 +2095,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         const se::blas::ComputationType compute_type,
         se::gpu::GetBlasComputationType(
             instr.precision_config().algorithm(), a_dtype, output_type,
-            stream_executor::blas::kDefaultComputePrecision));
+            stream_executor::blas::kDefaultComputePrecision, gpu_version_));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -2197,10 +2193,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        const se::blas::ComputationType compute_type,
-        se::gpu::GetBlasComputationType(
-            algorithm, a_dtype, instr.shape().element_type(), max_precision));
+    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
+                        se::gpu::GetBlasComputationType(
+                            algorithm, a_dtype, instr.shape().element_type(),
+                            max_precision, gpu_version_));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 

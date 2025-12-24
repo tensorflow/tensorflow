@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -47,13 +48,14 @@ limitations under the License.
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -73,7 +75,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -266,20 +267,27 @@ void HloModule::MarkFusionDuplications(
     const {
   for (const HloComputation* computation : computations()) {
     for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        auto rep =
-            replacements.find(instruction->fused_instructions_computation());
-        if (rep != replacements.end()) {
-          xla::HloComputation* new_comp = rep->second;
-          if (new_comp->IsFusionComputation()) {
-            auto dedup_name = new_comp->FusionInstruction()->name();
-            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
-                std::string(dedup_name));
-            instruction->set_metadata_deduplicated_name(
-                std::string(dedup_name));
-          }
-        }
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        continue;
       }
+      auto it =
+          replacements.find(instruction->fused_instructions_computation());
+      if (it == replacements.end()) {
+        continue;
+      }
+      HloComputation* representative = it->second;
+      // Follow chain to find the root representative.
+      for (auto it2 = replacements.find(representative);
+           it2 != replacements.end(); it2 = replacements.find(representative)) {
+        representative = it2->second;
+      }
+      if (!representative->IsFusionComputation()) {
+        continue;
+      }
+      std::string dedup_name(representative->FusionInstruction()->name());
+      representative->FusionInstruction()->set_metadata_deduplicated_name(
+          dedup_name);
+      instruction->set_metadata_deduplicated_name(dedup_name);
     }
   }
 }
@@ -339,7 +347,7 @@ void HloModule::ReplaceComputations(
     }
     auto& computation = *iterator;
     if (replacements.contains(computation.get())) {
-      TF_CHECK_OK(RemoveEmbeddedComputation(iterator));
+      CHECK_OK(RemoveEmbeddedComputation(iterator));
     }
   }
 
@@ -398,6 +406,7 @@ void HloModule::Print(
         },
         value);
   }
+  PrintStackFrameIndex(printer, options);
   printer->Append("\n\n");
   PrintComputations(printer, options);
 }
@@ -467,6 +476,44 @@ void HloModule::PrintComputations(Printer* printer,
       computation->Print(printer, new_options);
     }
     printer->Append("\n\n");
+  }
+}
+
+void HloModule::PrintStackFrameIndex(Printer* printer,
+                                     const HloPrintOptions& options) const {
+  if (!stack_frame_index_.has_value() ||
+      stack_frame_index_->file_names().empty() || !options.print_metadata()) {
+    return;
+  }
+  printer->Append("\n\nFileNames\n");
+  for (const auto& [index, file_name] :
+       llvm::enumerate(stack_frame_index_->file_names())) {
+    printer->Append(
+        absl::StrFormat("%d \"%s\"\n", index + 1, absl::CEscape(file_name)));
+  }
+  printer->Append("\nFunctionNames\n");
+  for (const auto& [index, function_name] :
+       llvm::enumerate(stack_frame_index_->function_names())) {
+    printer->Append(absl::StrFormat("%d \"%s\"\n", index + 1,
+                                    absl::CEscape(function_name)));
+  }
+  printer->Append("\nFileLocations\n");
+  for (const auto& [index, file_location] :
+       llvm::enumerate(stack_frame_index_->file_locations())) {
+    printer->Append(
+        absl::StrFormat("%d {file_name_id=%d function_name_id=%d line=%d "
+                        "end_line=%d column=%d end_column=%d}\n",
+                        index + 1, file_location.file_name_id(),
+                        file_location.function_name_id(), file_location.line(),
+                        file_location.end_line(), file_location.column(),
+                        file_location.end_column()));
+  }
+  printer->Append("\nStackFrames\n");
+  for (const auto& [index, frame] :
+       llvm::enumerate(stack_frame_index_->stack_frames())) {
+    printer->Append(absl::StrFormat(
+        "%d {file_location_id=%d parent_frame_id=%d}\n", index + 1,
+        frame.file_location_id(), frame.parent_frame_id() + 1));
   }
 }
 
@@ -1039,8 +1086,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
-    return tsl::errors::FailedPrecondition(
-        "No program shape found in the proto");
+    return absl::FailedPreconditionError("No program shape found in the proto");
   }
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       ProgramShape::FromProto(module.host_program_shape()));
@@ -1144,7 +1190,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
             parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
-      TF_CHECK_OK(
+      CHECK_OK(
           outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot));
     }
 
@@ -1185,10 +1231,10 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
+  CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
-    TF_CHECK_OK(computation->RemoveInstruction(*i));
+    CHECK_OK(computation->RemoveInstruction(*i));
   }
 
   return call;
@@ -1455,7 +1501,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
         }
       }
     }
-    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+    CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);
@@ -1714,7 +1760,7 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     std::optional<OriginalArray>* new_original_array =
         new_inst->original_value()->mutable_original_array(shape_index);
     if (!*new_original_array) {
-      if (recovery_computation->get() == nullptr) {
+      if (*recovery_computation == nullptr) {
         // If the recovery computation is a nullptr, it means this is an
         // identity computation and we can just pass through the original array.
         new_original_array->emplace(*old_original_array);

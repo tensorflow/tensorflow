@@ -163,6 +163,11 @@ int GetCustomCallForceDelayPriority(const HloInstruction* instr) {
   return 0;
 }
 
+bool HasForceDelayAsyncAttribute(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_hint");
+  return attr.has_value() && attr.value() == "force_delay_async";
+}
+
 absl::flat_hash_map<int64_t, int64_t>
 GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
     const DefaultSchedulerCore::SchedulingState& sched_state,
@@ -1480,7 +1485,13 @@ class ReadySetLt {
       static_assert(
           std::is_trivially_copyable_v<DefaultSchedulerCore::ScheduleCandidate>,
           "ScheduleCandidate should be is_trivially_copyable");
-      memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      if (VLOG_IS_ON(2)) {
+        DefaultSchedulerCore::ScheduleCandidate tmp = b;
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+        memcpy(&a, &tmp, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      } else {
+        memcpy(&b, &a, sizeof(DefaultSchedulerCore::ScheduleCandidate));
+      }
     }
     return result;
   }
@@ -1753,19 +1764,11 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
               return std::string("N/A");
             };
         VLOG(2) << "Choosing from ready ("
-                << (new_candidate_selected
-                        ? ready_candidate.node->GetInstr().name()
-                        : ready_chosen.node->GetInstr().name())
-                << ") vs ("
-                << (new_candidate_selected
-                        ? ready_chosen.node->GetInstr().name()
-                        : ready_candidate.node->GetInstr().name())
+                << ready_chosen.node->GetInstr().name() << ") vs ("
+                << ready_candidate.node->GetInstr().name()
                 << ") Reason: " << reason << " mem pressure chosen "
-                << print_pressure_change(
-                       new_candidate_selected ? ready_candidate : ready_chosen)
-                << " mem pressure other "
-                << print_pressure_change(
-                       new_candidate_selected ? ready_chosen : ready_candidate);
+                << print_pressure_change(ready_chosen) << " mem pressure other "
+                << print_pressure_change(ready_candidate);
       }
 
       if (new_candidate_selected) {
@@ -2624,6 +2627,9 @@ HloScheduleGraph::HloScheduleGraph(
       n->SetForceDelay(true);
       n->SetForceDelayPriority(GetCustomCallForceDelayPriority(instr));
     }
+    if (n->IsSupportedAsyncStart() && HasForceDelayAsyncAttribute(instr)) {
+      n->SetForceDelay(true);
+    }
   }
 
   // num_predecessors[i]: number of predecessors for instruction number "i"
@@ -3003,6 +3009,8 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
               continue;
             }
             if (count > it->second) {
+              VLOG(5) << "Cross overlap limit for resource: " << resource
+                      << " count: " << count << " limit: " << it->second;
               return true;
             }
           }

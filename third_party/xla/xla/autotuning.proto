@@ -64,6 +64,7 @@ message AutotuneResult {
 
   message GemmKey {
     int64 algorithm = 1;
+    int64 autotune_workspace_size = 2;
   }
 
   // Legacy and unused in new data; superseded by AlgorithmProto.

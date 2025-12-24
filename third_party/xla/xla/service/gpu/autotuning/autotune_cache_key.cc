@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cmath>
 #include <string>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"

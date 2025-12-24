@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -27,10 +27,10 @@ namespace se = ::stream_executor;
 
 template <typename T>
 absl::Status select_k_exec(int device_ordinal,
-                           se::DeviceMemoryAllocator* allocator,
-                           se::Stream* stream, se::DeviceMemoryBase data_in,
-                           se::DeviceMemoryBase data_out,
-                           se::DeviceMemoryBase indices_out,
+                           se::DeviceAddressAllocator* allocator,
+                           se::Stream* stream, se::DeviceAddressBase data_in,
+                           se::DeviceAddressBase data_out,
+                           se::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
                            std::uint32_t k) {
   return absl::UnimplementedError(
@@ -38,15 +38,15 @@ absl::Status select_k_exec(int device_ordinal,
 }
 
 // Explicit instantiations for supported dtypes.
-template absl::Status select_k_exec<float>(int, se::DeviceMemoryAllocator*,
-                                           se::Stream*, se::DeviceMemoryBase,
-                                           se::DeviceMemoryBase,
-                                           se::DeviceMemoryBase, std::uint32_t,
+template absl::Status select_k_exec<float>(int, se::DeviceAddressAllocator*,
+                                           se::Stream*, se::DeviceAddressBase,
+                                           se::DeviceAddressBase,
+                                           se::DeviceAddressBase, std::uint32_t,
                                            std::uint32_t, std::uint32_t);
 
 template absl::Status select_k_exec<::xla::bfloat16>(
-    int, se::DeviceMemoryAllocator*, se::Stream*, se::DeviceMemoryBase,
-    se::DeviceMemoryBase, se::DeviceMemoryBase, std::uint32_t, std::uint32_t,
+    int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
+    se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
     std::uint32_t);
 
 }  // namespace xla::gpu

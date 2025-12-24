@@ -119,7 +119,7 @@ ENTRY main {
       cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_compilation_result,
+      std::vector<std::unique_ptr<CompiledModule>> aot_compilation_result,
       cpu_compiler.CompileAheadOfTime(std::move(hlo_module),
                                       aot_compilation_options));
   EXPECT_EQ(aot_compilation_result.size(), 1);

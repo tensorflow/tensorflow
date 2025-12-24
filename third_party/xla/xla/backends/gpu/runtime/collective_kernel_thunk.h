@@ -28,15 +28,16 @@ limitations under the License.*/
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
@@ -63,6 +64,7 @@ class CollectiveKernelThunk : public Thunk {
                         std::vector<CollectiveThunk::Buffer> buffers,
                         bool is_collective_kernel_enabled,
                         absl::string_view kernel_name = "",
+                        int32_t shmem_bytes = 0,
                         bool is_multimem_enabled = false)
       : Thunk{Thunk::kCollectiveKernel, info},
         collective_kernel_enabled_(is_collective_kernel_enabled),
@@ -70,15 +72,25 @@ class CollectiveKernelThunk : public Thunk {
         collective_config_(std::move(collective_config)),
         reduction_kind_(reduction_kind),
         kernel_name_(kernel_name),
+        shmem_bytes_(shmem_bytes),
         buffers_(std::move(buffers)),
         is_multimem_enabled_(is_multimem_enabled) {
     per_stream_state_.reserve(kMaxNumExecutors);
   }
 
+  bool is_multimem_enabled() const { return is_multimem_enabled_; }
+
+  int32_t shmem_bytes() const { return shmem_bytes_; }
+
+  absl::string_view kernel_name() const { return kernel_name_; }
+
+  bool collective_kernel_enabled() const { return collective_kernel_enabled_; }
+  bool is_async() const { return is_async_; }
+
   // Returns true if the collective kernel is supported for the given clique.
   absl::StatusOr<bool> IsSupported(
-      const GpuCliqueKey& clique_key,
-      const CollectiveCliques* collective_cliques) const;
+      const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
+      const CollectiveParams& collective_params) const;
 
   // The single host collective thunk actually requires a clique key.
   absl::Status Prepare(const PrepareParams& params) final;
@@ -95,10 +107,9 @@ class CollectiveKernelThunk : public Thunk {
   // We use a double buffering strategy for the buffers.
   // See docs on struct StreamState for more details.
   static constexpr int64_t kNumBuffers = 2;
-  // Per-executor state that needs to be synchronized for access.
-  struct StreamState {
-    int device_ordinal;
-    RankId rank;
+
+  // Per-executor scratch memory.
+  struct StreamMemory {
     // Buffers allocated for the collective.
     // Buffers are double buffered to allow for consecutive invocation
     // of the kernel on different GPUs.
@@ -107,47 +118,49 @@ class CollectiveKernelThunk : public Thunk {
     //   This implies that all GPUs must have finished the first invocation
     //   before they can sync on the second invocation.
     // - Alternate back to Buffer 0 on third invocation. And so on.
-    se::DeviceMemoryHandle local_buffers_handle;
+    se::DeviceAddressHandle local_buffers_handle;
 
     // Signal buffers allocated for the collective.
     // Also double buffered for the same reason as local buffers.
-    se::DeviceMemoryHandle signal_buffers_handle;
+    se::DeviceAddressHandle signal_buffers_handle;
+
+    se::gpu::AllReduceStrategy strategy;
+
+    const int64_t local_buffer_size_bytes = 0;
+    const int64_t signal_buffer_size_bytes = 0;
+  };
+
+  // Per-executor state that needs to be synchronized for access.
+  struct StreamState {
+    int device_ordinal = 0;
+    RankId rank = RankId(0);
 
     // Pointer to the collective kernel metadata on device.
-    se::DeviceMemoryBase metadata;
+    se::DeviceAddressBase metadata;
 
     // These vectors are merely pointers into the buffer(s) above ordered
     // by RankId. They are initialized once at the end of Initialize() and never
     // changed.
-    std::array<se::DeviceMemoryBase, kNumBuffers> remote_buffer_ptrs;
-    std::array<se::DeviceMemoryBase, kNumBuffers> signal_buffer_ptrs;
+    std::array<se::DeviceAddressBase, kNumBuffers> remote_buffer_ptrs;
+    std::array<se::DeviceAddressBase, kNumBuffers> signal_buffer_ptrs;
     // Kernel entry for the stream executor.
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
+    std::shared_ptr<CollectiveMultimem> collective_multimem;
     void* multicast_device_ptr = nullptr;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
-                se::DeviceMemoryHandle local_buffers_handle_arg,
-                se::DeviceMemoryHandle signal_buffers_handle_arg,
                 std::unique_ptr<se::Kernel> kernel_arg)
         : device_ordinal(device_ordinal_arg),
           rank(rank_arg),
-          local_buffers_handle(std::move(local_buffers_handle_arg)),
-          signal_buffers_handle(std::move(signal_buffers_handle_arg)),
           kernel(std::move(kernel_arg)) {}
   };
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
-
-  // Internal method to sync thread after Initialize.
-  // Returns the collective kernel metadata for the given clique key.
-  absl::Status ExchangeStateMetadata(const GpuCliqueKey& clique_key,
-                                     const InitializeParams& params,
-                                     StreamState& state);
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;
@@ -160,15 +173,19 @@ class CollectiveKernelThunk : public Thunk {
   // Kernel name to execute. Required when Codegen/PTX kernel is used.
   // Must match the kernel name in the generated PTX kernel.
   const std::string kernel_name_;
+  // Number of bytes of shared memory used by the kernel.
+  // Only useful when the codegen kernel is used.
+  const int32_t shmem_bytes_;
   // Reference to the buffer related information required for the collective.
   std::vector<CollectiveThunk::Buffer> buffers_;
 
-  CollectiveMetadataThunk::MultimemAddressSpaceProvider address_space_provider_;
   // Guard access to the stream state across different threads (which control
   // different streams).
   absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
       per_stream_state_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamMemory>>
+      per_stream_memory_ ABSL_GUARDED_BY(mutex_);
   const bool is_multimem_enabled_;
 };
 }  // namespace xla::gpu

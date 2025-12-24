@@ -34,7 +34,7 @@ namespace {
 
 class UtilsTest : public ::testing::Test {
  protected:
-  string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
+  std::string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
 
   void SetUp() override {
     TF_CHECK_OK(env_->CreateDir(BaseDir()));
@@ -70,24 +70,24 @@ class UtilsTest : public ::testing::Test {
 
   GraphDef graph_def_;
   MetaGraphDef meta_graph_def_;
-  string non_existent_file_;
-  string actual_file_;
-  string text_graph_def_file_;
-  string binary_graph_def_file_;
-  string text_meta_graph_def_file_;
-  string binary_meta_graph_def_file_;
+  std::string non_existent_file_;
+  std::string actual_file_;
+  std::string text_graph_def_file_;
+  std::string binary_graph_def_file_;
+  std::string text_meta_graph_def_file_;
+  std::string binary_meta_graph_def_file_;
   Env* env_ = Env::Default();
 };
 
 TEST_F(UtilsTest, FilesExist) {
-  EXPECT_FALSE(FilesExist(std::vector<string>{{non_existent_file_}}));
-  EXPECT_FALSE(
-      FilesExist(std::vector<string>{{non_existent_file_}, {actual_file_}}));
-  EXPECT_TRUE(FilesExist(std::vector<string>{{actual_file_}}));
+  EXPECT_FALSE(FilesExist(std::vector<std::string>{{non_existent_file_}}));
+  EXPECT_FALSE(FilesExist(
+      std::vector<std::string>{{non_existent_file_}, {actual_file_}}));
+  EXPECT_TRUE(FilesExist(std::vector<std::string>{{actual_file_}}));
 
   std::vector<absl::Status> status;
   EXPECT_FALSE(FilesExist(
-      std::vector<string>{{non_existent_file_}, {actual_file_}}, &status));
+      std::vector<std::string>{{non_existent_file_}, {actual_file_}}, &status));
   EXPECT_EQ(status.size(), 2);
   EXPECT_FALSE(status[0].ok());
   EXPECT_TRUE(status[1].ok());

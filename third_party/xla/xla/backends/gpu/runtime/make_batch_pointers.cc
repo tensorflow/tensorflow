@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/make_batch_pointers_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -31,17 +31,16 @@ limitations under the License.
 namespace xla::gpu {
 
 absl::Status MakeBatchPointers(se::Stream* stream,
-                               se::DeviceMemoryBase base_ptr,
+                               se::DeviceAddressBase base_ptr,
                                size_t stride_bytes, size_t n,
-                               se::DeviceMemoryBase ptrs_out) {
+                               se::DeviceAddressBase ptrs_out) {
   se::StreamExecutor* executor = stream->parent();
   size_t threads_per_block = [&] {
     if (executor->GetPlatform()->id() ==
         stream_executor::rocm::kROCmPlatformId) {
       return 256;
-    } else {
-      return 128;
     }
+    return 128;
   }();
 
   TF_ASSIGN_OR_RETURN(

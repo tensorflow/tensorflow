@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -43,6 +44,14 @@ class InfeedThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(dest_slices_.size());
+    for (const ShapedSlice& shaped_slice : dest_slices_) {
+      res.push_back(BufferUse::Write(shaped_slice.slice, shaped_slice.shape));
+    }
+    return res;
+  }
   static absl::StatusOr<std::unique_ptr<InfeedThunk>> FromProto(
       ThunkInfo thunk_info, const InfeedThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);

@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/generic_transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -136,7 +136,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                                     local_device = local_device_, stream, src,
                                     offset, transfer_size,
                                     buf = tsl::FormRef(this)]() mutable {
-    se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
+    se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
@@ -151,12 +151,8 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
                 "host_memory_allocator should be initialized for "
                 "staging buffer transfer.");
           }
-          void* ptr = client->host_memory_allocator()->AllocateRaw(
-              tsl::Allocator::kAllocatorAlignment, transfer_size);
-          staging_buffer = std::shared_ptr<void>(
-              ptr,
-              [host_memory_allocator = client->host_memory_allocator()](
-                  void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
+          staging_buffer =
+              client->host_memory_allocator()->Allocate(transfer_size);
           auto copy_to_staging_buffer = [src, transfer_size,
                                          staging_buffer]() mutable {
             std::memcpy(staging_buffer.get(), src, transfer_size);
@@ -196,7 +192,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
                                     local_device = local_device_, stream, dst,
                                     offset, transfer_size,
                                     buf = tsl::FormRef(this)]() mutable {
-    se::DeviceMemoryBase sub_buffer = buf->device_buffer_->mem();
+    se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
@@ -210,12 +206,8 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
                 "host_memory_allocator should be initialized for "
                 "staging buffer transfer.");
           }
-          void* ptr = client->host_memory_allocator()->AllocateRaw(
-              tsl::Allocator::kAllocatorAlignment, transfer_size);
-          std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
-              ptr,
-              [host_memory_allocator = client->host_memory_allocator()](
-                  void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
+          std::shared_ptr<void> staging_buffer =
+              client->host_memory_allocator()->Allocate(transfer_size);
           TF_RETURN_IF_ERROR(
               stream->Memcpy(staging_buffer.get(), sub_buffer, transfer_size));
           auto copy_from_staging_buffer = [dst, transfer_size,
@@ -248,7 +240,7 @@ ShapedBuffer PjRtStreamExecutorRawBuffer::AsShapedBuffer(
   auto* device = memory_space()->devices()[0];
   ShapedBuffer shaped_buffer(shape, device->local_device_id().value(),
                              device->local_hardware_id().value());
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
+  ShapeTree<se::DeviceAddressBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   if (device_buffer_) {
     CHECK(iterator != shaped_buffer.buffers().end());
@@ -316,7 +308,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
                 primitive_util::ByteWidth(on_device_shape.element_type());
             options.dims = on_device_shape.dimensions();
             options.permutation = permutation;
-            options.input_layout = TransposePlan::Striding{byte_strides};
+            options.input_striding = TransposePlan::Striding{byte_strides};
             {
               absl::MutexLock lock(client->transpose_mu_);
               absl::StatusOr<std::shared_ptr<TransposePlan>> t =
@@ -496,13 +488,10 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
     src_usage_event_promise->Set(*std::move(d2h_event));
     return;
   } else {
-    void* ptr = client_->host_memory_allocator()->AllocateRaw(
-        tsl::Allocator::kAllocatorAlignment, GetOnDeviceSizeInBytes());
-    std::shared_ptr<void> staging_buffer = std::shared_ptr<void>(
-        ptr, [host_memory_allocator = client_->host_memory_allocator()](
-                 void* ptr) { host_memory_allocator->DeallocateRaw(ptr); });
-    auto d2h_event =
-        CopyRawDeviceToHostAndReturnEvent(ptr, 0, GetOnDeviceSizeInBytes());
+    std::shared_ptr<void> staging_buffer =
+        client_->host_memory_allocator()->Allocate(GetOnDeviceSizeInBytes());
+    auto d2h_event = CopyRawDeviceToHostAndReturnEvent(
+        staging_buffer.get(), 0, GetOnDeviceSizeInBytes());
     if (!d2h_event.ok()) {
       definition_event_promise->SetError(d2h_event.status());
       src_usage_event_promise->SetError(d2h_event.status());

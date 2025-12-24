@@ -107,6 +107,9 @@ using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::NotNull;
+using ::testing::Pointee;
+using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
@@ -180,10 +183,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
   EXPECT_EQ(GetCompiledProgramsCount(), before + 1);
 }
 
@@ -275,10 +275,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   const std::string kGpuCompilerStacktraceMetricName =
       "/xla/service/gpu/compiler_stacktrace_count";
@@ -310,10 +307,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
   EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
       executable->module().unique_id()));
 }
@@ -329,14 +323,13 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   int module_id = module->unique_id();
+  Compiler::CompileOptions compile_options;
+  compile_options.embed_hlo_module = false;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/true}));
+                                       compile_options));
   EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(module_id));
 }
 
@@ -392,10 +385,7 @@ ENTRY e {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   HloModule& compiled_module = executable->module();
   const HloInstruction* entry_root =
@@ -405,6 +395,13 @@ ENTRY e {
 
 class PersistedAutotuningTest : public HloTestBase {
  protected:
+  void SetUp() override {
+    AutotunerUtil::ClearAutotuneResults();
+    xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
+  }
+
+  void TearDown() override { AutotunerUtil::ClearAutotuneResults(); }
+
   static constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -438,7 +435,6 @@ ENTRY e {
 
 TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
   constexpr absl::string_view kInvalidTextProto = "Invalid!";
-  xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
 
   // Check that it writes the results on the first compilation.
   TF_EXPECT_OK(GetOptimizedModule(kHloText).status());
@@ -466,6 +462,22 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
                                                            &results));
   }
+}
+
+TEST_F(PersistedAutotuningTest, SingleOperationGetsAutotuned) {
+  TF_EXPECT_OK(GetOptimizedModule(R"(
+e {
+  a = f32[64,128] parameter(0)
+  t = f32[128,64] transpose(a), dimensions={1,0}
+})")
+                   .status());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
+                          ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
+  AutotuneResults results;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
+                                                         &results));
+  EXPECT_THAT(results.results(), Not(IsEmpty()));
 }
 
 int64_t CountCopies(const HloComputation& computation) {
@@ -963,9 +975,8 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
       std::unique_ptr<AotCompilationResult> aot_result,
       compiler_->LoadAotCompilationResult(serialized_aot_result));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -997,16 +1008,12 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       compiler_->RunBackend(std::move(add_1_hlo), stream_exec_,
-                            {/*device_allocator=*/nullptr,
-                             /*thread_pool=*/nullptr,
-                             /*layout_canonicalization_callback=*/{},
-                             /*is_autotuning_compilation=*/false}));
+                            /*device_allocator=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
                           compiler_->Export(executable.get()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> new_executable,
-      std::move(*aot_result).LoadExecutable(compiler_, stream_exec_));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
+                          std::move(*aot_result).LoadExecutable(stream_exec_));
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       test_runner_as_hlo_runner().WrapExecutable(std::move(new_executable));
 
@@ -1017,6 +1024,32 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
                           test_runner_as_hlo_runner().ExecuteWithExecutable(
                               wrapped_executable.get(), {&literal_input}));
   EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
+}
+
+TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> add_1_hlo,
+      ParseAndReturnVerifiedModule(R"hlo(
+    add1 {
+      p = s32[] parameter(0)
+      c = s32[] constant(1)
+      ROOT a = s32[] add(p, c)
+    }
+
+    ENTRY e {
+      p = s32[] parameter(0)
+      ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+    })hlo",
+                                   GetModuleConfigForTest()));
+
+  aot_options_->set_early_exit_point(
+      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
+  EXPECT_THAT(aot_results,
+              ElementsAre(Pointee(Property(
+                  &AotCompilationResult::optimized_module, NotNull()))));
 }
 
 class KernelCacheTest : public HloTestBase {
@@ -1172,8 +1205,7 @@ ENTRY e {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<Executable> executable,
-        std::move(*aot_result)
-            .LoadExecutable(compiler, aot_options.executor()));
+        std::move(*aot_result).LoadExecutable(aot_options.executor()));
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 
@@ -1367,12 +1399,9 @@ ENTRY entry {
               .value();
       TF_ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<Executable> executable,
-          backend().compiler()->RunBackend(
-              std::move(compiled_module), backend().default_stream_executor(),
-              {/*device_allocator=*/nullptr,
-               /*thread_pool=*/nullptr,
-               /*layout_canonicalization_callback=*/{},
-               /*is_autotuning_compilation=*/false}));
+          backend().compiler()->RunBackend(std::move(compiled_module),
+                                           backend().default_stream_executor(),
+                                           /*device_allocator=*/nullptr));
     });
   }
 }
@@ -1389,7 +1418,7 @@ async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
   gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+    backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
         {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
@@ -1405,8 +1434,7 @@ ENTRY main {
     to_apply=async_call,
     frontend_attributes={_xla_stream_annotation="1"}
   ROOT call-done = f32[32,32]{1,0} call-done(call-start),
-    frontend_attributes={_xla_stream_annotation="1"},
-    backend_config={"operation_queue_id":"0"}
+    frontend_attributes={_xla_stream_annotation="1"}
 })";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
 
@@ -1414,10 +1442,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
@@ -1445,7 +1470,7 @@ async_call {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
   gemm = (f32[32,32], s8[8192]) custom-call(p0, p1), custom_call_target="__cublas$gemm",
-    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],
+    backend_config={
       "gemm_backend_config":{"alpha_real":1,"alpha_imag":0,"beta":0,
       "dot_dimension_numbers":
         {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"]},
@@ -1461,8 +1486,7 @@ ENTRY main {
     to_apply=async_call,
     frontend_attributes={_xla_stream_annotation="1"}
   ROOT call-done = f32[32,32]{1,0} call-done(call-start),
-    frontend_attributes={_xla_stream_annotation="1"},
-    backend_config={"operation_queue_id":"0"}
+    frontend_attributes={_xla_stream_annotation="1"}
 })";
 
   const absl::string_view fdo_profile = R"pb(
@@ -1478,10 +1502,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
@@ -1737,8 +1758,9 @@ TEST_F(PassOrderTest,
        SortRewriterRunsBeforeStableSortExpanderAndComparisonExpander) {
   VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
                   /*last_pass_regex=*/"stable-sort-expander");
-  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
-                  /*last_pass_regex=*/"comparison-expander");
+  VerifyPassRunsAtLeastOnceBefore(
+      /*first_pass_regex=*/"sort-rewriter",
+      /*other_pass_regex=*/"comparison-expander");
 }
 
 TEST_F(PassOrderTest,
@@ -1823,10 +1845,14 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
-TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
+TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusionAutotuner) {
+  VerifyPassOrder("gemm-fusion-autotuner", "hoist-fused-bitcasts");
+}
+
+TEST_F(PassOrderTest, NestGemmFusionRunsAfterHoistFusedBitcasts) {
   // NestGemmFusion expect to see __triton_gemm custom call with a backend
   // config created by gemm_fusion_autotuner.
-  VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+  VerifyPassOrder("hoist-fused-bitcasts", "nest_gemm_fusion");
 }
 
 TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
@@ -2081,7 +2107,8 @@ ENTRY %main {
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
   EXPECT_CALL(mock_log,
               Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
-                  StartsWith("Using fallback sort algorithm")));
+                  StartsWith("Using fallback sort algorithm")))
+      .Times(1);
 
   // StartCapturingLogs has to be called even if we expect not to capture any
   // logs.
@@ -2134,10 +2161,7 @@ TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(opt_module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   auto& exe_module = executable->module();
   const HloModuleMetadataProto& exe_metadata = exe_module.metadata()->proto();
@@ -2167,7 +2191,6 @@ ENTRY main {
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_text).value();
 
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   debug_options.set_xla_gpu_graph_min_graph_size(1);
@@ -2178,10 +2201,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(hlo_module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
   const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
@@ -2304,10 +2324,7 @@ ENTRY main {
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module),
                                        backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =

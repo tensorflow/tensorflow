@@ -148,15 +148,6 @@ HloSharding HloSharding::AssignDevice(int64_t device_id,
   return HloSharding(device_id, metadata);
 }
 
-HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
-                                absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(1, input_shape.dimensions().size());
-  CHECK_GT(num_tiles, 1);
-  absl::Span<const int64_t> dimensions(&num_tiles, 1);
-  return HloSharding(TileAssignment(dimensions, dimensions, {0}),
-                     /*replicate_on_last_tile_dim=*/false, metadata);
-}
-
 HloSharding HloSharding::PartialTile(
     const TileAssignment& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
@@ -532,29 +523,6 @@ bool HloSharding::UsesDevice(int64_t device) const {
          TileAgnosticDeviceAssignment().UsesDevice(device);
 }
 
-std::map<int64_t, int64_t> HloSharding::UsedDevices(int64_t* count) const {
-  int64_t element_count = 1;
-  std::map<int64_t, int64_t> device_map;
-  if (IsTuple()) {
-    for (auto& tuple_element_sharding : tuple_elements()) {
-      auto unique_device = tuple_element_sharding.UniqueDevice();
-      if (unique_device) {
-        device_map[*unique_device] += 1;
-      }
-    }
-    element_count = tuple_elements().size();
-  } else {
-    auto unique_device = UniqueDevice();
-    if (unique_device) {
-      device_map[*unique_device] += 1;
-    }
-  }
-  if (count != nullptr) {
-    *count = element_count;
-  }
-  return device_map;
-}
-
 std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
   CHECK(!maximal_);
   CHECK(!IsManual());
@@ -569,26 +537,6 @@ std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
   CHECK(!ret_index.empty());
   ret_index.resize(TiledDataRank());
   return ret_index;
-}
-
-int64_t HloSharding::DeviceForTileIndex(absl::Span<const int64_t> index) const {
-  CHECK(!replicated_);
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  CHECK(!IsTuple());
-  if (maximal_) {
-    return *tile_assignment_.array().begin();
-  }
-  if (index.size() == TiledDataRank() &&
-      index.size() < tile_assignment_.num_dimensions()) {
-    std::vector<int64_t> first_subgroup_index(index.begin(), index.end());
-    for (int64_t i = 0; i < tile_assignment_.num_dimensions() - index.size();
-         ++i) {
-      first_subgroup_index.push_back(0);
-    }
-    return tile_assignment_(first_subgroup_index);
-  }
-  return tile_assignment_(index);
 }
 
 std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
@@ -642,14 +590,12 @@ absl::Status HloSharding::EachTile(
   CHECK(!IsUnknown());
   CHECK(!maximal_);
 
-  // At the high-level, tile_assignment_dims[i] describes the number of ways the
-  // shape is partitioned along i-th dimension. Note that
-  // tile_assignment_dims[i] with i >= dims.size() encodes other information
-  // such as subgroups to express partial replication/sharding and other
-  // semantics.  They do not participate in determining the tile origin and
-  // shape.
-  const absl::Span<const int64_t> tile_assignment_dims =
-      tile_assignment().dimensions();
+  // At the high-level, sharding_dims[i] describes the number of ways the shape
+  // is partitioned along i-th dimension. Note that sharding_dims[i] with i >=
+  // dims.size() encodes other information such as subgroups to express partial
+  // replication/sharding and other semantics.  They do not participate in
+  // determining the tile origin and shape.
+  const absl::Span<const int64_t> sharding_dims = dimensions();
   const int num_devices = tile_assignment().array().num_elements();
 
   if (dims.size() != TiledDataRank()) {
@@ -660,7 +606,7 @@ absl::Status HloSharding::EachTile(
   absl::InlinedVector<int64_t, 6> tile_dims;
   tile_dims.reserve(dims.size());
   for (int64_t i = 0; i < dims.size(); ++i) {
-    tile_dims.push_back(CeilOfRatio(dims[i], tile_assignment_dims[i]));
+    tile_dims.push_back(CeilOfRatio(dims[i], sharding_dims[i]));
   }
 
   const int64_t replication_dim = SubgroupReplicationDim();
@@ -668,13 +614,13 @@ absl::Status HloSharding::EachTile(
   if (replication_dim == -1) {
     num_replicas = 1;
   } else {
-    num_replicas = tile_assignment_dims[replication_dim];
+    num_replicas = sharding_dims[replication_dim];
   }
 
-  // Enumerate over all indices of tiles. For instance, if tile_assignment_dims
-  // is [3, 2], iterate over [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]].
-  // If tile_assignment_dims includes replication, we only enumerate over the
-  // sharding portion, and copy the same indices multiple times.
+  // Enumerate over all indices of tiles. For instance, if sharding_dims is [3,
+  // 2], iterate over [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]]. If
+  // sharding_dims includes replication, we only enumerate over the sharding
+  // portion, and copy the same indices multiple times.
   absl::InlinedVector<int64_t, 6> unique_tile_index(dims.size());
   absl::InlinedVector<int64_t, 6> tile_offset(dims.size());
   absl::InlinedVector<int64_t, 6> tile_limit(dims.size());
@@ -698,7 +644,7 @@ absl::Status HloSharding::EachTile(
       f(device_id, tile_offset, tile_limit);
       ++flat_tile_index;
     }
-  } while (NextIndex(&unique_tile_index, tile_assignment_dims));
+  } while (NextIndex(&unique_tile_index, sharding_dims));
   return absl::OkStatus();
 }
 
@@ -1153,23 +1099,12 @@ int64_t HloSharding::TotalNumTiles() const {
 }
 
 int64_t HloSharding::NumTiles() const {
-  if (IsTileMaximal()) {
-    return 1;
-  }
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
-                     .subspan(0, TiledDataRank()));
-}
-
-int64_t HloSharding::NumTilesLeaf() const {
-  DCHECK(!IsTuple());
   if (IsTileMaximalLeaf()) {
     return 1;
   }
   CHECK(!IsManualLeaf() && !IsUnknownLeaf());
   return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
-                     .subspan(0, TiledDataRankLeaf()));
+                     .subspan(0, TiledDataRank()));
 }
 
 int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
@@ -1178,11 +1113,11 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   }
   CHECK(!IsManual());
   CHECK(!ReplicateOnLastTileDim() ||
-        !absl::c_linear_search(dims, tile_assignment().num_dimensions() - 1));
+        !absl::c_linear_search(dims, num_dimensions() - 1));
   int64_t num_tiles = 1;
   for (auto d : dims) {
-    CHECK(d < tile_assignment().num_dimensions());
-    num_tiles *= tile_assignment().dim(d);
+    CHECK(d < num_dimensions());
+    num_tiles *= dimension(d);
   }
   return num_tiles;
 }

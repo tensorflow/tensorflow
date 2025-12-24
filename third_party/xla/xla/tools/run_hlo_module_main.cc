@@ -16,14 +16,11 @@ limitations under the License.
 // A tool for reading a HloModule from a HloProto file and execute the module on
 // given platform(s). See kUsage for details.
 
-#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
-#include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"

@@ -28,14 +28,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 using std::string;
 
@@ -58,14 +57,14 @@ absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
 
 void RealMain(const std::string& input, const std::string& output) {
   HloProto hlo_proto;
-  TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), input, &hlo_proto))
+  CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), input, &hlo_proto))
       << "Can't open, read, or parse input file " << input;
 
   auto statusor = ToJson(hlo_proto);
   QCHECK(statusor.ok()) << "Error converting " << input << " to JSON."
                         << statusor.status();
 
-  TF_CHECK_OK(
+  CHECK_OK(
       tsl::WriteStringToFile(tsl::Env::Default(), output, statusor.value()));
 }
 

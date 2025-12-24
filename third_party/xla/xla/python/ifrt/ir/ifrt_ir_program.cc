@@ -103,15 +103,15 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
       proto.dot_graph_min_per_device_transfer_size_bytes());
 }
 
-absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
-    SerDesVersion version) const {
+absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
+                                           SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for IfrtIRCompileOptions serialization"));
   }
 
-  IfrtIrCompileOptionsProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
   proto.mutable_device_ids()->Reserve(device_assignments.size());
   for (const DeviceId& device_id : device_assignments) {
@@ -143,7 +143,7 @@ absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
   proto.set_dot_graph_min_executable_flops(dot_graph_min_executable_flops);
   proto.set_dot_graph_min_per_device_transfer_size_bytes(
       dot_graph_min_per_device_transfer_size_bytes);
-  return proto;
+  return absl::OkStatus();
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

@@ -337,7 +337,7 @@ absl::Status GraphMgr::Register(const std::string& handle, const GraphDef& gdef,
   {
     mutex_lock l(mu_);
     *graph_handle =
-        strings::Printf("%016llx", static_cast<long long>(++next_id_));
+        absl::StrFormat("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }

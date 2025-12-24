@@ -82,7 +82,7 @@ void SetConstantValue(
     absl::FunctionRef<NativeT(absl::Span<const int64_t>, NativeT)> value_fn) {
   Literal new_literal = instr->literal().Clone();
   new_literal.MutableEachCell<int8_t>(value_fn);
-  TF_EXPECT_OK(instr->parent()->ReplaceWithNewInstruction(
+  EXPECT_OK(instr->parent()->ReplaceWithNewInstruction(
       instr, HloInstruction::CreateConstant(std::move(new_literal))));
 }
 

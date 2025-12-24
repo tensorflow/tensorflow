@@ -163,8 +163,8 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       }
     }
     rewriter.setInsertionPointAfter(op);
-    ConvertOp new_convert_op = rewriter.create<ConvertOp>(
-        op->getLoc(), new_result_type, op.getResult());
+    ConvertOp new_convert_op = ConvertOp::create(
+        rewriter, op->getLoc(), new_result_type, op.getResult());
     quantizable_op->setOperand(quantize_operand_num,
                                new_convert_op.getResult());
   }
@@ -203,10 +203,10 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
       // of its number of users.
       rewriter.setInsertionPointAfter(op);
       // create new F16 constant op in that location
-      ConstantOp new_const = rewriter.create<ConstantOp>(
-          op->getLoc(), new_result_type, new_value_attr);
+      ConstantOp new_const = ConstantOp::create(
+          rewriter, op->getLoc(), new_result_type, new_value_attr);
       ConvertOp dcast =
-          rewriter.create<ConvertOp>(op->getLoc(), old_result_type, new_const);
+          ConvertOp::create(rewriter, op->getLoc(), old_result_type, new_const);
       // replace all convert ops with dq op.
       convert_op->replaceAllUsesWith(dcast);
       // Return without scanning for the next ConvertOp as only one ConvertOp is

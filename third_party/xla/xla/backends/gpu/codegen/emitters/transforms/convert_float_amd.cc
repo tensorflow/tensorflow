@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -59,6 +59,7 @@ namespace {
 
 namespace LLVM = ::mlir::LLVM;
 namespace arith = ::mlir::arith;
+namespace se = stream_executor;
 namespace vector = ::mlir::vector;
 
 template <typename SourceOp>
@@ -221,9 +222,8 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
       }
       if (v.getType() != f32_ty) {
         return arith::TruncFOp::create(b, f32_ty, v);
-      } else {
-        return v;
       }
+      return v;
     });
 
     mlir::StringAttr cvtIntr = b.getStringAttr(
@@ -366,7 +366,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
       return std::nullopt;
     }
 
-    mlir::Value vector = extract.getVector();
+    mlir::Value vector = extract.getSource();
 
     size_t element_count =
         mlir::cast<FixedVectorValue>(vector).getType().getNumElements();
@@ -390,7 +390,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
 
     for (const mlir::OpOperand& use : vector.getUses()) {
       extract = mlir::dyn_cast<vector::ExtractOp>(use.getOwner());
-      if (!extract || !extract->hasOneUse() || extract.getVector() != vector ||
+      if (!extract || !extract->hasOneUse() || extract.getSource() != vector ||
           !matchPos(extract, &pos)) {
         return std::nullopt;
       }
@@ -561,11 +561,11 @@ class ConvertFloatAMDPass
   void runOnOperation() override {
     if (!gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
-      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
-                                                       &device_info));
+      CHECK(
+          google::protobuf::TextFormat::ParseFromString(gpu_device_info_, &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       cc_ = device_description->rocm_compute_capability();
     }
     mlir::RewritePatternSet patterns(&getContext());

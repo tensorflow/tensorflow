@@ -109,6 +109,9 @@ message GemmBackendConfig {
   bool damax_output = 18;
 
   reserved 19;
+
+  // The workspace size used during autotuning when the algorithm was selected.
+  int64 autotune_workspace_size = 20;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.

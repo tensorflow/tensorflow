@@ -298,6 +298,7 @@ filegroup(
         "mkl_heuristics.h",
         "mkl_util.h",
         "onednn_env_vars.h",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla/tsl/util:onednn_util_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -952,38 +953,39 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
     exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
+    deps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
     name = "protos_test",
     srcs = ["example_proto_fast_parsing_test.proto"],
-    protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/core:protos_all"],
 )
 
 tf_proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
     make_default_target_header_only = True,
-    protodeps = [
-        "//tensorflow/core/framework:summary_proto",
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/core/framework:resource_handle_proto",
+        "//tensorflow/core/framework:summary_proto",
         "//tensorflow/core/framework:tensor_proto",
         "//tensorflow/core/framework:tensor_shape_proto",
         "//tensorflow/core/framework:types_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "//tensorflow/core/framework:resource_handle_proto",
         "//tensorflow/core/framework:tensor_proto",
         "//tensorflow/core/framework:tensor_shape_proto",
@@ -991,7 +993,6 @@ tf_proto_library(
         "//tensorflow/core/framework:types_proto",
         "//tensorflow/core/framework:versions_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -1004,16 +1005,16 @@ tf_proto_library(
 tf_proto_library(
     name = "protos_all",
     make_default_target_header_only = True,
-    protodeps = [
-        ":event_proto",
-        ":saved_tensor_slice_proto",
-        ":memmapped_file_system_proto",
-        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto",
-    ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [
+        ":event_proto",
+        ":memmapped_file_system_proto",
+        ":saved_tensor_slice_proto",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto",
+    ],
 )
 
 cc_library(

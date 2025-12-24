@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
+#include <gmock/gmock.h>
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project

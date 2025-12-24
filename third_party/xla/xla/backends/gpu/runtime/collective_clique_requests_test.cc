@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"

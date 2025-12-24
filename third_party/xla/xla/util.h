@@ -129,6 +129,16 @@ struct TimerStats {
   uint64_t times_called ABSL_GUARDED_BY(stats_mutex) = 0;
 };
 
+inline std::string XlaFormatDevice(int device_ordinal) {
+  return absl::StrFormat("device=[%d] ", device_ordinal);
+}
+
+#define XLA_VLOG_DEVICE(level, device_ordinal) \
+  VLOG(level) << xla::XlaFormatDevice(device_ordinal)
+
+#define XLA_LOG_DEVICE(level, device_ordinal) \
+  LOG(level) << xla::XlaFormatDevice(device_ordinal)
+
 // RAII timer for XLA_SCOPED_LOGGING_TIMER and XLA_SCOPED_LOGGING_TIMER_LEVEL
 // macros above.  Recommended usage is via the macros so you don't have to give
 // the timer a name or worry about calling VLOG_IS_ON yourself.
@@ -913,7 +923,8 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
 inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
                                         size_t size) {
   size_t packed_size = size * bits_per_element / 8;
-  auto buffer = std::make_unique<char[]>(packed_size);
+  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
+  std::unique_ptr<char[]> buffer(new char[packed_size]);
   auto src = absl::MakeSpan(data, size);
   auto dst = absl::MakeSpan(buffer.get(), packed_size);
   PackIntN(bits_per_element, src, dst);
@@ -966,7 +977,8 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
 inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
                                           const char* data, size_t size) {
   size_t unpacked_size = size * 8 / bits_per_element;
-  auto buffer = std::make_unique<char[]>(unpacked_size);
+  // Note: we can use `std::make_unique_for_overwrite` once C++20 is supported.
+  std::unique_ptr<char[]> buffer(new char[unpacked_size]);
   auto src = absl::MakeSpan(data, size);
   auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
   UnpackIntN(bits_per_element, src, dst);

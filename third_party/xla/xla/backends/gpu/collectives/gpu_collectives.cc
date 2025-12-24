@@ -20,10 +20,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -31,9 +32,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-GpuCollectives* GpuCollectives::Default() {
+GpuCollectives* GpuCollectives::Default(absl::string_view platform_name) {
   absl::StatusOr<Collectives*> collectives =
-      CollectivesRegistry::Default("gpu");
+      CollectivesRegistry::Default(platform_name);
   CHECK_OK(collectives) << "Failed to get GPU collectives";  // Crash OK
 
   if (auto* gpu_collectives = tsl::down_cast<GpuCollectives*>(*collectives)) {
@@ -57,9 +58,9 @@ stream_executor::Stream* GpuCollectives::Executor::stream() const {
   return stream_;
 }
 
-se::DeviceMemoryBase GpuCollectives::Slice(se::DeviceMemoryBase buff,
-                                           PrimitiveType dtype, size_t offset,
-                                           size_t count) {
+se::DeviceAddressBase GpuCollectives::Slice(se::DeviceAddressBase buff,
+                                            PrimitiveType dtype, size_t offset,
+                                            size_t count) {
   size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
   return buff.GetByteSlice(offset * multiplier, count * multiplier);
 }

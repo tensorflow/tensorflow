@@ -142,6 +142,7 @@ ifrt_proxy_cc_test(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",

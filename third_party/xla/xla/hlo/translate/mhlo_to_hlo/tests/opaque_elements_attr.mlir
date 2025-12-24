@@ -10,7 +10,7 @@ func.func @main() {
 
 // Tests dynamic result shape
 
-// CHECK: 'mhlo.all_gather' op can't be translated to XLA HLO
+// CHECK: 'stablehlo.all_gather' op can't be translated to XLA HLO
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
@@ -24,7 +24,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
 
 // Tests dynamic operand shape
 
-// CHECK: 'mhlo.all_gather' op can't be translated to XLA HLO
+// CHECK: 'stablehlo.all_gather' op can't be translated to XLA HLO
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x?xf32> {
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,

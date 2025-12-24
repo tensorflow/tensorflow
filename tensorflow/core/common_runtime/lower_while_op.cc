@@ -132,7 +132,7 @@ class LowerWhileHelper {
 
   // Returns unique name containing the name of the While op being rewritten
   // (name_), infix and a suffix to ensure it is unique within the graph.
-  string NewName(const string& infix);
+  std::string NewName(const std::string& infix);
 
   // Returns true if the input at index is a resource and the same resource is
   // returned as an output.
@@ -156,7 +156,7 @@ class LowerWhileHelper {
   Graph* graph_;
   const FunctionLibraryDefinition* flib_def_;
   // Name of the `while_op_`.
-  string name_;
+  std::string name_;
   // Max number of parallel_iterations for the while loop.
   const int parallel_iterations_;
   bool keep_node_fetchable_;
@@ -363,15 +363,15 @@ absl::Status LowerWhileHelper::CreateSwitchNodes() {
     if (IsLoopCarriedResource(i)) {
       continue;
     }
-    string op_name;
+    std::string op_name;
     {
       const Node* input_node;
       TF_RETURN_IF_ERROR(while_op_->input_node(i, &input_node));
-      op_name = strings::StrCat(input_node->name(), "_switch");
+      op_name = absl::StrCat(input_node->name(), "_switch");
     }
     Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
     Node* switch_node;
-    string op_type = "Switch";
+    std::string op_type = "Switch";
     if (IsRefType(merge_node->output_type(0))) {
       op_type = "RefSwitch";
     }
@@ -413,7 +413,7 @@ absl::Status LowerWhileHelper::CreateBodyFuncCallNode() {
   // node is not the first one to be ready? Can we speed that case up using some
   // sort of multi-input Merge?
   Node* body_control_node_;
-  string op_type = "Identity";
+  std::string op_type = "Identity";
   if (IsRefType(switch_nodes_[0]->output_type(1))) {
     op_type = "RefIdentity";
   }
@@ -569,8 +569,8 @@ absl::Status LowerWhileHelper::UpdateConsumers() {
   return absl::OkStatus();
 }
 
-string LowerWhileHelper::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+std::string LowerWhileHelper::NewName(const std::string& infix) {
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 bool LowerWhileHelper::IsLoopCarriedResource(int index) {

@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -84,7 +84,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
 
     auto byte_strides = ShapeUtil::ByteStrides(src_shape_);
     CHECK(byte_strides.has_value());
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    options.input_striding = TransposePlan::Striding{*byte_strides};
 
     absl::InlinedVector<int64_t, 4> permutation(options.dims.size());
     absl::c_reverse_copy(dst_shape_.layout().minor_to_major(),
@@ -97,7 +97,7 @@ CopyThunk::CopyThunk(Info info, BufferAllocation::Slice src_buffer,
 
 static std::tuple<void*, void*, int64_t> GetBlockCopyParameters(
     const CopyThunk::ParallelBlockParams& params, int64_t block_index,
-    se::DeviceMemoryBase destination, se::DeviceMemoryBase source) {
+    se::DeviceAddressBase destination, se::DeviceAddressBase source) {
   CHECK_LT(block_index, params.block_count);
 
   int64_t offset = block_index * params.block_size;
@@ -143,8 +143,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CopyThunk::Execute(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  se::DeviceMemoryBase src_data;
-  se::DeviceMemoryBase dst_data;
+  se::DeviceAddressBase src_data;
+  se::DeviceAddressBase dst_data;
 
   if constexpr (ShouldCheckBufferSlices()) {
     TF_ASSIGN_OR_RETURN(src_data, allocations->GetDeviceAddress(src_buffer_));

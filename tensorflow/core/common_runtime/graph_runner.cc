@@ -58,7 +58,7 @@ class SimpleRendezvous : public RendezvousInterface {
     }
 
     mutex_lock l(mu_);
-    string edge_name(parsed.edge_name);
+    std::string edge_name(parsed.edge_name);
     if (table_.count(edge_name) > 0) {
       return errors::Internal("Send of an already sent tensor");
     }
@@ -71,7 +71,7 @@ class SimpleRendezvous : public RendezvousInterface {
     Tensor tensor;
     absl::Status status = absl::OkStatus();
     {
-      string key(parsed.edge_name);
+      std::string key(parsed.edge_name);
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
         status = errors::Internal("Did not find key ", key);
@@ -85,7 +85,7 @@ class SimpleRendezvous : public RendezvousInterface {
   void StartAbort(const absl::Status& status) override {}
 
  private:
-  typedef std::unordered_map<string, Tensor> Table;
+  typedef std::unordered_map<std::string, Tensor> Table;
 
   mutex mu_;
   Table table_ TF_GUARDED_BY(mu_);
@@ -103,7 +103,7 @@ GraphRunner::~GraphRunner() {}
 absl::Status GraphRunner::Run(Graph* graph,
                               FunctionLibraryRuntime* function_library,
                               const NamedTensorList& inputs,
-                              const std::vector<string>& output_names,
+                              const std::vector<std::string>& output_names,
                               std::vector<Tensor>* outputs) {
   if (device_ == nullptr) {
     return errors::NotFound("Cannot find a device for GraphRunner.");
@@ -130,12 +130,12 @@ absl::Status GraphRunner::Run(Graph* graph,
   SimpleRendezvous rendez;
 
   // Extract the input names and keys, and feed in the inputs.
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   for (const auto& in : inputs) {
-    const string& tensor_name = in.first;
+    const std::string& tensor_name = in.first;
     input_names.emplace_back(tensor_name);
-    string full_key = Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
-                                            tensor_name, FrameAndIter(0, 0));
+    std::string full_key = Rendezvous::CreateKey(
+        "/device:CPU:0", 1, "/device:CPU:1", tensor_name, FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(full_key, &parsed));
     TF_RETURN_IF_ERROR(rendez.Send(parsed, Rendezvous::Args(), in.second,
@@ -194,7 +194,7 @@ absl::Status GraphRunner::Run(Graph* graph,
 
   outputs->resize(output_names.size());
   for (size_t i = 0; i < output_names.size(); ++i) {
-    const string& output_key =
+    const std::string& output_key =
         Rendezvous::CreateKey("/device:CPU:0", 1, "/device:CPU:1",
                               output_names[i], FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;

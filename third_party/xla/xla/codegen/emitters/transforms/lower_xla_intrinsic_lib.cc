@@ -74,7 +74,7 @@ mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
   rewriter.setInsertionPointToStart(module_op.getBody());
 
   auto func_decl =
-      rewriter.create<mlir::func::FuncOp>(module_op.getLoc(), name, func_type);
+      mlir::func::FuncOp::create(rewriter, module_op.getLoc(), name, func_type);
   func_decl.setPrivate();
   return func_decl;
 }
@@ -110,14 +110,14 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       mlir::Type f32_type = get_vector_type(b.getF32Type());
 
       mlir::Value input_value =
-          b.create<mlir::arith::ExtFOp>(f32_type, op.getOperand());
+          mlir::arith::ExtFOp::create(b, f32_type, op.getOperand());
 
       auto erf_decl = codegen::intrinsics::Erf::GetOrInsertDeclaration(
           rewriter, module_op_, Type::TypeFromIrType(f32_type));
-      auto call_op = b.create<mlir::func::CallOp>(erf_decl, input_value);
+      auto call_op = mlir::func::CallOp::create(b, erf_decl, input_value);
 
       mlir::Value f32_result = call_op.getResult(0);
-      mlir::Value result = b.create<mlir::arith::TruncFOp>(type, f32_result);
+      mlir::Value result = mlir::arith::TruncFOp::create(b, type, f32_result);
 
       rewriter.replaceOp(op, result);
       return mlir::success();
@@ -129,7 +129,7 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       auto erf_decl = GetErf64Declaration(rewriter);
 
       if (!maybe_vector_type) {
-        auto call_op = b.create<mlir::func::CallOp>(erf_decl, op.getOperand());
+        auto call_op = mlir::func::CallOp::create(b, erf_decl, op.getOperand());
         rewriter.replaceOp(op, call_op->getResults());
         return mlir::success();
       }
@@ -139,7 +139,7 @@ class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
         mlir::Value extracted = mlir::vector::ExtractOp::create(
             rewriter, op.getLoc(), op.getOperand(), idx);
         mlir::Value scalar_erf =
-            b.create<mlir::func::CallOp>(erf_decl, extracted).getResult(0);
+            mlir::func::CallOp::create(b, erf_decl, extracted).getResult(0);
         scalar_erf_results.push_back(scalar_erf);
       }
       rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(
@@ -196,7 +196,7 @@ class LowerTruncF32BF16FPattern
         codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
             rewriter, module_op_, src_type, dst_type);
     auto call_op =
-        b.create<mlir::func::CallOp>(f32_to_bf16_decl, op.getOperand());
+        mlir::func::CallOp::create(b, f32_to_bf16_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());
     return mlir::success();
   }
@@ -213,27 +213,52 @@ class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
 
   mlir::LogicalResult matchAndRewrite(
       Op op, mlir::PatternRewriter& rewriter) const override {
-    if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
-        vec_type && vec_type.getRank() != 1) {
+    auto vec_type = mlir::dyn_cast<mlir::VectorType>(op.getType());
+    if (vec_type && vec_type.getRank() != 1) {
       // These will later be converted to loops of 1D vectors but will then miss
       // the XLA intrinsic lowering.
       op->emitWarning() << "Missed XLA intrinsic lowering as vector rank != 1.";
       return rewriter.notifyMatchFailure(op, "Vector rank is not 1.");
     }
     Type type = Type::TypeFromIrType(op.getType());
+    Type scalar_type =
+        Type::TypeFromIrType(mlir::getElementTypeOrSelf(op.getType()));
     mlir::StringAttr features =
         module_op_->getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
     const std::string features_str = !features ? "" : features.getValue().str();
-    if (!Intrinsic::IsSupported(features_str, type)) {
+    bool is_supported = Intrinsic::IsSupported(features_str, type);
+    bool scalar_supported = Intrinsic::IsSupported(features_str, scalar_type);
+    if (!is_supported && !scalar_supported) {
       return rewriter.notifyMatchFailure(op, "unsupported type");
     }
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto intrinsic_decl =
-        Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, type);
-    auto call_op =
-        b.create<mlir::func::CallOp>(intrinsic_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
+    if (is_supported) {
+      auto intrinsic_decl =
+          Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, type);
+      rewriter.replaceOpWithNewOp<mlir::func::CallOp>(op, intrinsic_decl,
+                                                      op.getOperand());
+    } else {
+      // If the element type is supported but not the vector type, then we
+      // decompose the vector op into a sequence of scalar ops. This is not
+      // optimal in that we could split into the largest possible supported
+      // vectorized ops, but it works for now.
+      auto intrinsic_decl =
+          Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, scalar_type);
+
+      llvm::SmallVector<mlir::Value> scalar_results;
+      scalar_results.reserve(vec_type.getNumElements());
+      for (int64_t idx = 0; idx != vec_type.getNumElements(); ++idx) {
+        mlir::Value scalar_value = mlir::vector::ExtractOp::create(
+            rewriter, op.getLoc(), op.getOperand(), idx);
+        mlir::Value scalar_result =
+            mlir::func::CallOp::create(rewriter, op.getLoc(), intrinsic_decl,
+                                       scalar_value)
+                .getResult(0);
+        scalar_results.push_back(scalar_result);
+      }
+      rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(op, vec_type,
+                                                                scalar_results);
+    }
     return mlir::success();
   }
 

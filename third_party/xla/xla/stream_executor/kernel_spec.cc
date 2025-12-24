@@ -162,7 +162,7 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
           (*symbol_resolver)(proto.in_process_symbol().persistent_name()));
       return KernelLoaderSpec::CreateSerializableInProcessSymbolSpec(
           proto.in_process_symbol().persistent_name(), symbol,
-          proto.kernel_name(), proto.arity());
+          proto.kernel_name(), proto.arity(), kernel_args_packing);
     }
 
     default:

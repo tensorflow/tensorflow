@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -96,15 +96,15 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                           executor->CreateStream());
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
   CHECK_OK(stream->Memset32(&a, 1, byte_length));
   CHECK_OK(stream->Memset32(&b, 2, byte_length));
   CHECK_OK(stream->MemZero(&c, byte_length));
 
-  se::KernelArgsDeviceMemoryArray args(
-      std::vector<se::DeviceMemoryBase>({a, b, c}),
+  stream_executor::KernelArgsDeviceAddressArray args(
+      std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
   CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
                           custom_kernel.block_dims(), stream.get(), args));
@@ -136,15 +136,15 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernelWithClusterDim) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                           executor->CreateStream());
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
   CHECK_OK(stream->Memset32(&a, 1, byte_length));
   CHECK_OK(stream->Memset32(&b, 2, byte_length));
   CHECK_OK(stream->MemZero(&c, byte_length));
 
-  se::KernelArgsDeviceMemoryArray args(
-      std::vector<se::DeviceMemoryBase>({a, b, c}),
+  stream_executor::KernelArgsDeviceAddressArray args(
+      std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
   CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
                           custom_kernel.block_dims(), stream.get(), args));
@@ -215,15 +215,15 @@ TEST(PtxCustomKernelTest, GetOwnedPtxCustomKernel) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                           executor->CreateStream());
-  se::DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
   CHECK_OK(stream->Memset32(&a, 1, byte_length));
   CHECK_OK(stream->Memset32(&b, 2, byte_length));
   CHECK_OK(stream->MemZero(&c, byte_length));
 
-  se::KernelArgsDeviceMemoryArray args(
-      std::vector<se::DeviceMemoryBase>({a, b, c}),
+  stream_executor::KernelArgsDeviceAddressArray args(
+      std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
   CHECK_OK(kernel->Launch(custom_kernel.thread_dims(),
                           custom_kernel.block_dims(), stream.get(), args));

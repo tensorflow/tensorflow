@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/fusion_wrapper.h"
 
+#include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
@@ -85,6 +87,12 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
       return using_new_fusion_emitter_;
+    case HloOpcode::kCopy:
+      if (use_tiled_emitter_) {
+        PrimitiveType type = instruction.shape().element_type();
+        return IsSupportedTilingType(type);
+      }
+      return false;
     // The following ops are supported but the performance is not as good as the
     // non-fusion path.
     // TODO(willfroom): Remove this once the performance is improved.

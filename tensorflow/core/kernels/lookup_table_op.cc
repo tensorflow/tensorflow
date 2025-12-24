@@ -411,11 +411,11 @@ class MutableHashTableOfTensors final : public LookupInterface {
 namespace {
 
 template <typename T>
-inline uint64 HashScalar(const T& key) {
-  return static_cast<uint64>(key);
+inline uint64_t HashScalar(const T& key) {
+  return static_cast<uint64_t>(key);
 }
 
-inline uint64 HashScalar(const tstring& key) { return Hash64(key); }
+inline uint64_t HashScalar(const tstring& key) { return Hash64(key); }
 
 // If the given shape is a scalar return {1} instead. Otherwise leave it alone.
 TensorShape MaybeVectorizeShape(const TensorShape& shape) {
@@ -523,7 +523,7 @@ class MutableDenseHashTable final : public LookupInterface {
     const int64_t bit_mask = num_buckets_ - 1;
     // TODO(andreasst): parallelize using work_sharder
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_matrix, 0, key_matrix, i)) {
         return errors::InvalidArgument(
@@ -693,7 +693,7 @@ class MutableDenseHashTable final : public LookupInterface {
         deleted_key_.template shaped<K, 2>({1, key_size});
     const int64_t bit_mask = num_buckets_ - 1;
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
         if (ignore_empty_and_deleted_key) {
@@ -760,7 +760,7 @@ class MutableDenseHashTable final : public LookupInterface {
     const auto deleted_key_flat = deleted_key_.template flat<K>();
     const int64_t bit_mask = num_buckets_ - 1;
     for (int64_t i = 0; i < num_elements; ++i) {
-      const uint64 key_hash = HashKey(key_matrix, i);
+      const uint64_t key_hash = HashKey(key_matrix, i);
       if (empty_key_hash_ == key_hash &&
           IsEqualKey(empty_key_tensor, 0, key_matrix, i)) {
         return errors::InvalidArgument(
@@ -843,11 +843,11 @@ class MutableDenseHashTable final : public LookupInterface {
     return DoInsert(ctx, old_key_buckets, old_value_buckets, true);
   }
 
-  uint64 HashKey(typename TTypes<K>::ConstMatrix key, int64_t index) const {
+  uint64_t HashKey(typename TTypes<K>::ConstMatrix key, int64_t index) const {
     if (key_shape_.num_elements() == 1) {
       return HashScalar(key(index, 0));
     }
-    uint64 result = 0;
+    uint64_t result = 0;
     for (int64_t i = 0; i < key_shape_.num_elements(); ++i) {
       result = Hash64Combine(result, HashScalar(key(index, i)));
     }
@@ -876,9 +876,9 @@ class MutableDenseHashTable final : public LookupInterface {
   Tensor key_buckets_ TF_GUARDED_BY(mu_);
   Tensor value_buckets_ TF_GUARDED_BY(mu_);
   Tensor empty_key_;
-  uint64 empty_key_hash_;
+  uint64_t empty_key_hash_;
   Tensor deleted_key_;
-  uint64 deleted_key_hash_;
+  uint64_t deleted_key_hash_;
 };
 
 }  // namespace lookup
@@ -1103,19 +1103,19 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
       AnonymousLookupTableOp<lookup::HashTable<key_dtype, value_dtype>,   \
                              key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
-REGISTER_KERNEL(int32, tstring);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
+REGISTER_KERNEL(int32_t, tstring);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, tstring);
 
@@ -1146,19 +1146,19 @@ REGISTER_KERNEL(tstring, tstring);
           lookup::MutableHashTableOfScalars<key_dtype, value_dtype>,           \
           key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
@@ -1188,18 +1188,18 @@ REGISTER_KERNEL(tstring, int64_t);
           lookup::MutableHashTableOfTensors<key_dtype, value_dtype>,           \
           key_dtype, value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, tstring);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 
 #undef REGISTER_KERNEL
@@ -1229,19 +1229,19 @@ REGISTER_KERNEL(tstring, int64_t);
           lookup::MutableDenseHashTable<key_dtype, value_dtype>, key_dtype, \
           value_dtype>)
 
-REGISTER_KERNEL(int32, double);
-REGISTER_KERNEL(int32, float);
-REGISTER_KERNEL(int32, int32);
+REGISTER_KERNEL(int32_t, double);
+REGISTER_KERNEL(int32_t, float);
+REGISTER_KERNEL(int32_t, int32_t);
 REGISTER_KERNEL(int64_t, bool);
 REGISTER_KERNEL(int64_t, double);
 REGISTER_KERNEL(int64_t, float);
-REGISTER_KERNEL(int64_t, int32);
+REGISTER_KERNEL(int64_t, int32_t);
 REGISTER_KERNEL(int64_t, int64_t);
 REGISTER_KERNEL(int64_t, Variant);
 REGISTER_KERNEL(tstring, bool);
 REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
-REGISTER_KERNEL(tstring, int32);
+REGISTER_KERNEL(tstring, int32_t);
 REGISTER_KERNEL(tstring, int64_t);
 REGISTER_KERNEL(tstring, ResourceHandle);
 

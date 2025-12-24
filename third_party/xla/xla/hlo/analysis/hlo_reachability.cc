@@ -41,10 +41,8 @@ HloReachabilityMap::HloReachabilityMap(
   while (row < total_rows) {
     const int rows_to_allocate = std::min(kRowsPerAllocation, total_rows - row);
     size_t words_to_allocate = rows_to_allocate * words_per_bitset_;
+    // make_unique initializes the array of words to 0
     bit_storage_.push_back(std::make_unique<BitSet::Word[]>(words_to_allocate));
-    // Initialize all the bitsets to 0
-    memset(bit_storage_.back().get(), 0,
-           words_to_allocate * sizeof(BitSet::Word));
     row += rows_to_allocate;
   }
 

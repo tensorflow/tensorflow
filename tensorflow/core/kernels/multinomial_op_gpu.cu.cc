@@ -39,8 +39,8 @@ using GPUDevice = Eigen::GpuDevice;
 // Kernel for Multinomial op.  Data is interpreted to have the following shapes:
 //   scores: [B, S, C];  maxima: [B, S];  output: [B, S].
 template <typename OutputType>
-__global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
-                                  const int32 num_samples,
+__global__ void MultinomialKernel(int32_t nthreads, const int32_t num_classes,
+                                  const int32_t num_samples,
                                   const float* __restrict__ scores,
                                   const float* __restrict__ maxima,
                                   OutputType* __restrict__ output) {
@@ -113,7 +113,7 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     // Necessary for atomicMax() inside the kernel.
     output.device(d) = output.constant(0LL);
 
-    const int32 work_items = batch_size * num_samples * num_classes;
+    const int32_t work_items = batch_size * num_samples * num_classes;
     GpuLaunchConfig config = GetGpuLaunchConfig(work_items, d);
     TF_CHECK_OK(GpuLaunchKernel(
         MultinomialKernel<OutputType>, config.block_count,

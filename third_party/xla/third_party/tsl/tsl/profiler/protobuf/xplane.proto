@@ -66,8 +66,8 @@ message XLine {
   // Profiling duration for this line in picoseconds.
   int64 duration_ps = 9;
 
-  // XEvents within the same XLine should not overlap in time, but they can be
-  // nested.
+  // XEvents within the same XLine should not partially overlap in time,
+  // but they can be nested.
   repeated XEvent events = 4;
 
   reserved 5, 6, 7, 8;

@@ -63,8 +63,9 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -744,6 +745,78 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
   return nullptr;
 }
 
+PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
+    PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args",
+      PJRT_AsyncHostToDeviceTransferManager_TransferLiteral_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  auto literal = std::make_unique<xla::BorrowingLiteral>(
+      static_cast<const char*>(args->data), shape);
+  xla::BorrowingLiteral* literal_ptr = literal.get();
+
+  auto [promise, future] = xla::Future<>::MakePromise();
+  absl::AnyInvocable<void() &&> on_done_with_d2h_transfer =
+      [promise = std::move(promise), literal = std::move(literal)]() mutable {
+        promise.Set();
+      };
+
+  PJRT_RETURN_IF_ERROR(
+      args->transfer_manager->transfer_manager->TransferLiteralToBuffer(
+          args->buffer_index, *literal_ptr,
+          std::move(on_done_with_d2h_transfer)));
+  args->done_with_h2d_transfer = new PJRT_Event{std::move(future)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_PoisonExecution(
+    PJRT_Device_PoisonExecution_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Device_PoisonExecution_Args",
+      PJRT_Device_PoisonExecution_Args_STRUCT_SIZE, args->struct_size));
+
+  absl::Status error = absl::Status(
+      pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+      absl::string_view(args->error_message, args->error_message_size));
+
+  PJRT_ASSIGN_OR_RETURN(args->poisoned, args->device->device->PoisonExecution(
+                                            args->launch_id, error));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Device_CreateAsyncTrackingEvent(
+    PJRT_Device_CreateAsyncTrackingEvent_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Device_CreateAsyncTrackingEvent_Args",
+      PJRT_Device_CreateAsyncTrackingEvent_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  absl::string_view description(args->description, args->description_size);
+  std::unique_ptr<xla::ScopedAsyncTrackingEvent> event =
+      args->device->device->CreateAsyncTrackingEvent(description);
+  if (event == nullptr) {
+    args->event = nullptr;
+  } else {
+    args->event = new PJRT_AsyncTrackingEvent{std::move(event)};
+  }
+  return nullptr;
+}
+
+PJRT_Error* PJRT_AsyncTrackingEvent_Destroy(
+    PJRT_AsyncTrackingEvent_Destroy_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_AsyncTrackingEvent_Destroy_Args",
+      PJRT_AsyncTrackingEvent_Destroy_Args_STRUCT_SIZE, args->struct_size));
+  delete args->event;
+  return nullptr;
+}
+
 PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer(
     PJRT_AsyncHostToDeviceTransferManager_RetrieveBuffer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -834,7 +907,7 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
   xla::CompileOptionsProto options_proto;
   // Open source ParseFromString doesn't support string_view.
   if (!options_proto.ParseFromString(options_str)) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
   }
   return xla::CompileOptions::FromProto(options_proto);
@@ -861,12 +934,12 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
     xla::HloModuleProto module_proto;
     // Open source ParseFromString doesn't support string_view.
     if (!module_proto.ParseFromString(module_str)) {
-      return tsl::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "PJRT_Client_Compile: failed to deserialize HloModuleProto");
     }
     return ProgramVariant(xla::XlaComputation(module_proto));
   } else {
-    return tsl::errors::InvalidArgument(ProgramFormatErrorMsg(format_str));
+    return absl::InvalidArgumentError(ProgramFormatErrorMsg(format_str));
   }
 }
 
@@ -1995,11 +2068,34 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_GetCompileOptions(
+    PJRT_Executable_GetCompileOptions_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_GetCompileOptions_Args",
+      PJRT_Executable_GetCompileOptions_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(xla::CompileOptions options,
+                        args->executable->executable->GetCompileOptions());
+  PJRT_ASSIGN_OR_RETURN(xla::CompileOptionsProto options_proto,
+                        options.ToProto());
+  std::string serialized = options_proto.SerializeAsString();
+
+  PJRT_SerializedCompileOptions* serialized_options =
+      new PJRT_SerializedCompileOptions;
+  serialized_options->serialized = std::move(serialized);
+  args->serialized_compile_options = serialized_options;
+  args->serialized_bytes = serialized_options->serialized.data();
+  args->serialized_bytes_size = serialized_options->serialized.size();
+  args->serialized_compile_options_deleter =
+      +[](PJRT_SerializedCompileOptions* options) { delete options; };
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_Executable_Serialize_Args",
-      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+      "PJRT_Executable_GetCompiledMemoryStats_Args",
+      PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE,
+      args->struct_size));
   PJRT_ASSIGN_OR_RETURN(auto memory_stats,
                         args->executable->executable->GetCompiledMemoryStats());
   args->generated_code_size_in_bytes =
@@ -2218,6 +2314,50 @@ PJRT_Error* PJRT_Buffer_CopyRawToHost(PJRT_Buffer_CopyRawToHost_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_CopyRawToHostFuture(
+    PJRT_Buffer_CopyRawToHostFuture_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_CopyRawToHostFuture_Args",
+      PJRT_Buffer_CopyRawToHostFuture_Args_STRUCT_SIZE, args->struct_size));
+
+  auto [promise, future] = xla::Future<void*>::MakePromise();
+  xla::Future<> wrapped_promise = args->buffer->buffer->CopyRawToHostFuture(
+      future, args->offset, args->transfer_size);
+  args->event = new PJRT_Event{std::move(wrapped_promise)};
+
+  typedef absl::AnyInvocable<void(
+      PJRT_Buffer_CopyRawToHostFuture_Callback_Args*) &&>
+      Callback;
+  auto callback = new Callback(
+      [promise = std::move(promise)](
+          PJRT_Buffer_CopyRawToHostFuture_Callback_Args* args) mutable {
+        absl::Status status = ActualStructSizeIsGreaterOrEqual(
+            "PJRT_Buffer_CopyRawToHostFuture_Callback_Args",
+            PJRT_Buffer_CopyRawToHostFuture_Callback_Args_STRUCT_SIZE,
+            args->struct_size);
+        if (!status.ok()) {
+          promise.Set(status);
+          return;
+        }
+        if (args->error_code != PJRT_Error_Code_OK) {
+          absl::Status error = absl::Status(
+              pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+              absl::string_view(args->error_message, args->error_message_size));
+          promise.Set(std::move(error));
+          return;
+        }
+        promise.Set(args->dst);
+      });
+  args->callback_data = callback;
+  args->future_ready_callback =
+      +[](PJRT_Buffer_CopyRawToHostFuture_Callback_Args* args) {
+        auto* callback = reinterpret_cast<Callback*>(args->callback_data);
+        std::move (*callback)(args);
+        delete callback;
+      };
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_CopyToDevice_Args",
@@ -2369,6 +2509,40 @@ PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
       std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
       args->buffer->buffer->AcquireExternalReference());
   args->device_memory_ptr = external_reference->OpaqueDeviceMemoryDataPointer();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
+    PJRT_Buffer_DonateWithControlDependency_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_DonateWithControlDependency_Args",
+      PJRT_Buffer_DonateWithControlDependency_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  auto [promise, future] = xla::Future<>::MakePromise();
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> out_buffer,
+      args->buffer->buffer->DonateWithControlDependency(std::move(future)));
+
+  struct CallbackData {
+    xla::Promise<> promise;
+  };
+  args->out_buffer =
+      new PJRT_Buffer{std::move(out_buffer), args->buffer->client};
+  args->callback_data = new CallbackData{std::move(promise)};
+  args->dependency_ready_callback =
+      [](PJRT_Buffer_DonateWithControlDependency_Callback_Args* args) {
+        auto* data = static_cast<CallbackData*>(args->callback_data);
+        if (args->error_code == PJRT_Error_Code_OK) {
+          data->promise.Set();
+        } else {
+          absl::Status status(
+              pjrt::PjrtErrorCodeToStatusCode(args->error_code),
+              absl::string_view(args->error_message, args->error_message_size));
+          data->promise.Set(std::move(status));
+        }
+        delete data;
+      };
   return nullptr;
 }
 
@@ -3149,6 +3323,19 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
       /*PJRT_Client_CreateErrorBuffer=*/
       pjrt::PJRT_Client_CreateErrorBuffer,
+      /*PJRT_AsyncHostToDeviceTransferManager_TransferLiteral=*/
+      pjrt::PJRT_AsyncHostToDeviceTransferManager_TransferLiteral,
+      /*PJRT_Buffer_CopyRawToHostFuture=*/
+      pjrt::PJRT_Buffer_CopyRawToHostFuture,
+      /*PJRT_Device_PoisonExecution=*/pjrt::PJRT_Device_PoisonExecution,
+      /*PJRT_Device_CreateAsyncTrackingEvent=*/
+      pjrt::PJRT_Device_CreateAsyncTrackingEvent,
+      /*PJRT_AsyncTrackingEvent_Destroy=*/
+      pjrt::PJRT_AsyncTrackingEvent_Destroy,
+      /*PJRT_Executable_GetCompileOptions=*/
+      pjrt::PJRT_Executable_GetCompileOptions,
+      /*PJRT_Buffer_DonateWithControlDependency=*/
+      pjrt::PJRT_Buffer_DonateWithControlDependency,
   };
 }
 

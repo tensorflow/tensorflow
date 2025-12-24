@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
@@ -52,7 +52,7 @@ class CommandBufferThunk : public Thunk {
   // Return the allocation address that was lazilly allocated inside command
   // buffer. This API is required when the buffers are allocated inside command
   // buffer but will be consumed by non-command buffer operations.
-  absl::StatusOr<se::DeviceMemoryBase> GetCommandBufferAllocationAddress(
+  absl::StatusOr<se::DeviceAddressBase> GetCommandBufferAllocationAddress(
       const ExecuteParams& params, int64_t index);
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
@@ -96,7 +96,7 @@ class CommandBufferThunk : public Thunk {
     // execution on a stream. All other pieces of information (like thread
     // and block sizes) captured by commands at construction time and do not
     // change.
-    std::vector<se::DeviceMemoryBase> recorded_allocs ABSL_GUARDED_BY(mutex);
+    std::vector<se::DeviceAddressBase> recorded_allocs ABSL_GUARDED_BY(mutex);
 
     // Number of command buffer executions since last update.
     int64_t num_executions ABSL_GUARDED_BY(mutex) = 0;

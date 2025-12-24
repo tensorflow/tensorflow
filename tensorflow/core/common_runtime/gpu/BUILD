@@ -205,6 +205,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla/pjrt:host_memory_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
         "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
         "@local_xla//xla/tsl/framework:device_id_utils",

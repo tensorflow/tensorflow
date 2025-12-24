@@ -68,7 +68,6 @@ cc_library(
         ":rocm_tracer_utils",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -93,6 +92,56 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "cuda_version_variants",
+    srcs = [
+        "cuda_version_variants.cc",
+    ] + if_cuda_newer_than(
+        "12_0",
+        ["cuda_version_12000_newer.cc"],
+        ["cuda_version_12000_older.cc"],
+    ) + if_cuda_newer_than(
+        "12_8",
+        ["cuda_version_12080_newer.cc"],
+        ["cuda_version_12080_older.cc"],
+    ),
+    hdrs = ["cuda_version_variants.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_version_variants_test",
+    srcs = ["cuda_version_variants_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_mac",
+        "nomsan",  # Disable  msan for cuda related tests.
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":cuda_version_variants",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cuda_runtime",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -151,9 +200,7 @@ xla_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "//xla/tsl/profiler/utils:time_utils",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -168,6 +215,7 @@ cuda_library(
         "@com_google_googletest//:gtest_for_library",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cuda_runtime",
+        "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 
@@ -231,6 +279,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda_version_variants",
         ":cupti_buffer_events",
         ":cupti_collector",
         ":cupti_interface",
@@ -247,6 +296,7 @@ cc_library(
         "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -309,7 +359,6 @@ cc_library(
     ],
     deps = [
         ":cupti_collector",
-        ":cupti_interface",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
@@ -484,6 +533,8 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:hip",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -703,11 +754,7 @@ xla_cc_test(
         ":ondevice_event_exporter",
         "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
-        "//xla/tsl/profiler/utils:xplane_builder",
-        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -812,10 +859,15 @@ xla_test(
     size = "small",
     srcs = ["profile_with_cuda_kernels_test.cc"],
     args = if_google(["--heap_check="]),  # There is a memory leak in CUPTI
-    backends = ["gpu"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
     tags = [
         "cuda-only",
         "no_mac",
+        "nomsan",
     ],
     deps = [
         ":cupti_collector",
@@ -829,5 +881,6 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
     ],
 )

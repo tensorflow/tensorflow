@@ -23,11 +23,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -39,13 +42,26 @@ class SendThunk : public CollectiveThunk {
   SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
             int64_t replica_count, int64_t partition_count,
             const Buffer& buffer);
+  SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
+            std::shared_ptr<AsyncEvents> async_events,
+            AsyncStreamKind stream_kind, const Buffer& buffer,
+            absl::string_view instr_name);
+
   absl::Status Initialize(const InitializeParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<SendThunk>> FromProto(
+      ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 
  private:
   const P2PConfig config_;
@@ -53,12 +69,6 @@ class SendThunk : public CollectiveThunk {
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
 };
-
-absl::Status RunSend(GpuCollectives* collectives,
-                     P2PConfig::SourceTargetMapEntry source_target,
-                     DeviceBufferPair& buffer, se::Stream& stream,
-                     Communicator* comm, absl::string_view device_string,
-                     int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

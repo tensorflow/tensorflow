@@ -62,8 +62,9 @@ class ReferenceConvFunctor {
                   int output_shift, int output_offset, int output_mult) {
     // Set up some constants we need for the output down-shifting and
     // saturation.
-    const int32_t highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
-    const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
+    const int32_t highest =
+        static_cast<int32_t>(Eigen::NumTraits<T3>::highest());
+    const int32_t lowest = static_cast<int32_t>(Eigen::NumTraits<T3>::lowest());
 
     // When we're converting the 32 bit accumulator to a lower bit depth, we
     // need to add on 0.5 in fixed-point terms to make the operation round half
@@ -150,7 +151,7 @@ class ReferenceConvFunctor {
                     // We're promoting the T1 type to a higher bit depth here as
                     // we do the subtraction.
                     input_value =
-                        static_cast<int32>(input_source_value) - input_offset;
+                        static_cast<int32_t>(input_source_value) - input_offset;
                   } else {
                     input_value = 0;
                   }
@@ -161,7 +162,7 @@ class ReferenceConvFunctor {
                                   (in_channel * filter_count) + out_channel];
                   // Another promotion to 32 bit, as above.
                   const int32_t filter_value =
-                      static_cast<int32>(filter_source_value) - filter_offset;
+                      static_cast<int32_t>(filter_source_value) - filter_offset;
                   total += (input_value * filter_value);
                 }
               }
@@ -406,9 +407,9 @@ class Im2ColConvFunctor {
         // The gemmlowp optimized library only works for a particular set of
         // data types, so check if we meet those requirements and fall back to a
         // slower reference implementation if not.
-        const uint8* im2col_data_as_uint8 = &(im2col_buffer->value);
-        const uint8* filter_data_as_uint8 = &(filter_data->value);
-        int32* output_data_as_int32 = &(chunk_output_data->value);
+        const uint8_t* im2col_data_as_uint8 = &(im2col_buffer->value);
+        const uint8_t* filter_data_as_uint8 = &(filter_data->value);
+        int32_t* output_data_as_int32 = &(chunk_output_data->value);
         // All of the transpose_* variables are currently compile-time consts,
         // so we could just hard-code these values too, but that would break if
         // anybody changed those values in the future (e.g. to match the ability
@@ -472,7 +473,7 @@ class QuantizedConv2DOp : public OpKernel {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    std::vector<int32> dilations;
+    std::vector<int32_t> dilations;
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
     OP_REQUIRES(context, dilations.size() == 4,
                 errors::InvalidArgument("Dilations field must "
@@ -612,7 +613,7 @@ class QuantizedConv2DOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> strides_;
+  std::vector<int32_t> strides_;
   Padding padding_;
 };
 

@@ -41,7 +41,14 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
           execution_stream_id: 2
         }
         memzero_thunk {
-          dest_buffer { offset: 0 size: 4 buffer_allocation_index: 0 }
+          dest_buffer {
+            slice { offset: 0 size: 4 buffer_allocation_index: 0 }
+            shape {
+              dimensions: 1
+              element_type: F32
+              is_dynamic_dimension: false
+            }
+          }
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {

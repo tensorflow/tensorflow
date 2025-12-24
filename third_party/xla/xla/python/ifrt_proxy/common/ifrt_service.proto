@@ -37,7 +37,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 30.
+// Next ID: 33.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -73,6 +73,8 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
+    LoadedExecutableFetchExecuteResultRequest
+        loaded_executable_fetch_execute_result_request = 32;
     LoadedExecutableCostAnalysisRequest
         loaded_executable_cost_analysis_request = 28;
     LoadedExecutableHumanReadableProgramTextRequest
@@ -82,6 +84,12 @@ message IfrtRequest {
     LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
         [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
+
+    // ===== MpmdLoadedExecutable =====
+    LoadedExecutableMpmdMetadataRequest
+        loaded_executable_mpmd_metadata_request = 30;
+    LoadedExecutableMpmdCostAnalysisRequest
+        loaded_executable_mpmd_cost_analysis_request = 31;
 
     // ===== LoadedHostCallback =====
     LoadedHostCallbackPollRequest loaded_host_callback_poll_request = 21;
@@ -96,7 +104,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 30.
+// Next ID: 33.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -132,6 +140,8 @@ message IfrtResponse {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataResponse loaded_executable_metadata_response = 14;
     LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
+    LoadedExecutableFetchExecuteResultResponse
+        loaded_executable_fetch_execute_result_response = 32;
     LoadedExecutableCostAnalysisResponse
         loaded_executable_cost_analysis_response = 28;
     LoadedExecutableHumanReadableProgramTextResponse
@@ -140,6 +150,12 @@ message IfrtResponse {
     LoadedExecutableIsDeletedResponse loaded_executable_is_deleted_response =
         17;
     LoadedExecutableDestructResponse loaded_executable_destruct_response = 18;
+
+    // ===== MpmdLoadedExecutable =====
+    LoadedExecutableMpmdMetadataResponse
+        loaded_executable_mpmd_metadata_response = 30;
+    LoadedExecutableMpmdCostAnalysisResponse
+        loaded_executable_mpmd_cost_analysis_response = 31;
 
     // ===== LoadedHostCallback =====
     LoadedHostCallbackPollResponse loaded_host_callback_poll_response = 21;
@@ -232,6 +248,7 @@ message InitResponse {
     int32 id = 1;
     int32 local_device_id = 9;
     int32 local_hardware_id = 2;
+    string platform_name = 11;
     string device_kind = 3;
     optional int32 default_memory_id = 7;
     repeated int32 memory_ids = 8;
@@ -449,6 +466,12 @@ message CompileRequest {
   repeated bytes host_callbacks = 3;
 }
 message CompileResponse {
+  message MpmdDeviceList {
+    repeated int32 mpmd_addressable_device_ids = 1;
+  }
+  message MpmdAddressableDevices {
+    map<string, MpmdDeviceList> mpmd_addressable_devices = 1;
+  }
   fixed64 loaded_executable_handle = 1;
   repeated fixed64 loaded_host_callback_handles = 8;
 
@@ -458,6 +481,11 @@ message CompileResponse {
   int32 num_devices = 3;
   repeated int32 device_ids = 10;
   repeated int32 addressable_device_ids = 5;
+  oneof mpmd_addressable_devices_oneof {
+    // MPMD addressable devices are only populated for MPMD executables.
+    MpmdAddressableDevices mpmd_addressable_devices = 11;
+    tensorflow.StatusProto mpmd_addressable_devices_error = 12;
+  }
   oneof fingerprint {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
@@ -492,6 +520,9 @@ message LoadedExecutableMetadataResponse {
   message DonatedInputIndices {
     repeated fixed32 donated_input_indices = 1;
   }
+  message MpmdCompiledMemoryStats {
+    map<string, xla.CompiledMemoryStatsProto> compiled_memory_stats = 1;
+  }
 
   optional ShardingList parameter_shardings = 1;
   optional ShardingList output_shardings = 2;
@@ -515,6 +546,11 @@ message LoadedExecutableMetadataResponse {
   oneof compiled_memory_stats_oneof {
     xla.CompiledMemoryStatsProto compiled_memory_stats = 10;
     tensorflow.StatusProto compiled_memory_stats_error = 11;
+  }
+
+  oneof mpmd_compiled_memory_stats_oneof {
+    MpmdCompiledMemoryStats mpmd_compiled_memory_stats = 13;
+    tensorflow.StatusProto mpmd_compiled_memory_stats_error = 14;
   }
 
   int64 size_of_generated_code_in_bytes = 12;
@@ -573,6 +609,14 @@ message LoadedExecutableExecuteResponse {
   repeated Output outputs = 2;
 }
 
+message LoadedExecutableFetchExecuteResultRequest {
+  fixed64 result_status_handle = 1;
+}
+message LoadedExecutableFetchExecuteResultResponse {
+  // Map from device types to device time in microseconds.
+  map<string, double> device_time = 1;
+}
+
 // Mirrors `LoadedExecutable::Delete`. Returns a handle of a future that becomes
 // ready when the deletion completes.
 message LoadedExecutableDeleteRequest {
@@ -596,6 +640,41 @@ message LoadedExecutableDestructRequest {
   fixed64 loaded_executable_handle = 1;
 }
 message LoadedExecutableDestructResponse {}
+
+// ================ MpmdLoadedExecutable-related operations ================
+
+// Reads `MpmdLoadedExecutable`'s metadata that's typically available only after
+// compilation. MpmdMetadata fields that are cheaper to calculate are available
+// immediately as part of `CompileResponse`.
+message LoadedExecutableMpmdMetadataRequest {
+  fixed64 mpmd_loaded_executable_handle = 1;
+}
+message LoadedExecutableMpmdMetadataResponse {
+  message MpmdCompiledMemoryStats {
+    map<string, xla.CompiledMemoryStatsProto> compiled_memory_stats = 1;
+  }
+  oneof mpmd_compiled_memory_stats_oneof {
+    MpmdCompiledMemoryStats mpmd_compiled_memory_stats = 1;
+    tensorflow.StatusProto mpmd_compiled_memory_stats_error = 2;
+  }
+}
+
+// Queries the value of `MpmdLoadedExecutable::GetMpmdCostAnalysis()`. Separate
+// from MpmdLoadedExecutableMetadataRequest since `GetMpmdCostAnalysis()` has
+// non-trivial cost.
+message LoadedExecutableMpmdCostAnalysisRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+
+message LoadedExecutableMpmdCostAnalysisResponse {
+  message MpmdAttributes {
+    map<string, AttributeMapProto> attributes = 1;
+  }
+  oneof result {
+    tensorflow.StatusProto status = 1;
+    MpmdAttributes attributes = 2;
+  }
+}
 
 // ================ LoadedHostCallback-related operations ================
 

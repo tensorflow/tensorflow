@@ -16,23 +16,20 @@ limitations under the License.
 #ifndef XLA_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
 #define XLA_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/array.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -44,30 +41,32 @@ limitations under the License.
 
 namespace xla {
 
+inline constexpr size_t kMB = 1024LL * 1024LL;
+inline constexpr size_t kGB = 1024LL * kMB;
+
 class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
  public:
-  CollectiveOpsE2ETestBase();
+  CollectiveOpsE2ETestBase(size_t memory_size, size_t collectives_memory_size) {
+    SetupHloRunner(memory_size, collectives_memory_size);
+  }
 
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
-      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
-      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
-      int64_t num_replicas, bool run_hlo_passes,
-      DeviceAssignment* device_assignment);
+  struct ExecutionResult {
+    std::unique_ptr<OpaqueExecutable> executable;
+    std::vector<Literal> results;
+    const HloModule* optimized_module;
+  };
 
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
+      std::unique_ptr<HloModule> module);
+
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, const std::vector<Literal*>& arguments,
+      bool run_hlo_passes = true);
+
+  absl::StatusOr<ExecutionResult> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      absl::Span<const Literal* const> arguments, int64_t num_replicas,
-      DeviceAssignment* vice_assignment, bool run_hlo_passes, bool use_threads);
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module,
-      std::vector<std::vector<Literal*>> arguments,
-      DeviceAssignment* device_assignment, int64_t num_replicas,
-      bool run_hlo_passes);
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      OpaqueExecutable* executable, int64_t num_replicas);
+      const std::vector<std::vector<Literal*>>& arguments,
+      bool run_hlo_passes = true);
 
   const se::GpuComputeCapability& Capability() {
     return hlo_runner_->backend()
@@ -81,19 +80,17 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
            Capability().cuda_compute_capability()->IsAtLeastHopper();
   }
 
-  // Makes a DeviceAssignment device#i to replica_id #i.
-  DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
-    DeviceAssignment assn(/*replica_count=*/num_replicas,
-                          /*computation_count=*/1);
-    for (int64_t i = 0; i < num_replicas; ++i) {
-      assn(i, 0) = i;
-    }
-    return assn;
+  bool IsAmpereAndHigher() {
+    return Capability().IsCuda() &&
+           Capability().cuda_compute_capability()->IsAtLeastAmpere();
   }
 
  protected:
   std::unique_ptr<HloRunner> hlo_runner_;
   std::unique_ptr<HloRunner> reference_hlo_runner_;
+
+ private:
+  void SetupHloRunner(size_t memory_size, size_t collectives_memory_size);
 };
 
 // E2E tests for collective ops. These will generally verify some HLO transform
@@ -105,11 +102,11 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
 // flag. Subclasses pass in constructor arguments based on GetParam().
 class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
  public:
-  CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy)
-      : enable_async_(enable_async), enable_p2p_memcpy_(enable_p2p_memcpy) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
-    num_devices_ = hlo_runner_->backend().device_count();
-  }
+  CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy,
+                             size_t memory_size, size_t collectives_memory_size)
+      : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size),
+        enable_async_(enable_async),
+        enable_p2p_memcpy_(enable_p2p_memcpy) {}
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override;
@@ -119,7 +116,6 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
 
   const bool enable_async_;
   const bool enable_p2p_memcpy_;
-  int64_t num_devices_;
 };
 
 }  // namespace xla

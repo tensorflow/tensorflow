@@ -36,7 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/xla.pb.h"
 
@@ -111,7 +111,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   // autotuned algorithms.
   struct ReferenceResult {
     stream_executor::dnn::AlgorithmDesc algorithm;
-    std::vector<stream_executor::DeviceMemoryBase> buffers;
+    std::vector<stream_executor::DeviceAddressBase> buffers;
   };
 
   // Execution environment for autotuning. Runtime autotuning requires runtime

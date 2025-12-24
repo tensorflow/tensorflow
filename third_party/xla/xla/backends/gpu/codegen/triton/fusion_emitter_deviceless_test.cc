@@ -22,16 +22,18 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
@@ -40,105 +42,18 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
-
 using TritonEmitterDevicelessTest = HloHardwareIndependentTestBase;
-
-class AnnotationsTest : public HloHardwareIndependentTestBase {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_annotate_with_emitter_loc(true);
-    return debug_options;
-  }
-};
 
 class WarpSpecializationTritonEmitterTest : public TritonEmitterDevicelessTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         TritonEmitterDevicelessTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     debug_options.set_xla_gpu_experimental_enable_triton_warp_specialization(
         true);
     return debug_options;
   }
 };
-
-TEST_F(AnnotationsTest, Annotations) {
-  static constexpr absl::string_view kHloText = R"(
-HloModule Annotations
-
-triton_dot_lhs {
-  p0 = f32[8,8] parameter(0)
-  ROOT copy = f32[8,8] copy(p0)
-}
-triton_dot_rhs {
-  p1 = f32[8,8] parameter(0)
-  ROOT copy = f32[8,8] copy(p1)
-}
-
-triton_dot {
-  p0 = f32[8,8] parameter(0)
-  p1 = f32[8,8] parameter(1)
-  a = f32[8,8] fusion(p0), kind=kCustom, calls=triton_dot_lhs,
-    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
-    block_level_fusion_config: {output_tiles:[{sizes:["8","8"]}]}}}
-  b = f32[8,8] fusion(p1), kind=kCustom, calls=triton_dot_rhs,
-    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
-    block_level_fusion_config: {output_tiles:[{sizes:["8","8"]}]}}}
-  ROOT dot = f32[8,8] dot(a, b),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    algorithm=dot_bf16_bf16_f32_x3
-}
-
-ENTRY e {
-  p0 = f32[8,8]{1, 0} parameter(0)
-  p1 = f32[8,8]{1, 0} parameter(1)
-  ROOT _ = f32[8,8] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config": {kind: "__triton_nested_gemm_fusion",
-      block_level_fusion_config:
-      {
-        "output_tiles":[{"sizes":["8","8"]}],
-        "num_stages":1,
-        "num_warps":1,
-        "num_ctas":1
-      }
-    }
-  }
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  auto* fusion = Cast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
-
-  mlir::MLIRContext mlir_context;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto triton_module,
-      CreateTritonModule("triton_fn", fusion,
-                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         BlockLevelParameters::FromBlockLevelFusionConfig(
-                             fusion->backend_config<GpuBackendConfig>()
-                                 ->fusion_backend_config()
-                                 .block_level_fusion_config()),
-                         mlir_context));
-
-  std::string annotated_ir = DumpTritonIR(triton_module.get(), true);
-
-  if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
-    EXPECT_THAT(RunFileCheck(annotated_ir, R"(
-      CHECK:  [[SOMETHING:.*]] "triton_dot -> [[FILE_LINE:fusion_emitter.*:.*]]"
-    )"),
-                absl_testing::IsOkAndHolds(true))
-        << annotated_ir;
-  } else {
-    EXPECT_THAT(RunFileCheck(annotated_ir, R"(
-      CHECK:  [[SOMETHING:.*]] "triton_dot"
-    )"),
-                absl_testing::IsOkAndHolds(true));
-  }
-}
 
 TEST_F(TritonEmitterDevicelessTest, FailsGracefullyIfNumWarpsIsMissing) {
   constexpr absl::string_view kHloText = R"(
@@ -164,7 +79,8 @@ ENTRY entry {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple triple(nvptx::TargetTriple());
+  std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
 
   BlockLevelParameters block_level_parameters;
@@ -174,7 +90,8 @@ ENTRY entry {
   EXPECT_THAT(TritonWrapper(
                   "test_fn", triton_fusion,
                   se::GpuComputeCapability{se::CudaComputeCapability::Hopper()},
-                  dev_info, block_level_parameters, &llvm_module, mlir_context),
+                  dev_info, block_level_parameters, triple, data_layout,
+                  llvm_ctx, mlir_context),
               absl_testing::StatusIs(
                   absl::StatusCode::kFailedPrecondition,
                   ::testing::HasSubstr(
@@ -243,8 +160,6 @@ ENTRY entry {
       hlo_module->entry_computation()->root_instruction());
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
   EXPECT_OK(
@@ -317,7 +232,8 @@ ENTRY entry {
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
   llvm::LLVMContext llvm_ctx;
-  llvm::Module llvm_module("module", llvm_ctx);
+  llvm::Triple triple(nvptx::TargetTriple());
+  std::string data_layout = nvptx::DataLayout();
   mlir::MLIRContext mlir_context;
   TF_ASSERT_OK_AND_ASSIGN(
       TritonWrapperResult result,
@@ -327,7 +243,7 @@ ENTRY entry {
                         fusion->backend_config<GpuBackendConfig>()
                             ->fusion_backend_config()
                             .block_level_fusion_config()),
-                    &llvm_module, mlir_context));
+                    triple, data_layout, llvm_ctx, mlir_context));
 
   // Warp specialization influences the total number of threads we end up
   // using. Usually we would expect num_warps * warp_size threads per block, but

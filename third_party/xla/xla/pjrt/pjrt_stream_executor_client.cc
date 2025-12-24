@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/local_device_state.h"
@@ -141,14 +142,14 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -275,8 +276,8 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
     int process_index,
     std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces,
-    std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-    std::unique_ptr<tsl::Allocator> host_memory_allocator,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator,
+    std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
     : platform_id_(tsl::Fingerprint64(platform_name)),
@@ -302,7 +303,8 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   }
 
   if (!host_memory_allocator_) {
-    host_memory_allocator_ = std::make_unique<CpuAllocator>();
+    host_memory_allocator_ = std::make_unique<BasicHostMemoryAllocator>(
+        std::make_unique<CpuAllocator>());
   }
 
   for (const std::unique_ptr<PjRtStreamExecutorDevice>& device :
@@ -510,8 +512,7 @@ PjRtStreamExecutorClient::DefineBuffer(
     const Shape& on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-        definition_device_events,
-    bool raw_buffer_is_mutable) {
+        definition_device_events) {
   if (raw_buffer && raw_buffer->memory_space() != memory_space) {
     return absl::InvalidArgumentError(
         absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",
@@ -538,8 +539,8 @@ PjRtStreamExecutorClient::DefineBuffer(
 
 absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
                          CommonPjRtClient::PjRtFulfillAliasRawBufferCallback>>
-PjRtStreamExecutorClient::CreateRawBufferChannel(
-    PjRtMemorySpace* memory_space) {
+PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                                                 size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
   auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
       memory_space->devices()[0]);
@@ -642,7 +643,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
     options.elem_size_in_bytes = primitive_util::ByteWidth(type);
     options.dims = dims;
     options.permutation = permutation;
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    options.input_striding = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
@@ -669,12 +670,8 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   if (must_use_staging_buffer || (!IsDmaMapped(data, packed_size) &&
                                   (should_stage_host_to_device_transfers() &&
                                    packed_size < (int64_t{1} << 30)))) {
-    void* ptr = host_memory_allocator()->AllocateRaw(
-        tsl::Allocator::kAllocatorAlignment, transpose ? size : packed_size);
-    staging_buffer = std::shared_ptr<void>(
-        ptr, [host_memory_allocator = host_memory_allocator()](void* ptr) {
-          host_memory_allocator->DeallocateRaw(ptr);
-        });
+    staging_buffer =
+        host_memory_allocator()->Allocate(transpose ? size : packed_size);
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -730,7 +727,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
         // memory that has already been allocated, and a possible Event
         // allocation.
 
-        se::DeviceMemoryBase device_memory =
+        se::DeviceAddressBase device_memory =
             tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
                 raw_buffer.get())
                 ->device_buffer()
@@ -904,7 +901,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
   auto* device = memory_space->devices().front();
 
   auto buffer = RawSEDeviceMemory::CreateForeign(
-      se::DeviceMemoryBase(device_ptr, ShapeUtil::ByteSizeOf(shape)),
+      se::DeviceAddressBase(device_ptr, ShapeUtil::ByteSizeOf(shape)),
       std::move(on_delete_callback));
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
@@ -1139,7 +1136,7 @@ MakeTupleHelper(PjRtStreamExecutorClient* client,
                 absl::Span<PjRtBuffer* const> py_buffers,
                 absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers,
                 int device_ordinal) {
-  se::DeviceMemoryAllocator* allocator = client->allocator();
+  se::DeviceAddressAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
 
@@ -1156,7 +1153,7 @@ MakeTupleHelper(PjRtStreamExecutorClient* client,
 
   se::Stream* stream = local_device->host_to_device_stream();
   TF_ASSIGN_OR_RETURN(
-      se::OwningDeviceMemory owned_root_table_memory,
+      se::ScopedDeviceAddress<uint8_t> owned_root_table_memory,
       allocator->Allocate(
           device_ordinal,
           transfer_manager->GetByteSizeRequirement(tupled_parameter_shape)));
@@ -1190,7 +1187,7 @@ MakeTupleHelper(PjRtStreamExecutorClient* client,
   }
   CHECK(input_iterator == iterator_end);
 
-  std::vector<se::DeviceMemoryBase> elements;
+  std::vector<se::DeviceAddressBase> elements;
   size_t num_elements = ShapeUtil::TupleElementCount(tupled_parameter_shape);
   elements.reserve(num_elements);
   for (int64_t i = 0; i < num_elements; ++i) {
@@ -1442,7 +1439,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   // Check if we have callbacks registered for the given replica.
   if (replica >= options.send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
-                     const se::DeviceMemoryBase&,
+                     const se::DeviceAddressBase&,
                      const absl::flat_hash_map<std::string, std::string>&) {
       return Internal(
           "Don't send a buffer to the channel_id=%d, there was no send "
@@ -1456,7 +1453,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
 
   return [callbacks, thread_pool](
              int64_t channel_id, se::Stream* stream, const Shape& shape,
-             const se::DeviceMemoryBase& src,
+             const se::DeviceAddressBase& src,
              const absl::flat_hash_map<std::string, std::string>&)
              -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
@@ -1525,7 +1522,7 @@ namespace {
 class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
  public:
   StreamExecutorCopyToDeviceStream(
-      int64_t channel_id, se::Stream* stream, se::DeviceMemoryBase dst,
+      int64_t channel_id, se::Stream* stream, se::DeviceAddressBase dst,
       AsyncValueRef<std::unique_ptr<se::Event>> done)
       : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
         channel_id_(channel_id),
@@ -1562,7 +1559,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       return Future<>(done_.GetError());
     }
 
-    se::DeviceMemoryBase dst(
+    se::DeviceAddressBase dst(
         reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
         dst_.size() - current_bytes_);
 
@@ -1602,7 +1599,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
  private:
   int64_t channel_id_;
   se::Stream* stream_;
-  se::DeviceMemoryBase dst_;
+  se::DeviceAddressBase dst_;
 
   // Async value will become available after we'll submit the last memcpy
   // operation, and the event will be recorded on the stream.
@@ -1615,7 +1612,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   // Check if we have callbacks registered for the given replica.
   if (replica >= options.send_callbacks.size()) {
     return [replica](int64_t channel_id, se::Stream*, const Shape&,
-                     se::DeviceMemoryBase*,
+                     se::DeviceAddressBase*,
                      const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
@@ -1628,7 +1625,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
-                     se::DeviceMemoryBase* dst,
+                     se::DeviceAddressBase* dst,
                      const absl::flat_hash_map<std::string, std::string>&)
              -> absl::StatusOr<AsyncValueRef<std::unique_ptr<se::Event>>> {
     VLOG(3) << "Recv from channel #" << channel_id
@@ -1673,12 +1670,12 @@ PjRtStreamExecutorClient::RunAsync(
     auto it = tmp.MutableBuffers()->begin();
     for (auto& v : input) {
       if (v.second.is_donated) {
-        it->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+        it->second = MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
             v.second.buf->mem(), device->local_device_id().value(),
             run_options.allocator()));
         tmp.SetUnownedIndex(it->first);
       } else {
-        it->second = MaybeOwningDeviceMemory(v.second.buf->mem());
+        it->second = MaybeOwningDeviceAddress(v.second.buf->mem());
       }
       ++it;
     }
@@ -1691,7 +1688,7 @@ PjRtStreamExecutorClient::RunAsync(
   xla::ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> results(
       ssb.on_device_shape());
   auto it = results.begin();
-  se::DeviceMemoryAllocator* allocator = ssb.memory_allocator();
+  se::DeviceAddressAllocator* allocator = ssb.memory_allocator();
   ShapedBuffer released_ssb = ssb.release();
   for (auto& buf : released_ssb.buffers()) {
     CHECK(it != results.end());
@@ -2845,7 +2842,7 @@ PjRtStreamExecutorClient::DeserializeToLocalExecutable(
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal("Proto is too large (>2GB)");
   }
-  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+  if (!proto.ParseFromString(serialized)) {
     return Internal("Proto deserialization failed");
   }
   if (!proto.pjrt_client_name().empty() &&

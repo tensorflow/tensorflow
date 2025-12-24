@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 
-#include <unistd.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -59,11 +59,15 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/types.h"
+#include "xla/util.h"
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 
@@ -126,7 +130,7 @@ TEST(PjRtCApiClientTest, FulfillAliasBuffer) {
   ASSERT_NE(alias_buffer.second, nullptr);
   TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
-                          alias_buffer.first->ToLiteralSync());
+                          alias_buffer.first->ToLiteral().Await());
 
   // Expected result: data + 1
   EXPECT_TRUE(LiteralTestUtil::Equal(
@@ -334,6 +338,29 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   }
 }
 
+TEST(PjRtCApiClientTest, GetCompileOptions) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  builder.SetUpAlias({}, 0, {});
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  options.compile_portable_executable = !options.compile_portable_executable;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       client->CompileAndLoad(computation, options));
+
+  ASSERT_OK_AND_ASSIGN(CompileOptions retrieved_options,
+                       executable->GetCompileOptions());
+  EXPECT_EQ(retrieved_options.compile_portable_executable,
+            options.compile_portable_executable);
+}
+
 TEST(PjRtCApiClientTest, CreateBuffersForAsyncHostToDeviceWithShape) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -371,7 +398,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
       buffer->CopyToMemorySpace(client->memory_spaces()[1]));
   buffer.reset();
   ASSERT_TRUE(result);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -527,7 +554,7 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
   auto result = executable->Execute(/*argument_handles=*/{{}}, options);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));
@@ -571,6 +598,32 @@ TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
       deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
 }
 
+TEST(PjRtCApiClientTest, GetOutputShapes) {
+  static constexpr char const* kProgram = R"(
+    HloModule ffi_handler
+    ENTRY main {
+      ROOT %custom-call = f32[4] custom-call(),
+                          custom_call_target="MemsetFromValue",
+                          api_version=API_VERSION_TYPED_FFI
+    })";
+
+  const PJRT_Api* c_api = ::pjrt::cpu_plugin::GetCpuPjrtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          WrapClientAroundCApi(c_api));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(XlaComputation(hlo_module->ToProto()), {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Shape> output_shapes,
+                          executable->GetOutputShapes());
+  EXPECT_EQ(output_shapes.size(), 1);
+  Shape expected_shape = ShapeUtil::MakeShape(F32, {4});
+  EXPECT_EQ(output_shapes[0], expected_shape);
+}
+
 TEST(PjRtClientTest, BufferFromLiteralInt4) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -583,6 +636,124 @@ TEST(PjRtClientTest, BufferFromLiteralInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
+}
+
+TEST(PjRtCApiClientTest, AsyncHostToDeviceTransferManagerTransferLiteral) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<int32_t>({4});
+  std::vector<int32_t> data = {1, 2, 3, 4};
+  xla::Literal literal = xla::LiteralUtil::CreateR1<int32_t>(data);
+
+  std::vector<xla::Shape> host_shapes = {shape};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+          transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(absl::MakeSpan(host_shapes),
+                                                client->memory_spaces()[0]));
+
+  xla::Future<> future = transfer_manager->TransferLiteralToBuffer(
+      /*buffer_index=*/0, literal, /*on_done=*/[]() {});
+  TF_ASSERT_OK(future.Await());
+
+  std::unique_ptr<PjRtBuffer> buffer =
+      transfer_manager->RetrieveBuffer(/*buffer_index=*/0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          buffer->ToLiteral().Await());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result_literal));
+}
+
+TEST(PjRtCApiClientTest, CopyRawToHostFuture) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+  std::vector<float> data = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> recv_data(4);
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+  auto [dst_promise, dst_future] = Future<void*>::MakePromise();
+  ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
+  auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
+
+  // Fulfill the promise with a valid host buffer.
+  dst_promise.Set(recv_data.data());
+  EXPECT_OK(result.Await());
+  ASSERT_EQ(recv_data.size(), data.size());
+  EXPECT_THAT(recv_data, ElementsAreArray(data));
+
+  // Test error case.
+  auto [error_dst_promise, error_dst_future] = Future<void*>::MakePromise();
+  result = buffer->CopyRawToHostFuture(error_dst_future, 0, size);
+  error_dst_promise.Set(absl::InternalError("Future error"));
+  absl::Status status = result.Await();
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal, "Future error"));
+}
+
+TEST(PjRtCApiClientTest, PoisonExecution) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseAndReturnUnverifiedModule(R"(
+HloModule Identity
+ENTRY Identity() -> f32[2, 2] {
+    ROOT %result = f32[2, 2] parameter(0)
+})",
+                                                                       {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                       client->CreateBuffersForAsyncHostToDevice(
+                           {shape}, client->memory_spaces()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+
+  const int32_t kLaunchId = 123;
+  ExecuteOptions opts;
+  opts.launch_id = kLaunchId;
+  // PoisonExecution only works for asynchronous executions. Synchronous
+  // executions are executed inline and will not be poisonable.
+  opts.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
+
+  auto result =
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}}, opts);
+  ASSERT_OK(result);
+
+  // Poisoning the execution should succeed because the execution has not
+  // started with the input buffer not defined yet.
+  auto poison_result = client->addressable_devices().front()->PoisonExecution(
+      kLaunchId, Internal("foobar1"));
+  ASSERT_THAT(poison_result, IsOkAndHolds(true));
+
+  // The buffer is expected to be poisoned with the error.
+  ASSERT_EQ(result->size(), 1);
+  ASSERT_EQ(result->at(0).size(), 1);
+  EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+
+  // A later error (propagated from the input buffer) would not affect the
+  // already poisoned output buffer.
+  transfer_manager->SetBufferError(0, Internal("foobar2"));
+
+  EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
+              StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+
+  // Attempting to poison a non-existent execution should fail.
+  poison_result = client->addressable_devices().front()->PoisonExecution(
+      kLaunchId + 12, Internal("foobar3"));
+  EXPECT_THAT(poison_result, IsOkAndHolds(false));
 }
 
 }  // namespace

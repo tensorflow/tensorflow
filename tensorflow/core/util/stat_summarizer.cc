@@ -82,7 +82,7 @@ void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
 }
 
 void StatSummarizer::PrintStepStats() const {
-  string output = GetOutputString();
+  std::string output = GetOutputString();
   std::istringstream iss(output);
   for (std::string line; std::getline(iss, line);) {
     LOG(INFO) << line;

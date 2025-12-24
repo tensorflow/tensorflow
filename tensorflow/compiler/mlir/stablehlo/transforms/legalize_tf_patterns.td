@@ -40,7 +40,7 @@ def CastValueToI64: NativeCodeCall<
   "CastValueToI64($0.getLoc(), $1, &$_builder)">;
 
 def CastValueToElementType: NativeCodeCall<
-  "$_builder.create<ConvertOp>($0.getLoc(), $1, "
+  "ConvertOp::create($_builder, $0.getLoc(), $1, "
   "getElementTypeOrSelf($2.getType()))">;
 
 // Here, $0 is an ElementsAttr with exactly one element of type integer. $1 is

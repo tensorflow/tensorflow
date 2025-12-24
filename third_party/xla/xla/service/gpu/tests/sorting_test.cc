@@ -72,7 +72,8 @@ to_apply=compare
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
   // We expect that all types except PRED and F8 types are rewritten to a custom
   // call.
-  bool rewrite = GetParam() != PRED && !primitive_util::IsF8Type(GetParam());
+  bool rewrite = GetParam() != PRED && GetParam() != S4 && GetParam() != U4 &&
+                 !primitive_util::IsF8Type(GetParam());
   std::string check = rewrite ? "CHECK: custom-call" : "CHECK-NOT: custom-call";
   MatchOptimizedHlo(hlo, check);
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
@@ -83,9 +84,9 @@ INSTANTIATE_TEST_SUITE_P(
     // 4bit types like U4, S4, or F4E2M1FN are currently not supported.
     // F8E8M0FNU cannot represent NaNs and fails the test below.
     ::testing::ValuesIn({
-        PRED,                               // boolean
-        S8,         S16,    S32,      S64,  // signed
-        U8,         U16,    U32,      U64,  // unsigned
+        PRED,                                              // boolean
+        S4,         S8,     S16,      S32,           S64,  // signed
+        U4,         U8,     U16,      U32,           U64,  // unsigned
         F8E5M2,     F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E3M4, F8E5M2FNUZ,
         F8E4M3FNUZ, F16,    BF16,     F32,           F64  // floating point
     }),
@@ -118,6 +119,90 @@ ENTRY TestComputation {
 
 )";
 
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, PackedElementType) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_update_0 = s4[] parameter(2)
+      %rhs_update_0 = s4[] parameter(3)
+      %lhs_permutation = s32[] parameter(4)
+      %rhs_permutation = s32[] parameter(5)
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      ROOT %compare.2 = pred[] compare(%lhs_key, %rhs_key), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[16384]{0} parameter(0)
+      p1 = s4[16384]{0} parameter(1)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s4[16384]{0}, s32[16384]{0}) sort(p0, p1, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, SortFusionWithIotaOperand) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_index = s32[] parameter(2)
+      %rhs_index = s32[] parameter(3)
+      %lt_key = pred[] compare(%lhs_key, %rhs_key), direction=LT
+      %gt_key = pred[] compare(%rhs_key, %lhs_key), direction=LT
+      %eq_key = pred[] compare(%lt_key, %gt_key), direction=EQ
+      %lt_index = pred[] compare(%lhs_index, %rhs_index), direction=LT
+      ROOT res = pred[] select(%eq_key, %lt_index, %lt_key)
+    }
+
+    sort_fusion {
+      p0 = s32[16384]{0} parameter(0)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s32[16384]{0}) sort(p0, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[16384]{0} parameter(0)
+      ROOT fusion = (s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, SortFusionWithIotaOperandTinySortDim) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_index = s32[] parameter(2)
+      %rhs_index = s32[] parameter(3)
+      %lt_key = pred[] compare(%lhs_key, %rhs_key), direction=LT
+      %gt_key = pred[] compare(%rhs_key, %lhs_key), direction=LT
+      %eq_key = pred[] compare(%lt_key, %gt_key), direction=EQ
+      %lt_index = pred[] compare(%lhs_index, %rhs_index), direction=LT
+      ROOT res = pred[] select(%eq_key, %lt_index, %lt_key)
+    }
+
+    sort_fusion {
+      p0 = s32[2]{0} parameter(0)
+      iota = s32[2]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[2]{0}, s32[2]{0}) sort(p0, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[2]{0} parameter(0)
+      ROOT fusion = (s32[2]{0}, s32[2]{0}) fusion(p), kind=kCustom, calls=sort_fusion
+    }
+  )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

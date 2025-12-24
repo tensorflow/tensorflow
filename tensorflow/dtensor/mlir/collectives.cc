@@ -105,8 +105,8 @@ StatusOr<mlir::Value> EmitAllGather(
 
   mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllGatherOp");
   mlir::TF::DTensorAllGatherOp all_gather =
-      builder.create<mlir::TF::DTensorAllGatherOp>(
-          loc, output_type, input,
+      mlir::TF::DTensorAllGatherOp::create(
+          builder, loc, output_type, input,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_gather, tgt_layout);
@@ -153,8 +153,8 @@ StatusOr<const mlir::Value> EmitAllScatter(
 
   mlir::Location loc = DT_LOC2(original_value.getLoc(), "DTensorAllScatterOp");
   mlir::TF::DTensorAllScatterOp all_scatter =
-      builder.create<mlir::TF::DTensorAllScatterOp>(
-          loc, output_type, original_value,
+      mlir::TF::DTensorAllScatterOp::create(
+          builder, loc, output_type, original_value,
           mlir::dtensor::LayoutAttr::get(builder.getContext(), original_layout),
           mlir::dtensor::LayoutAttr::get(builder.getContext(), desired_layout));
   SetSingleLayoutOnOp(all_scatter, desired_layout);
@@ -224,11 +224,10 @@ StatusOr<mlir::Value> EmitAllToAll(
                       LocalTypeFromGlobalType(tgt_layout, global_type));
 
   mlir::Location loc = DT_LOC2(input.getLoc(), "DTensorAllToAllOp");
-  mlir::TF::DTensorAllToAllOp all_to_all =
-      builder.create<mlir::TF::DTensorAllToAllOp>(
-          loc, output_type, input,
-          mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
-          mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
+  mlir::TF::DTensorAllToAllOp all_to_all = mlir::TF::DTensorAllToAllOp::create(
+      builder, loc, output_type, input,
+      mlir::dtensor::LayoutAttr::get(builder.getContext(), src_layout),
+      mlir::dtensor::LayoutAttr::get(builder.getContext(), tgt_layout));
   SetSingleLayoutOnOp(all_to_all, tgt_layout);
 
   if (newly_created_ops != nullptr) newly_created_ops->insert(all_to_all);
@@ -247,20 +246,21 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
   // values tensor = tf.gather_nd(input, indices)
   // shape tensor = tf.shape(input)
   mlir::TF::ZerosLikeOp zeros_like =
-      builder.create<mlir::TF::ZerosLikeOp>(input.getLoc(), input);
-  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
-      zeros_like.getLoc(), input, zeros_like, builder.getBoolAttr(false));
+      mlir::TF::ZerosLikeOp::create(builder, input.getLoc(), input);
+  mlir::TF::NotEqualOp not_equal =
+      mlir::TF::NotEqualOp::create(builder, zeros_like.getLoc(), input,
+                                   zeros_like, builder.getBoolAttr(false));
 
-  mlir::TF::WhereOp indices = builder.create<mlir::TF::WhereOp>(
-      not_equal.getLoc(),
+  mlir::TF::WhereOp indices = mlir::TF::WhereOp::create(
+      builder, not_equal.getLoc(),
       mlir::RankedTensorType::get(GetShapeOfValue(not_equal).value(),
                                   builder.getI64Type()),
       not_equal);
 
-  mlir::TF::GatherNdOp values = builder.create<mlir::TF::GatherNdOp>(
-      input.getLoc(), input.getType(), input, indices);
-  auto shape = builder.create<mlir::TF::ShapeOp>(input.getLoc(), input,
-                                                 builder.getBoolAttr(false));
+  mlir::TF::GatherNdOp values = mlir::TF::GatherNdOp::create(
+      builder, input.getLoc(), input.getType(), input, indices);
+  auto shape = mlir::TF::ShapeOp::create(builder, input.getLoc(), input,
+                                         builder.getBoolAttr(false));
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
@@ -270,8 +270,8 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
           builder, input.getLoc(),
           mlir::cast<mlir::TensorType>(input.getType()).getElementType()));
 
-  auto dense = builder.create<mlir::TF::SparseToDenseOp>(
-      input.getLoc(), input.getType(),
+  auto dense = mlir::TF::SparseToDenseOp::create(
+      builder, input.getLoc(), input.getType(),
       mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
@@ -310,8 +310,8 @@ StatusOr<mlir::Value> EmitRelayout(
   // If two layouts are the same, or the only difference is layout type, then
   // there is no need to actually relayout data.
   if (src_layout.IsEquivalentIgnoringType(tgt_layout)) {
-    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
-        input.getLoc(), input.getType(), input);
+    mlir::TF::IdentityOp op = mlir::TF::IdentityOp::create(
+        builder, input.getLoc(), input.getType(), input);
     if (newly_created_ops != nullptr) newly_created_ops->insert(op);
     return op.getOutput();
   }
@@ -405,7 +405,7 @@ mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
 
   auto constant_attr = builder.getI64TensorAttr(perm_arr);
   auto perm_op =
-      builder.create<mlir::TF::ConstOp>(loc, perm_type, constant_attr);
+      mlir::TF::ConstOp::create(builder, loc, perm_type, constant_attr);
 
   std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
   for (int i = 0; i < shape.size(); i++) {
@@ -414,8 +414,8 @@ mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
   auto transposed_type = mlir::RankedTensorType::get(
       transposed_shape, tr_input_type.getElementType());
 
-  return builder.create<mlir::TF::TransposeOp>(loc, transposed_type, input,
-                                               perm_op);
+  return mlir::TF::TransposeOp::create(builder, loc, transposed_type, input,
+                                       perm_op);
 }
 
 StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
@@ -470,10 +470,10 @@ StatusOr<mlir::Operation*> EmitAllReduce(
                       DeviceTypeFromMesh(output_layout.mesh()));
 
   mlir::Location loc = DT_LOC2(input->getLoc(), "DTensorAllReduceOp");
-  auto all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
-      loc, input->getResultTypes()[0], input->getOpResult(0),
-      builder.create<mlir::TF::ConstOp>(DT_LOC2(loc, "group_assignment"),
-                                        group_assignment),
+  auto all_reduce = mlir::TF::DTensorAllReduceOp::create(
+      builder, loc, input->getResultTypes()[0], input->getOpResult(0),
+      mlir::TF::ConstOp::create(builder, DT_LOC2(loc, "group_assignment"),
+                                group_assignment),
       builder.getStringAttr(std::string(reduce_op)),
       builder.getStringAttr(device_type));
   SetSingleLayoutOnOp(all_reduce, output_layout);
@@ -575,7 +575,7 @@ StatusOr<mlir::Value> CreateConstSrcTargetPair(const Mesh& mesh,
   auto src_target_attr =
       mlir::DenseIntElementsAttr::get(shaped_type, src_target_pair_flat);
   mlir::Value src_target_pair_tensor =
-      builder.create<mlir::TF::ConstOp>(location, src_target_attr);
+      mlir::TF::ConstOp::create(builder, location, src_target_attr);
   return src_target_pair_tensor;
 }
 
@@ -636,13 +636,14 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
   //
   // For example, if mesh dimension splits the input tensor by its height
   // dimension, then `left` actually means tensor to pad on the top side.
-  mlir::Value is_on_left_edge = builder.create<mlir::TF::EqualOp>(
-      location, CreateIntScalarConst(0, builder, location, /*use_int64=*/false),
+  mlir::Value is_on_left_edge = mlir::TF::EqualOp::create(
+      builder, location,
+      CreateIntScalarConst(0, builder, location, /*use_int64=*/false),
       scalar_mesh_coordinate, builder.getBoolAttr(true));
 
   TF_ASSIGN_OR_RETURN(const int mesh_dim_size, mesh.dim_size(mesh_dim));
-  mlir::Value is_on_right_edge = builder.create<mlir::TF::EqualOp>(
-      location,
+  mlir::Value is_on_right_edge = mlir::TF::EqualOp::create(
+      builder, location,
       CreateIntScalarConst(mesh_dim_size - 1, builder, location,
                            /*use_int64=*/false),
       scalar_mesh_coordinate, builder.getBoolAttr(true));
@@ -663,7 +664,7 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
   }
 
   mlir::Value ghost_tensor_left =
-      builder.create<mlir::TF::ConstOp>(location, const_attr).getResult();
+      mlir::TF::ConstOp::create(builder, location, const_attr).getResult();
 
   // Get the right side slice of the input tensor to pad on left side.
   llvm::SmallVector<int64_t, 4> begin_left(layout.rank(), 0);
@@ -676,11 +677,13 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
   size[split_dim_index] = halo_size;
 
   mlir::Value size_tensor_left = ops_util::GetR1Const(size, builder, location);
-  mlir::Value sliced_tensor_left = builder.create<mlir::TF::SliceOp>(
-      location, halo_type, tensor, begin_tensor_left, size_tensor_left);
+  mlir::Value sliced_tensor_left =
+      mlir::TF::SliceOp::create(builder, location, halo_type, tensor,
+                                begin_tensor_left, size_tensor_left);
 
-  mlir::Value halo_tensor_left = builder.create<mlir::TF::SelectV2Op>(
-      location, is_on_right_edge, ghost_tensor_left, sliced_tensor_left);
+  mlir::Value halo_tensor_left =
+      mlir::TF::SelectV2Op::create(builder, location, is_on_right_edge,
+                                   ghost_tensor_left, sliced_tensor_left);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
   // Halo slices from the left neighbor are received on each processor (they
@@ -690,12 +693,12 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
       CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/false, location,
                                builder));
 
-  mlir::Value left_concat_value = builder.create<mlir::TF::CollectivePermuteOp>(
-      location, sliced_tensor_left.getType(), halo_tensor_left,
+  mlir::Value left_concat_value = mlir::TF::CollectivePermuteOp::create(
+      builder, location, sliced_tensor_left.getType(), halo_tensor_left,
       src_target_pair_left);
 
   mlir::Value ghost_tensor_right =
-      builder.create<mlir::TF::ConstOp>(location, const_attr).getResult();
+      mlir::TF::ConstOp::create(builder, location, const_attr).getResult();
 
   // Else, values to pad is tensor from different processor. We use collective
   // permute to access tensor slice from another device.
@@ -704,13 +707,15 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
   mlir::Value begin_tensor_right =
       ops_util::GetR1Const(begin_right, builder, location);
   mlir::Value size_tensor_right = ops_util::GetR1Const(size, builder, location);
-  mlir::Value sliced_tensor_right = builder.create<mlir::TF::SliceOp>(
-      location, halo_type, tensor, begin_tensor_right, size_tensor_right);
+  mlir::Value sliced_tensor_right =
+      mlir::TF::SliceOp::create(builder, location, halo_type, tensor,
+                                begin_tensor_right, size_tensor_right);
 
   // Find the halo tensor value to pad on the `right` side.
   // If input block is on the right edge, we use zero ghost tensor instead.
-  mlir::Value halo_tensor_right = builder.create<mlir::TF::SelectV2Op>(
-      location, is_on_left_edge, ghost_tensor_right, sliced_tensor_right);
+  mlir::Value halo_tensor_right =
+      mlir::TF::SelectV2Op::create(builder, location, is_on_left_edge,
+                                   ghost_tensor_right, sliced_tensor_right);
 
   // Invoke collective permute to receive the tensor from neighboring processor.
   // Halo slices from the right neighbor are received on each processor (they
@@ -719,10 +724,9 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
       mlir::Value src_target_pair_right,
       CreateConstSrcTargetPair(mesh, mesh_dim, /*shift_left=*/true, location,
                                builder));
-  mlir::Value right_concat_value =
-      builder.create<mlir::TF::CollectivePermuteOp>(
-          location, sliced_tensor_right.getType(), halo_tensor_right,
-          src_target_pair_right);
+  mlir::Value right_concat_value = mlir::TF::CollectivePermuteOp::create(
+      builder, location, sliced_tensor_right.getType(), halo_tensor_right,
+      src_target_pair_right);
 
   // Final halo exchanged value is concatenated value of left_concat_value,
   // tensor, and right_concat_value in the mesh_dimension.
@@ -734,8 +738,8 @@ StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
       final_shape, input_tensor_type.getElementType());
   mlir::Value concat_axis =
       CreateIntScalarConst(split_dim_index, builder, location);
-  mlir::Value final_value = builder.create<mlir::TF::ConcatV2Op>(
-      location, final_type,
+  mlir::Value final_value = mlir::TF::ConcatV2Op::create(
+      builder, location, final_type,
       llvm::SmallVector<mlir::Value, 4>{left_concat_value, tensor,
                                         right_concat_value},
       concat_axis);

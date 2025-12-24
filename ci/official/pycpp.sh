@@ -29,9 +29,9 @@ if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
 fi
 
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --@local_config_cuda//cuda:override_include_cuda_libs=true --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --@local_config_cuda//cuda:override_include_cuda_libs=true --config=hermetic_cuda_umd --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --@local_config_cuda//cuda:override_include_cuda_libs=true --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --@local_config_cuda//cuda:override_include_cuda_libs=true --config=hermetic_cuda_umd --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.

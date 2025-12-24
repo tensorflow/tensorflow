@@ -13370,6 +13370,135 @@ ENTRY main {
   TF_EXPECT_OK(CheckSliceChunks(*assignments, root->operand(1)));
 }
 
+// This module is optmized as below, which adds two slices followed by a concat
+// bitcast. Since the concat bitcast uses the same slice buffers for its output,
+// the heap simulator trace should not have freed any of the slices before the
+// concat bitcast users are allocated/processed.
+//
+// ENTRY main {
+//   ...
+//   p1 = f32[8,8]{1,0} parameter(1)
+//   slice-start = slice-start(p1), slice={[4:8], [0:8]}
+//   ...
+//   slice-start.1 = slice-start(p1), slice={[0:4], [0:8]}
+//   ...
+//   c = f32[8,8]{1,0:S(1)} tanh(b)
+//   slice-done = f32[4,8]{1,0:S(1)} slice-done(slice-start)
+//   slice-done.1 = f32[4,8]{1,0:S(1)} slice-done(slice-start.1)
+//   custom-call = f32[8,8]{1,0:S(1)} custom-call(slice-done, slice-done.1),
+//                                    custom_call_target="ConcatBitcast"
+//   r = f32[8,8]{1,0:S(1)} add(c, custom-call)
+//   n = f32[8,8]{1,0:S(1)} negate(custom-call)
+// ROOT f = f32[8,8]{1,0} add(r, n)
+// }
+//
+TEST_F(SlicedPrefetchTest, SlicedPrefetchHeapSimulatorTrace) {
+  std::string hlo_text = R"zz(
+HloModule Slice, is_scheduled=true
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+
+  a = f32[8,8] tanh(p0)
+  b = f32[8,8] tanh(a)
+  c = f32[8,8] tanh(b)
+
+  r = f32[8,8] add(c, p1)
+  n = f32[8,8] negate(p1)
+  ROOT f = f32[8,8] add(r, n)
+})zz";
+
+  SetupProposeSlicesToExpect2SlicesOfF32x8x8();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  VLOG(1) << "Original module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module.get(), MakeDefaultOptions(),
+      /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
+
+  VLOG(1) << "Post-MSA module:\n"
+          << module->ToString(HloPrintOptions::ShortParsable());
+
+  auto* r_instr = FindInstruction(module.get(), "r");
+  EXPECT_NE(r_instr, nullptr);
+  auto* n_instr = FindInstruction(module.get(), "n");
+  EXPECT_NE(n_instr, nullptr);
+
+  // Expect p1 to be copied via a sliced prefetch for use in r and n.
+  EXPECT_THAT(
+      r_instr,
+      op::Add(_, IsAsyncSlicedCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                   {{{0, 4}, {0, 8}}, {{4, 8}, {0, 8}}},
+                                   op::Parameter(1))));
+  EXPECT_THAT(n_instr, op::Negate(r_instr->operand(1)));
+
+  // Check the instruction schedule.
+  TF_EXPECT_OK(
+      CheckSchedule(*module, r_instr->operand(1),
+                    /*slices_start_after_instruction_name=*/"p1",
+                    /*slices_done_before_instruction_name=*/"r",
+                    /*expect_slices_started_at_different_times=*/true));
+
+  // Check expectations on the chunks assigned to the asynchronous sliced copy.
+  TF_EXPECT_OK(CheckSliceChunks(*assignments, r_instr->operand(1)));
+
+  const HeapSimulatorTrace& heap_trace =
+      assignments->assignment_information_for_space(kAlternateMemorySpace)
+          ->heap_simulator_trace;
+  // Track the set of instructions currently living in the alternate memory
+  // space.
+  // - ALLOC event: Instruction should not be in the set. Add it.
+  // - FREE event: Instruction should be in the set. Remove it.
+  // - Concat bitcast instruction: Slice operands should remain in the set until
+  //   all concat bitcast users are allocated.
+  absl::flat_hash_set<const HloInstruction*> allocated_instructions;
+  for (const auto& event : heap_trace.events()) {
+    VLOG(3) << "event: " << event.DebugString();
+    const HloInstruction* instruction =
+        FindInstruction(module.get(), event.instruction_name());
+    EXPECT_NE(instruction, nullptr)
+        << "Instruction not found: " << event.instruction_name();
+    if (instruction->opcode() == HloOpcode::kCustomCall) {
+      EXPECT_NE(instruction->custom_call_target(),
+                memory_space_assignment::kConcatBitcastCustomCall)
+          << "We do not expect concat bitcast custom call to add any "
+             "independent events to the heap trace.";
+    }
+    if (instruction->opcode() == HloOpcode::kSlice) {
+      EXPECT_TRUE(event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+                  event.kind() == HeapSimulatorTrace::Event::FREE);
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      allocated_instructions.insert(instruction);
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      EXPECT_TRUE(allocated_instructions.contains(instruction))
+          << "FREE is called on slice instruction before its ALLOC or is its "
+             "being called more than once on the same slice buffer.";
+      allocated_instructions.erase(instruction);
+    } else {
+      FAIL() << "Unexpected event kind: " << event.kind()
+             << " for instruction: " << event.instruction_name();
+    }
+    // At the time we allocate the r and n instructions, we should still have
+    // valid allocations for both slices of the concatbitcast operands, because
+    // the concatbitcast should share that buffer with its users, i.e. r and n
+    // instructions.
+    if ((instruction == r_instr || instruction == n_instr) &&
+        event.kind() == HeapSimulatorTrace::Event::ALLOC) {
+      int slice_count = absl::c_count_if(
+          allocated_instructions, [](const HloInstruction* inst) {
+            return inst->opcode() == HloOpcode::kSlice;
+          });
+      EXPECT_EQ(slice_count, 2)
+          << "Did not find enough valid allocations for both slice buffers in "
+             "the trace at the time of allocation for r or n instructions.";
+    }
+  }
+}
+
 TEST_F(SlicedPrefetchTest, TwoSlicesWithCopyReplacement) {
   std::string hlo_text = R"zz(
 HloModule Slice, is_scheduled=true
@@ -14642,6 +14771,167 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
             kAlternateMemorySpace);
   EXPECT_EQ(add_after_msa->operand(1)->shape().layout().memory_space(),
             kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestColoringWithLoopOptimization) {
+  absl::string_view hlo_string = R"hlo(
+HloModule UnrolledLoop, is_scheduled=true
+
+ENTRY %main {
+  %param.0 = (f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4],
+              f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4], f32[2,4]) parameter(0)
+
+  %gte.0 = f32[2,4] get-tuple-element(%param.0), index=0
+  %gte.1 = f32[2,4] get-tuple-element(%param.0), index=1
+  %add.common = f32[2,4] add(%gte.0, %gte.1)
+  %tanh.common = f32[2,4] tanh(%add.common)
+
+  // loop idx0
+  %neg.0.idx0 = f32[2,4] negate(%tanh.common)
+  %neg.1.idx0 = f32[2,4] negate(%neg.0.idx0)
+  %neg.2.idx0 = f32[2,4] negate(%neg.1.idx0)
+
+  %gte.0.idx0 = f32[2,4] get-tuple-element(%param.0), index=2
+  %add.0.idx0 = f32[2,4] add(%neg.2.idx0, %gte.0.idx0)
+
+  %gte.1.idx0 = f32[2,4] get-tuple-element(%param.0), index=3
+  %add.1.idx0 = f32[2,4] add(%add.0.idx0, %gte.1.idx0)
+
+  %tanh.idx0 = f32[2,4] tanh(%add.1.idx0)
+
+  // loop idx1
+  %neg.0.idx1 = f32[2,4] negate(%tanh.idx0)
+  %neg.1.idx1 = f32[2,4] negate(%neg.0.idx1)
+  %neg.2.idx1 = f32[2,4] negate(%neg.1.idx1)
+
+  %gte.0.idx1 = f32[2,4] get-tuple-element(%param.0), index=4
+  %add.0.idx1 = f32[2,4] add(%neg.2.idx1, %gte.0.idx1)
+
+  %gte.1.idx1 = f32[2,4] get-tuple-element(%param.0), index=5
+  %add.1.idx1 = f32[2,4] add(%add.0.idx1, %gte.1.idx1)
+
+  %tanh.idx1 = f32[2,4] tanh(%add.1.idx1)
+
+  // loop idx2
+  %neg.0.idx2 = f32[2,4] negate(%tanh.idx1)
+  %neg.1.idx2 = f32[2,4] negate(%neg.0.idx2)
+  %neg.2.idx2 = f32[2,4] negate(%neg.1.idx2)
+
+  %gte.0.idx2 = f32[2,4] get-tuple-element(%param.0), index=6
+  %add.0.idx2 = f32[2,4] add(%neg.2.idx2, %gte.0.idx2)
+
+  %gte.1.idx2 = f32[2,4] get-tuple-element(%param.0), index=7
+  %add.1.idx2 = f32[2,4] add(%add.0.idx2, %gte.1.idx2)
+
+  %tanh.idx2 = f32[2,4] tanh(%add.1.idx2)
+
+  // loop idx3
+  %neg.0.idx3 = f32[2,4] negate(%tanh.idx2)
+  %neg.1.idx3 = f32[2,4] negate(%neg.0.idx3)
+  %neg.2.idx3 = f32[2,4] negate(%neg.1.idx3)
+
+  %gte.0.idx3 = f32[2,4] get-tuple-element(%param.0), index=8
+  %add.0.idx3 = f32[2,4] add(%neg.2.idx3, %gte.0.idx3)
+
+  %gte.1.idx3 = f32[2,4] get-tuple-element(%param.0), index=9
+  %add.1.idx3 = f32[2,4] add(%add.0.idx3, %gte.1.idx3)
+
+  %tanh.idx3 = f32[2,4] tanh(%add.1.idx3)
+
+  // loop idx4
+  %neg.0.idx4 = f32[2,4] negate(%tanh.idx3)
+  %neg.1.idx4 = f32[2,4] negate(%neg.0.idx4)
+  %neg.2.idx4 = f32[2,4] negate(%neg.1.idx4)
+
+  %gte.0.idx4 = f32[2,4] get-tuple-element(%param.0), index=10
+  %add.0.idx4 = f32[2,4] add(%neg.2.idx4, %gte.0.idx4)
+
+  %gte.1.idx4 = f32[2,4] get-tuple-element(%param.0), index=11
+  %add.1.idx4 = f32[2,4] add(%add.0.idx4, %gte.1.idx4)
+
+  %tanh.idx4 = f32[2,4] tanh(%add.1.idx4)
+
+  // loop idx5
+  %neg.0.idx5 = f32[2,4] negate(%tanh.idx4)
+  %neg.1.idx5 = f32[2,4] negate(%neg.0.idx5)
+  %neg.2.idx5 = f32[2,4] negate(%neg.1.idx5)
+
+  %gte.0.idx5 = f32[2,4] get-tuple-element(%param.0), index=12
+  %add.0.idx5 = f32[2,4] add(%neg.2.idx5, %gte.0.idx5)
+
+  %gte.1.idx5 = f32[2,4] get-tuple-element(%param.0), index=13
+  %add.1.idx5 = f32[2,4] add(%add.0.idx5, %gte.1.idx5)
+
+  %tanh.idx5 = f32[2,4] tanh(%add.1.idx5)
+
+  // loop idx6
+  %neg.0.idx6 = f32[2,4] negate(%tanh.idx5)
+  %neg.1.idx6 = f32[2,4] negate(%neg.0.idx6)
+  %neg.2.idx6 = f32[2,4] negate(%neg.1.idx6)
+
+  %gte.0.idx6 = f32[2,4] get-tuple-element(%param.0), index=14
+  %add.0.idx6 = f32[2,4] add(%neg.2.idx6, %gte.0.idx6)
+
+  %gte.1.idx6 = f32[2,4] get-tuple-element(%param.0), index=15
+  %add.1.idx6 = f32[2,4] add(%add.0.idx6, %gte.1.idx6)
+
+  %tanh.idx6 = f32[2,4] tanh(%add.1.idx6)
+
+  ROOT %negate.common = f32[2,4] negate(%tanh.idx6)
+})hlo";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.memory_bound_loop_optimizer_options.set_enabled(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_desired_copy_ratio(0.1);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_allow_unsatisfied_fully_pipelined_prefetch(true);
+  memory_space_options.memory_bound_loop_optimizer_options
+      .set_min_num_iterations(4);
+  HloUse add_0_idx0_use{FindInstruction(module.get(), "add.0.idx0"), 1, {}};
+  HloUse add_1_idx0_use{FindInstruction(module.get(), "add.1.idx0"), 1, {}};
+  HloUse add_0_idx1_use{FindInstruction(module.get(), "add.0.idx1"), 1, {}};
+  HloUse add_1_idx1_use{FindInstruction(module.get(), "add.1.idx1"), 1, {}};
+  HloUse add_0_idx2_use{FindInstruction(module.get(), "add.0.idx2"), 1, {}};
+  HloUse add_1_idx2_use{FindInstruction(module.get(), "add.1.idx2"), 1, {}};
+  HloUse add_0_idx3_use{FindInstruction(module.get(), "add.0.idx3"), 1, {}};
+  HloUse add_1_idx3_use{FindInstruction(module.get(), "add.1.idx3"), 1, {}};
+  HloUse add_0_idx4_use{FindInstruction(module.get(), "add.0.idx4"), 1, {}};
+  HloUse add_1_idx4_use{FindInstruction(module.get(), "add.1.idx4"), 1, {}};
+  HloUse add_0_idx5_use{FindInstruction(module.get(), "add.0.idx5"), 1, {}};
+  HloUse add_1_idx5_use{FindInstruction(module.get(), "add.1.idx5"), 1, {}};
+  HloUse add_0_idx6_use{FindInstruction(module.get(), "add.0.idx6"), 1, {}};
+  HloUse add_1_idx6_use{FindInstruction(module.get(), "add.1.idx6"), 1, {}};
+  memory_space_options.buffer_colorings = {
+      {add_0_idx0_use, kAlternateMemorySpace},
+      {add_1_idx0_use, kAlternateMemorySpace},
+      {add_0_idx1_use, kAlternateMemorySpace},
+      {add_1_idx1_use, kAlternateMemorySpace},
+      {add_0_idx2_use, kAlternateMemorySpace},
+      {add_1_idx2_use, kAlternateMemorySpace},
+      {add_0_idx3_use, kAlternateMemorySpace},
+      {add_1_idx3_use, kAlternateMemorySpace},
+      {add_0_idx4_use, kAlternateMemorySpace},
+      {add_1_idx4_use, kAlternateMemorySpace},
+      {add_0_idx5_use, kAlternateMemorySpace},
+      {add_1_idx5_use, kAlternateMemorySpace},
+      {add_0_idx6_use, kAlternateMemorySpace},
+      {add_1_idx6_use, kAlternateMemorySpace}};
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  std::vector<std::string> alternate_memory_uses = {
+      "add.0.idx0", "add.1.idx0", "add.0.idx1", "add.1.idx1", "add.0.idx2",
+      "add.1.idx2", "add.0.idx3", "add.1.idx3", "add.0.idx4", "add.1.idx4",
+      "add.0.idx5", "add.1.idx5", "add.0.idx6", "add.1.idx6"};
+  CheckOperandOpcodeAndMemorySpaceForInstructionNames(
+      /*module=*/module.get(), /*instruction_names=*/alternate_memory_uses,
+      /*operand_index=*/1, /*operand_opcode=*/HloOpcode::kCopyDone,
+      /*operand_memory_space=*/kAlternateMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest,

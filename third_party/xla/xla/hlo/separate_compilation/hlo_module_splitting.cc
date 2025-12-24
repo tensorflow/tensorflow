@@ -332,4 +332,24 @@ absl::StatusOr<std::unique_ptr<HloModuleSplitGroup>> CreateHloModuleSplitGroup(
       std::move(linking_manifest));
 }
 
+absl::StatusOr<const HloComputation*> HloModuleSplitGroup::GetClonedComputation(
+    const HloComputation* original_computation) const {
+  auto it = address_book.find(original_computation);
+  if (it == address_book.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("Original computation '", original_computation->name(),
+                     "' not found in HloModuleSplitGroup address book."));
+  }
+  auto& computation_map = it->second->computation_map;
+  auto it2 = computation_map.find(original_computation);
+  if (it2 == computation_map.end()) {
+    return absl::InternalError(absl::StrCat(
+        "Original computation '", original_computation->name(),
+        "' found in address book but not in computation map for its "
+        "module split '",
+        it->second->submodule->name(), "'."));
+  }
+  return it2->second;
+}
+
 }  // namespace xla::separate_compilation

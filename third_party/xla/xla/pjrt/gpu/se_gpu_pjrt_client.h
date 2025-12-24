@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -43,21 +45,22 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -107,8 +110,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StreamExecutorGpuClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
-      int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tsl::Allocator> host_memory_allocator,
+      int process_index, std::unique_ptr<se::DeviceAddressAllocator> allocator,
+      std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
@@ -206,9 +209,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   // Helpers for cross host transfers.
   absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
-  absl::StatusOr<Future<>> CrossHostSendBuffer(
-      PjRtBuffer* buffer, PjRtGlobalDeviceId dst_global_device_id,
-      CrossHostTransferKey transfer_key);
+  void ScheduleSendsOnLocalDevice(
+      PjRtDevice* device, std::vector<PjRtBuffer*> buffers,
+      std::vector<PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys,
+      std::vector<std::shared_ptr<Future<>::Promise>> promises);
 
   struct PrepareReceiveBufferResult {
     std::unique_ptr<PjRtBuffer> buffer;
@@ -220,11 +225,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   absl::StatusOr<PrepareReceiveBufferResult> PrepareReceiveBuffer(
       PjRtDevice* device, Shape shape);
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> CrossHostReceiveBuffer(
-      xla::Shape shape, xla::PjRtDevice* device,
-      PjRtGlobalDeviceId src_global_device_ids,
-      CrossHostTransferKey transfer_keys);
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

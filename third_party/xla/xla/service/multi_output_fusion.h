@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,7 +54,8 @@ namespace xla {
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion() = default;
+  explicit MultiOutputFusion(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -163,6 +165,8 @@ class MultiOutputFusion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  const AliasInfo* alias_info_;
+
  private:
   // The pair of candidates to be fused and the profit score.
   struct ToBeFused {
@@ -237,7 +241,7 @@ class MultiOutputFusion : public HloModulePass {
       all_fusion_candidates_;
 
   // Computation for the pass.
-  HloComputation* computation_;
+  HloComputation* computation_ = nullptr;
 };
 
 }  // namespace xla

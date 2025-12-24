@@ -91,6 +91,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
 #include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
+#include "xla/service/gpu/transforms/gemm_workspace_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -375,6 +376,11 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
                             thread_pool, should_autotune, target_config,
                             options.device_allocator));
   pipeline->AddPass(std::move(autotuner_pass));
+
+  // After autotuning, update GEMM workspace sizes to match the exact
+  // requirements of the selected algorithms, potentially reducing memory usage.
+  pipeline->AddPass<GemmWorkspaceRewriter>(gpu_version, stream_exec);
+
   return absl::OkStatus();
 }
 
@@ -636,7 +642,7 @@ NVPTXCompiler::CompileTargetBinary(
   } else {
     selected_module = llvm_module;
   }
-
+  const DebugOptions& debug_options = module_config.debug_options();
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -646,12 +652,13 @@ NVPTXCompiler::CompileTargetBinary(
         absl::StrCat(
             "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
-        !options.is_autotuning_compilation);
+        debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 module_config.debug_options()));
+                                 debug_options));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -659,7 +666,7 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   module_config.debug_options())) {
+                                   debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -683,9 +690,7 @@ NVPTXCompiler::CompileTargetBinary(
                       GetCompilationProvider(module_config.debug_options()));
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(
-          module_config.debug_options(),
-          /*is_autotuning_compilation=*/options.is_autotuning_compilation);
+      PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
@@ -697,7 +702,7 @@ NVPTXCompiler::CompileTargetBinary(
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("NVPTXCompiler::CompileTargetBinary - PtxToCubin for ",
                    module_name),
-      !options.is_autotuning_compilation);
+      debug_options.xla_enable_scoped_logging_timers());
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
   });
@@ -718,15 +723,18 @@ NVPTXCompiler::CompileTargetBinary(
                         compilation_provider->CompileToRelocatableModule(
                             cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{std::move(ptx),
-                                std::move(relocatable_module.cubin)};
+    return BackendCompileResult{
+        std::move(ptx), std::move(relocatable_module.cubin),
+        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
   }
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
-  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin)};
+  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
+                              /*dnn_compiled_graphs=*/{},
+                              std::move(assembly.module_stats)};
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
@@ -760,8 +768,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false);
+      PtxCompileOptionsFromDebugOptions(debug_options);
 
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "

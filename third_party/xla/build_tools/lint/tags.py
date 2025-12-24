@@ -48,6 +48,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "nomsan": "Disabled under msan. Not used on OpenXLA CI.",
     "notsan": "Disabled under tsan. Not used on OpenXLA CI",
     "nobuilder": "Not built internally.",
+    "nofixdeps": "Internal tag. Disables build_cleaner.",
     "nozapfhahn": "Internal tag. Disables gathering coverage",
     "optonly": "Should only be tested with -c opt",
     "nodebug": "Should not be tested in debug builds.",

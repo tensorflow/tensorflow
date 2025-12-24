@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -200,23 +200,23 @@ class CommandBuffer {
 
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(
-      DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
+      DeviceAddressBase* dst, const DeviceAddressBase& src, uint64_t size,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a device-to-device memory copy.
   virtual absl::Status UpdateMemcpyD2D(const Command* command,
-                                       DeviceMemoryBase* dst,
-                                       const DeviceMemoryBase& src,
+                                       DeviceAddressBase* dst,
+                                       const DeviceAddressBase& src,
                                        uint64_t size) = 0;
 
   // Creates a memset command.
   virtual absl::StatusOr<const Command*> CreateMemset(
-      DeviceMemoryBase* dst, BitPattern bit_pattern, size_t num_elements,
+      DeviceAddressBase* dst, BitPattern bit_pattern, size_t num_elements,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a memset command.
   virtual absl::Status UpdateMemset(const Command* command,
-                                    DeviceMemoryBase* dst,
+                                    DeviceAddressBase* dst,
                                     const BitPattern& bit_pattern,
                                     size_t num_elements) = 0;
 
@@ -226,13 +226,13 @@ class CommandBuffer {
 
   // Creates a DNN graph launch command.
   virtual absl::StatusOr<const Command*> CreateDnnGraphCommand(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands,
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a DNN graph command.
   virtual absl::Status UpdateDnnGraphCommand(
       const Command*, dnn::DnnGraph&, Stream&,
-      absl::Span<DeviceMemoryBase> operands) = 0;
+      absl::Span<DeviceAddressBase> operands) = 0;
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
@@ -245,20 +245,20 @@ class CommandBuffer {
   //
   // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
   virtual absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<int32_t> index, std::vector<CreateCommands> create_branches,
+      DeviceAddress<int32_t> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) = 0;
 
   virtual absl::StatusOr<const Command*> CreateCase(
-      DeviceMemory<bool> index, std::vector<CreateCommands> create_branches,
+      DeviceAddress<bool> index, std::vector<CreateCommands> create_branches,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a Case command.
   virtual absl::Status UpdateCase(
-      const Command* command, DeviceMemory<int32_t> index,
+      const Command* command, DeviceAddress<int32_t> index,
       std::vector<UpdateCommands> update_branches) = 0;
 
   virtual absl::Status UpdateCase(
-      const Command* command, DeviceMemory<bool> index,
+      const Command* command, DeviceAddress<bool> index,
       std::vector<UpdateCommands> update_branches) = 0;
 
   // Creates a conditional operation that will execute a command buffer
@@ -275,13 +275,13 @@ class CommandBuffer {
   //     cond_builder()
   //
   virtual absl::StatusOr<const Command*> CreateWhile(
-      DeviceMemory<bool> pred, CreateCommands create_cond,
+      DeviceAddress<bool> pred, CreateCommands create_cond,
       CreateCommands create_body,
       absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a While command.
   virtual absl::Status UpdateWhile(const Command* command,
-                                   DeviceMemory<bool> pred,
+                                   DeviceAddress<bool> pred,
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
 

@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -98,14 +100,14 @@ NormRunner& NormThunk::GetOrCreateRunner(
 absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
-  se::DeviceMemoryBase x_se_buffer =
+  se::DeviceAddressBase x_se_buffer =
       buffer_allocations.GetDeviceAddress(x_buffer_);
-  se::DeviceMemoryBase scale_se_buffer =
+  se::DeviceAddressBase scale_se_buffer =
       buffer_allocations.GetDeviceAddress(scale_buffer_);
-  se::DeviceMemoryBase y_or_dx_se_buffer =
+  se::DeviceAddressBase y_or_dx_se_buffer =
       buffer_allocations.GetDeviceAddress(y_or_dx_buffer_);
 
-  std::optional<se::DeviceMemoryBase> bias_se_buffer, expectation_se_buffer,
+  std::optional<se::DeviceAddressBase> bias_se_buffer, expectation_se_buffer,
       norm_factor_se_buffer, dy_se_buffer, dscale_se_buffer, dbias_se_buffer;
   if (bias_buffer_) {
     bias_se_buffer = buffer_allocations.GetDeviceAddress(bias_buffer_.value());
@@ -124,7 +126,7 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
         buffer_allocations.GetDeviceAddress(dbias_buffer_.value());
   }
 
-  se::DeviceMemoryBase scratch =
+  se::DeviceAddressBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   RunNormOptions opts;
@@ -148,6 +150,35 @@ absl::Status NormThunk::Initialize(const InitializeParams& params) {
       GetOrCreateRunner(params.stream).AsNormRunner();
   TF_ASSIGN_OR_RETURN(auto ln_config, config_.AsDnnNormOpConfig());
   return lazy_runner->GetOrCreateRunner(ln_config, params.stream).status();
+}
+
+Thunk::BufferUses NormThunk::buffer_uses() const {
+  Thunk::BufferUses res{
+      BufferUse::Read(x_buffer_),
+      BufferUse::Read(scale_buffer_),
+      BufferUse::Write(y_or_dx_buffer_),
+  };
+  res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
+                   BufferUse::ContentValidity::kUndefined);
+  if (bias_buffer_.has_value()) {
+    res.push_back(BufferUse::Read(*bias_buffer_));
+  }
+  if (expectation_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*expectation_buffer_));
+  }
+  if (norm_factor_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*norm_factor_buffer_));
+  }
+  if (dy_buffer_.has_value()) {
+    res.push_back(BufferUse::Read(*dy_buffer_));
+  }
+  if (dscale_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*dscale_buffer_));
+  }
+  if (dbias_buffer_.has_value()) {
+    res.push_back(BufferUse::Write(*dbias_buffer_));
+  }
+  return res;
 }
 
 absl::StatusOr<std::unique_ptr<NormThunk>> NormThunk::FromProto(

@@ -23,23 +23,23 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace stream_executor {
 
 namespace gpu {
 
-// Converts a const DeviceMemory reference to its underlying typed pointer in
+// Converts a const DeviceAddress reference to its underlying typed pointer in
 // CUDA device memory.
 template <typename T>
-const T* GpuMemory(const DeviceMemory<T>& mem) {
+const T* GpuMemory(const DeviceAddress<T>& mem) {
   return static_cast<const T*>(mem.opaque());
 }
 
-// Converts a (non-const) DeviceMemory pointer reference to its underlying typed
-// pointer in CUDA device memory.
+// Converts a (non-const) DeviceAddress pointer reference to its underlying
+// typed pointer in CUDA device memory.
 template <typename T>
-T* GpuMemoryMutable(DeviceMemory<T>* mem) {
+T* GpuMemoryMutable(DeviceAddress<T>* mem) {
   return static_cast<T*>(mem->opaque());
 }
 

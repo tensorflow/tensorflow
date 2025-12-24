@@ -61,7 +61,7 @@ class FusionInterface {
 // Interface for fusions that are implemented using cuda kernels.
 class KernelFusionInterface : public FusionInterface {
  public:
-  virtual ~KernelFusionInterface() = default;
+  ~KernelFusionInterface() override = default;
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
@@ -100,6 +100,10 @@ class KernelFusionInterface : public FusionInterface {
       const Shape& shape, mlir::MLIRContext* ctx);
 };
 
+void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
+void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
+                          llvm::Function& dst);
+
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& impl_fn_name, const std::string& unique_kernel_name,
@@ -107,15 +111,8 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
-    IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name,
-    LaunchDimensions& launch_dimensions,
-    const emitters::KernelArguments& arguments);
-
-// Compute the kernel name. The opcode string may contain "-" which cannot be
-// in a PTX function name, so sanitize the name before uniquifying it.
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name);
+    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

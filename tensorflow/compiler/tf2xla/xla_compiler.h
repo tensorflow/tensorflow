@@ -226,7 +226,7 @@ class XlaCompiler {
     // This must be a shared_ptr, as this is passed all the way down to the
     // cluster compilation. This allows asynchronous compilation to hold a
     // reference until the compilation is finished.
-    std::shared_ptr<se::DeviceMemoryAllocator> device_allocator;
+    std::shared_ptr<stream_executor::DeviceAddressAllocator> device_allocator;
 
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.

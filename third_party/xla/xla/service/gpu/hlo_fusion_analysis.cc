@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -181,6 +180,10 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
 
   if (fusion_roots[0].opcode() == HloOpcode::kScatter) {
     return HloFusionAnalysis::EmitterFusionKind::kScatter;
+  }
+
+  if (fusion_roots[0].opcode() == HloOpcode::kSort) {
+    return HloFusionAnalysis::EmitterFusionKind::kSort;
   }
 
   if (UseConcatenateFusion(fusion_roots, fusion_heroes)) {

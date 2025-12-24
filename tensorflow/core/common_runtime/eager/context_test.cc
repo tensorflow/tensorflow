@@ -50,7 +50,7 @@ using ::testing::HasSubstr;
 typedef FunctionDefHelper FDH;
 
 // Return a fake device.
-static Device* CreateDevice(const string& type, int n) {
+static Device* CreateDevice(const std::string& type, int n) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -99,7 +99,7 @@ class EagerContextTest : public ::testing::Test {
 
 TEST_F(EagerContextTest, CompositeDevice) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  std::vector<string> underlying_devices = {
+  std::vector<std::string> underlying_devices = {
       "/job:worker/replica:0/task:0/device:CPU:0",
       "/job:worker/replica:0/task:0/device:CPU:1"};
   CompositeDevice* composite_device_0 = nullptr;
@@ -134,10 +134,10 @@ TEST_F(EagerContextTest, CompositeDevice) {
 
 TEST_F(EagerContextTest, CompositeDeviceWithGivenName) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  const std::vector<string> underlying_devices_0 = {
+  const std::vector<std::string> underlying_devices_0 = {
       "/job:worker/replica:0/task:0/device:CPU:0",
       "/job:worker/replica:0/task:0/device:CPU:1"};
-  const string composite_device_name =
+  const std::string composite_device_name =
       "/job:worker1/replica:0/task:0/device:COMPOSITE:5";
   // Create a CompositeDevice with the given name.
   CompositeDevice* composite_device_0 = nullptr;
@@ -150,7 +150,7 @@ TEST_F(EagerContextTest, CompositeDeviceWithGivenName) {
       context()->FindCompositeDeviceFromName(composite_device_name, &device));
   EXPECT_EQ(device, composite_device_0);
 
-  std::vector<string> underlying_devices_1 = {
+  std::vector<std::string> underlying_devices_1 = {
       "/job:worker/replica:0/task:0/device:CPU:1",
       "/job:worker/replica:0/task:0/device:CPU:2"};
   // Find a CompositeDevice with the given name.

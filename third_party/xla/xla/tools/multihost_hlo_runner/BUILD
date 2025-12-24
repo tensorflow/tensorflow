@@ -197,7 +197,6 @@ cc_library(
         "//xla/tools:hlo_control_flow_flattening",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:fixed_option_set_flag",
         "@com_google_absl//absl/algorithm:container",
@@ -212,7 +211,6 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncExtensions",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
@@ -263,6 +261,9 @@ xla_test(
         "//xla/runtime/large_hlo_snapshot_serialization:serialization",
         "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tests:test_utils",
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -282,7 +283,7 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
-    ],
+    ] + if_cuda(["//xla/tsl/cuda:nvml"]),
 )
 
 tsl_pybind_extension(

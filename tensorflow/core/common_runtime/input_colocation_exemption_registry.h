@@ -40,20 +40,20 @@ class InputColocationExemptionRegistry {
   static InputColocationExemptionRegistry* Global();
 
   // Returns the set of ops exempt from the input colocation constraints.
-  const gtl::FlatSet<string>& Get() { return ops_; }
+  const gtl::FlatSet<std::string>& Get() { return ops_; }
 
   // Registers an op to be excluded from the input colocation constraints.
-  void Register(const string& op);
+  void Register(const std::string& op);
 
  private:
-  gtl::FlatSet<string> ops_;
+  gtl::FlatSet<std::string> ops_;
 };
 
 namespace input_colocation_exemption_registration {
 
 class InputColocationExemptionRegistration {
  public:
-  explicit InputColocationExemptionRegistration(const string& op) {
+  explicit InputColocationExemptionRegistration(const std::string& op) {
     InputColocationExemptionRegistry::Global()->Register(op);
   }
 };

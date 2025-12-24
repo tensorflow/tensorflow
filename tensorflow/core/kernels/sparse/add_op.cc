@@ -93,19 +93,19 @@ class CSRSparseMatrixAddFunctor {
 
     Tensor c_batch_ptr_t(cpu_allocator(), DT_INT32,
                          TensorShape({batch_size + 1}));
-    auto c_batch_ptr = c_batch_ptr_t.vec<int32>();
+    auto c_batch_ptr = c_batch_ptr_t.vec<int32_t>();
     c_batch_ptr(0) = 0;
 
     Tensor c_row_ptr_t;
     TF_RETURN_IF_ERROR(ctx_->allocate_temp(
         DT_INT32, TensorShape({batch_size * (rows + 1)}), &c_row_ptr_t));
-    auto c_row_ptr = c_row_ptr_t.vec<int32>();
+    auto c_row_ptr = c_row_ptr_t.vec<int32_t>();
 
     // Set the output row pointers to zero, in case we hit any empty
     // combinations of rows in a and b.
-    functor::SetZeroFunctor<Device, int32> set_zero;
+    functor::SetZeroFunctor<Device, int32_t> set_zero;
     const Device& d = ctx_->eigen_device<Device>();
-    set_zero(d, c_row_ptr_t.flat<int32>());
+    set_zero(d, c_row_ptr_t.flat<int32_t>());
 
     size_t maxWorkspaceSize = 0;
     for (int i = 0; i < batch_size; ++i) {
@@ -125,7 +125,7 @@ class CSRSparseMatrixAddFunctor {
     Tensor temp;
     TF_RETURN_IF_ERROR(ctx_->allocate_temp(
         DT_INT8, TensorShape({static_cast<int64_t>(maxWorkspaceSize)}), &temp));
-    void* workspace = temp.flat<int8>().data();
+    void* workspace = temp.flat<int8_t>().data();
 
     for (int i = 0; i < batch_size; ++i) {
       // Calculate output sizes for all minibatch entries.
@@ -138,8 +138,8 @@ class CSRSparseMatrixAddFunctor {
                                   a.values_vec<T>(i), a_dense_shape};
       ConstCSRComponent<T> b_comp{b.row_pointers_vec(i), b.col_indices_vec(i),
                                   b.values_vec<T>(i), b_dense_shape};
-      TTypes<int32>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
-                                              rows + 1);
+      TTypes<int32_t>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
+                                                rows + 1);
       int c_nnz_i;
       TF_RETURN_IF_ERROR(csr_geam.GetOutputStructure(
           a_comp, b_comp, c_row_ptr_i, &c_nnz_i, workspace));
@@ -281,17 +281,18 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         beta_(beta),
         initialized_(false) {}
 
-  Status Initialize() {
+  absl::Status Initialize() {
     TF_RETURN_IF_ERROR(cuda_sparse_.Initialize());
     TF_RETURN_IF_ERROR(descrA_.Initialize());
     TF_RETURN_IF_ERROR(descrB_.Initialize());
     TF_RETURN_IF_ERROR(descrC_.Initialize());
     initialized_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
-                          const ConstCSRComponent<T>& b, size_t* bufferSize) {
+  absl::Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                                const ConstCSRComponent<T>& b,
+                                size_t* bufferSize) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -313,13 +314,13 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), null_T, null_int,
         null_int, bufferSize));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status GetOutputStructure(const ConstCSRComponent<T>& a,
-                            const ConstCSRComponent<T>& b,
-                            TTypes<int32>::UnalignedVec c_row_ptr,
-                            int* output_nnz, void* workspace) {
+  absl::Status GetOutputStructure(const ConstCSRComponent<T>& a,
+                                  const ConstCSRComponent<T>& b,
+                                  TTypes<int32_t>::UnalignedVec c_row_ptr,
+                                  int* output_nnz, void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -343,11 +344,12 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
       return errors::Internal(
           "CSRAdd: CsrgeamNnz returned nnzTotalDevHostPtr < 0: ", *output_nnz);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
-                 CSRComponent<T>* c, void* workspace) {
+  absl::Status Compute(const ConstCSRComponent<T>& a,
+                       const ConstCSRComponent<T>& b, CSRComponent<T>* c,
+                       void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -368,7 +370,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
         b.row_ptr.data(), b.col_ind.data(), descrC_.descr(), c->values.data(),
         c->row_ptr.data(), c->col_ind.data(), workspace));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

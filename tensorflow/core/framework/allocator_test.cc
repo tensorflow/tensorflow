@@ -210,7 +210,7 @@ TEST(CPUAllocatorTest, Sizes) {
 
 TEST(CPUAllocatorTest, ProfilerReporting) {
   // TODO(b/196611863): Make debugging work even without GetAllocatedSize.
-  void* p = port::AlignedMalloc(8, 1);
+  void* p = tsl::port::AlignedMalloc(8, static_cast<std::align_val_t>(1));
   const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
   port::AlignedFree(p);
   if (alloc_size == 0) {

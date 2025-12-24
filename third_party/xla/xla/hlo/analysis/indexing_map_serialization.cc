@@ -39,10 +39,10 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {

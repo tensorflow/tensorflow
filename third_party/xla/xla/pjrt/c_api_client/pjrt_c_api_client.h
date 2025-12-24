@@ -54,9 +54,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
@@ -171,13 +174,10 @@ class PjRtCApiDevice : public PjRtDevice {
       absl::string_view kind) const override;
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
-      absl::string_view description) const override {
-    LOG(FATAL)
-        << "PJRT C API does not support CreateAsyncTrackingEvent. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
-           "need this feature.";
-    return nullptr;
-  }
+      absl::string_view description) const override;
+
+  absl::StatusOr<bool> PoisonExecution(int32_t launch_id,
+                                       absl::Status error) override;
 
   PJRT_Device* c_device() const { return device_; }
 
@@ -313,11 +313,25 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 
+  const std::string platform_version_;
   const std::string platform_name_;
   const PjRtPlatformId platform_id_;
 
   // Initializes device specific attributes.
   void InitAttributes();
+};
+
+class PjRtCApiAsyncTrackingEvent : public ScopedAsyncTrackingEvent {
+ public:
+  PjRtCApiAsyncTrackingEvent(const PJRT_Api* c_api,
+                             PJRT_AsyncTrackingEvent* event);
+  ~PjRtCApiAsyncTrackingEvent() override;
+
+  void AddDependency(tsl::RCReference<tsl::AsyncValue> dependency) override;
+
+ private:
+  const PJRT_Api* c_api_;
+  PJRT_AsyncTrackingEvent* event_;
 };
 
 class PjRtCApiClient : public PjRtClient {
@@ -549,6 +563,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
   Future<> CopyRawToHost(void* dst, int64_t offset,
                          int64_t transfer_size) override;
 
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
+
   void Delete() override;
 
   absl::StatusOr<std::unique_ptr<ExternalReference>>
@@ -556,6 +573,9 @@ class PjRtCApiBuffer : public PjRtBuffer {
     return Unimplemented(
         "PJRT C API does not support ReleaseDeviceMemoryOwnership");
   }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      Future<> dependency) override;
 
   bool IsDeleted() const override;
 
@@ -639,11 +659,7 @@ class PjRtCApiExecutable : public PjRtExecutable {
     return pjrt::GetCompiledMemoryStats(c_api_, executable_.get());
   }
 
-  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
-    LOG(FATAL) << "PjRtExecutable::GetOutputShapes() not implemented in PJRT C "
-                  "API. Please use PjRtExecutable::GetOutputElementTypes() or "
-                  "PjRtExecutable::GetOutputDimensions().";
-  }
+  absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override;
 
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
   GetOutputElementTypes() const override;
@@ -666,6 +682,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   // TODO(b/438000615): Move this to PjRtLoadedExecutable.
   absl::StatusOr<std::string> GetSerializedExecutableMetadata() const;
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override;
 
  private:
   const PJRT_Api* c_api_;
@@ -719,10 +737,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
-    LOG(FATAL)
-        << "PjRtLoadedExecutable::GetOutputShapes() not implemented in PJRT C "
-           "API. Please use PjRtLoadedExecutable::GetOutputElementTypes() or "
-           "PjRtLoadedExecutable::GetOutputDimensions().";
+    return executable_->GetOutputShapes();
   }
 
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
@@ -743,6 +758,10 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return executable_->GetOutputMemoryKinds();
+  }
+
+  absl::StatusOr<CompileOptions> GetCompileOptions() const override {
+    return executable_->GetCompileOptions();
   }
 
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

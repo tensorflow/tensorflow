@@ -8,10 +8,10 @@
 
 func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x8x128xbf16, #triton_xla.layout<[2, 1, 0]>>
+      as memref<512x8x128xbf16, #xtile.layout<[2, 1, 0]>>
       [0, 3, 0] [16, 1, 64] [1, 1, 1] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x16x256xbf16, #triton_xla.layout<[2, 1, 0]>>
+      as memref<256x16x256xbf16, #xtile.layout<[2, 1, 0]>>
       [0, 5, 0] [16, 1, 64] [1, 1, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -34,10 +34,10 @@ func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 
 func.func @non_perfect_tile_shape(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-    as memref<300x300xbf16, #triton_xla.layout<[1, 0]>>
+    as memref<300x300xbf16, #xtile.layout<[1, 0]>>
     [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-    as memref<300x300xbf16, #triton_xla.layout<[1, 0]>>
+    as memref<300x300xbf16, #xtile.layout<[1, 0]>>
     [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
   func.return
 }
@@ -50,10 +50,10 @@ func.func @non_perfect_tile_shape(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 
 func.func @incompatible_tma_global_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<234x234xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<234x234xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<123x123xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<123x123xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -74,13 +74,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<64xf32, #triton_xla.layout<[0]>>
+        as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    triton_xla.insert %5 into %arg1 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %5 into %arg1 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
-    triton_xla.insert %4 into %arg2 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %4 into %arg2 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     func.return
   }
@@ -103,13 +103,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<64xf32, #triton_xla.layout<[0]>>
+        as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    triton_xla.insert %5 into %arg1 as memref<63xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %5 into %arg1 as memref<63xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
-    triton_xla.insert %4 into %arg2 as memref<64xf32, #triton_xla.layout<[0]>>
+    triton_xla.insert %4 into %arg2 as memref<64xf32, #xtile.layout<[0]>>
         [%3][32][1] : tensor<32xf32>
     func.return
   }
@@ -125,10 +125,10 @@ module {
 func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
                           %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<1024x1024xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<1024x1024xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [2, 2] : tensor<16x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [16, 64] [1, 1] : tensor<16x64xbf16>
   func.return
 }
@@ -141,10 +141,10 @@ func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
 
 func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<128xbf16, #triton_xla.layout<[0]>>
+      as memref<128xbf16, #xtile.layout<[0]>>
       [0] [16] [1] : tensor<16xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256xbf16, #triton_xla.layout<[0]>>
+      as memref<256xbf16, #xtile.layout<[0]>>
       [0] [16] [1] : tensor<16xbf16>
   func.return
 }
@@ -167,10 +167,10 @@ func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 
 func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<16x16x16x16x16xbf16, #triton_xla.layout<[4, 3, 2, 1, 0]>>
+      as memref<16x16x16x16x16xbf16, #xtile.layout<[4, 3, 2, 1, 0]>>
       [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1] : tensor<8x8x8x8x8xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<32x32x32x32x32xbf16, #triton_xla.layout<[4, 3, 2, 1, 0]>>
+      as memref<32x32x32x32x32xbf16, #xtile.layout<[4, 3, 2, 1, 0]>>
       [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1] : tensor<8x8x8x8x8xbf16>
   func.return
 }
@@ -193,10 +193,10 @@ func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 
 func.func @extract_insert_with_zero_stride(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<512x128xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   func.return
 }
@@ -210,10 +210,10 @@ func.func @extract_insert_with_zero_stride(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<
 func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
           %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract from %arg0
-      as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<512x128xbf16, #xtile.layout<[1, 0]>>
       [0, 15] [1, 64] [1, 1] : tensor<1x64xbf16>
   triton_xla.insert %extracted_tensor into %arg1
-      as memref<256x256xbf16, #triton_xla.layout<[1, 0]>>
+      as memref<256x256xbf16, #xtile.layout<[1, 0]>>
       [0, 0] [1, 64] [0, 1] : tensor<1x64xbf16>
   func.return
 }
@@ -235,13 +235,13 @@ module {
     %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
-        as memref<16x16xbf16, #triton_xla.layout<[1, 0]>>
+        as memref<16x16xbf16, #xtile.layout<[1, 0]>>
         [0, %3] [16, 16] [1, 1] : tensor<16x16xbf16>
     %4 = tt.reshape %extracted_tile : tensor<16x16xbf16> -> tensor<16x1x16xbf16>
     %5 = xla.apply_indexing #indexing_map1(%2)
     %6 = xla.apply_indexing #indexing_map2(%2)
     triton_xla.insert %4 into %arg1
-        as memref<16x1x16xbf16, #triton_xla.layout<[2, 1, 0]>>
+        as memref<16x1x16xbf16, #xtile.layout<[2, 1, 0]>>
         [0, %5, %6] [16, 1, 16] [1, 1, 1] : tensor<16x1x16xbf16>
     func.return
   }
@@ -257,17 +257,17 @@ func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
           %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
   %cst = arith.constant dense<0.000000e+00> : tensor<64x64xf32>
   %extracted_tile = triton_xla.extract from %arg0 as
-      memref<64xf32, #triton_xla.layout<[0]>> [0] [64] [1] : tensor<64xf32>
+      memref<64xf32, #xtile.layout<[0]>> [0] [64] [1] : tensor<64xf32>
   %0 = tt.expand_dims %extracted_tile {axis = 1 : i32}
       : tensor<64xf32> -> tensor<64x1xf32>
   %1 = tt.broadcast %0 : tensor<64x1xf32> -> tensor<64x64xf32>
   %extracted_tile_0 = triton_xla.extract from %arg1 as
-      memref<64x64xf32, #triton_xla.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
       : tensor<64x64xf32>
   %2 = tt.dot %1, %extracted_tile_0, %cst, inputPrecision = tf32
       : tensor<64x64xf32> * tensor<64x64xf32> -> tensor<64x64xf32>
   triton_xla.insert %2 into %arg2 as
-      memref<64x64xf32, #triton_xla.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
+      memref<64x64xf32, #xtile.layout<[1, 0]>> [0, 0] [64, 64] [1, 1]
       : tensor<64x64xf32>
   return
 }

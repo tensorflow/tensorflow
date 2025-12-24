@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/instruction_fusion.h"
@@ -52,6 +53,7 @@ class GpuFusibleTest : public HloHardwareIndependentTestBase {
  public:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(device_description_, MakeDeviceDescription());
+    alias_info_ = std::make_unique<GpuAliasInfo>(device_description_);
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
@@ -70,7 +72,7 @@ class GpuFusibleTest : public HloHardwareIndependentTestBase {
 
   FusionDecision IsProducerMultiOutputFusible(
       const HloInstruction& producer) const {
-    return ::xla::gpu::IsProducerMultiOutputFusible(producer,
+    return ::xla::gpu::IsProducerMultiOutputFusible(producer, alias_info_.get(),
                                                     device_description_);
   }
 
@@ -97,6 +99,7 @@ class GpuFusibleTest : public HloHardwareIndependentTestBase {
 
  private:
   se::DeviceDescription device_description_;
+  std::unique_ptr<GpuAliasInfo> alias_info_;
 };
 
 const char kModulePrefix[] = R"(

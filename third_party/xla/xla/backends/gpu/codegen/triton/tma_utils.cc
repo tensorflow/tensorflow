@@ -139,16 +139,33 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
                              GetTmaSwizzleMode(swizzle_mode));
 }
 
+// The current recommendation is based on analyzing the E2E "Nucleo" group
+// data. It might make sense to re-evaluate this recommendation later if we
+// believe there are missed opportunities.
 bool IsTmaRecommended(const TritonGemmConfig& config) {
-  // The current recommendation is based on analyzing the E2E "Nucleo" group
-  // data. It might make sense to re-evaluate this recommendation later if we
-  // believe there are missed opportunities.
   return (config.split_k == 1 || config.split_k == 16) &&
          config.num_warps <= 8 &&
          (config.num_stages == 1 || config.num_stages == 3 ||
           config.num_stages == 4) &&
          config.block_m <= 256 && config.block_n <= 256 &&
          config.block_k <= 256;
+}
+
+// Equivalent to the recommendation constructed for TritonGemmConfig.
+bool IsTmaRecommended(const BlockLevelFusionConfig& config) {
+  if (!(config.num_warps() <= 8 &&
+        (config.num_stages() == 1 || config.num_stages() == 3 ||
+         config.num_stages() == 4))) {
+    return false;
+  }
+  for (const auto& tile : config.output_tiles()) {
+    for (const auto& dim : tile.sizes()) {
+      if (dim > 256) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace xla::gpu

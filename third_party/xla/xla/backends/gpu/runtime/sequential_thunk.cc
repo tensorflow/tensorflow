@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -99,13 +100,13 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
       continue;
     }
 
-    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
-            << "Start SequentialThunk::ExecuteOnStream: "
-            << thunk->profile_annotation();
+    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+        << "Start SequentialThunk::ExecuteOnStream: "
+        << thunk->profile_annotation();
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
-    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
-            << "End SequentialThunk::ExecuteOnStream: "
-            << thunk->profile_annotation();
+    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+        << "End SequentialThunk::ExecuteOnStream: "
+        << thunk->profile_annotation();
   }
   return absl::OkStatus();
 }

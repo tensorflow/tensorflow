@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
-#include <array>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,79 +26,48 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
+#include "llvm/IR/Module.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/llvm_ir/ir_array.h"
-#include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape_util.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-// Emits LLVM IR for an "unnested computation".
-//
-// An unnested computation is an HloComputation which you run by executing one
-// or more kernels for each HloInstruction it contains.  Examples of unnested
-// computations:
-//
-//  - An HloModule's root computation,
-//  - The body of an HLO while loop,
-//  - The true/false computation of an HLO conditional.
-//
-// Note the opportunity for confusion -- the while loop's computation is nested
-// within the root computation, but it's emitted using ThunkEmitter!  Don't
-// think about it too hard.
-//
-// Examples of things that are not unnested computations:
-//
-//  - The body of a fusion node.  ThunkEmitter emits the relevant code
-//    within a kernel function using FusedIrEmitter.  (FusedIrEmitter is not
-//    really an IrEmitter, but is more an "IR generator generator".)
-//
-class ThunkEmitter : public IrEmitter {
+// Emits Thunks for the given HLO module.
+class ThunkEmitter {
  public:
   absl::string_view platform_name() const {
     return ir_emitter_context_->platform_name();
   }
 
-  using ValueVector3 = std::array<llvm::Value*, 3>;
-  using ValueVector2 = std::array<llvm::Value*, 2>;
-
-  using ConstantGenerator = std::function<llvm::Value*(int64_t)>;
-
+  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
-  static std::unique_ptr<ThunkEmitter> Create(
-      IrEmitterContext* ir_emitter_context);
+  absl::StatusOr<std::unique_ptr<SequentialThunk>> EmitHloEntryComputation(
+      const HloModule* module);
 
-  // Transfers the ownership of thunk_sequence_ out.
-  std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
-      Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
-    return std::make_unique<SequentialThunk>(thunk_info,
-                                             std::move(thunk_sequence_));
+  llvm::Module* constants_module() { return constants_module_.get(); }
+  std::unique_ptr<llvm::Module> ConsumeConstantsModule() {
+    return std::move(constants_module_);
+  }
+  std::vector<std::unique_ptr<llvm::Module>> ConsumeKernelModules() {
+    return std::move(kernel_modules_);
   }
 
-  absl::Status EmitHloEntryComputation(const HloModule* module);
-
  private:
-  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
-
   // Emits code for the given HLO computation.
   //
   // Also populates related information to 'ir_emitter_context_' for
@@ -108,231 +75,148 @@ class ThunkEmitter : public IrEmitter {
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  absl::Status EmitHloComputation(const HloComputation* computation);
+  absl::StatusOr<ThunkSequence> EmitHloComputation(
+      const HloComputation* computation);
 
-  absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitHloInstruction(
+      const HloInstruction* hlo, bool emit_group_thunks = false);
 
-  // ThunkEmitter handles the following instructions differently from
-  // IrEmitter. It also mixes in some special handling for custom kernels
-  // via the ThunkEmitter.
-  absl::Status EmitConstant(const HloConstantInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncStart(const HloInstruction* hlo);
 
-  absl::Status EmitConditional(const HloInstruction* instr);
-  absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
-  absl::Status EmitConvolutionReorderThunk(
-      const HloCustomCallInstruction* instr);
-  absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitCuDnnThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitPtxCustomCall(const HloCustomCallInstruction* instr);
-  absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
-  absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFftThunk(const HloFftInstruction* instr);
-  absl::Status EmitAsyncComputation(const HloInstruction* instr);
-  absl::Status EmitFusion(const HloFusionInstruction* instr);
-  absl::Status EmitCopy(const HloInstruction* instr);
-  absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
-  absl::Status EmitWhile(const HloInstruction* instr);
-  absl::Status EmitInfeed(const HloInfeedInstruction* instr);
-  absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);
-  absl::Status EmitRngGetAndUpdateState(
-      const HloRngGetAndUpdateStateInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncComputation(const HloInstruction* hlo);
 
-  absl::Status EmitSort(const HloSortInstruction* sort);
-  absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
-  absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
-  absl::Status EmitTritonCustomCall(const HloCustomCallInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncCustomCallStart(
+      const HloInstruction* hlo);
 
-  absl::Status EmitSendThunk(const HloSendInstruction* instr);
-  absl::Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitAsyncDone(const HloInstruction* hlo);
 
-  absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
-  absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitCommandBufferThunk(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectiveAsyncDone(
+      Thunk::Kind kind, const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
+      const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCollectivePermute(
+      const HloCollectivePermuteInstruction* hlo);
 
   template <typename CollectiveThunkType, typename HloInstType>
-  absl::Status EmitCollectiveThunk(Thunk::Kind kind,
-                                   const HloInstruction* async_start,
-                                   const HloInstType* inst,
-                                   std::optional<bool> use_global_device_ids);
+  absl::StatusOr<ThunkSequence> EmitCollectiveThunk(
+      Thunk::Kind kind, const HloInstruction* async_start,
+      const HloInstType* inst, std::optional<bool> use_global_device_ids);
 
-  absl::Status EmitCollectiveAsyncDone(Thunk::Kind kind,
-                                       const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitConditional(const HloInstruction* hlo);
 
-  template <typename NvshmemAllReduceThunkType,
-            typename HloAllReduceInstruction>
-  absl::Status EmitNvshmemThunk(Thunk::Kind kind,
-                                const HloInstruction* async_start,
-                                const HloAllReduceInstruction* inst,
-                                std::optional<bool> use_global_device_ids);
+  absl::StatusOr<ThunkSequence> EmitConstant(const HloConstantInstruction* hlo);
 
-  absl::Status EmitNvshmemAsyncDone(Thunk::Kind kind,
-                                    const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitConvolutionReorderThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitConvolutionThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopy(const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopyStartThunk(
+      const HloCopyStartInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCopyDoneThunk(const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCuDnnThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCubDeviceRadixSort(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCublasLtMatmulThunkF8(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitCustomCallThunk(
+      const HloCustomCallInstruction* hlo);
 
   template <typename HloInstType>
-  absl::Status EmitDegeneratedCollectiveThunk(
+  absl::StatusOr<ThunkSequence> EmitDegeneratedCollectiveThunk(
       std::vector<CollectiveThunk::Buffer>& buffers,
       const HloInstruction* async_start, const HloInstType* inst);
 
+  absl::StatusOr<ThunkSequence> EmitFusion(const HloFusionInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitFftThunk(const HloFftInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitGemmThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitInfeed(const HloInfeedInstruction* hlo);
+
+  template <typename NvshmemAllReduceThunkType,
+            typename HloAllReduceInstruction>
+  absl::StatusOr<ThunkSequence> EmitNvshmemThunk(
+      Thunk::Kind kind, const HloInstruction* async_start,
+      const HloAllReduceInstruction* inst,
+      std::optional<bool> use_global_device_ids);
+
+  absl::StatusOr<ThunkSequence> EmitNvshmemAsyncDone(Thunk::Kind kind,
+                                                     const HloInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitNormThunk(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitOutfeed(const HloOutfeedInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitPadToStatic(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitPtxCustomCall(
+      const HloCustomCallInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitRecvDoneThunk(
+      const HloRecvDoneInstruction* hlo);
+
+  absl::StatusOr<ThunkSequence> EmitRecvThunk(const HloRecvInstruction* hlo,
+                                              bool emit_group_thunks);
+
   template <typename ThunkType>
-  absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitReplicaOrPartitionId(
+      const HloInstruction* hlo);
 
-  absl::Status EmitCollectiveMetadata(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateState(
+      const HloRngGetAndUpdateStateInstruction* hlo);
 
-  absl::Status EmitCollectivePermute(
-      const HloCollectivePermuteInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSliceToDynamic(
+      const HloCustomCallInstruction* hlo);
 
-  absl::Status EmitCopyStartThunk(const HloCopyStartInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSendDoneThunk(
+      const HloSendDoneInstruction* hlo);
 
-  absl::Status EmitCopyDoneThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* hlo,
+                                              bool emit_group_thunks);
 
-  absl::Status EmitHloInstruction(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
 
-  absl::Status EmitCollectiveGroupStartThunk(const HloInstruction* instr);
+  absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
+      const HloCustomCallInstruction* hlo);
 
-  absl::Status EmitTargetElementLoop(
-      const HloInstruction& hlo,
-      const llvm_ir::ElementGenerator& body_emitter) override;
+  absl::StatusOr<ThunkSequence> EmitTriangularSolveCustomCall(
+      const HloInstruction* hlo);
 
-  // Add a owning Thunk object to the thunk sequence.
-  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
-    if (emit_group_thunks_) {
-      scoped_thunk_sequence_.emplace_back(std::move(thunk));
-      return;
-    }
-    thunk_sequence_.emplace_back(std::move(thunk));
-  }
+  absl::StatusOr<ThunkSequence> EmitTritonCustomCall(
+      const HloCustomCallInstruction* hlo);
 
-  // Load data from potentially unaligned address. If address is offset by
-  // `alignment_bytes`, data is read in the unit of `alignment_bytes` to avoid
-  // memory read misalignment in CUDA; otherwise, the entire data are loaded
-  // from the given memory address.
-  //
-  //   address: the memory address to load data from.
-  //   data_type: the type of data to load.
-  //   alignment_bytes: the number of bytes required to align. The number of
-  //     bytes of the data_type must be divisible by alignment_bytes.
-  llvm::Value* CreateLoad(llvm::Value* address, llvm::Type* data_type,
-                          int alignment_bytes);
-
-  // Store data at a potentially unaligned address. If the address is offset by
-  // `alignment_bytes`, data is stored in the unit of `alignment_bytes` to avoid
-  // memory write misalignment in CUDA; otherwise, the entire data is stored at
-  // the given memory address.
-  //
-  //   data: the data to be stored.
-  //   address: the memory address to store data.
-  //   alignment_bytes: the number of bytes required to align. The number of
-  //     bytes of the data_type must be divisible by alignment_bytes.
-  void CreateStore(llvm::Value* data, llvm::Value* address,
-                   int alignment_bytes);
-
-  // Input = {static array, dynamic_dim0, dynamic_dim1}
-  // Output = {dynamic array(with dynamic dimension meta data at the end)}
-  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
-  // (`_` stands for padding)
-  // Input = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
-  // Output = {{1,2,3,4,5,6,_,_,_,_,2,3}}
-
-  // pseudo code for padToStatic on a 2d array
-  //   ```
-  // void padToStatic(int** input, int** output, int threads_per_block,
-  //                  int meta_data_offset, int max_num_element,
-  //                  int static_dim0_size, int static_dim1_size) {
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-
-  //   // extract the dynamic dimension from the source array's metadata
-  //   int* dyn_dim0_size = source_array + meta_data_offset;
-  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
-
-  //   // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *output[1] = *dyn_dim0_size;
-  //     *output[2] = *dyn_dim1_size;
-  //   }
-
-  //   int dyn_element_total = 1;
-  //   dyn_element_total *= *dyn_dim0_size;
-  //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
-  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
-  //           source_array[static_index.dim0][static_index.dim1];
-  //     }
-  //   }
-  //   return;
-  // }
-  //   ```
-  absl::Status EmitPadToStatic(const HloCustomCallInstruction* instr);
-
-  // Input = {dynamic array(with dynamic dimension meta data at the end)}
-  // Output = {static array, dynamic_dim0, dynamic_dim1}
-  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
-  // (`_` stands for padding)
-  // Input = {{1,2,3,4,5,6,_,_,_,_,2,3}}
-  // Output = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
-
-  // pseudo code for sliceToDynamic on a 2d array
-  //   ```
-  // void sliceToDynamic(int** input, int** output, int threads_per_block,
-  //                  int meta_data_offset, int max_num_element,
-  //                  int static_dim0_size, int static_dim1_size) {
-  //   int* source_array = input[0];
-  //   int* dest_array = output[0];
-
-  //   // calculate the location where metadata needs to be inserted
-  //   int* dyn_dim0_size = dest_array + meta_data_offset;
-  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
-
-  //   // only one thread need to store the dynamic index
-  //   int thread_id = GetThreadId();
-  //   int block_id = GetBlockId();
-  //   if (thread_id == 0 && block_id == 0) {
-  //     *dyn_dim0_size = *output[1];
-  //     *dyn_dim1_size = *output[2];
-  //   }
-
-  //   int dyn_element_total = 1;
-  //   dyn_element_total *= *dyn_dim0_size;
-  //   dyn_element_total *= *dyn_dim1_size;
-  //   linear_index = block_id * threads_per_block + thread_id;
-  //   if (linear_index < max_num_element) {
-  //     Index static_index =
-  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
-  //     if (linerized_index < dyn_element_total) {
-  //       Index dyn_index =
-  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
-  //       dest_array[static_index.dim0][static_index.dim1] =
-  //           source_array[dyn_index.dim0][dyn_index.dim1];
-  //     }
-  //   }
-  //   return;
-  // }
-  //   ```
-  absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
-
-  absl::StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
-      llvm::Module* llvm_module, const HloInstruction* instr,
-      const LaunchDimensions& launch_dimensions);
-
-  // Returns a WhileThunk that invokes thunk sequences for 'condition' and
-  // 'body' sub-computations of while instruction.
-  absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
-      const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info,
-      std::optional<int64_t> trip_count);
+  absl::StatusOr<ThunkSequence> EmitWhile(const HloInstruction* hlo);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
+      const HloInstruction* instr, const ShapeIndex& index = {}) const;
+  absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
   CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
@@ -343,11 +227,7 @@ class ThunkEmitter : public IrEmitter {
   GetInstructionToHostExecuteAsyncEvents() {
     return ir_emitter_context_->instruction_to_host_execute_async_events();
   }
-
-  // The thunk sequence this IrEmitter generates for the input computation.
-  ThunkSequence thunk_sequence_;
-  ThunkSequence scoped_thunk_sequence_;
-  bool emit_group_thunks_ = false;
+  IrEmitterContext* ir_emitter_context_;
 
   // Container for async host send/recv events shared by host send/recv thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
@@ -360,9 +240,14 @@ class ThunkEmitter : public IrEmitter {
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;
+
+  // Module with constants.
+  std::unique_ptr<llvm::Module> constants_module_;
+
+  // Modules for each emitted kernel.
+  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_THUNK_EMITTER_H_

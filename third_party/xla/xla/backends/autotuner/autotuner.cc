@@ -57,6 +57,8 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -314,7 +316,8 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
         absl::StrCat("Autotuner could not find any supported configs for HLO: ",
                      instr->ToString()));
   }
-  VLOG(1) << "Found " << supported_configs.size() << " supported configs.";
+  VLOG(1) << "Found total of " << supported_configs.size()
+          << " supported configs.";
 
   std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables =
       CompileAll(instr, supported_configs);
@@ -329,6 +332,17 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
               << supported_configs[i].ToString()
               << " with status: " << executables[i].status();
     }
+  }
+
+  if (autotune_config_.exclude_cublas_config) {
+    executable_candidates.erase(
+        std::remove_if(executable_candidates.begin(),
+                       executable_candidates.end(),
+                       [](const ExecutableCandidate& candidate) {
+                         return candidate.config.codegen_backend->name() ==
+                                "Cublas_fission";
+                       }),
+        executable_candidates.end());
   }
 
   if (executable_candidates.empty()) {
@@ -411,8 +425,13 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
     absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
         per_backend_configs = codegen_backend->GetSupportedConfigs(*instr);
     if (!per_backend_configs.ok()) {
+      VLOG(3) << "Failed to get supported configs for backend "
+              << codegen_backend->name() << ": "
+              << per_backend_configs.status();
       continue;
     }
+    VLOG(3) << "Found of " << per_backend_configs->size()
+            << " supported configs for backend " << codegen_backend->name();
     for (auto& config : *per_backend_configs) {
       configs.push_back({codegen_backend.get(), std::move(config)});
     }
@@ -422,6 +441,28 @@ absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
 
 std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
     HloInstruction* instr, std::vector<Config>& configs) {
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("CompileAll", 5);
+  tsl::profiler::TraceMe traceme("CompileAll");
+  tsl::profiler::ScopedAnnotation annotation("XlaAutotunerCompilation");
+
+  if (autotune_config_.select_first_config) {
+    std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
+    for (int i = 0; i < configs.size(); ++i) {
+      absl::StatusOr<std::unique_ptr<Executable>> executable =
+          configs[i].codegen_backend->Compile(*instr,
+                                              *configs[i].backend_config);
+      if (executable.ok()) {
+        std::vector<absl::StatusOr<std::unique_ptr<Executable>>> success_result;
+        success_result.push_back(std::move(executable));
+        Config selected_config = std::move(configs[i]);
+        configs.clear();
+        configs.push_back(std::move(selected_config));
+        return success_result;
+      }
+    }
+    return executables;
+  }
+
   if (thread_pool_ == nullptr) {
     std::vector<absl::StatusOr<std::unique_ptr<Executable>>> executables;
     executables.reserve(configs.size());
@@ -458,6 +499,7 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
   std::optional<ScopedShapedBuffer> reference_output;
   if (autotune_config_.check_buffers) {
+    VLOG(2) << "Checking buffers";
     reference_output = GetReferenceOutput(candidates, *input_buffers);
     if (!reference_output.has_value()) {
       LOG(WARNING) << "No reference output found even though buffer checking "
@@ -496,15 +538,6 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
-  if (autotune_config_.exclude_cublas_config) {
-    results.erase(
-        std::remove_if(results.begin(), results.end(),
-                       [](const ConfigResult& result) {
-                         return result.config.codegen_backend->name() ==
-                                "Cublas_fission";
-                       }),
-        results.end());
-  }
 
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
@@ -573,6 +606,8 @@ std::optional<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
       continue;
     }
     if (profile_result.value().output_buffer.has_value()) {
+      VLOG(2) << "Found reference output for config: "
+              << candidate.config.ToString();
       return std::move(profile_result.value().output_buffer.value());
     }
   }
@@ -698,6 +733,30 @@ AutotuneResult Autotuner::ConfigResult::ToProto() const {
 std::string Autotuner::Config::ToString() const {
   return absl::StrFormat("%s : %s", codegen_backend->name(),
                          UnpackedAnyShortDebugString(*backend_config));
+}
+
+std::string AutotuneConfig::ToString() const {
+  return absl::StrFormat(
+      "{\n"
+      "  \"check_buffers\": %s,\n"
+      "  \"relative_tolerance\": %f,\n"
+      "  \"crash_on_check_failure\": %s,\n"
+      "  \"optimize_scratch_bytes\": %s,\n"
+      "  \"scratch_bytes_window_size_us\": %d,\n"
+      "  \"expect_all_instructions_in_cache\": %s,\n"
+      "  \"dump_logs_to\": \"%s\",\n"
+      "  \"exclude_cublas_config\": %s,\n"
+      "  \"select_first_config\": %s,\n"
+      "  \"use_default_config\": %s,\n"
+      "  \"dump_hlos\": %s\n"
+      "}",
+      check_buffers ? "true" : "false", relative_tolerance,
+      crash_on_check_failure ? "true" : "false",
+      optimize_scratch_bytes ? "true" : "false", scratch_bytes_window_size_us,
+      expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
+      exclude_cublas_config ? "true" : "false",
+      select_first_config ? "true" : "false",
+      use_default_config ? "true" : "false", dump_hlos ? "true" : "false");
 }
 
 }  // namespace xla

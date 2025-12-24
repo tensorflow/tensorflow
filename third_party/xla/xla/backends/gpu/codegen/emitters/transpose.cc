@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -544,15 +543,16 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 }
 
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
-                                 const TransposeSpec& spec,
+                                 const PackedTransposeDescription& spec,
                                  absl::Span<const int64_t> output_block_tile,
-                                 int64_t num_warps, MLIRContext* mlir_context)
+                                 int64_t num_shmem_groups,
+                                 MLIRContext* mlir_context)
     : TransposeFusionBase(analysis, mlir_context),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
       block_counts_(GetBlockCounts(spec_.canonical_output_shape, output_tile_)),
-      num_warps_per_block_(num_warps),
+      num_shmem_groups_per_block_(num_shmem_groups),
       tile_size_t1_(input_tile_[spec_.dim_T1_input_id()]),
       tile_size_a_(input_tile_[spec_.dim_A_id()]),
       tile_size_t2_(input_tile_[spec_.dim_T2_input_id()]),
@@ -560,7 +560,7 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
       populated_shmem_rows_(tile_size_t2_) {
   VLOG(5) << "Transpose spec: " << spec.ToString()
           << "Output block tile: " << absl::StrJoin(output_block_tile, ", ")
-          << "\nNumber of warps: " << num_warps << "\n";
+          << "\nNumber of shmem groups: " << num_shmem_groups << "\n";
   auto bits_per_element = GetBitwidth(spec_.elem_type());
   vector_size_ = kBankBitwidth / bits_per_element;
   CHECK_GE(vector_size_, 1);
@@ -676,8 +676,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       auto indexing = ComposeIndexingMaps(
-          input_indexing,
-          GetBitcastMap(spec_.input_shape(), root->shape(), mlir_context_));
+          input_indexing, GetBitcastMap(spec_.original_input_shape(),
+                                        root->shape(), mlir_context_));
       indexing.Simplify();
       side_output_indices.push_back(ApplyIndexing(
           indexing, thread_and_block_ids, symbol_values, nested_b));
@@ -815,17 +815,19 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto block_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
-  auto warp_size = kNumShmemBanks;
-  auto lane_id = thread_id % warp_size;
-  auto warp_id = thread_id.floorDiv(warp_size);
-  std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
-      {num_warps_per_block_ * warp_size, 1, 1, Product(block_counts_), 1, 1});
+  auto shmem_group_size = kNumShmemBanks;
+  auto lane_id = thread_id % shmem_group_size;
+  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  std::vector<IndexingMap::Variable> dim_vars =
+      DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
+                          Product(block_counts_), 1, 1});
 
   // Range variables.
   auto loop = getAffineSymbolExpr(0, mlir_context);
   auto vector_element_id = getAffineSymbolExpr(1, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
-      {{CeilOfRatio(tile_size_t2_, num_warps_per_block_), vector_size_}});
+      {{CeilOfRatio(tile_size_t2_, num_shmem_groups_per_block_),
+        vector_size_}});
 
   // Block offsets.
   auto block_ids = DelinearizeInBoundsIndex(block_id, block_counts_);
@@ -833,7 +835,7 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
                block_ids.begin());
 
   // Shmem expressions.
-  auto shmem_row = loop * num_warps_per_block_ + warp_id;
+  auto shmem_row = loop * num_shmem_groups_per_block_ + shmem_group_id;
   auto shmem_col = lane_id * vector_size_ + vector_element_id;
 
   // Offsets within the block.
@@ -862,7 +864,7 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
 
   // Actual indexing.
   auto canonical_input_shape_to_real_shape = GetBitcastMap(
-      spec_.canonical_input_shape, spec_.input_shape(), mlir_context);
+      spec_.canonical_input_shape, spec_.original_input_shape(), mlir_context);
   // When we compose, the constraints w.r.t. to the input dimension sizes will
   // be added.
   auto input_indexing = ComposeIndexingMaps(
@@ -876,20 +878,21 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto warp_size = kNumShmemBanks;
-  auto lane_id = thread_id % warp_size;
-  auto warp_id = thread_id.floorDiv(warp_size);
-  std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
-      {num_warps_per_block_ * warp_size, 1, 1, Product(block_counts_), 1, 1});
+  auto shmem_group_size = kNumShmemBanks;
+  auto lane_id = thread_id % shmem_group_size;
+  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  std::vector<IndexingMap::Variable> dim_vars =
+      DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
+                          Product(block_counts_), 1, 1});
 
   // Range variables.
   auto loop = getAffineSymbolExpr(0, mlir_context);
   auto vector_element_id = getAffineSymbolExpr(1, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
-      {CeilOfRatio(tile_size_t2_, num_warps_per_block_), vector_size_});
+      {CeilOfRatio(tile_size_t2_, num_shmem_groups_per_block_), vector_size_});
 
   // Shmem expressions.
-  auto shmem_row = loop * num_warps_per_block_ + warp_id;
+  auto shmem_row = loop * num_shmem_groups_per_block_ + shmem_group_id;
   auto shmem_col = lane_id * vector_size_ + vector_element_id;
   llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
@@ -908,11 +911,12 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto warp_size = kNumShmemBanks;
-  auto lane_id = thread_id % warp_size;
-  auto warp_id = thread_id.floorDiv(warp_size);
-  std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
-      {num_warps_per_block_ * warp_size, 1, 1, Product(block_counts_), 1, 1});
+  auto shmem_group_size = kNumShmemBanks;
+  auto lane_id = thread_id % shmem_group_size;
+  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  std::vector<IndexingMap::Variable> dim_vars =
+      DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
+                          Product(block_counts_), 1, 1});
 
   // Range variables.
   auto loop = getAffineSymbolExpr(0, mlir_context);
@@ -920,13 +924,14 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   auto vector_vertical = getAffineSymbolExpr(2, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
       {CeilOfRatio(populated_shmem_cols_,
-                   (vector_size_ * num_warps_per_block_)),
+                   (vector_size_ * num_shmem_groups_per_block_)),
        vector_size_, vector_size_});
 
   // Shmem expressions.
   auto shmem_row = lane_id * vector_size_ + vector_vertical;
-  auto shmem_col = (loop * num_warps_per_block_ + warp_id) * vector_size_ +
-                   vector_horizontal;
+  auto shmem_col =
+      (loop * num_shmem_groups_per_block_ + shmem_group_id) * vector_size_ +
+      vector_horizontal;
   llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
@@ -946,26 +951,29 @@ IndexingMap PackedTranspose::GetOutputIndexing(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto block_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
-  auto warp_size = kNumShmemBanks;
-  auto lane_id = thread_id % warp_size;
-  auto warp_id = thread_id.floorDiv(warp_size);
-  std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
-      {num_warps_per_block_ * warp_size, 1, 1, Product(block_counts_), 1, 1});
+  auto shmem_group_size = kNumShmemBanks;
+  auto lane_id = thread_id % shmem_group_size;
+  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  std::vector<IndexingMap::Variable> dim_vars =
+      DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
+                          Product(block_counts_), 1, 1});
 
   // Range variables.
   auto loop = getAffineSymbolExpr(0, mlir_context);
   auto vector_horizontal = getAffineSymbolExpr(1, mlir_context);
   auto vector_vertical = getAffineSymbolExpr(2, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
-      {CeilOfRatio(populated_shmem_cols_, vector_size_ * num_warps_per_block_),
+      {CeilOfRatio(populated_shmem_cols_,
+                   vector_size_ * num_shmem_groups_per_block_),
        vector_size_, vector_size_});
 
   // Block offsets.
   auto block_ids = DelinearizeInBoundsIndex(block_id, block_counts_);
 
   // Shmem expressions.
-  auto shmem_col = (loop * num_warps_per_block_ + warp_id) * vector_size_ +
-                   vector_horizontal;
+  auto shmem_col =
+      (loop * num_shmem_groups_per_block_ + shmem_group_id) * vector_size_ +
+      vector_horizontal;
   auto shmem_row = lane_id * vector_size_ + vector_vertical;
 
   // Offsets within the block.
@@ -992,8 +1000,9 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   canonical_output_indexing.Simplify();
 
   // Actual indexing.
-  auto canonical_output_shape_to_real_shape = GetBitcastMap(
-      spec_.canonical_output_shape, spec_.output_shape(), mlir_context);
+  auto canonical_output_shape_to_real_shape =
+      GetBitcastMap(spec_.canonical_output_shape, spec_.original_output_shape(),
+                    mlir_context);
   // When we compose, the constraints w.r.t. to the output dimension sizes will
   // be added.
   auto output_indexing = ComposeIndexingMaps(
@@ -1004,13 +1013,12 @@ IndexingMap PackedTranspose::GetOutputIndexing(
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
     const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
-  auto spec = GetTransposeSpec(
-      Cast<HloTransposeInstruction>(analysis.tiled_transpose().instr));
+  PackedTransposeDescription spec(analysis.tiled_transpose());
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
-    return std::make_unique<PackedTranspose>(analysis, spec,
-                                             *packed_transpose_tile,
-                                             /* num_warps= */ 4, mlir_context);
+    return std::make_unique<PackedTranspose>(
+        analysis, spec, *packed_transpose_tile,
+        kNumThreadsPerBlock / kNumShmemBanks, mlir_context);
   }
   return std::make_unique<TransposeFusion>(analysis, mlir_context);
 }

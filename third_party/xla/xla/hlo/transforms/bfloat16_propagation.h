@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -66,7 +67,8 @@ namespace xla {
 // pass.
 class BFloat16Propagation : public HloModulePass {
  public:
-  explicit BFloat16Propagation(const FloatSupport* bfloat16_support);
+  BFloat16Propagation(const FloatSupport* bfloat16_support,
+                      const AliasInfo* alias_info);
 
   ~BFloat16Propagation() override = default;
 
@@ -83,6 +85,8 @@ class BFloat16Propagation : public HloModulePass {
 
  protected:
   const FloatSupport* bfloat16_support_;
+
+  const AliasInfo* alias_info_;
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).

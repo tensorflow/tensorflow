@@ -136,19 +136,19 @@ MemoryUsage GetMemoryUsage() {
     result.private_footprint_bytes = -1;
   }
   CloseHandle(process_handle);
+  result.total_allocated_bytes = -1;
+  result.in_use_allocated_bytes = -1;
+#ifdef USE_WIN32_HEAP_SUMMARY
   HANDLE process_heap = GetProcessHeap();
-  if (process_heap != nullptr && HeapLock(process_heap)) {
+  if (process_heap != nullptr) {
     HEAP_SUMMARY heap_summary;
     heap_summary.cb = sizeof(heap_summary);
     if (HeapSummary(process_heap, 0, &heap_summary)) {
       result.total_allocated_bytes = heap_summary.cbCommitted;
       result.in_use_allocated_bytes = heap_summary.cbAllocated;
-    } else {
-      result.total_allocated_bytes = -1;
-      result.in_use_allocated_bytes = -1;
     }
-    HeapUnlock(process_heap);
   }
+#endif  // USE_WIN32_HEAP_SUMMARY
 #endif  // __linux__
   return result;
 }

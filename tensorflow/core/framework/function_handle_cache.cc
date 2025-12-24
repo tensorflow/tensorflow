@@ -23,7 +23,7 @@ namespace tensorflow {
 FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
     : lib_(lib),
       state_handle_(
-          strings::Printf("%lld", static_cast<long long>(random::New64()))) {}
+          absl::StrFormat("%lld", static_cast<long long>(random::New64()))) {}
 
 FunctionHandleCache::~FunctionHandleCache() {
   absl::Status s = Clear();

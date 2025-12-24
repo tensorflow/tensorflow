@@ -39,17 +39,11 @@ namespace xla {
 // to do so if the graph is not inlined.
 class HloDCE : public HloModulePass {
  public:
-  // If `remove_dead_parameters_from_entry_computation` is true, then this pass
-  // will remove dead parameters from the entry computation and update the entry
-  // computation layout of the module.
   explicit HloDCE(bool remove_cross_partition_collective_ops = false,
-                  bool use_call_analysis = false,
-                  bool remove_dead_parameters_from_entry_computation = false)
+                  bool use_call_analysis = false)
       : remove_cross_partition_collective_ops_(
             remove_cross_partition_collective_ops),
-        use_call_analysis_(use_call_analysis),
-        remove_dead_parameters_from_entry_computation_(
-            remove_dead_parameters_from_entry_computation) {}
+        use_call_analysis_(use_call_analysis) {}
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }
 
@@ -63,6 +57,16 @@ class HloDCE : public HloModulePass {
       CallGraph* call_graph = nullptr,
       bool remove_dead_parameters_from_entry_computation = false);
 
+  // If `remove_dead_parameters_from_entry_computation` is true, then this pass
+  // will remove dead parameters from the entry computation and update the entry
+  // computation layout of the module.
+  // Note: The caller needs to be aware of the entry computation layout changes.
+  void set_remove_dead_parameters_from_entry_computation(
+      bool remove_dead_parameters_from_entry_computation) {
+    remove_dead_parameters_from_entry_computation_ =
+        remove_dead_parameters_from_entry_computation;
+  }
+
  protected:
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
@@ -73,7 +77,7 @@ class HloDCE : public HloModulePass {
  private:
   bool remove_cross_partition_collective_ops_;
   bool use_call_analysis_;
-  bool remove_dead_parameters_from_entry_computation_;
+  bool remove_dead_parameters_from_entry_computation_ = false;
 };
 
 }  // namespace xla

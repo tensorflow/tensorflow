@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -21,16 +20,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,7 +48,7 @@ using ::tsl::proto_testing::EqualsProto;
 Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> contents) {
   Array<int64_t> a(dimensions);
-  std::copy(contents.begin(), contents.end(), a.begin());
+  absl::c_copy(contents, a.begin());
   return a;
 }
 
@@ -181,11 +187,6 @@ TEST_F(HloShardingTest, Tile) {
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
                                    /*num_devices=*/4));
-
-    EXPECT_EQ(0, sharding.DeviceForTileIndex({0, 0}));
-    EXPECT_EQ(3, sharding.DeviceForTileIndex({0, 1}));
-    EXPECT_EQ(2, sharding.DeviceForTileIndex({1, 0}));
-    EXPECT_EQ(1, sharding.DeviceForTileIndex({1, 1}));
 
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 0),
               (std::vector<int64_t>{0, 0}));

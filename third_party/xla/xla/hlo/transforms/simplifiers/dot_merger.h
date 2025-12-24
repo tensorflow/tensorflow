@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -59,10 +60,9 @@ class DotMerger : public HloModulePass {
  public:
   explicit DotMerger(
       int64_t max_size_to_merge,
-      std::function<bool(const HloInstruction* a, const HloInstruction* b)>
-          can_merge = [](const HloInstruction* dot_a,
-                         const HloInstruction* dot_b) -> bool { return true; })
-      : max_size_to_merge_(max_size_to_merge), can_merge_(can_merge) {}
+      std::function<int64_t(const HloInstruction* dot)> queue_id =
+          [](const HloInstruction* dot) -> int64_t { return 0; })
+      : max_size_to_merge_(max_size_to_merge), queue_id_(queue_id) {}
 
   absl::string_view name() const override { return "dot-merger"; }
 
@@ -73,9 +73,8 @@ class DotMerger : public HloModulePass {
 
  private:
   int64_t max_size_to_merge_;
-  // Predicate function for backend-specific compatibility check.
-  std::function<bool(const HloInstruction* dot_a, const HloInstruction* dot_b)>
-      can_merge_;
+  // Predicate function for backend-specific operation queue mapping.
+  std::function<int64_t(const HloInstruction* dot)> queue_id_;
 };
 
 }  // namespace xla

@@ -539,6 +539,11 @@ tf_cuda_only_cc_test(
 cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
+    deps = if_cuda_or_rocm([
+        "@local_xla//xla/stream_executor:data_type",
+        "@local_xla//xla/stream_executor:dnn",
+        "//tensorflow/core:framework",
+    ]),
 )
 
 cc_library(
@@ -7191,6 +7196,7 @@ cc_library(
     textual_hdrs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
     deps = [
+        ":conv_ops_gpu_hdrs",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",

@@ -158,6 +158,42 @@ tf_proto_library(
     visibility = ["//xla/python/ifrt:users"],
 )
 
+tf_proto_library(
+    name = "ifrt_ir_executable_version_proto",
+    srcs = ["ifrt_ir_executable_version.proto"],
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+    ],
+)
+
+cc_library(
+    name = "ifrt_ir_executable_version",
+    srcs = ["ifrt_ir_executable_version.cc"],
+    hdrs = ["ifrt_ir_executable_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":ifrt_ir_executable_version_proto_cc",
+        ":version",
+        "//xla:util",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:device_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_version",
+        "//xla/python/ifrt:serdes_week_4_old_version_accessor",
+        "//xla/python/pjrt_ifrt:xla_executable_version",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "ifrt_ir_program",
     srcs = ["ifrt_ir_program.cc"],
@@ -174,6 +210,7 @@ cc_library(
         "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -470,6 +507,7 @@ cc_library(
         ":atom_program_compiler",
         ":ifrt_ir_program",
         ":ir",
+        ":program_interpreter",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
@@ -483,6 +521,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -505,7 +544,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:users"],
     deps = [
-        ":compiled_ifrt_ir_program",
+        ":atom_program_compiler",
         ":ir",
         "//xla:status_macros",
         "//xla/python/ifrt",
@@ -518,6 +557,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

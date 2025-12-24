@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -78,6 +79,15 @@ absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
   }
 
   return *communicator;
+}
+
+absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
+    const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id) const {
+  std::optional<RankId> rank = clique_key.rank(global_device_id);
+  if (!rank.has_value()) {
+    return InvalidArgument("Rank not found for device %v", global_device_id);
+  }
+  return GetComm(clique_key, *rank);
 }
 
 absl::StatusOr<bool> CollectiveCliques::peer_access_enabled(

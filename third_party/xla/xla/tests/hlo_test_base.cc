@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
@@ -174,10 +174,11 @@ HloTestBase::HloTestBase(
                                   reference_preprocessor);
 }
 
-se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
+se::DeviceAddressAllocator* HloTestBase::GetAllocator() {
   if (allocator_ == nullptr) {
-    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-        backend().default_stream_executor());
+    allocator_ =
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            backend().default_stream_executor());
   }
   return allocator_.get();
 }

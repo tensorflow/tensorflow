@@ -97,7 +97,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
-#include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/tstring.h"
@@ -504,7 +503,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       compile_metadata.use_shardy_partitioner());
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
-  if (UsePortableExecution(compile_metadata)) {
+  if (UsePortableExecution()) {
     xla_compile_options.compile_portable_executable = true;
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -555,9 +554,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   return executable_bundle;
 }
 
-tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
+absl::StatusOr<tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
 IfrtServingExecutable::LookUpOrCreateExecutable(
-    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
     absl::Span<const int> variable_arg_indices) {
   std::vector<tensorflow::TensorShape> input_shapes;
@@ -597,7 +595,18 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     // compilation.
     module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
   }
+  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
+      original_compile_metadata_;
 
+  // b/469105465: Add test coverage for core selection in execution.
+  if (UsePortableExecution()) {
+    // Clear device_assignment because portable execution doesn't allow device
+    // assignment.
+    compile_metadata.clear_device_assignment();
+  }
+
+  TF_RETURN_IF_ERROR(
+      UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
   LOG(INFO) << "Cache missed. Building executable";
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
       CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
@@ -613,11 +622,11 @@ void IfrtServingExecutable::Freeze() {
   module_ = nullptr;
 }
 
-bool IfrtServingExecutable::UsePortableExecution(
-    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
+bool IfrtServingExecutable::UsePortableExecution() {
   // TODO(b/335247101) Add a check that the core selector must be non-null if
   // it is a single-device program after core selection in Ifrt is stable.
-  return IsSingleDevice(compile_metadata) && ifrt_serving_core_selector_;
+  return IsSingleDevice(original_compile_metadata_) &&
+         ifrt_serving_core_selector_;
 }
 
 absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
@@ -657,20 +666,12 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
                       BuildDtypeAndShape(inputs, variable_arg_indices,
                                          ifrt_restore_tensor_registry_));
 
-  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
-      original_compile_metadata_;
-  TF_RETURN_IF_ERROR(
-      UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
-
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
   xla::ifrt::DeviceListRef device_list;
-  if (UsePortableExecution(compile_metadata)) {
+  if (UsePortableExecution()) {
     device_reservation =
         ifrt_serving_core_selector_->ReserveDevice(program_id_);
-    // Clear device_assignment because portable execution doesn't allow device
-    // assignment.
-    compile_metadata.clear_device_assignment();
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));
@@ -679,10 +680,10 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     device_list = assigned_device_list_;
   }
   TF_ASSIGN_OR_RETURN(
-      SharedCachedExecutableBundle executable_bundle,
-      LookUpOrCreateExecutable(compile_metadata, dtypes_and_shapes,
-                               variable_arg_indices)
-          .Await());
+      tsl::Future<SharedCachedExecutableBundle> executable_bundle_future,
+      LookUpOrCreateExecutable(dtypes_and_shapes, variable_arg_indices));
+  TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
+                      executable_bundle_future.Await());
 
   if (executable_bundle->compile_metadata.args().size() !=
       dtypes_and_shapes.size()) {
@@ -694,7 +695,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   {
     tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
     absl::ReaderMutexLock lock(mutex_);
-    if (!is_frozen_) {
+    if (!is_frozen_ && !tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
       // Asynchronously load the restored variable tensors to Ifrt array.
       TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
                                             *executable_bundle, device_list));
@@ -775,7 +776,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   VLOG(2) << "Start Execution";
 
   std::optional<xla::ifrt::DeviceListRef> execution_device_list;
-  if (UsePortableExecution(compile_metadata)) {
+  if (UsePortableExecution()) {
     execution_device_list = device_list;
   }
 

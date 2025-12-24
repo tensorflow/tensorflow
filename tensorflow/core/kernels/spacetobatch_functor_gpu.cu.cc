@@ -31,11 +31,11 @@ typedef Eigen::GpuDevice GPUDevice;
 // GPU kernel.
 template <int NUM_BLOCK_DIMS>
 struct S2BParameters {
-  int32 space_tensor_batch;
-  int32 batch_tensor_shape[NUM_BLOCK_DIMS + 2];
-  int32 space_tensor_spatial_shape[NUM_BLOCK_DIMS];
-  int32 pad_start[NUM_BLOCK_DIMS];
-  int32 block_shape[NUM_BLOCK_DIMS];
+  int32_t space_tensor_batch;
+  int32_t batch_tensor_shape[NUM_BLOCK_DIMS + 2];
+  int32_t space_tensor_spatial_shape[NUM_BLOCK_DIMS];
+  int32_t pad_start[NUM_BLOCK_DIMS];
+  int32_t block_shape[NUM_BLOCK_DIMS];
 };
 
 // GPU kernel for space-to-batch (if B2S = false) and batch-to-space conversion
@@ -44,13 +44,13 @@ struct S2BParameters {
 // To simplify template implementation given lack of constexpr if, both the
 // input and output pointers are non-const.
 template <typename T, int NUM_BLOCK_DIMS, bool B2S>
-__global__ void S2B(const int32 nthreads, T* __restrict__ space_tensor_ptr,
+__global__ void S2B(const int32_t nthreads, T* __restrict__ space_tensor_ptr,
                     S2BParameters<NUM_BLOCK_DIMS> args,
                     T* __restrict__ batch_tensor_ptr) {
   GPU_1D_KERNEL_LOOP(batch_tensor_idx, nthreads) {
-    int32 remaining_batch_tensor_idx = batch_tensor_idx;
+    int32_t remaining_batch_tensor_idx = batch_tensor_idx;
 
-    int32 batch_tensor_pos[NUM_BLOCK_DIMS + 2];
+    int32_t batch_tensor_pos[NUM_BLOCK_DIMS + 2];
 
     for (int dim = NUM_BLOCK_DIMS + 1; dim >= 1; --dim) {
       batch_tensor_pos[dim] =
@@ -59,17 +59,17 @@ __global__ void S2B(const int32 nthreads, T* __restrict__ space_tensor_ptr,
     }
     batch_tensor_pos[0] = remaining_batch_tensor_idx;
 
-    int32 remaining_block_idx = batch_tensor_pos[0] / args.space_tensor_batch;
-    int32 space_tensor_idx = batch_tensor_pos[NUM_BLOCK_DIMS + 1];
-    int32 space_tensor_stride = args.batch_tensor_shape[NUM_BLOCK_DIMS + 1];
-    const int32 space_tensor_batch_pos =
+    int32_t remaining_block_idx = batch_tensor_pos[0] / args.space_tensor_batch;
+    int32_t space_tensor_idx = batch_tensor_pos[NUM_BLOCK_DIMS + 1];
+    int32_t space_tensor_stride = args.batch_tensor_shape[NUM_BLOCK_DIMS + 1];
+    const int32_t space_tensor_batch_pos =
         batch_tensor_pos[0] % args.space_tensor_batch;
     for (int block_dim = NUM_BLOCK_DIMS - 1; block_dim >= 0; --block_dim) {
-      int32 offset = remaining_block_idx;
+      int32_t offset = remaining_block_idx;
       if (block_dim > 0) {
         offset %= args.block_shape[block_dim];
       }
-      int32 space_tensor_pos =
+      int32_t space_tensor_pos =
           batch_tensor_pos[block_dim + 1] * args.block_shape[block_dim] +
           offset - args.pad_start[block_dim];
       if (space_tensor_pos < 0 ||
@@ -102,45 +102,45 @@ template <typename T, int NUM_BLOCK_DIMS, bool B2S>
 struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
   using SpaceT = typename std::conditional<B2S, T, const T>::type;
   using BatchT = typename std::conditional<B2S, const T, T>::type;
-  Status operator()(
+  absl::Status operator()(
       const GPUDevice& d,
       typename TTypes<SpaceT, NUM_BLOCK_DIMS + 2>::Tensor space_tensor,
-      const int64 block_shape[NUM_BLOCK_DIMS],
-      const int64 paddings[NUM_BLOCK_DIMS * 2],
+      const int64_t block_shape[NUM_BLOCK_DIMS],
+      const int64_t paddings[NUM_BLOCK_DIMS * 2],
       typename TTypes<BatchT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor) {
     // Kernel execution fails if number of elements is zero.
     if (batch_tensor.size() == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     S2BParameters<NUM_BLOCK_DIMS> args;
     args.space_tensor_batch = space_tensor.dimension(0);
     for (int block_dim = 0; block_dim < NUM_BLOCK_DIMS; ++block_dim) {
-      if (block_shape[block_dim] > std::numeric_limits<int32>::max()) {
+      if (block_shape[block_dim] > std::numeric_limits<int32_t>::max()) {
         return errors::InvalidArgument("block_shape value exceeds 2^32-1");
       }
       args.block_shape[block_dim] = block_shape[block_dim];
       if (space_tensor.dimension(block_dim + 1) >
-          std::numeric_limits<int32>::max()) {
+          std::numeric_limits<int32_t>::max()) {
         return errors::InvalidArgument("space_tensor dimension exceeds 2^32-1");
       }
       args.space_tensor_spatial_shape[block_dim] =
           space_tensor.dimension(block_dim + 1);
-      if (paddings[block_dim * 2] > std::numeric_limits<int32>::max()) {
+      if (paddings[block_dim * 2] > std::numeric_limits<int32_t>::max()) {
         return errors::InvalidArgument("paddings/crops value exceeds 2^32-1");
       }
       args.pad_start[block_dim] = paddings[block_dim * 2];
     }
-    int64 total_count = 1;
+    int64_t total_count = 1;
     for (int dim = 0; dim < NUM_BLOCK_DIMS + 2; ++dim) {
       args.batch_tensor_shape[dim] = batch_tensor.dimension(dim);
       total_count *= args.batch_tensor_shape[dim];
     }
-    if (total_count > std::numeric_limits<int32>::max()) {
+    if (total_count > std::numeric_limits<int32_t>::max()) {
       return errors::InvalidArgument(
           "number of batch_tensor elements exceeds 2^32-1");
     }
     GpuLaunchConfig config =
-        GetGpuLaunchConfig(static_cast<int32>(total_count), d);
+        GetGpuLaunchConfig(static_cast<int32_t>(total_count), d);
     return GpuLaunchKernel(S2B<T, NUM_BLOCK_DIMS, B2S>, config.block_count,
                            config.thread_per_block, 0, d.stream(),
                            config.virtual_thread_count,

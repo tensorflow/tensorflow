@@ -48,7 +48,6 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
@@ -105,7 +104,6 @@ xla_cc_test(
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -124,6 +122,5 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:casts",
     ],
 )

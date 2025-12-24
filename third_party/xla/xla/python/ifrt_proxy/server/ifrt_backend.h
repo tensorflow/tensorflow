@@ -27,7 +27,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -157,6 +159,11 @@ class IfrtBackend final : public BackendInterface {
         ABSL_GUARDED_BY(mu_);
   };
 
+  struct ExecuteResult {
+    absl::flat_hash_map<xla::DeviceTimeMeasurement::DeviceType, absl::Duration>
+        device_time;
+  };
+
   IfrtBackend(IfrtProxyVersion version, uint64_t session_id,
               std::shared_ptr<xla::ifrt::Client> ifrt_client,
               std::shared_ptr<HostBufferStore> host_buffer_store);
@@ -213,12 +220,18 @@ class IfrtBackend final : public BackendInterface {
 
   tsl::Future<Response> HandleLoadedExecutableMetadataRequest(
       std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleLoadedExecutableMpmdMetadataRequest(
+      std::unique_ptr<IfrtRequest> request);
   tsl::Future<Response> HandleLoadedExecutableCostAnalysisRequest(
+      std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleLoadedExecutableMpmdCostAnalysisRequest(
       std::unique_ptr<IfrtRequest> request);
   tsl::Future<Response> HandleLoadedExecutableHumanReadableProgramTextRequest(
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleLoadedExecutableExecuteRequest(
       ArrayStore::Reservation& asr, std::unique_ptr<IfrtRequest> request);
+  tsl::Future<Response> HandleLoadedExecutableFetchExecuteResultRequest(
+      std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleLoadedExecutableDeleteRequest(
       std::unique_ptr<IfrtRequest> request);
   absl::StatusOr<Response> HandleLoadedExecutableIsDeletedRequest(
@@ -287,6 +300,10 @@ class IfrtBackend final : public BackendInterface {
   absl::Mutex executables_mutex_;
   absl::flat_hash_map<uint64_t, std::shared_ptr<LoadedExecutableWithInfo>>
       executables_ ABSL_GUARDED_BY(executables_mutex_);
+
+  absl::Mutex execute_results_mutex_;
+  absl::flat_hash_map<uint64_t, tsl::Future<ExecuteResult>> execute_results_
+      ABSL_GUARDED_BY(execute_results_mutex_);
 
   absl::Mutex host_callback_queues_mutex_;
   absl::flat_hash_map<uint64_t, std::shared_ptr<RemoteLoadedHostCallbackQueue>>

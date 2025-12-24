@@ -17,6 +17,7 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
     "//third_party/gpus/rocm:rocm_redist.bzl",
+    "create_rocm_distro",
     "rocm_redist",
 )
 load(
@@ -54,6 +55,9 @@ _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
 _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 _DISTRIBUTION_PATH = "rocm/rocm_dist"
 _ROCM_DISTRO_VERSION = "ROCM_DISTRO_VERSION"
+_ROCM_DISTRO_URL = "ROCM_DISTRO_URL"
+_ROCM_DISTRO_HASH = "ROCM_DISTRO_HASH"
+_ROCM_DISTRO_LINKS = "ROCM_DISTRO_LINKS"
 _TMPDIR = "TMPDIR"
 
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
@@ -545,23 +549,36 @@ def _remove_root_dir(path, root_dir):
         return path[len(root_dir) + 1:]
     return path
 
+def _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro):
+    repository_ctx.file("rocm/.index")
+    for pkg in rocm_distro.packages:
+        _download_package(repository_ctx, pkg)
+
+    for entry in rocm_distro.required_softlinks:
+        repository_ctx.symlink(
+            "{}/{}".format(_DISTRIBUTION_PATH, entry.target),
+            "{}/{}".format(_DISTRIBUTION_PATH, entry.link),
+        )
+    bash_bin = get_bash_bin(repository_ctx)
+    return _get_rocm_config(repository_ctx, bash_bin, _canonical_path("{}/{}".format(_DISTRIBUTION_PATH, rocm_distro.rocm_root)), "")
+
 def _setup_rocm_distro_dir(repository_ctx):
     """Sets up the rocm hermetic installation directory to be used in hermetic build"""
     bash_bin = get_bash_bin(repository_ctx)
+    rocm_distro_url = repository_ctx.os.environ.get(_ROCM_DISTRO_URL)
+    if rocm_distro_url:
+        rocm_distro_hash = repository_ctx.os.environ.get(_ROCM_DISTRO_HASH)
+        if not rocm_distro_hash:
+            fail("{} environment variable is required", _ROCM_DISTRO_HASH)
+        rocm_distro_links = repository_ctx.os.environ.get(_ROCM_DISTRO_LINKS, "")
+        rocm_distro = create_rocm_distro(rocm_distro_url, rocm_distro_hash, rocm_distro_links)
+        return _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro)
+
     rocm_distro = repository_ctx.os.environ.get(_ROCM_DISTRO_VERSION)
     multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
     if rocm_distro:
         redist = rocm_redist[rocm_distro]
-        repository_ctx.file("rocm/.index")
-        for pkg in redist.packages:
-            _download_package(repository_ctx, pkg)
-
-        for entry in redist.required_softlinks:
-            repository_ctx.symlink(
-                "{}/{}".format(_DISTRIBUTION_PATH, entry.target),
-                "{}/{}".format(_DISTRIBUTION_PATH, entry.link),
-            )
-        return _get_rocm_config(repository_ctx, bash_bin, _canonical_path("{}/{}".format(_DISTRIBUTION_PATH, redist.rocm_root)), "")
+        return _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro)
     elif multiple_paths:
         paths_list = multiple_paths.split(":")
         for rocm_custom_path in paths_list:
@@ -855,6 +872,9 @@ _ENVIRONS = [
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
     _ROCM_DISTRO_VERSION,
+    _ROCM_DISTRO_URL,
+    _ROCM_DISTRO_HASH,
+    _ROCM_DISTRO_LINKS,
     _TF_ROCM_RBE_DOCKER_IMAGE,
     _TF_ROCM_RBE_SINGLE_GPU_POOL,
     _TF_ROCM_RBE_MULTI_GPU_POOL,

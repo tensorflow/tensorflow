@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>

@@ -59,9 +59,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
@@ -79,10 +77,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 namespace {
@@ -185,9 +179,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateTopKThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk(1));
-    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateXnnDotThunk());
-    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
-                        CreateXnnConvolutionThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateKernelThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
                         CreateConvolutionThunk());
@@ -604,79 +595,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         /*cond_sequence=*/std::move(cond_sequence),
         /*body_sequence=*/std::move(body_sequence),
         /*trip_count=*/trip_count);
-  }
-
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnDotThunk() {
-    TF_RETURN_IF_ERROR(AddBufferAllocations(3));
-    DotDimensionNumbers dot_dimensions;
-    dot_dimensions.add_lhs_contracting_dimensions(1);
-    dot_dimensions.add_rhs_contracting_dimensions(0);
-    return XnnDotThunk::Create(
-        XnnFusionThunk::Options(), Thunk::Info(),
-        /*dot_dimensions=*/dot_dimensions,
-        /*lhs_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 3]),
-        /*lhs_shape=*/literals_[buffer_allocations_.size() - 3].shape(),
-        /*rhs_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 2]),
-        /*rhs_shape=*/literals_[buffer_allocations_.size() - 2].shape(),
-        /*out_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 1]),
-        /*out_shape=*/literals_[buffer_allocations_.size() - 1].shape(), true);
-  }
-
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnConvolutionThunk() {
-    std::vector<int64_t> input_dims = {1, 8, 8, 16};
-    std::vector<int64_t> kernel_dims = {32, 1, 1, 16};
-    std::vector<int64_t> output_dims = {1, 8, 8, 32};
-
-    // Convolution rank inferred from the input dimensions.
-    int convolution_rank = input_dims.size() - 2;
-
-    // Convolution parameters.
-    ConvolutionDimensionNumbers conv_dims =
-        MakeConvolutionDimensionNumbers(convolution_rank);
-    Window window = MakeWindow(convolution_rank);
-
-    // Adjust kernel dimensions for XNNPACK.
-    conv_dims.set_kernel_input_feature_dimension(3);
-    conv_dims.set_kernel_output_feature_dimension(0);
-    conv_dims.set_kernel_spatial_dimensions(0, 1);
-    conv_dims.set_kernel_spatial_dimensions(1, 2);
-
-    // Actual data.
-    literals_.push_back(
-        LiteralUtil::CreateFull<float>(input_dims, 0.0));  // input
-    literals_.push_back(
-        LiteralUtil::CreateFull<float>(kernel_dims, 0.0));  // kernel
-    literals_.push_back(
-        LiteralUtil::CreateFull<float>(output_dims, 0.0));  // output
-
-    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 3])));
-    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 2])));
-    TF_RETURN_IF_ERROR(buffer_allocations_.push_back(CreateBufferAllocation(
-        buffer_allocations_.size(), literals_[literals_.size() - 1])));
-
-    return XnnConvolutionThunk::Create(
-        XnnFusionThunk::Options(), Thunk::Info(),
-        /*input_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 3]),
-        /*input_shape=*/literals_[buffer_allocations_.size() - 3].shape(),
-        /*kernel_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 2]),
-        /*kernel_shape=*/literals_[buffer_allocations_.size() - 2].shape(),
-        /*output_buffer=*/
-        CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 1]),
-        /*output_shape=*/literals_[buffer_allocations_.size() - 1].shape(),
-        conv_dims, window, /*feature_group_count=*/1);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateKernelThunk() {
@@ -1107,112 +1025,11 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
            thunk_1.trip_count() == thunk_2.trip_count();
   }
 
-  bool VerifyXnnFusionThunkEquality(const XnnFusionThunk& thunk_1,
-                                    const XnnFusionThunk& thunk_2) {
-    // TODO(basioli) assume this is always false until we implement
-    // serialization of XnnFusionThunk.
-    return false;
-  }
-
-#ifdef XLA_YNNPACK
   bool VerifyYnnFusionThunkEquality(const YnnFusionThunk& thunk_1,
                                     const YnnFusionThunk& thunk_2) {
     // TODO(ashaposhnikov) assume this is always false until we implement
     // serialization of YnnFusionThunk.
     return false;
-  }
-#endif  // XLA_YNNPACK
-
-  bool VerifyXnnDotThunkEquality(const XnnDotThunk& thunk_1,
-                                 const XnnDotThunk& thunk_2) {
-    const bool are_dot_dimensions_equal =
-        absl::c_equal(thunk_1.dot_dimensions().lhs_batch_dimensions(),
-                      thunk_2.dot_dimensions().lhs_batch_dimensions()) &&
-        absl::c_equal(thunk_1.dot_dimensions().rhs_batch_dimensions(),
-                      thunk_2.dot_dimensions().rhs_batch_dimensions()) &&
-        absl::c_equal(thunk_1.dot_dimensions().lhs_contracting_dimensions(),
-                      thunk_2.dot_dimensions().lhs_contracting_dimensions()) &&
-        absl::c_equal(thunk_1.dot_dimensions().rhs_contracting_dimensions(),
-                      thunk_2.dot_dimensions().rhs_contracting_dimensions());
-
-    const bool are_options_equal =
-        thunk_1.options().use_threadpool == thunk_2.options().use_threadpool;
-
-    const bool is_capturing_rhs_equal =
-        thunk_1.capture_rhs() == thunk_2.capture_rhs();
-
-    return are_options_equal && are_dot_dimensions_equal &&
-           is_capturing_rhs_equal &&
-           VerifySliceShapeEquality(thunk_1.dot_slices().lhs_buffer,
-                                    thunk_1.dot_slices().lhs_shape,
-                                    thunk_2.dot_slices().lhs_buffer,
-                                    thunk_2.dot_slices().lhs_shape) &&
-           VerifySliceShapeEquality(thunk_1.dot_slices().rhs_buffer,
-                                    thunk_1.dot_slices().rhs_shape,
-                                    thunk_2.dot_slices().rhs_buffer,
-                                    thunk_2.dot_slices().rhs_shape) &&
-           VerifySliceShapeEquality(
-               thunk_1.dot_slices().out_buffer, thunk_1.dot_slices().out_shape,
-               thunk_2.dot_slices().out_buffer, thunk_2.dot_slices().out_shape);
-  }
-
-  bool VerifyXnnConvolutionThunkEquality(const XnnConvolutionThunk& thunk_1,
-                                         const XnnConvolutionThunk& thunk_2) {
-    const bool are_dnums_equal =
-        absl::c_equal(thunk_1.dnums().input_spatial_dimensions(),
-                      thunk_2.dnums().input_spatial_dimensions()) &&
-        absl::c_equal(thunk_1.dnums().kernel_spatial_dimensions(),
-                      thunk_2.dnums().kernel_spatial_dimensions()) &&
-        absl::c_equal(thunk_1.dnums().output_spatial_dimensions(),
-                      thunk_2.dnums().output_spatial_dimensions()) &&
-        thunk_1.dnums().input_batch_dimension() ==
-            thunk_2.dnums().input_batch_dimension() &&
-        thunk_1.dnums().input_feature_dimension() ==
-            thunk_2.dnums().input_feature_dimension() &&
-        thunk_1.dnums().kernel_input_feature_dimension() ==
-            thunk_2.dnums().kernel_input_feature_dimension() &&
-        thunk_1.dnums().kernel_output_feature_dimension() ==
-            thunk_2.dnums().kernel_output_feature_dimension() &&
-        thunk_1.dnums().output_batch_dimension() ==
-            thunk_2.dnums().output_batch_dimension() &&
-        thunk_1.dnums().output_feature_dimension() ==
-            thunk_2.dnums().output_feature_dimension();
-
-    const bool are_options_equal =
-        thunk_1.options().use_threadpool == thunk_2.options().use_threadpool;
-
-    const bool are_windows_equal = absl::c_equal(
-        thunk_1.window().dimensions(), thunk_2.window().dimensions(),
-        [](const WindowDimension& window_dimension_1,
-           const WindowDimension& window_dimension_2) {
-          return window_dimension_1.size() == window_dimension_2.size() &&
-                 window_dimension_1.stride() == window_dimension_2.stride() &&
-                 window_dimension_1.padding_low() ==
-                     window_dimension_2.padding_low() &&
-                 window_dimension_1.padding_high() ==
-                     window_dimension_2.padding_high() &&
-                 window_dimension_1.window_dilation() ==
-                     window_dimension_2.window_dilation() &&
-                 window_dimension_1.base_dilation() ==
-                     window_dimension_2.base_dilation() &&
-                 window_dimension_1.window_reversal() ==
-                     window_dimension_2.window_reversal();
-        });
-
-    return are_dnums_equal && are_windows_equal && are_options_equal &&
-           thunk_1.feature_group_count() == thunk_2.feature_group_count() &&
-           VerifySliceShapeEquality(thunk_1.convolution_slices().input_buffer,
-                                    thunk_1.convolution_slices().input_shape,
-                                    thunk_2.convolution_slices().input_buffer,
-                                    thunk_2.convolution_slices().input_shape);
-    VerifySliceShapeEquality(thunk_1.convolution_slices().kernel_buffer,
-                             thunk_1.convolution_slices().kernel_shape,
-                             thunk_2.convolution_slices().kernel_buffer,
-                             thunk_2.convolution_slices().kernel_shape);
-    VerifySliceShapeEquality(thunk_1.convolution_slices().output_buffer,
-                             thunk_1.convolution_slices().output_shape,
-                             thunk_2.convolution_slices().output_buffer,
-                             thunk_2.convolution_slices().output_shape);
   }
 
   bool VerifyKernelThunkEquality(const KernelThunkBase& thunk_1,
@@ -1408,32 +1225,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         return VerifyWhileThunkEquality(
             tsl::down_cast<const WhileThunk&>(thunk_1),
             tsl::down_cast<const WhileThunk&>(thunk_2));
-      case Thunk::Kind::kXnnFusion: {
-        const XnnFusionThunk& xnn_fusion_thunk_1 =
-            tsl::down_cast<const XnnFusionThunk&>(thunk_1);
-        const XnnFusionThunk& xnn_fusion_thunk_2 =
-            tsl::down_cast<const XnnFusionThunk&>(thunk_2);
-        if (xnn_fusion_thunk_1.xnn_fusion_kind() !=
-            xnn_fusion_thunk_2.xnn_fusion_kind()) {
-          return false;
-        }
-        switch (xnn_fusion_thunk_1.xnn_fusion_kind()) {
-          case XnnFusionThunk::XnnFusionKind::kFusion:
-            return VerifyXnnFusionThunkEquality(
-                tsl::down_cast<const XnnFusionThunk&>(thunk_1),
-                tsl::down_cast<const XnnFusionThunk&>(thunk_2));
-          case XnnFusionThunk::XnnFusionKind::kDot:
-            return VerifyXnnDotThunkEquality(
-                tsl::down_cast<const XnnDotThunk&>(thunk_1),
-                tsl::down_cast<const XnnDotThunk&>(thunk_2));
-          case XnnFusionThunk::XnnFusionKind::kConvolution:
-            return VerifyXnnConvolutionThunkEquality(
-                tsl::down_cast<const XnnConvolutionThunk&>(thunk_1),
-                tsl::down_cast<const XnnConvolutionThunk&>(thunk_2));
-        }
-      }
       case Thunk::Kind::kYnnFusion: {
-#ifdef XLA_YNNPACK
         const YnnFusionThunk& ynn_fusion_thunk_1 =
             tsl::down_cast<const YnnFusionThunk&>(thunk_1);
         const YnnFusionThunk& ynn_fusion_thunk_2 =
@@ -1445,10 +1237,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         return VerifyYnnFusionThunkEquality(
             tsl::down_cast<const YnnFusionThunk&>(thunk_1),
             tsl::down_cast<const YnnFusionThunk&>(thunk_2));
-#else
-        CHECK(false) << "Unsupported YNN fusion thunk type";
-        return false;
-#endif  // XLA_YNNPACK
       }
       case Thunk::Kind::kKernel:
         return VerifyKernelThunkEquality(

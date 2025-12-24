@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -125,8 +125,8 @@ MpiCommunicator::MpiCommunicator(int color, int key) {
 
 MpiCommunicator::~MpiCommunicator() { MPI_Comm_free(&comm_); };
 
-Future<> MpiCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
-                                    se::DeviceMemoryBase recv_buffer,
+Future<> MpiCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
+                                    se::DeviceAddressBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     ReductionKind reduction_kind,
                                     const Executor& executor) {
@@ -138,7 +138,7 @@ Future<> MpiCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
 }
 
 Future<> MpiCommunicator::CollectivePermute(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   int tag = 0;  // TODO come up with better tags.
@@ -182,8 +182,8 @@ Future<> MpiCommunicator::CollectivePermute(
 }
 
 Future<> MpiCommunicator::AllToAll(
-    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   // We can't use MPI_Alltoall directly because it assumes that the inputs and
   // outputs are contiguous. Therefore here we implement it using MPI_Sendrecv.
@@ -218,8 +218,8 @@ Future<> MpiCommunicator::AllToAll(
   return absl::OkStatus();
 }
 
-Future<> MpiCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
-                                    se::DeviceMemoryBase recv_buffer,
+Future<> MpiCommunicator::AllGather(se::DeviceAddressBase send_buffer,
+                                    se::DeviceAddressBase recv_buffer,
                                     PrimitiveType dtype, size_t count,
                                     const Executor& executor) {
   TF_ASSIGN_OR_RETURN(MPI_Datatype type, PrimitiveTypeToMpiType(dtype));
@@ -230,8 +230,8 @@ Future<> MpiCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   return absl::OkStatus();
 }
 
-Future<> MpiCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                        se::DeviceMemoryBase recv_buffer,
+Future<> MpiCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
+                                        se::DeviceAddressBase recv_buffer,
                                         PrimitiveType dtype, size_t count,
                                         ReductionKind reduction_kind,
                                         const Executor& executor) {

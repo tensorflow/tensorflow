@@ -28,7 +28,7 @@ DeviceResolverDistributed::DeviceResolverDistributed(const DeviceMgr* dev_mgr) {
 }
 
 absl::Status DeviceResolverDistributed::GetDeviceAttributes(
-    const string& device, DeviceAttributes* attributes) {
+    const std::string& device, DeviceAttributes* attributes) {
   mutex_lock l(mu_);
   auto it = attr_table_.find(device);
   if (it == attr_table_.end()) {
@@ -39,11 +39,11 @@ absl::Status DeviceResolverDistributed::GetDeviceAttributes(
 }
 
 absl::Status DeviceResolverDistributed::GetAllDeviceAttributes(
-    const string& task, std::vector<DeviceAttributes>* attributes) {
+    const std::string& task, std::vector<DeviceAttributes>* attributes) {
   mutex_lock l(mu_);
   attributes->clear();
   for (const auto& it : attr_table_) {
-    const string& device_name = it.first;
+    const std::string& device_name = it.first;
     if (DeviceNameUtils::IsSameAddressSpace(task, device_name)) {
       attributes->push_back(it.second);
     }

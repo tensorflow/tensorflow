@@ -164,15 +164,15 @@ class WindowsRandomAccessFile : public RandomAccessFile {
       return absl::OkStatus();
     }
     if (n < 0) {
-      return errors::InvalidArgument(
-          "Attempting to read ", n,
-          " bytes. You cannot read a negative number of bytes.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Attempting to read ", n,
+                       " bytes. You cannot read a negative number of bytes."));
     }
 
     char* scratch = new char[n];
     if (scratch == nullptr) {
-      return errors::ResourceExhausted("Unable to allocate ", n,
-                                       " bytes for file reading.");
+      return absl::ResourceExhaustedError(
+          absl::StrCat("Unable to allocate ", n, " bytes for file reading."));
     }
 
     absl::string_view tmp;
@@ -594,7 +594,7 @@ Status WindowsFileSystem::CreateDir(const string& name,
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
   if (ws_name.empty()) {
-    return errors::AlreadyExists(name);
+    return absl::AlreadyExistsError(name);
   }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);

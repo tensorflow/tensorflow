@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -49,8 +49,8 @@ struct OneDnnFusionThunk::OneDnnRuntime {
 
   tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> Invoke(
       Eigen::ThreadPoolInterface* thread_pool,
-      absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results);
+      absl::Span<se::DeviceAddressBase> arguments,
+      absl::Span<se::DeviceAddressBase> results);
 
   OneDnnFusion fusion;
 
@@ -72,8 +72,8 @@ OneDnnFusionThunk::OneDnnRuntime::OneDnnRuntime(
 tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent>
 OneDnnFusionThunk::OneDnnRuntime::Invoke(
     Eigen::ThreadPoolInterface* thread_pool,
-    absl::Span<se::DeviceMemoryBase> arguments,
-    absl::Span<se::DeviceMemoryBase> results) {
+    absl::Span<se::DeviceAddressBase> arguments,
+    absl::Span<se::DeviceAddressBase> results) {
   // Number of arguments and results must match the number of logical tensors.
   TF_RET_CHECK(arguments.size() == fusion.parameters.size())
       << "Arguments size mismatch";
@@ -154,10 +154,10 @@ OneDnnFusionThunk::~OneDnnFusionThunk() = default;
 OneDnnFusionThunk::BufferUses OneDnnFusionThunk::buffer_uses() const {
   BufferUses buffer_uses;
   for (const Argument& argument : arguments_) {
-    buffer_uses.push_back(BufferUse::Read(argument.slice));
+    buffer_uses.push_back(BufferUse::Read(argument.slice, argument.shape));
   }
   for (const Result& result : results_) {
-    buffer_uses.push_back(BufferUse::Write(result.slice));
+    buffer_uses.push_back(BufferUse::Write(result.slice, result.shape));
   }
   return buffer_uses;
 }
@@ -172,7 +172,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   }
 
   // Resolve device memory for arguments.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments_buffers;
   arguments_buffers.resize(arguments_.size());
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
@@ -188,7 +188,7 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   }
 
   // Resolve device memory for results.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results_buffers;
   results_buffers.resize(results_.size());
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];

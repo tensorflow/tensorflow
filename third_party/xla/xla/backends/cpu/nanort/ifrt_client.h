@@ -193,10 +193,6 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override;
 
-  tsl::RCReference<ifrt::UserContext> CreateUserContext() override {
-    return tsl::RCReference<ifrt::UserContext>();
-  }
-
   static char ID;  // NOLINT
 
  private:

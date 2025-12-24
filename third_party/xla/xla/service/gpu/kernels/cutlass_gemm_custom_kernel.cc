@@ -85,8 +85,8 @@ static std::optional<Dim> As(std::optional<Dim3> dim3) {
 }
 
 // Returns a pointer to device memory holding a slice offset.
-static int32_t* SlicePtr(const se::KernelArgsDeviceMemoryArray* args,
-                         int64_t index) {
+static int32_t* SlicePtr(
+    const stream_executor::KernelArgsDeviceAddressArray* args, int64_t index) {
   const void* opaque = args->device_memory_ptr(index);
   return static_cast<int32_t*>(const_cast<void*>(opaque));
 }
@@ -111,7 +111,8 @@ KernelArgsPacking ArgsPacking(GemmMode mode, int32_t batch_count, int32_t m,
   };
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
-    auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
+    auto* mem_args =
+        se::Cast<stream_executor::KernelArgsDeviceAddressArray>(&args);
 
     Arguments arguments = {mode, batch_count, m, n, k};
     arguments.lhs = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));

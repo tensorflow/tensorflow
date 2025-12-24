@@ -1924,7 +1924,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
               << algo_config->algorithm()->tensor_ops_enabled() << ").";
       return OkStatus();
     }
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     // Create temp tensors when profiling backprop pass.
     auto data_type = input->dtype();

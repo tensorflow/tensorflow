@@ -32,9 +32,9 @@ class VarHandleOp : public OpKernel {
  private:
   // Same fields as in ResourceHandleOp.
   bool is_anonymous_;
-  string container_;
-  string name_;
-  string debug_name_;
+  std::string container_;
+  std::string name_;
+  std::string debug_name_;
   Tensor const_tensor_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;

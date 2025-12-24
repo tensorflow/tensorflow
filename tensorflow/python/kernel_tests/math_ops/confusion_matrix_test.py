@@ -333,7 +333,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
         confusion_matrix.remove_squeezable_dimensions(
             labels_placeholder, predictions_placeholder))
 
-    expected_label_values = np.reshape(label_values, newshape=(2, 3))
+    expected_label_values = np.reshape(label_values, (2, 3))
     with self.cached_session():
       self.assertAllEqual(expected_label_values, self.evaluate(static_labels))
       self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
@@ -360,7 +360,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
         confusion_matrix.remove_squeezable_dimensions(
             labels_placeholder, predictions_placeholder, expected_rank_diff=1))
 
-    expected_label_values = np.reshape(label_values, newshape=(2, 3))
+    expected_label_values = np.reshape(label_values, (2, 3))
     with self.cached_session():
       self.assertAllEqual(expected_label_values, self.evaluate(static_labels))
       self.assertAllEqual(prediction_values, self.evaluate(static_predictions))
@@ -387,7 +387,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
         confusion_matrix.remove_squeezable_dimensions(
             labels_placeholder, predictions_placeholder))
 
-    expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
+    expected_prediction_values = np.reshape(prediction_values, (2, 3))
     with self.cached_session():
       self.assertAllEqual(label_values, self.evaluate(static_labels))
       self.assertAllEqual(expected_prediction_values,
@@ -416,7 +416,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
         confusion_matrix.remove_squeezable_dimensions(
             labels_placeholder, predictions_placeholder, expected_rank_diff=-1))
 
-    expected_prediction_values = np.reshape(prediction_values, newshape=(2, 3))
+    expected_prediction_values = np.reshape(prediction_values, (2, 3))
     with self.cached_session():
       self.assertAllEqual(label_values, self.evaluate(static_labels))
       self.assertAllEqual(expected_prediction_values,

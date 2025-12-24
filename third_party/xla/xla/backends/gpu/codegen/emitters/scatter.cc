@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -208,7 +207,9 @@ SmallVector<ValueRange> Unpack(ValueRange range, ArrayRef<int64_t> sizes) {
 SmallVector<Value, 4> PadWithZeros(ValueRange values, int64_t size,
                                    ImplicitLocOpBuilder& b) {
   SmallVector<Value, 4> padded_values(values.begin(), values.end());
-  if (values.size() >= size) return padded_values;
+  if (values.size() >= size) {
+    return padded_values;
+  }
   auto zero = arith::ConstantIndexOp::create(b, 0);
   for (int i = values.size(); i < size; ++i) {
     padded_values.push_back(zero);

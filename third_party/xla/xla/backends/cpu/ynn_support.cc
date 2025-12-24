@@ -48,10 +48,13 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
           {HloOpcode::kCos, ynn_unary_cosine},
+          {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
+          {HloOpcode::kExpm1, ynn_unary_expm1},
           {HloOpcode::kCbrt, ynn_unary_cube_root},
           {HloOpcode::kFloor, ynn_unary_floor},
           {HloOpcode::kLog, ynn_unary_log},
+          {HloOpcode::kLog1p, ynn_unary_log1p},
           {HloOpcode::kLogistic, ynn_unary_sigmoid},
           {HloOpcode::kNegate, ynn_unary_negate},
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
@@ -99,6 +102,10 @@ absl::StatusOr<ynn_binary_operator> YnnBinaryOperator(const HloOpcode& opcode) {
 }
 
 bool IsLayoutSupportedByYnn(const Shape& shape) {
+  if (shape.dimensions().size() > YNN_MAX_TENSOR_RANK) {
+    // TODO(b/460602165): We should eliminate this limitation.
+    return false;
+  }
   return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
@@ -137,6 +144,15 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
     return false;
   }
 
+  // We don't want to handle ops that are too small, overhead will be
+  // significant.
+  // TODO(b/469236467): This threshold is probably too small in some cases and
+  // too big in others.
+  constexpr int64_t kMinElements = 64;
+  if (ShapeUtil::ElementsIn(hlo->shape()) < kMinElements) {
+    return false;
+  }
+
   switch (hlo->operand_count()) {
     case 1:
       return YnnUnaryOperator(hlo->opcode()).ok();
@@ -154,9 +170,7 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({
-          // TODO(b/452693819): We plan to enable this in stages, starting with
-          // int8, and enable f32 later.
-          // {F32, F32, F32},
+          {F32, F32, F32},
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
           {BF16, BF16, F32},
@@ -216,6 +230,13 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   return true;
 }
 
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
+  return IsDotSupportedByYnn(hlo->dot_dimension_numbers(),
+                             hlo->operand(0)->shape(), hlo->operand(1)->shape(),
+                             hlo->shape());
+}
+
 bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
   if (!YnnType(hlo->shape().element_type()).ok()) {
@@ -269,6 +290,71 @@ bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
       return true;
     }
   }
+}
+
+bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
+  CHECK_EQ(instr->opcode(), HloOpcode::kConvolution);
+  const HloConvolutionInstruction* conv =
+      Cast<HloConvolutionInstruction>(instr);
+
+  ConvolutionDimensionNumbers conv_dimensions =
+      conv->convolution_dimension_numbers();
+  Window window = conv->window();
+
+  if (conv->batch_group_count() != 1) {
+    return false;
+  }
+
+  // Only support 2D convolution.
+  if (window.dimensions_size() != 2) {
+    return false;
+  }
+
+  // Stores tuple of allowed (input, output) dtypes.
+  static const absl::NoDestructor<absl::flat_hash_set<
+      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
+      kAllowedTypes({{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
+
+  PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
+  PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
+  PrimitiveType out_dtype = conv->shape().element_type();
+  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+    return false;
+  }
+
+  // Make sure that this layout is supported.
+  if (conv_dimensions.input_feature_dimension() != 3 ||
+      conv_dimensions.output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.kernel_input_feature_dimension() != 2 ||
+      conv_dimensions.kernel_output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions_size() != 2 ||
+      conv_dimensions.kernel_spatial_dimensions_size() != 2 ||
+      conv_dimensions.output_spatial_dimensions_size() != 2) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions(0) != 1 ||
+      conv_dimensions.input_spatial_dimensions(1) != 2 ||
+      conv_dimensions.kernel_spatial_dimensions(0) != 0 ||
+      conv_dimensions.kernel_spatial_dimensions(1) != 1 ||
+      conv_dimensions.output_spatial_dimensions(0) != 1 ||
+      conv_dimensions.output_spatial_dimensions(1) != 2) {
+    return false;
+  }
+
+  // No base dilation for now.
+  if ((window.dimensions(0).base_dilation() != 1) ||
+      (window.dimensions(1).base_dilation() != 1)) {
+    return false;
+  }
+
+  return true;
 }
 
 uint32_t YnnFlags(const DebugOptions& debug_options) {

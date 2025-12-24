@@ -32,20 +32,8 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/windows_util.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
-
-#define XNNPACK_RETURN_CHECK(TEST, ...)                              \
-  if (!(TEST)) {                                                     \
-    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) { \
-      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,                      \
-                      "XNNPack weight cache: " __VA_ARGS__);         \
-    }                                                                \
-    return false;                                                    \
-  }
 
 namespace tflite::xnnpack {
 
@@ -100,9 +88,10 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        safe_path, strerror(errno));
 #else
   struct stat file_stats;
-  XNNPACK_RETURN_CHECK(fstat(fd.Value(), &file_stats) == 0,
-                       "could not access file stats to get size ('%s'): %s.",
-                       safe_path, strerror(errno));
+  XNNPACK_RETURN_CHECK(
+      fstat(fd.Value(), &file_stats) == 0,
+      "could not access file descriptor %d stats to get size ('%s'): %s.",
+      fd.Value(), safe_path, strerror(errno));
 #endif
 
   // This will reset data_ and size_ on return until it is deactivated.
@@ -149,8 +138,9 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   data_ = static_cast<uint8_t*>(
       mmap(/*addr=*/nullptr, size_ + offset_page_adjustment_, PROT_READ,
            MAP_SHARED, fd.Value(), offset_ - offset_page_adjustment_));
-  XNNPACK_RETURN_CHECK(data_ != MAP_FAILED, "could not mmap file (%s): %s.",
-                       safe_path, strerror(errno));
+  XNNPACK_RETURN_CHECK(data_ != MAP_FAILED,
+                       "could not mmap file descriptor %d (%s): %s.",
+                       fd.Value(), safe_path, strerror(errno));
 #endif
   unmap_on_error.Deactivate();
   return true;

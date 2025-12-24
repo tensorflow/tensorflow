@@ -106,6 +106,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client:local_client",
+        "@local_xla//xla/pjrt:host_memory_allocator",
         "@local_xla//xla/pjrt:local_device_state",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tf_pjrt_client",

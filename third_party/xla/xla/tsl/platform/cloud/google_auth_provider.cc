@@ -41,9 +41,7 @@ limitations under the License.
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
 
@@ -98,7 +96,7 @@ bool IsFile(const string& filename) {
 /// Returns the credentials file name from the env variable.
 absl::Status GetEnvironmentVariableFileName(string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
@@ -112,7 +110,7 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
 /// Returns the well known file produced by command 'gcloud auth login'.
 absl::Status GetWellKnownFileName(string* filename) {
   if (!filename) {
-    return errors::FailedPrecondition("'filename' cannot be nullptr.");
+    return absl::FailedPreconditionError("'filename' cannot be nullptr.");
   }
   string config_dir;
   const char* config_dir_override = std::getenv(kCloudSdkConfig);
@@ -122,7 +120,7 @@ absl::Status GetWellKnownFileName(string* filename) {
     // Determine the home dir path.
     const char* home_dir = std::getenv("HOME");
     if (!home_dir) {
-      return errors::FailedPrecondition("Could not read $HOME.");
+      return absl::FailedPreconditionError("Could not read $HOME.");
     }
     config_dir = io::JoinPath(home_dir, kGCloudConfigFolder);
   }
@@ -153,7 +151,7 @@ GoogleAuthProvider::GoogleAuthProvider(
       env_(env) {}
 
 absl::Status GoogleAuthProvider::GetToken(string* t) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
   if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {
@@ -231,7 +229,7 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
   Json::Reader reader;
   std::ifstream credentials_fstream(credentials_filename);
   if (!reader.parse(credentials_fstream, json)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Couldn't parse the JSON credentials file.");
   }
   if (json.isMember("refresh_token")) {
@@ -242,7 +240,7 @@ absl::Status GoogleAuthProvider::GetTokenFromFiles() {
         json, kOAuthV4Url, kOAuthScope, &current_token_,
         &expiration_timestamp_sec_));
   } else {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Unexpected content of the JSON credentials file.");
   }
   return absl::OkStatus();

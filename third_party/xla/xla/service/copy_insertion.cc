@@ -1183,7 +1183,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
-             HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+             alias_info_->GetInPlaceInputOutputPairs(
                  // Input/output buffer aliasing analysis needs to be done
                  // directly with the wrapped instruction when the compiler sees
                  // an async box.
@@ -1477,7 +1477,8 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
                            use_region_based_live_range_analysis_);
         if (copy_remover.TryElideCopy(
                 instruction, &region_analysis_cost_now,
-                insert_post_scheduling_control_dependencies)) {
+                insert_post_scheduling_control_dependencies,
+                should_skip_removal_)) {
           changed = true;
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(

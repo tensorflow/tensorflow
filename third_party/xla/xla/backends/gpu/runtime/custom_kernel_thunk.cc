@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
@@ -84,9 +84,10 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
           << custom_kernel_.ToString() << " as device kernel "
           << kernel->name();
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
+  absl::InlinedVector<se::DeviceAddressBase, 4> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {
-    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    se::DeviceAddressBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "[" << device_ordinal << "]  Arg: alloc #" << arg.index()
             << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
             << buf.size() << "B)";
@@ -95,7 +96,7 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   if (VLOG_IS_ON(100)) {
     absl::InlinedVector<se::KernelArgument, 4> kernel_args;
-    for (const se::DeviceMemoryBase& arg : buffer_args) {
+    for (const se::DeviceAddressBase& arg : buffer_args) {
       kernel_args.push_back(arg);
     }
     PrintBufferContents(params.stream, kernel_args);

@@ -76,8 +76,9 @@ struct LowerXtileEntry : mlir::OpRewritePattern<xtile::EntryFuncOp> {
       }
     }
 
-    auto new_func_op = rewriter.create<mlir::func::FuncOp>(
-        op->getLoc(), op.getSymName(), op.getFunctionType(), filtered_attrs);
+    auto new_func_op =
+        mlir::func::FuncOp::create(rewriter, op->getLoc(), op.getSymName(),
+                                   op.getFunctionType(), filtered_attrs);
     new_func_op.setArgAttrsAttr(op.getArgAttrsAttr());
 
     // Move the region from the old function to the new one.
@@ -99,7 +100,8 @@ struct LowerXTileEntryReturn
   mlir::LogicalResult matchAndRewrite(
       xtile::EntryFuncReturnOp op,
       mlir::PatternRewriter& rewriter) const override {
-    rewriter.replaceOp(op, rewriter.create<mlir::func::ReturnOp>(op->getLoc()));
+    rewriter.replaceOp(op,
+                       mlir::func::ReturnOp::create(rewriter, op->getLoc()));
     return mlir::success();
   }
 };
@@ -151,8 +153,8 @@ class LowerXTileEntryPass
       auto call_frame_type = CallFrameType::get(context);
       auto error_type = ErrorType::get(context);
       builder.setInsertionPointToStart(module.getBody());
-      mlir::func::FuncOp kernel_func = builder.create<mlir::func::FuncOp>(
-          kernel_name,
+      mlir::func::FuncOp kernel_func = mlir::func::FuncOp::create(
+          builder, kernel_name,
           builder.getFunctionType({call_frame_type}, {error_type}));
 
       builder.setInsertionPointToStart(kernel_func.addEntryBlock());
@@ -162,7 +164,7 @@ class LowerXTileEntryPass
       llvm::SmallVector<mlir::Value> call_args;
       for (const auto& [idx, arg] :
            llvm::enumerate(entry_func.getBufferArgs())) {
-        LoadOp load = builder.create<LoadOp>(arg.getType(), call_frame, idx);
+        LoadOp load = LoadOp::create(builder, arg.getType(), call_frame, idx);
         call_args.push_back(load);
       }
 
@@ -177,11 +179,11 @@ class LowerXTileEntryPass
       int32_t tiles_per_workgroup = tile_info.getTilesPerWorkgroup();
 
       mlir::Value tile_count_value =
-          builder.create<mlir::arith::ConstantIndexOp>(tile_count);
+          mlir::arith::ConstantIndexOp::create(builder, tile_count);
       mlir::Value tiles_per_workgroup_value =
-          builder.create<mlir::arith::ConstantIndexOp>(tiles_per_workgroup);
-      mlir::Value workgroup_id = builder.create<ExtractWorkgroupIdOp>(
-          builder.getIndexType(), call_frame, WorkGroupDimension::x);
+          mlir::arith::ConstantIndexOp::create(builder, tiles_per_workgroup);
+      mlir::Value workgroup_id = ExtractWorkgroupIdOp::create(
+          builder, builder.getIndexType(), call_frame, WorkGroupDimension::x);
 
       auto flags = mlir::arith::IntegerOverflowFlags::nsw |
                    mlir::arith::IntegerOverflowFlags::nuw;
@@ -189,23 +191,24 @@ class LowerXTileEntryPass
       // This isn't needed for correctness as the workgroup id passed from the
       // runtime will always be in bounds but it constrains the range which LLVM
       // can then take advantage of.
-      mlir::Value bounded_workgroup_id = builder.create<mlir::arith::MaxSIOp>(
-          workgroup_id, builder.create<mlir::arith::ConstantIndexOp>(0));
+      mlir::Value bounded_workgroup_id = mlir::arith::MaxSIOp::create(
+          builder, workgroup_id,
+          mlir::arith::ConstantIndexOp::create(builder, 0));
 
-      mlir::Value start_tile_id = builder.create<mlir::arith::MulIOp>(
-          bounded_workgroup_id, tiles_per_workgroup_value, flags);
-      mlir::Value bounded_start_tile_id =
-          builder.create<mlir::arith::MinSIOp>(start_tile_id, tile_count_value);
+      mlir::Value start_tile_id = mlir::arith::MulIOp::create(
+          builder, bounded_workgroup_id, tiles_per_workgroup_value, flags);
+      mlir::Value bounded_start_tile_id = mlir::arith::MinSIOp::create(
+          builder, start_tile_id, tile_count_value);
 
-      mlir::Value end_tile_id = builder.create<mlir::arith::AddIOp>(
-          start_tile_id, tiles_per_workgroup_value, flags);
+      mlir::Value end_tile_id = mlir::arith::AddIOp::create(
+          builder, start_tile_id, tiles_per_workgroup_value, flags);
       mlir::Value bounded_end_tile_id =
-          builder.create<mlir::arith::MinSIOp>(end_tile_id, tile_count_value);
+          mlir::arith::MinSIOp::create(builder, end_tile_id, tile_count_value);
 
-      mlir::Value step = builder.create<mlir::arith::ConstantIndexOp>(1);
+      mlir::Value step = mlir::arith::ConstantIndexOp::create(builder, 1);
 
-      auto for_op = builder.create<mlir::scf::ForOp>(bounded_start_tile_id,
-                                                     bounded_end_tile_id, step);
+      auto for_op = mlir::scf::ForOp::create(builder, bounded_start_tile_id,
+                                             bounded_end_tile_id, step);
       {
         mlir::ImplicitLocOpBuilder body_builder(entry_func->getLoc(),
                                                 entry_func);
@@ -213,12 +216,12 @@ class LowerXTileEntryPass
 
         call_args.push_back(for_op.getInductionVar());
 
-        body_builder.create<mlir::func::CallOp>(kernel_impl_name,
-                                                mlir::TypeRange(), call_args);
+        mlir::func::CallOp::create(body_builder, kernel_impl_name,
+                                   mlir::TypeRange(), call_args);
       }
 
-      auto error = builder.create<cpu::SuccessOp>(error_type);
-      builder.create<mlir::func::ReturnOp>(error.getResult());
+      auto error = cpu::SuccessOp::create(builder, error_type);
+      mlir::func::ReturnOp::create(builder, error.getResult());
     }
 
     return mlir::success();

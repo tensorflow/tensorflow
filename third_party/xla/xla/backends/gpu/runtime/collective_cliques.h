@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/runtime/device_id.h"
 
 namespace xla::gpu {
 
@@ -38,6 +39,9 @@ class CollectiveCliques {
 
   absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
                                         RankId rank) const;
+
+  absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
+                                        GlobalDeviceId global_device_id) const;
 
   // Returns whether peer device memory access is possible between all devices
   // in the clique.

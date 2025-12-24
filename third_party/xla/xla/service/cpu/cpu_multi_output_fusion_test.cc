@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -28,7 +29,10 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla::cpu {
 namespace {
 
-using MultiOutputFusionTest = HloHardwareIndependentTestBase;
+class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
   // The current implementation of the multi-output fusion pass only fuses when
@@ -55,8 +59,8 @@ TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kTrivialReusedInput));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          CpuMultiOutputFusion().Run(hlo_module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
   EXPECT_TRUE(changed);
   HloComputation* entry_computation = hlo_module->entry_computation();
   EXPECT_THAT(entry_computation->instructions(),

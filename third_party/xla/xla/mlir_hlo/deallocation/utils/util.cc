@@ -85,25 +85,25 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
   OpBuilder b(op);
   RegionBranchOpInterface newOp;
   if (llvm::isa<scf::ForOp>(op)) {
-    newOp = b.create<scf::ForOp>(op.getLoc(), op->getOperands()[0],
-                                 op->getOperands()[1], op->getOperands()[2],
-                                 op->getOperands().drop_front(3));
+    newOp = scf::ForOp::create(b, op.getLoc(), op->getOperands()[0],
+                               op->getOperands()[1], op->getOperands()[2],
+                               op->getOperands().drop_front(3));
   } else if (llvm::isa<scf::WhileOp>(op)) {
-    newOp = b.create<scf::WhileOp>(
-        op.getLoc(),
+    newOp = scf::WhileOp::create(
+        b, op.getLoc(),
         TypeRange{op->getRegion(0).front().getTerminator()->getOperands()}
             .drop_front(),
         op->getOperands());
   } else if (llvm::isa<scf::IfOp>(op)) {
-    newOp = b.create<scf::IfOp>(
-        op.getLoc(),
+    newOp = scf::IfOp::create(
+        b, op.getLoc(),
         TypeRange{op->getRegion(0).front().getTerminator()->getOperands()},
         op->getOperands()[0], op->getNumRegions() > 1);
   } else if (llvm::isa<scf::ParallelOp>(op)) {
     auto parallel = llvm::cast<scf::ParallelOp>(op);
-    newOp = b.create<scf::ParallelOp>(
-        op.getLoc(), parallel.getLowerBound(), parallel.getUpperBound(),
-        parallel.getStep(), parallel.getInitVals());
+    newOp = scf::ParallelOp::create(b, op.getLoc(), parallel.getLowerBound(),
+                                    parallel.getUpperBound(),
+                                    parallel.getStep(), parallel.getInitVals());
   } else {
     llvm_unreachable("unsupported");
   }

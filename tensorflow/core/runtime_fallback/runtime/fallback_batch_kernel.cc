@@ -50,8 +50,9 @@ constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 
 }  // namespace
 
-int32 BatchFunctionFallbackKernelBase::
-    NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
+int32_t
+BatchFunctionFallbackKernelBase::NumBatchThreadsFromEnvironmentWithDefault(
+    int default_num_batch_threads) {
   int32_t num;
   const char* val = std::getenv("TF_NUM_BATCH_THREADS");
 

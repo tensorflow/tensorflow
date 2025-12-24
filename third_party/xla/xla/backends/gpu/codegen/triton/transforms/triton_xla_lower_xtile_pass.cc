@@ -72,7 +72,7 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
   for (const auto& arg : entry_op.getBufferArgs()) {
     mlir::MemRefType memref_type = mlir::cast<mlir::MemRefType>(arg.getType());
     arg_types.push_back(
-        ::xla::gpu::triton::GetGlobalPointerType(memref_type.getElementType()));
+        ttir::getPointerTypeToElement(memref_type.getElementType()));
   }
   mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
   arg_types.append(opaque_args.begin(), opaque_args.end());
@@ -81,7 +81,7 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
 
 // Function to get the permutation vector from a MemRefType.
 // The motivation for extracting it from getStridesAndOffset vs directly from
-// triton_xla.layout is that when we fold memrefs (such as in a transpose) it
+// xtile.layout is that when we fold memrefs (such as in a transpose) it
 // will have a generic strided layout that does not directly encode the
 // permutation.
 absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
@@ -131,8 +131,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
 
 MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
                                 mlir::TypedValue<mlir::MemRefType> memref) {
-  PointerType ptr_type = ::xla::gpu::triton::GetGlobalPointerType(
-      memref.getType().getElementType());
+  mlir::Type ptr_type =
+      ttir::getPointerTypeToElement(memref.getType().getElementType());
   return MemrefToPtrOp::create(builder, memref.getLoc(), ptr_type, memref);
 }
 

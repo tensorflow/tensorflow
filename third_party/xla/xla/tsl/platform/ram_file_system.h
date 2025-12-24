@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
@@ -44,12 +45,12 @@ limitations under the License.
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
 #undef CopyFile
 #undef TranslateName
+#undef StrCat
 #endif
 
 namespace tsl {
@@ -65,13 +66,13 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     return absl::OkStatus();
   }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset >= data_->size()) {
-      return errors::OutOfRange("");
+      return absl::OutOfRangeError("");
     }
 
-    uint64 left = std::min(static_cast<uint64>(n), data_->size() - offset);
+    uint64_t left = std::min(static_cast<uint64_t>(n), data_->size() - offset);
     auto start = data_->begin() + offset;
     auto end = data_->begin() + offset + left;
 
@@ -81,7 +82,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     // In case of a partial read, we must still fill `result`, but also return
     // OutOfRange.
     if (left < n) {
-      return errors::OutOfRange("");
+      return absl::OutOfRangeError("");
     }
     return absl::OkStatus();
   }
@@ -104,7 +105,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
 
   absl::Status Tell(int64_t* position) override {
     *position = -1;
-    return errors::Unimplemented("This filesystem does not support Tell()");
+    return absl::UnimplementedError("This filesystem does not support Tell()");
   }
 
  private:
@@ -128,7 +129,8 @@ class RamFileSystem : public FileSystem {
       return absl::NotFoundError("");
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -145,7 +147,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -162,7 +165,8 @@ class RamFileSystem : public FileSystem {
       fs_[fname] = std::make_shared<std::string>();
     }
     if (fs_[fname] == nullptr) {
-      return errors::InvalidArgument(fname_, " is a directory.");
+      return absl::InvalidArgumentError(
+          absl::StrCat(fname_, " is a directory."));
     }
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
@@ -172,7 +176,7 @@ class RamFileSystem : public FileSystem {
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 
   absl::Status FileExists(const std::string& fname_,
@@ -259,7 +263,7 @@ class RamFileSystem : public FileSystem {
 
     auto it = fs_.find(dirname);
     if (it != fs_.end() && it->second != nullptr) {
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           "cannot create directory with same name as an existing file");
     }
 
@@ -293,7 +297,7 @@ class RamFileSystem : public FileSystem {
       return absl::NotFoundError("");
     }
     if (it->second != nullptr) {
-      return errors::InvalidArgument("Not a directory");
+      return absl::InvalidArgumentError("Not a directory");
     }
     fs_.erase(dirname);
 
@@ -301,13 +305,13 @@ class RamFileSystem : public FileSystem {
   }
 
   absl::Status GetFileSize(const std::string& fname_, TransactionToken* token,
-                           uint64* file_size) override {
+                           uint64_t* file_size) override {
     absl::MutexLock m(mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
       if (fs_[fname] == nullptr) {
-        return errors::InvalidArgument("Not a file");
+        return absl::InvalidArgumentError("Not a file");
       }
       *file_size = fs_[fname]->size();
       return absl::OkStatus();
@@ -351,14 +355,14 @@ class RamFileSystem : public FileSystem {
     return absl::StartsWith(s, prefix);
   }
 
-  string StripPrefix(std::string s, std::string prefix) {
+  std::string StripPrefix(std::string s, std::string prefix) {
     if (absl::StartsWith(s, prefix)) {
       return s.erase(0, prefix.size());
     }
     return s;
   }
 
-  string StripRamFsPrefix(std::string name) {
+  std::string StripRamFsPrefix(std::string name) {
     std::string s = StripPrefix(name, "ram://");
     if (*(s.rbegin()) == '/') {
       s.pop_back();

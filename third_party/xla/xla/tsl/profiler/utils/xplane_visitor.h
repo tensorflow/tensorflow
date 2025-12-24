@@ -169,6 +169,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::string_view Name() const { return metadata_->name(); }
 
+  absl::string_view LineName() const { return line_->name(); }
+
   std::optional<int64_t> Type() const { return type_; }
 
   bool HasDisplayName() const { return !metadata_->display_name().empty(); }

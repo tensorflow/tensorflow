@@ -1043,8 +1043,8 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
     ],
 )
 

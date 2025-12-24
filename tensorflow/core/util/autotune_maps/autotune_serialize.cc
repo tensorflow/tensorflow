@@ -106,7 +106,8 @@ Status PopulateConvMap(
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
                         platform->DescriptionForDevice(i));
-    device_descs.push_back(device_desc->model_str());
+    device_descs.push_back(
+        DeviceIdentifierForAutotuning(device_desc->model_str()));
   }
 
   std::set<std::string> unmatched_device_descs;

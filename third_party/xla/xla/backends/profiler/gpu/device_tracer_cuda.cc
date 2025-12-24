@@ -78,7 +78,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
 
 absl::Status GpuTracer::DoStart() {
   if (!cupti_tracer_->IsAvailable()) {
-    return tsl::errors::Unavailable("Another profile session running.");
+    return absl::UnavailableError("Another profile session running.");
   }
 
   options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
@@ -94,6 +94,11 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
+
+  // TODO: Change default to true once we have more confidence in HES.
+  ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
+                     &options_.enable_activity_hardware_tracing)
+      .IgnoreError();
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION >= 11000
@@ -165,7 +170,7 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       VLOG(1) << "No trace data collected, session wasn't started";
       return absl::OkStatus();
     case State::kStartedOk:
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, profiler failed to start";

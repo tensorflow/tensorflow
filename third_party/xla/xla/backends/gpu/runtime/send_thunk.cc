@@ -16,30 +16,37 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/send_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -47,16 +54,24 @@ namespace gpu {
 SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
                      int64_t replica_count, int64_t partition_count,
                      const Buffer& buffer)
-    : CollectiveThunk(Thunk::kSend, thunk_info,
-                      /*is_sync=*/false, GetStreamKindForP2P(instr)),
-      config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
-                                      replica_count, partition_count)),
+    : SendThunk(std::move(thunk_info),
+                GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
+                                        replica_count, partition_count),
+                std::make_shared<CollectiveThunk::AsyncEvents>(),
+                GetStreamKindForP2P(instr), buffer, instr->name()) {}
+
+SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
+                     std::shared_ptr<AsyncEvents> async_events,
+                     AsyncStreamKind stream_kind, const Buffer& buffer,
+                     absl::string_view instr_name)
+    : CollectiveThunk(Thunk::kSend, thunk_info, async_events, stream_kind),
+      config_(config),
       buffer_(buffer),
       execution_counters_(config_.validation_kind ==
                                   P2PConfig::ValidationKind::kConditional
                               ? new ExecutionCounters()
                               : nullptr),
-      hlo_name_(instr->name()) {}
+      hlo_name_(instr_name) {}
 
 absl::Status SendThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
@@ -67,9 +82,76 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
+    ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::shared_ptr<CollectiveThunk::AsyncEvents>& async_events =
+      async_events_map[AsyncEventsUniqueId{
+          thunk_proto.async_events_unique_id()}];
+  if (!async_events) {
+    async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
+  }
+
+  ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
+                   CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
+                                                      buffer_allocations));
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+
+  P2PConfig::IdToSourceTargetMap id_to_source_target;
+  for (const SourceTarget& source_target : thunk_proto.source_target_pairs()) {
+    id_to_source_target.insert({source_target.target(), {}})
+        .first->second.source = source_target.source();
+    id_to_source_target.insert({source_target.source(), {}})
+        .first->second.target = source_target.target();
+  }
+
+  return std::make_unique<SendThunk>(
+      std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
+      async_events, thunk_proto.async_stream_kind(), buffer,
+      thunk_proto.instruction_name());
+}
+
+absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
+  CHECK_EQ(config_.validation_kind, P2PConfig::ValidationKind::kValid);
+  CHECK(config_.source_target_to_bounds.empty());
+
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  SendThunkProto* thunk_proto = proto.mutable_send_thunk();
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  CHECK(async_events_id.has_value());
+  thunk_proto->set_async_events_unique_id(async_events_id->value());
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+  std::vector<SourceTarget> source_target_pairs;
+  source_target_pairs.reserve(config_.id_to_source_target.size() / 2);
+  for (const auto& [key_id, map_entry] : config_.id_to_source_target) {
+    if (!map_entry.source.has_value()) {
+      // Same pair is in the map with target/source switched.
+      continue;
+    }
+    SourceTarget pair;
+    pair.set_source(*map_entry.source);
+    pair.set_target(key_id);
+    source_target_pairs.push_back(pair);
+  }
+  thunk_proto->mutable_source_target_pairs()->Assign(
+      source_target_pairs.begin(), source_target_pairs.end());
+
+  thunk_proto->set_async_stream_kind(GetAsyncStreamKind());
+  thunk_proto->set_instruction_name(hlo_name_);
+  return proto;
+}
+
 absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
+                                              const GpuCliqueKey&,
                                               se::Stream& stream,
-                                              CommunicatorHandle comm_handle) {
+                                              Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -101,7 +183,7 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
           << hlo_name_ << ")";
 
   const std::optional<int64_t> target_id = source_target.target;
-  se::DeviceMemoryBase src_addr = buffer.source_buffer;
+  se::DeviceAddressBase src_addr = buffer.source_buffer;
 
   VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
                                 device_ordinal, device_string, current_id,
@@ -132,10 +214,10 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
 
     if (should_run) {
       TF_RETURN_IF_ERROR(
-          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-      auto future = comm_handle.comm->Send(
-          src_addr, buffer.element_type, buffer.element_count,
-          RankId(*target_id), GpuCollectives::On(stream));
+          MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+      auto future =
+          comm.Send(src_addr, buffer.element_type, buffer.element_count,
+                    RankId(*target_id), GpuCollectives::On(stream));
       TF_RETURN_IF_ERROR(future.Await());
     } else {
       VLOG(3) << "[" << device_ordinal << "] Skipping Send";

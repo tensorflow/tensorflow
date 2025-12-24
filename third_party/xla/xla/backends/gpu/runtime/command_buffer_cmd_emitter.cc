@@ -160,7 +160,6 @@ static absl::StatusOr<Command> Convert(
     }
   }
   return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
-                                   thunk.branch_index_is_bool(),
                                    std::move(branch_cmds));
 }
 
@@ -214,7 +213,7 @@ static absl::StatusOr<Command> Convert(
   return std::make_unique<DynamicSliceFusionCmd>(
       std::move(embedded_cmds), thunk.get_arguments(),
       std::move(fake_allocations), thunk.get_offsets(), thunk.get_orig_shapes(),
-      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes(),
+      thunk.get_sliced_shapes(), thunk.offset_primitive_types(),
       thunk.get_offset_function());
 }
 
@@ -232,7 +231,7 @@ static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
   if (auto bundle = thunk.bundle(); bundle.has_value()) {
     return std::make_unique<CustomCallCmd>(
         thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
-        *thunk.call_frame(),
+        *thunk.call_frame(), thunk.execution_state(),
         /*called_computation=*/nullptr);  // TODO(b/342285364)
   }
   return std::make_unique<CustomCallCmd>(thunk.target_name(),

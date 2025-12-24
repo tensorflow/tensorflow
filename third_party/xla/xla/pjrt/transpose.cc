@@ -91,6 +91,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -98,6 +99,7 @@ limitations under the License.
 #include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -546,124 +548,6 @@ static void ComputeStrides(
   }
 }
 
-void TransposePlan::RemoveTrivialDimensions(
-    absl::InlinedVector<int64_t, 4>& a_dims,
-    absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda,
-    absl::InlinedVector<int64_t, 4>& lda_tile,
-    absl::InlinedVector<int64_t, 4>& a_tiling,
-    absl::InlinedVector<int64_t, 4>& b_tiling) {
-  int ndim = a_dims.size();
-  // How many positions has the i-th dimension of 'a' been moved to the left?
-  // -1 if the dimension is to be removed.
-  std::vector<int> shift(ndim);
-  absl::InlinedVector<int64_t, 4> updated_a_dims;
-  absl::InlinedVector<int64_t, 4> updated_lda;
-  absl::InlinedVector<int64_t, 4> updated_lda_tile;
-  absl::InlinedVector<int64_t, 4> updated_a_tiling;
-  updated_a_dims.reserve(ndim);
-  updated_lda.reserve(ndim);
-  updated_lda_tile.reserve(ndim);
-  updated_a_tiling.reserve(ndim);
-  std::vector<int64_t> inv_permutation = InversePermutation(permutation);
-  for (int a_dim = 0; a_dim < ndim; ++a_dim) {
-    int b_dim = inv_permutation[a_dim];
-    // A dimension is trivial if it has size 1 and is not tiled.
-    if (a_dims[a_dim] == 1 && a_tiling[a_dim] == 1 && b_tiling[b_dim] == 1) {
-      shift[a_dim] = -1;
-    } else {
-      updated_a_dims.push_back(a_dims[a_dim]);
-      updated_lda.push_back(lda[a_dim]);
-      updated_lda_tile.push_back(lda_tile[a_dim]);
-      updated_a_tiling.push_back(a_tiling[a_dim]);
-      shift[a_dim] = a_dim + 1 - updated_a_dims.size();
-    }
-  }
-
-  // Updates the permutation and tiling of b.
-  absl::InlinedVector<int64_t, 4> updated_permutation;
-  absl::InlinedVector<int64_t, 4> updated_b_tiling;
-  updated_permutation.reserve(updated_a_dims.size());
-  updated_b_tiling.reserve(updated_a_dims.size());
-  for (int b_dim = 0; b_dim < ndim; ++b_dim) {
-    int a_dim = permutation[b_dim];
-    if (shift[a_dim] >= 0) {
-      updated_permutation.push_back(a_dim - shift[a_dim]);
-      updated_b_tiling.push_back(b_tiling[b_dim]);
-    }
-  }
-
-  DCHECK(IsPermutation(updated_permutation));
-  a_dims = std::move(updated_a_dims);
-  permutation = std::move(updated_permutation);
-  lda = std::move(updated_lda);
-  lda_tile = std::move(updated_lda_tile);
-  a_tiling = std::move(updated_a_tiling);
-  b_tiling = std::move(updated_b_tiling);
-}
-
-void TransposePlan::CoalesceDimensions(
-    absl::InlinedVector<int64_t, 4>& a_dims,
-    absl::InlinedVector<int64_t, 4>& permutation,
-    absl::InlinedVector<int64_t, 4>& lda,
-    absl::InlinedVector<int64_t, 4>& lda_tile,
-    absl::InlinedVector<int64_t, 4>& a_tiling,
-    absl::InlinedVector<int64_t, 4>& b_tiling) {
-  int ndim = a_dims.size();
-  // How many positions has the i-th dimension of 'a' been moved to the left?
-  // -1 if the dimension is to be removed.
-  std::vector<int> shift(ndim, 0);
-  absl::InlinedVector<int64_t, 4> updated_a_dims;
-  absl::InlinedVector<int64_t, 4> updated_lda;
-  absl::InlinedVector<int64_t, 4> updated_lda_tile;
-  absl::InlinedVector<int64_t, 4> updated_a_tiling;
-  updated_a_dims.reserve(ndim);
-  updated_lda.reserve(ndim);
-  updated_lda_tile.reserve(ndim);
-  updated_a_tiling.reserve(ndim);
-  std::vector<int64_t> inv_permutation = InversePermutation(permutation);
-  for (int a_dim = 0; a_dim < ndim; ++a_dim) {
-    // We can coalesce two dimensions if they appear consecutively
-    // in both the input dimensions and the output dimensions, and the stride
-    // of the outer dimension is the usual multiple of the inner dimension.
-    if (a_dim > 0 && inv_permutation[a_dim - 1] + 1 == inv_permutation[a_dim] &&
-        lda[a_dim - 1] == lda[a_dim] * a_dims[a_dim] &&
-        a_tiling[a_dim - 1] == 1 && a_tiling[a_dim] == 1 &&
-        b_tiling[inv_permutation[a_dim]] == 1 &&
-        b_tiling[inv_permutation[a_dim - 1]] == 1) {
-      updated_a_dims.back() *= a_dims[a_dim];
-      updated_lda.back() = lda[a_dim];
-      shift[a_dim] = -1;
-    } else {
-      updated_a_dims.push_back(a_dims[a_dim]);
-      updated_lda.push_back(lda[a_dim]);
-      updated_lda_tile.push_back(lda_tile[a_dim]);
-      updated_a_tiling.push_back(a_tiling[a_dim]);
-      shift[a_dim] = a_dim + 1 - updated_a_dims.size();
-    }
-  }
-
-  // Updates the permutation.
-  absl::InlinedVector<int64_t, 4> updated_permutation;
-  absl::InlinedVector<int64_t, 4> updated_b_tiling;
-  updated_permutation.reserve(updated_a_dims.size());
-  updated_b_tiling.reserve(updated_a_dims.size());
-  for (int b_dim = 0; b_dim < ndim; ++b_dim) {
-    int a_dim = permutation[b_dim];
-    if (shift[a_dim] >= 0) {
-      updated_permutation.push_back(a_dim - shift[a_dim]);
-      updated_b_tiling.push_back(b_tiling[b_dim]);
-    }
-  }
-  DCHECK(IsPermutation(updated_permutation));
-  a_dims = std::move(updated_a_dims);
-  permutation = std::move(updated_permutation);
-  lda = std::move(updated_lda);
-  lda_tile = std::move(updated_lda_tile);
-  a_tiling = std::move(updated_a_tiling);
-  b_tiling = std::move(updated_b_tiling);
-}
-
 int64_t TransposePlan::InputNumElems() const {
   int64_t size = 1;
   for (size_t i = 0; i < a_dims_.size(); ++i) {
@@ -682,9 +566,13 @@ int64_t TransposePlan::OutputNumElems() const {
 
 // Parses and validates a tiling specification, and populates `tiling`.
 static absl::Status ParseTilingSpecification(
-    int ndim, absl::Span<int64_t const> tiling_spec,
+    int ndim, const std::optional<TransposePlan::Tiling>& tiling_opt,
     absl::InlinedVector<int64_t, 4>& tiling) {
   tiling.resize(ndim, 1);
+  if (!tiling_opt) {
+    return absl::OkStatus();
+  }
+  absl::Span<int64_t const> tiling_spec = tiling_opt->tiling;
   if (tiling_spec.size() > ndim) {
     return InvalidArgument(
         "Tiling (%s) must have at most as many dimensions as the array (%d)",
@@ -706,16 +594,21 @@ static absl::Status ParseTilingSpecification(
   return absl::OkStatus();
 }
 
+bool TransposePlan::Loop::operator==(const Loop& other) const {
+  return dim_in_a == other.dim_in_a && tile_interior == other.tile_interior &&
+         dim_size == other.dim_size && tile_size == other.tile_size &&
+         lda == other.lda && ldb == other.ldb &&
+         is_inner_dim_in_a == other.is_inner_dim_in_a &&
+         is_inner_dim_in_b == other.is_inner_dim_in_b &&
+         parallelism == other.parallelism;
+}
+
 // Helper function that builds a plan.
-void TransposePlan::BuildPlanNodes(
-    absl::Span<int64_t const> inverse_permutation, int thread_id,
-    std::vector<TransposePlan::Node>& nodes) {
+void TransposePlan::BuildPlanNodes(int thread_id,
+                                   std::vector<TransposePlan::Node>& nodes) {
   VLOG(8) << "Before plan build: " << ToString();
   const int ndim = a_dims_.size();
   DCHECK_GT(ndim, 0);
-  const int pos_stride1a = ndim - 1;
-  const int pos_stride1b_in_a = permutation_.back();
-  const int pos_stride1a_in_b = inverse_permutation[pos_stride1a];
 
   // We build plans in a depth-first order, visiting loops from outermost to
   // innermost. We use a stack (depth-first) order to handle trailing partial
@@ -740,8 +633,10 @@ void TransposePlan::BuildPlanNodes(
   };
   std::stack<Agendum> agenda;
 
-  int total_tasks =
-      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
+  int total_tasks = 1;
+  for (const Loop& loop : loop_order_) {
+    total_tasks *= loop.parallelism;
+  }
 
   agenda.push(Agendum{/*loop_id=*/0, /*parent_node_id=*/-1,
                       /*num_tasks_at_loop=*/total_tasks,
@@ -772,12 +667,8 @@ void TransposePlan::BuildPlanNodes(
       if (!inner_kernel_is_memcpy_) {
         Node node;
         node.start = node.end = node.inc = -1;
-        node.lda = a_tiling_[pos_stride1b_in_a] > 1
-                       ? lda_tile_[pos_stride1b_in_a]
-                       : lda_[pos_stride1b_in_a];
-        node.ldb = b_tiling_[pos_stride1a_in_b] > 1
-                       ? ldb_tile_[pos_stride1a_in_b]
-                       : ldb_[pos_stride1a_in_b];
+        node.lda = sentinel_lda_;
+        node.ldb = sentinel_ldb_;
         nodes.push_back(node);
       }
       DCHECK(!(inner_kernel_is_memcpy_ && agendum.parent_node_id >= 0));
@@ -786,38 +677,34 @@ void TransposePlan::BuildPlanNodes(
 
     const Loop& loop = loop_order_[agendum.loop_id];
     int a_dim = loop.dim_in_a;
-    int b_dim = inverse_permutation[a_dim];
-    DCHECK(a_tiling_[a_dim] == 1 || b_tiling_[b_dim] == 1 ||
-           a_tiling_[a_dim] == b_tiling_[b_dim]);
-    int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
 
     // Compute the number of tasks for the next loop iteration.
     int task_id_at_loop = agendum.task_id_at_loop;
-    int num_tasks_at_loop =
-        agendum.num_tasks_at_loop / loop_parallelism_[agendum.loop_id];
+    int num_tasks_at_loop = agendum.num_tasks_at_loop / loop.parallelism;
     int task_id_at_next_loop = task_id_at_loop % num_tasks_at_loop;
+
+    Node node;
+    node.lda = loop.lda;
+    node.ldb = loop.ldb;
+    node.inc = 1;
+    node.is_inner_dim_in_a = loop.is_inner_dim_in_a;
+    node.is_inner_dim_in_b = loop.is_inner_dim_in_b;
+    if (node.is_inner_dim_in_a) {
+      node.inc = inner_block_elems_ * outer_block_elems_a_;
+    } else if (node.is_inner_dim_in_b) {
+      node.inc = inner_block_elems_ * outer_block_elems_b_;
+    }
+
+    int task_id = task_id_at_loop / num_tasks_at_loop;
 
     if (loop.tile_interior) {
       // We are visiting the tile interior of a tiled dimension.
       bool partial = agendum.partial_tiles[a_dim];
 
-      Node node;
-      node.lda = a_tiling_[a_dim] > 1 ? lda_tile_[a_dim] : lda_[a_dim];
-      node.ldb = b_tiling_[b_dim] > 1 ? ldb_tile_[b_dim] : ldb_[b_dim];
-      node.inc = 1;
-      node.is_inner_dim_in_a = (a_dim == pos_stride1a);
-      node.is_inner_dim_in_b = (a_dim == pos_stride1b_in_a);
-      if (node.is_inner_dim_in_a) {
-        node.inc = inner_block_elems_ * outer_block_elems_a_;
-      } else if (node.is_inner_dim_in_b) {
-        node.inc = inner_block_elems_ * outer_block_elems_b_;
-      }
-
-      int task_id = task_id_at_loop / num_tasks_at_loop;
-      int64_t size = partial ? a_dims_[a_dim] % tile_size : tile_size;
+      int64_t size = partial ? loop.dim_size % loop.tile_size : loop.tile_size;
       int64_t num_iterations = CeilOfRatio(size, node.inc);
-      int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
-          num_iterations, loop_parallelism_[agendum.loop_id]);
+      int64_t num_iterations_per_task =
+          CeilOfRatio<int64_t>(num_iterations, loop.parallelism);
       node.start = std::min(size, task_id * num_iterations_per_task * node.inc);
       node.end =
           std::min(size, (task_id + 1) * num_iterations_per_task * node.inc);
@@ -840,15 +727,14 @@ void TransposePlan::BuildPlanNodes(
     } else {
       // We are either visiting an untiled dimension, or the loop that iterates
       // over tile exteriors.
-      int task_id = task_id_at_loop / num_tasks_at_loop;
-      int64_t num_complete_tiles = a_dims_[a_dim] / tile_size;
-      bool has_partial_tile = (a_dims_[a_dim] % tile_size != 0);
+      int64_t num_complete_tiles = loop.dim_size / loop.tile_size;
+      bool has_partial_tile = (loop.dim_size % loop.tile_size != 0);
 
       // If there is a trailing partial tile as well as complete tiles, handle
       // it as a trailer on the loop over complete tiles.
       bool has_trailing_plan_node = false;
       if (num_complete_tiles > 0 && has_partial_tile &&
-          task_id == loop_parallelism_[agendum.loop_id] - 1) {
+          task_id == loop.parallelism - 1) {
         Agendum new_agendum;
         new_agendum.loop_id = agendum.loop_id + 1;
         new_agendum.parent_node_id = node_id;
@@ -859,17 +745,6 @@ void TransposePlan::BuildPlanNodes(
         agenda.push(std::move(new_agendum));
         has_trailing_plan_node = true;
       }
-      Node node;
-      node.lda = lda_[a_dim] * tile_size / a_tiling_[a_dim];
-      node.ldb = ldb_[b_dim] * tile_size / b_tiling_[b_dim];
-      node.inc = 1;
-      node.is_inner_dim_in_a = (tile_size == 1 && a_dim == ndim - 1);
-      node.is_inner_dim_in_b = (tile_size == 1 && a_dim == pos_stride1b_in_a);
-      if (node.is_inner_dim_in_a) {
-        node.inc = inner_block_elems_ * outer_block_elems_a_;
-      } else if (node.is_inner_dim_in_b) {
-        node.inc = inner_block_elems_ * outer_block_elems_b_;
-      }
 
       // If this tiled dimension consists only of a single partial tile, handle
       // it here; there's no point emitting a degenerate loop and a separate
@@ -879,8 +754,8 @@ void TransposePlan::BuildPlanNodes(
       // Evenly divide the loop iterations amongst the threads.
       int64_t num_tiles = partial ? 1 : num_complete_tiles;
       int64_t num_iterations = CeilOfRatio(num_tiles, node.inc);
-      int64_t num_iterations_per_task = CeilOfRatio<int64_t>(
-          num_iterations, loop_parallelism_[agendum.loop_id]);
+      int64_t num_iterations_per_task =
+          CeilOfRatio<int64_t>(num_iterations, loop.parallelism);
       node.start =
           std::min(num_tiles, task_id * num_iterations_per_task * node.inc);
       node.end = std::min(num_tiles,
@@ -909,7 +784,15 @@ void TransposePlan::BuildPlanNodes(
 }
 
 absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
-    const Options& o) {
+    Options o) {
+  if (o.input_layout.has_value()) {
+    if (const auto* t = std::get_if<Tiling>(&*o.input_layout)) {
+      o.input_tiling = *t;
+    } else if (const auto* s = std::get_if<Striding>(&*o.input_layout)) {
+      o.input_striding = *s;
+    }
+  }
+
   auto is_negative = [](int64_t d) { return d < 0; };
   if (absl::c_find_if(o.dims, is_negative) != o.dims.end()) {
     return InvalidArgument("dims must be non-negative, got %s",
@@ -952,68 +835,82 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   plan->original_b_dims_ = Permute(o.dims, o.permutation);
 
   TF_RETURN_IF_ERROR(
-      ParseTilingSpecification(ndim, o.output_tiling.tiling, plan->b_tiling_));
+      ParseTilingSpecification(ndim, o.output_tiling, plan->b_tiling_));
 
-  // Handles strides.
-  if (std::holds_alternative<Striding>(o.input_layout)) {
+  // Temporary vectors to hold un-permuted attributes
+  absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
+
+  // Parse the tile and stride specifications.
+  TF_RETURN_IF_ERROR(
+      ParseTilingSpecification(ndim, o.input_tiling, temp_a_tiling));
+  ComputeStrides(plan->elem_size_in_bytes_, o.dims, temp_a_tiling, temp_lda,
+                 temp_lda_tile);
+
+  // Determine tile (outer) strides
+  absl::InlinedVector<int64_t, 4> input_outer_strides;
+  if (o.input_striding) {
     absl::Span<int64_t const> input_strides_in_bytes =
-        std::get<Striding>(o.input_layout).strides_in_bytes;
+        o.input_striding->strides_in_bytes;
     if (input_strides_in_bytes.size() != o.dims.size()) {
       return InvalidArgument(
-          "dims and input_strides_in_bytes must have equal sizes, got %d "
-          "and %d",
+          "dims and input_striding must have equal sizes, "
+          "got %d and %d",
           o.dims.size(), input_strides_in_bytes.size());
     }
+    input_outer_strides.assign(input_strides_in_bytes.begin(),
+                               input_strides_in_bytes.end());
+    // Also save original strides if explicit
     plan->original_a_strides_.resize(ndim);
     absl::c_copy(input_strides_in_bytes, plan->original_a_strides_.begin());
-    // Sort the dimensions from slowest-varying (largest strides) to
-    // fastest-varying (smallest strides).
-    std::vector<int64_t> dim_order(ndim);
-    absl::c_iota(dim_order, 0);
-
-    auto cost = [&](int k) {
-      int64_t stride = input_strides_in_bytes.at(k);
-      // If there is a dimension with size equal to the element size, sort it
-      // last. This ensures that we place any stride-1 dimension last.
-      bool is_stride1 = stride == o.elem_size_in_bytes;
-      // If there are multiple stride-1 dimensions, we'd prefer the one that
-      // matches the stride-1 dimension of the output.
-      // Failing that, we'd just prefer the largest stride-1 dimension last.
-      bool is_trailing_dim_in_b = o.permutation.back() == k;
-
-      // If we are applying ef57 conversion, we want a size-2 stride-1
-      // dimension last.
-      bool ef57_even =
-          (is_stride1 && o.transformation == Transformation::kF64ToEf57 &&
-           o.dims[k] == 2);
-
-      return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
-                             is_trailing_dim_in_b, o.dims[k]);
-    };
-    absl::c_stable_sort(dim_order,
-                        [&cost](int i, int j) { return cost(i) < cost(j); });
-    // dim_order maps new input dim -> old input dim, we need its inverse to
-    // compute the new permutation.
-    auto inv_dim_order = InversePermutation(dim_order);
-    plan->lda_.reserve(ndim);
-    plan->a_dims_.reserve(ndim);
-    plan->permutation_.reserve(ndim);
-    for (int i = 0; i < ndim; ++i) {
-      plan->lda_.push_back(input_strides_in_bytes.at(dim_order[i]));
-      plan->a_dims_.push_back(o.dims[dim_order[i]]);
-      plan->permutation_.push_back(inv_dim_order[o.permutation[i]]);
-    }
-    plan->lda_tile_.resize(ndim, 1);
-    plan->a_tiling_.resize(ndim, 1);
   } else {
-    TF_RETURN_IF_ERROR(ParseTilingSpecification(
-        ndim, std::get<Tiling>(o.input_layout).tiling, plan->a_tiling_));
+    input_outer_strides = temp_lda;
+  }
 
-    plan->a_dims_ = plan->original_a_dims_;
-    plan->permutation_.resize(ndim);
-    absl::c_copy(o.permutation, plan->permutation_.begin());
-    ComputeStrides(plan->elem_size_in_bytes_, plan->a_dims_, plan->a_tiling_,
-                   plan->lda_, plan->lda_tile_);
+  // Sort the dimensions from slowest-varying (largest strides) to
+  // fastest-varying (smallest strides).
+  // Maps new input dim -> old input dim
+  std::vector<int64_t> dim_order(ndim);
+  absl::c_iota(dim_order, 0);
+
+  auto cost = [&](int k) {
+    int64_t stride = input_outer_strides.at(k);
+    // If there is a dimension with size equal to the element size, sort it
+    // last. This ensures that we place any stride-1 dimension last.
+    bool is_stride1 = stride == o.elem_size_in_bytes;
+    // If there are multiple stride-1 dimensions, we'd prefer the one that
+    // matches the stride-1 dimension of the output.
+    // Failing that, we'd just prefer the largest stride-1 dimension last.
+    bool is_trailing_dim_in_b = o.permutation.back() == k;
+
+    // If we are applying ef57 conversion, we want a size-2 stride-1
+    // dimension last.
+    bool ef57_even =
+        (is_stride1 && o.transformation == Transformation::kF64ToEf57 &&
+         o.dims[k] == 2);
+
+    return std::make_tuple(is_stride1, -std::abs(stride), ef57_even,
+                           is_trailing_dim_in_b, o.dims[k]);
+  };
+  absl::c_stable_sort(dim_order,
+                      [&cost](int i, int j) { return cost(i) < cost(j); });
+
+  // Apply permutation to all plan attributes
+  // dim_order maps new input dim -> old input dim, we need its inverse to
+  // compute the new permutation.
+  auto inv_dim_order = InversePermutation(dim_order);
+  plan->lda_.reserve(ndim);
+  plan->lda_tile_.reserve(ndim);
+  plan->a_dims_.reserve(ndim);
+  plan->permutation_.reserve(ndim);
+  plan->a_tiling_.reserve(ndim);
+
+  for (int i = 0; i < ndim; ++i) {
+    int old_idx = dim_order[i];
+    plan->lda_.push_back(input_outer_strides.at(old_idx));
+    plan->lda_tile_.push_back(temp_lda_tile.at(old_idx));
+    plan->a_dims_.push_back(o.dims[old_idx]);
+    plan->permutation_.push_back(inv_dim_order[o.permutation[i]]);
+    plan->a_tiling_.push_back(temp_a_tiling[old_idx]);
   }
 
   auto is_not_one = [](int64_t x) { return x != 1; };
@@ -1057,11 +954,6 @@ void TransposePlan::Initialize() {
   if (num_elems_ == 0) {
     return;
   }
-  RemoveTrivialDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
-                          b_tiling_);
-  CoalesceDimensions(a_dims_, permutation_, lda_, lda_tile_, a_tiling_,
-                     b_tiling_);
-
   // permutation maps dimensions of b to a
   // inverse_permutation maps dimensions of a to b
   std::vector<int64_t> inverse_permutation = InversePermutation(permutation_);
@@ -1096,13 +988,50 @@ void TransposePlan::Initialize() {
   const int pos_stride1b_in_a = permutation_.back();
   inner_kernel_is_memcpy_ = (pos_stride1b_in_a == pos_stride1a);
 
+  // Calculate sentinel strides.
+  if (!inner_kernel_is_memcpy_) {
+    int pos_stride1a_in_b = inverse_permutation[ndim - 1];
+    sentinel_lda_ = a_tiling_[pos_stride1b_in_a] > 1
+                        ? lda_tile_[pos_stride1b_in_a]
+                        : lda_[pos_stride1b_in_a];
+    sentinel_ldb_ = b_tiling_[pos_stride1a_in_b] > 1
+                        ? ldb_tile_[pos_stride1a_in_b]
+                        : ldb_[pos_stride1a_in_b];
+  }
+
   loop_order_.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
-    loop_order_.push_back(Loop{i, /*tile_interior=*/false});
-    if (a_tiling_[i] != 1 || b_tiling_[inverse_permutation[i]] != 1) {
-      loop_order_.push_back(Loop{i, /*tile_interior=*/true});
+    Loop loop;
+    loop.dim_in_a = i;
+    loop.tile_interior = false;
+    loop.dim_size = a_dims_[i];
+    loop.tile_size = std::max(a_tiling_[i], b_tiling_[inverse_permutation[i]]);
+
+    loop.lda = lda_[i];
+    if (a_tiling_[i] == 1) {
+      loop.lda *= loop.tile_size;
+    }
+    loop.ldb = ldb_[inverse_permutation[i]];
+    if (b_tiling_[inverse_permutation[i]] == 1) {
+      loop.ldb *= loop.tile_size;
+    }
+    loop.is_inner_dim_in_a = (loop.tile_size == 1) && (i == pos_stride1a);
+    loop.is_inner_dim_in_b = (loop.tile_size == 1) && (i == pos_stride1b_in_a);
+    loop_order_.push_back(loop);
+
+    if (loop.tile_size > 1) {
+      loop.tile_interior = true;
+      loop.lda = a_is_tiled_ ? lda_tile_[i] : lda_[i];
+      loop.ldb = b_is_tiled_ ? ldb_tile_[inverse_permutation[i]]
+                             : ldb_[inverse_permutation[i]];
+      loop.is_inner_dim_in_a = (i == pos_stride1a);
+      loop.is_inner_dim_in_b = (i == pos_stride1b_in_a);
+      loop_order_.push_back(loop);
     }
   }
+
+  RemoveTrivialLoops(loop_order_);
+  CoalesceLoops(loop_order_);
 
   // Bound the block sizes so they are smaller than the stride-1 dimension
   // size.
@@ -1169,21 +1098,12 @@ void TransposePlan::Initialize() {
 
   // Loop order heuristic: try to make loops with small strides innermost.
   auto cost = [&](const Loop& l) {
-    int64_t a_stride =
-        std::abs((l.tile_interior && a_is_tiled_) ? lda_tile_[l.dim_in_a]
-                                                  : lda_[l.dim_in_a]);
-    bool is_inner_dim_in_a =
-        (!a_is_tiled_ || l.tile_interior) && (l.dim_in_a == pos_stride1a);
-
-    if (!inner_kernel_is_memcpy_ && is_inner_dim_in_a) {
+    int64_t a_stride = std::abs(l.lda);
+    if (!inner_kernel_is_memcpy_ && l.is_inner_dim_in_a) {
       a_stride *= inner_block_elems_ * outer_block_elems_a_;
     }
-    int b_dim = inverse_permutation[l.dim_in_a];
-    int64_t b_stride =
-        (l.tile_interior && b_is_tiled_) ? ldb_tile_[b_dim] : ldb_[b_dim];
-    bool is_inner_dim_in_b =
-        (!b_is_tiled_ || l.tile_interior) && (l.dim_in_a == pos_stride1b_in_a);
-    if (!inner_kernel_is_memcpy_ && is_inner_dim_in_b) {
+    int64_t b_stride = std::abs(l.ldb);
+    if (!inner_kernel_is_memcpy_ && l.is_inner_dim_in_b) {
       b_stride *= inner_block_elems_ * outer_block_elems_b_;
     }
     // Add a small penalty to the input strides: given the choice between
@@ -1193,10 +1113,7 @@ void TransposePlan::Initialize() {
 
     // If the inner kernel is a memcpy make sure the innermost loop is the
     // stride-1 dimension. This is a requirement of the memcpy kernel.
-    bool dim_must_go_last =
-        inner_kernel_is_memcpy_ && l.dim_in_a == pos_stride1a &&
-        (l.tile_interior ||
-         (a_tiling_[l.dim_in_a] == 1 && b_tiling_[b_dim] == 1));
+    bool dim_must_go_last = inner_kernel_is_memcpy_ && l.is_inner_dim_in_a;
     return std::make_tuple(dim_must_go_last,
                            inner_kernel_is_memcpy_ && l.tile_interior,
                            -std::min<double>(a_stride * penalty, b_stride));
@@ -1210,15 +1127,13 @@ void TransposePlan::Initialize() {
   // both input and output.
 
   // The stride-1 loop must be innermost for a memcpy loop.
-  DCHECK(!inner_kernel_is_memcpy_ || loop_order_.back().dim_in_a == ndim - 1)
+  DCHECK(!inner_kernel_is_memcpy_ || loop_order_.back().is_inner_dim_in_a)
       << ToString();
 
-  loop_parallelism_ = ChooseParallelizationStrategy(inverse_permutation);
-  int num_threads =
-      absl::c_accumulate(loop_parallelism_, int{1}, std::multiplies<int>());
+  int num_threads = ChooseParallelizationStrategy();
   nodes_.resize(num_threads);
   for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
-    BuildPlanNodes(inverse_permutation, thread_id, nodes_[thread_id]);
+    BuildPlanNodes(thread_id, nodes_[thread_id]);
   }
 
   switch (transformation_) {
@@ -1233,28 +1148,20 @@ void TransposePlan::Initialize() {
   }
 }
 
-std::vector<int> TransposePlan::ChooseParallelizationStrategy(
-    absl::Span<int64_t const> inverse_permutation) {
-  std::vector<int> parallelism;
+int TransposePlan::ChooseParallelizationStrategy() {
   int available_parallelism = num_threads_requested_;
-  parallelism.reserve(loop_order_.size());
 
-  int ndim = permutation_.size();
-  const int pos_stride1a = ndim - 1;
-  const int pos_stride1b_in_a = permutation_.back();
   // Compute the number of iterations in `loop`.
   auto loop_iterations = [&](const Loop& loop) {
-    int a_dim = loop.dim_in_a;
-    int b_dim = inverse_permutation[a_dim];
-    int64_t tile_size = std::max(a_tiling_[a_dim], b_tiling_[b_dim]);
     int64_t size = loop.tile_interior
-                       ? tile_size
-                       : (CeilOfRatio(a_dims_[loop.dim_in_a], tile_size));
-    if (!inner_kernel_is_memcpy_ && (loop.tile_interior || tile_size == 1)) {
-      if (loop.dim_in_a == pos_stride1a) {
+                       ? loop.tile_size
+                       : (CeilOfRatio(loop.dim_size, loop.tile_size));
+    if (!inner_kernel_is_memcpy_ &&
+        (loop.tile_interior || loop.tile_size == 1)) {
+      if (loop.is_inner_dim_in_a) {
         size = CeilOfRatio<int64_t>(size,
                                     inner_block_elems_ * outer_block_elems_a_);
-      } else if (loop.dim_in_a == pos_stride1b_in_a) {
+      } else if (loop.is_inner_dim_in_b) {
         size = CeilOfRatio<int64_t>(size,
                                     inner_block_elems_ * outer_block_elems_b_);
       }
@@ -1279,8 +1186,9 @@ std::vector<int> TransposePlan::ChooseParallelizationStrategy(
 
   // Heuristic that attempts to parallelize the outermost loops, down to a
   // minimum per-thread number of bytes processed.
+  int num_threads = 1;
   for (size_t i = 0; i < loop_order_.size(); ++i) {
-    const Loop& loop = loop_order_[i];
+    Loop& loop = loop_order_[i];
     CHECK_GE(available_parallelism, 1);
     int64_t iterations = loop_iterations(loop);
     int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
@@ -1291,14 +1199,15 @@ std::vector<int> TransposePlan::ChooseParallelizationStrategy(
     VLOG(8) << "iterations=" << iterations << " parallel_work=" << parallel_work
             << " available_parallelism=" << available_parallelism;
     if (parallel_work >= available_parallelism) {
-      parallelism.push_back(available_parallelism);
+      loop.parallelism = available_parallelism;
       available_parallelism = 1;
     } else {
-      parallelism.push_back(parallel_work);
+      loop.parallelism = parallel_work;
       available_parallelism /= parallel_work;
     }
+    num_threads *= loop.parallelism;
   }
-  return parallelism;
+  return num_threads;
 }
 
 std::string TransposePlan::ToString() const {
@@ -1321,7 +1230,8 @@ std::string TransposePlan::ToString() const {
       });
   auto format_loop_order = [](std::string* out, const Loop& loop) {
     return absl::StrAppend(out, loop.dim_in_a,
-                           loop.tile_interior ? "[tile]" : "");
+                           loop.tile_interior ? "[tile]" : "", "(",
+                           loop.parallelism, ")");
   };
   std::string transformation_str;
   switch (transformation_) {
@@ -1335,7 +1245,7 @@ std::string TransposePlan::ToString() const {
   return absl::StrFormat(
       "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
       "lda=%s lda_tile=%s ldb=%s ldb_tile=%s loop_order=%s "
-      "loop_parallelism=%s outer_bs=[%d,%d] inner_bs=%d "
+      "outer_bs=[%d,%d] inner_bs=%d "
       "transformation=%s scratch_size=%d\n"
       "nodes:\n%s",
       elem_size_in_bytes_, absl::StrJoin(a_dims_, ","),
@@ -1344,8 +1254,7 @@ std::string TransposePlan::ToString() const {
       absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
       absl::StrJoin(ldb_tile_, ","),
-      absl::StrJoin(loop_order_, ",", format_loop_order),
-      absl::StrJoin(loop_parallelism_, ","), outer_block_elems_a_,
+      absl::StrJoin(loop_order_, ",", format_loop_order), outer_block_elems_a_,
       outer_block_elems_b_, inner_block_elems_, transformation_str,
       scratch_size_, nodes_str);
 }
@@ -1354,8 +1263,8 @@ bool TransposePlanCacheKey::operator==(
     const TransposePlanCacheKey& other) const {
   return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&
          permutation == other.permutation &&
-         input_layout_is_tiling == other.input_layout_is_tiling &&
-         input_layout == other.input_layout &&
+         input_tiling == other.input_tiling &&
+         input_striding == other.input_striding &&
          output_tiling == other.output_tiling &&
          transformation == other.transformation &&
          num_threads == other.num_threads;
@@ -1363,10 +1272,9 @@ bool TransposePlanCacheKey::operator==(
 
 template <typename H>
 H AbslHashValue(H h, const TransposePlanCacheKey& key) {
-  return H::combine(std::move(h), key.elem_size_in_bytes,
-                    key.input_layout_is_tiling, key.num_threads,
+  return H::combine(std::move(h), key.elem_size_in_bytes, key.num_threads,
                     key.transformation, key.dims, key.permutation,
-                    key.input_layout, key.output_tiling);
+                    key.input_tiling, key.input_striding, key.output_tiling);
 }
 
 TransposePlanCache::TransposePlanCache(int capacity)
@@ -1382,21 +1290,18 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
   absl::c_copy(o.dims, key.dims.begin());
   key.permutation.resize(o.permutation.size());
   absl::c_copy(o.permutation, key.permutation.begin());
-  if (std::holds_alternative<TransposePlan::Striding>(o.input_layout)) {
-    absl::Span<int64_t const> input_strides_in_bytes =
-        std::get<TransposePlan::Striding>(o.input_layout).strides_in_bytes;
-    key.input_layout = absl::InlinedVector<int64_t, 4>(
-        input_strides_in_bytes.begin(), input_strides_in_bytes.end());
-    key.input_layout_is_tiling = false;
-  } else {
-    absl::Span<int64_t const> input_tiling =
-        std::get<TransposePlan::Tiling>(o.input_layout).tiling;
-    key.input_layout = absl::InlinedVector<int64_t, 4>(input_tiling.begin(),
-                                                       input_tiling.end());
-    key.input_layout_is_tiling = true;
+  if (o.input_tiling) {
+    key.input_tiling.emplace(o.input_tiling->tiling.begin(),
+                             o.input_tiling->tiling.end());
   }
-  key.output_tiling.resize(o.output_tiling.tiling.size());
-  absl::c_copy(o.output_tiling.tiling, key.output_tiling.begin());
+  if (o.input_striding) {
+    key.input_striding.emplace(o.input_striding->strides_in_bytes.begin(),
+                               o.input_striding->strides_in_bytes.end());
+  }
+  if (o.output_tiling) {
+    key.output_tiling.emplace(o.output_tiling->tiling.begin(),
+                              o.output_tiling->tiling.end());
+  }
   key.transformation = o.transformation;
   key.num_threads = o.num_threads;
   return cache_.GetOrCreateIfAbsent(
@@ -1407,6 +1312,81 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
+}
+
+/*static*/ void TransposePlan::RemoveTrivialLoops(std::vector<Loop>& loops) {
+  auto it = std::remove_if(loops.begin(), loops.end(), [](const Loop& loop) {
+    // We must preserve the loop if it corresponds to the innermost dimension
+    // of the layout, because the kernels (especially TransposeConstStride1)
+    // rely on finding a node with is_inner_dim_in_a/b set to true.
+    if (loop.is_inner_dim_in_a || loop.is_inner_dim_in_b) {
+      return false;
+    }
+    if (loop.tile_interior) {
+      return loop.tile_size == 1;
+    }
+    // Exterior loop.
+    // Trivial if dim_size == tile_size (1 complete tile, no partials). This
+    // also accounts for the case where the dimension is of size 1, since in
+    // that case the tile size is also 1.
+    return loop.dim_size == loop.tile_size;
+  });
+  loops.erase(it, loops.end());
+}
+
+/*static*/ void TransposePlan::CoalesceLoops(std::vector<Loop>& loops) {
+  if (loops.empty()) {
+    return;
+  }
+
+  // Coalesce from slow-varying to fast-varying (outer to inner).
+  // loop_order_[0] is slowest.
+  int write_pos = 0;
+  for (int read_pos = 1; read_pos < loops.size(); ++read_pos) {
+    Loop& outer = loops[write_pos];
+    const Loop& inner = loops[read_pos];
+
+    int64_t inner_iter_size = inner.tile_interior
+                                  ? inner.tile_size
+                                  : (inner.dim_size / inner.tile_size);
+
+    // Two loops can be coalesced if:
+    // * they are both tile interiors or both tile exteriors
+    // * neither has a partial tile
+    // * the inner loop is a multiple of the outer loop.
+    // TODO(phawkins): I suspect this condition can be simplified. In particular
+    // the condition that we separate tile exteriors from interiors feels
+    // arbitrary.
+    bool coalescable = (outer.tile_interior == inner.tile_interior) &&
+                       (outer.dim_size % outer.tile_size == 0) &&
+                       (inner.dim_size % inner.tile_size == 0) &&
+                       (outer.lda == inner.lda * inner_iter_size) &&
+                       (outer.ldb == inner.ldb * inner_iter_size);
+    if (coalescable) {
+      if (outer.tile_interior) {
+        outer.tile_size *= inner.tile_size;
+        outer.dim_size *= inner.dim_size;
+      } else {
+        outer.dim_size *= inner_iter_size;
+      }
+
+      outer.lda = inner.lda;
+      outer.ldb = inner.ldb;
+
+      outer.is_inner_dim_in_a =
+          inner.is_inner_dim_in_a || outer.is_inner_dim_in_a;
+      outer.is_inner_dim_in_b =
+          inner.is_inner_dim_in_b || outer.is_inner_dim_in_b;
+
+      // Don't advance write_pos, so we can merge more into 'outer'.
+    } else {
+      ++write_pos;
+      if (write_pos != read_pos) {
+        loops[write_pos] = inner;
+      }
+    }
+  }
+  loops.resize(write_pos + 1);
 }
 
 }  // namespace xla

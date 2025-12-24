@@ -23,8 +23,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -36,24 +39,33 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
+#include "xla/stream_executor/kernel_symbol_registry.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream_executor.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::stream_executor::DeviceDescription;
 using ::stream_executor::GpuComputeCapability;
 using ::stream_executor::MockPlatform;
 using ::stream_executor::MockStreamExecutor;
+using ::testing::AnyOf;
 using ::testing::Return;
 using ::testing::ReturnRef;
 using ::tsl::proto_testing::EqualsProto;
@@ -74,7 +86,10 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         .WillRepeatedly(ReturnRef(device_description_));
     EXPECT_CALL(executor_, GetPlatform()).WillRepeatedly(Return(&platform_));
     EXPECT_CALL(platform_, Name()).WillRepeatedly(ReturnRef(platform_name_));
+    EXPECT_CALL(platform_, id()).WillRepeatedly(Return(platform_id_));
   }
+
+  void* const kCudaSymbol = reinterpret_cast<void*>(0x1234567890);
 
   // Creates a dummy GpuExecutableProto, the actual values don't matter much.
   absl::StatusOr<GpuExecutableProto> CreateGpuExecutableProto() {
@@ -88,6 +103,16 @@ class GpuAotCompilationResultTest : public ::testing::Test {
         LaunchDimensions(),
         /*cluster_dim=*/std::nullopt,
         /*shmem_bytes=*/0, ::stream_executor::gpu::TmaMetadata()));
+    CustomKernel custom_kernel{
+        "custom_kernel_name",
+        stream_executor::KernelLoaderSpec::
+            CreateSerializableInProcessSymbolSpec(
+                "persistent_kernel_name", kCudaSymbol, "test_custom_kernel",
+                /*arity=*/42),
+        stream_executor::BlockDim(), stream_executor::ThreadDim(),
+        /*shared_memory_bytes=*/23};
+    thunk_sequence.push_back(std::make_unique<CustomKernelThunk>(
+        thunk_info, custom_kernel, emitters::KernelArguments({})));
 
     auto hlo_module = std::make_unique<HloModule>("test_module_with_shape",
                                                   HloModuleConfig());
@@ -115,10 +140,28 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     return executable->ToProto();
   }
 
+  void EnsureCudaSymbolIsRegistered() {
+    // This test has to rely on the global registry, because
+    // `GpuAotCompilationResult` uses the global registry to look up symbols.
+    // That means different test cases can affect each other. Therefore we check
+    // if the symbol is registered, and only register it if it's not.
+    stream_executor::KernelSymbolRegistry& registry =
+        stream_executor::KernelSymbolRegistry::GetGlobalInstance();
+    ASSERT_THAT(registry.FindSymbol("persistent_kernel_name", platform_id_),
+                AnyOf(IsOkAndHolds(kCudaSymbol),
+                      StatusIs(absl::StatusCode::kNotFound)));
+    if (!registry.FindSymbol("persistent_kernel_name", platform_id_).ok()) {
+      TF_ASSERT_OK(registry.RegisterSymbol("persistent_kernel_name",
+                                           platform_id_, kCudaSymbol));
+    }
+  }
+
   DeviceDescription device_description_;
   MockStreamExecutor executor_;
   MockPlatform platform_;
   const std::string platform_name_ = "gpu";
+  stream_executor::Platform::Id platform_id_ =
+      reinterpret_cast<stream_executor::Platform::Id>(123);
 };
 
 TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
@@ -144,9 +187,10 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Executable> executable,
-      std::move(*result).LoadExecutable(/*compiler=*/nullptr, &executor_));
+  EnsureCudaSymbolIsRegistered();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          std::move(*result).LoadExecutable(&executor_));
 
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";

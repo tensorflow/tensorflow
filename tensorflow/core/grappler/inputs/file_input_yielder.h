@@ -37,12 +37,12 @@ class FileInputYielder : public InputYielder {
   // Iterates over the files specified in the list of 'filename' up to
   // 'max_iterations' times.
   explicit FileInputYielder(
-      const std::vector<string>& filenames,
+      const std::vector<std::string>& filenames,
       size_t max_iterations = std::numeric_limits<size_t>::max());
   bool NextItem(GrapplerItem* item) override;
 
  private:
-  const std::vector<string> filenames_;
+  const std::vector<std::string> filenames_;
   size_t current_file_;
   size_t current_iteration_;
   size_t max_iterations_;

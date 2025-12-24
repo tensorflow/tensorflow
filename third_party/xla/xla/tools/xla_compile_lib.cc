@@ -30,20 +30,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/Parser/Parser.h"
 #include "google/protobuf/text_format.h"
-#include "stablehlo/dialect/Register.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
@@ -71,7 +64,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -120,7 +112,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
   compile_options.device_allocator = allocator.get();
 
@@ -177,18 +169,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(
       tsl::Env::Default(), std::string(module_path), &module_string));
 
-  mlir::DialectRegistry dialects;
-  // TODO(b/248362914): Register all required dialects.
-  dialects.insert<mlir::arith::ArithDialect>();
-  dialects.insert<mlir::mhlo::MhloDialect>();
-  dialects.insert<mlir::func::FuncDialect>();
-  mlir::stablehlo::registerAllDialects(dialects);
-
   // Parse MHLO module.
   auto threading = mlir::MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<mlir::MLIRContext>(dialects, threading);
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceString<mlir::ModuleOp>(module_string, ctx.get());
+  auto ctx = std::make_unique<mlir::MLIRContext>(threading);
+
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                      ParseMlirModuleString(module_string, *ctx));
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;

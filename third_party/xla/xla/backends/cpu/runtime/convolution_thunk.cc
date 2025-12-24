@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -78,13 +78,13 @@ ConvolutionThunk::ConvolutionThunk(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase input_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase input_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.input_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase kernel_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase kernel_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.kernel_buffer));
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase output_data,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase output_data,
                       params.buffer_allocations->GetDeviceAddress(
                           convolution_slices_.output_buffer));
 
@@ -115,9 +115,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
 ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
-                                           se::DeviceMemoryBase input,
-                                           se::DeviceMemoryBase kernel,
-                                           se::DeviceMemoryBase output) {
+                                           se::DeviceAddressBase input,
+                                           se::DeviceAddressBase kernel,
+                                           se::DeviceAddressBase output) {
   auto dispatch = [&](auto type_tag) {
     auto execute_event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
@@ -167,9 +167,9 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
 ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
-                                           se::DeviceMemoryBase input,
-                                           se::DeviceMemoryBase kernel,
-                                           se::DeviceMemoryBase output) {
+                                           se::DeviceAddressBase input,
+                                           se::DeviceAddressBase kernel,
+                                           se::DeviceAddressBase output) {
   auto dispatch = [&](auto type_tag) {
     auto execute_event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 

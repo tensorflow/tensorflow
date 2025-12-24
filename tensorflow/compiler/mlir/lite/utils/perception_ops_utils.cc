@@ -104,11 +104,11 @@ LogicalResult ConvertMaxUnpoolingFunc::RewriteFunc() {
   if (failed(CreateCustomOptions(custom_option_buffer))) {
     return failure();
   }
-  auto op = builder.create<CustomOp>(
-      func_.getLoc(), func_.getFunctionType().getResults(),
-      func_.getArguments(), kMaxUnpooling,
-      CustomOption(&builder, custom_option_buffer));
-  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
+  auto op = CustomOp::create(builder, func_.getLoc(),
+                             func_.getFunctionType().getResults(),
+                             func_.getArguments(), kMaxUnpooling,
+                             CustomOption(&builder, custom_option_buffer));
+  func::ReturnOp::create(builder, func_.getLoc(), op.getResults());
 
   return success();
 }
@@ -205,11 +205,11 @@ LogicalResult ConvertDenseImageWarpFunc::RewriteFunc() {
                  StringAttr::get(func_.getContext(), kImageWarping));
 
   OpBuilder builder(func_.getBody());
-  auto op = builder.create<CustomOp>(func_.getLoc(),
-                                     func_.getFunctionType().getResults(),
-                                     func_.getArguments(), kImageWarping,
-                                     CustomOption(&builder, /*content=*/""));
-  builder.create<func::ReturnOp>(func_.getLoc(), op.getResults());
+  auto op = CustomOp::create(builder, func_.getLoc(),
+                             func_.getFunctionType().getResults(),
+                             func_.getArguments(), kImageWarping,
+                             CustomOption(&builder, /*content=*/""));
+  func::ReturnOp::create(builder, func_.getLoc(), op.getResults());
 
   return success();
 }

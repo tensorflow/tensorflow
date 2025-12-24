@@ -14,6 +14,7 @@
 # ============================================================================
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//xla:pytype.bzl", "pytype_strict_binary")
 
 package(

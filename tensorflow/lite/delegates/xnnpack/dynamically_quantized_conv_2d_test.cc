@@ -19,22 +19,16 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/dynamically_quantized_conv_2d_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/fingerprint_test_helpers.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
 
-TEST(DynamicallyQuantizedConv2D, 3x3) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+struct DynamicallyQuantizedConv2D : DelegateTest {};
 
+TEST_F(DynamicallyQuantizedConv2D, 3x3) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -56,15 +50,7 @@ TEST(DynamicallyQuantizedConv2D, 3x3) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, 3x3Stride2) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -88,15 +74,7 @@ TEST(DynamicallyQuantizedConv2D, 3x3Stride2) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, Grouped) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, Grouped) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -122,15 +100,7 @@ TEST(DynamicallyQuantizedConv2D, Grouped) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -154,15 +124,7 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -186,14 +148,7 @@ TEST(DynamicallyQuantizedConv2D, SmallKernelWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+TEST_F(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -221,15 +176,7 @@ TEST(DynamicallyQuantizedConv2D, StrideWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -257,15 +204,7 @@ TEST(DynamicallyQuantizedConv2D, StrideWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -293,15 +232,7 @@ TEST(DynamicallyQuantizedConv2D, DilationWithSamePadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -329,15 +260,7 @@ TEST(DynamicallyQuantizedConv2D, DilationWithValidPadding) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -364,15 +287,7 @@ TEST(DynamicallyQuantizedConv2D, TensorWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -399,15 +314,7 @@ TEST(DynamicallyQuantizedConv2D, ChannelWiseQuantizedInt8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ReluActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ReluActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -435,15 +342,7 @@ TEST(DynamicallyQuantizedConv2D, ReluActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, Relu6Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -471,15 +370,7 @@ TEST(DynamicallyQuantizedConv2D, Relu6Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -507,15 +398,7 @@ TEST(DynamicallyQuantizedConv2D, ReluMinus1To1Activation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TanhActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, TanhActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -543,15 +426,7 @@ TEST(DynamicallyQuantizedConv2D, TanhActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
-  TfLiteXNNPackDelegateOptions delegate_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  delegate_options.flags |=
-      TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
-
+TEST_F(DynamicallyQuantizedConv2D, SignBitActivation) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto batch_rng =
@@ -579,15 +454,13 @@ TEST(DynamicallyQuantizedConv2D, SignBitActivation) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, MultiThreading) {
+TEST_F(DynamicallyQuantizedConv2D, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
   delegate_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -615,7 +488,7 @@ TEST(DynamicallyQuantizedConv2D, MultiThreading) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, WeightsCache) {
+TEST_F(DynamicallyQuantizedConv2D, WeightsCache) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
@@ -625,9 +498,7 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
   delegate_options.weights_cache = weights_cache.get();
   delegate_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(delegate_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
@@ -656,16 +527,14 @@ TEST(DynamicallyQuantizedConv2D, WeightsCache) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
+TEST_F(DynamicallyQuantizedConv2D, TransientIndirectionBuffer) {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
   xnnpack_options.num_threads = 2;
   xnnpack_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
   xnnpack_options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
-                       TfLiteXNNPackDelegateDelete);
+  UseCustomDelegate(xnnpack_options);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());

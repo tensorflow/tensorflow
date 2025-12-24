@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/hash_container_defaults.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -335,7 +335,8 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
 //   during the construction of TiledHloComputation from
 //   SymbolicTiledHloInstructions, we know that instruction are already sorted
 //   in def-before-use order.
-template <typename T>
+template <typename T, typename Hash = absl::DefaultHashContainerHash<T>,
+          typename Eq = absl::DefaultHashContainerEq<T>>
 class OrderedUniquePtrValueHashSet {
  public:
   // Inserts an element into the set.
@@ -360,12 +361,12 @@ class OrderedUniquePtrValueHashSet {
 
  private:
   struct PtrHash {
-    size_t operator()(const T* v) const { return absl::HashOf(*v); }
+    size_t operator()(const T* v) const { return Hash()(*v); }
   };
 
   struct PtrEqual {
     bool operator()(const T* lhs, const T* rhs) const {
-      return lhs == rhs || *lhs == *rhs;
+      return lhs == rhs || Eq()(*lhs, *rhs);
     }
   };
 
@@ -387,6 +388,35 @@ bool IsWithinNestedGemmFusion(const HloInstruction* hlo) {
 
   return false;
 }
+
+// !!!Warning!!! Do not blindly copy this hash operator: it is an implementation
+// detail specific to this analysis. It may give unexpected results in the
+// general case as it ignores operands.
+struct UnsafeSymbolicTiledHloInstructionOperandAgnosticHash {
+  size_t operator()(const SymbolicTiledHloInstruction& value) const {
+    return absl::HashOf(value.hlo(), value.indexing_map(),
+                        value.runtime_variables());
+  }
+};
+
+// !!!Warning!!! See above comment.
+struct UnsafeSymbolicTiledHloInstructionOperandAgnosticEq {
+  bool operator()(const SymbolicTiledHloInstruction& lhs,
+                  const SymbolicTiledHloInstruction& rhs) const {
+    return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map() &&
+           lhs.runtime_variables() == rhs.runtime_variables();
+  }
+};
+
+// As we traverse the fusion root to leaf and add operands to instructions as we
+// go, we ignore the operands from the hash / equality operators as they are not
+// intrinsic to two instructions being the same or not and will always end up
+// being the same after complete traversal.
+using UnsafeSymbolicTiledHloInstructionOrderedSet =
+    OrderedUniquePtrValueHashSet<
+        SymbolicTiledHloInstruction,
+        UnsafeSymbolicTiledHloInstructionOperandAgnosticHash,
+        UnsafeSymbolicTiledHloInstructionOperandAgnosticEq>;
 
 // Detects pathological cases on which symbolic tile derivation should bail out.
 // Note that this function bypasses temporary limitations of the infrastructure,
@@ -429,8 +459,8 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
         SymbolicTile::FromIndexingMap(reshape_indexing_map);
 
     if (!reshape_symbolic_tile.has_value()) {
-      return FusionDecision::Forbid("Bailing out on reshape ")
-             << hlo->ToString() << " with indexing map "
+      return FusionDecision::Forbid("Bailing out on reshape")
+             << " " << hlo->ToString() << " with indexing map "
              << ToString(reshape_indexing_map);
     }
   }
@@ -1068,8 +1098,7 @@ ComposeIndexingResult ComposeInstructionIndexing(
     SymbolicTiledHloInstruction* tiled_hlo_instruction,
     const OperandIndexing& operand_indexing,
     IndexingMap::SimplifyPointDimensions simplification_mode,
-    OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>&
-        tiled_hlo_instructions_set,
+    UnsafeSymbolicTiledHloInstructionOrderedSet& tiled_hlo_instructions_set,
     HloInstructionAdaptor operand, HloInstructionAdaptor& instruction_adaptor,
     int64_t operand_pos,
     const TilingSpecification::ParameterMapping& parameter_mapping) {
@@ -1118,7 +1147,7 @@ ComposeIndexingResult ComposeInstructionIndexing(
     IndexingMap rt_map =
         ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(), rt_var.map);
     HloInstructionAdaptor hlo_adaptor =
-        instruction_adaptor.parent().GetInstruction(rt_var.hlo);
+        instruction_adaptor.parent().GetInstruction(rt_var.hlo());
     auto tiled_runtime_var = std::make_unique<SymbolicTiledHloInstruction>(
         &hlo_adaptor.instruction(), rt_map,
         tiled_hlo_instruction->runtime_variables());
@@ -1175,8 +1204,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
     IndexingMap::SimplifyPointDimensions simplification_mode,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     std::vector<SymbolicTiledHloInstruction*> root_runtime_variables) {
-  OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
-      tiled_hlo_instructions_set;
+  UnsafeSymbolicTiledHloInstructionOrderedSet tiled_hlo_instructions_set;
 
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
@@ -1289,8 +1317,15 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
   // Create emitter-specific constraints if a builder was provided.
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
   if (emitter_specific_constraints_builder != nullptr) {
+    absl::StatusOr<std::unique_ptr<EmitterSpecificConstraints>>
+        emitter_specific_constraints_applied =
+            emitter_specific_constraints_builder(tiled_hlo_instructions,
+                                                 fusion);
+    if (!emitter_specific_constraints_applied.ok()) {
+      return FusionDecision(emitter_specific_constraints_applied.status());
+    }
     emitter_specific_constraints =
-        emitter_specific_constraints_builder(tiled_hlo_instructions, fusion);
+        std::move(*emitter_specific_constraints_applied);
   }
 
   TilingSpecification tiling_specification = TilingSpecification(

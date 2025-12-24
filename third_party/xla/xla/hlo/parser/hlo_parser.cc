@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "google/protobuf/descriptor.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -79,12 +81,10 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tuple_tree.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -378,6 +378,7 @@ class HloParserImpl : public HloParser {
   bool ParseHloModule(HloModule* module,
                       bool parse_module_without_header = false);
 
+  bool ParseStackFrameIndex(HloModule* module);
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation** computation,
@@ -606,6 +607,8 @@ class HloParserImpl : public HloParser {
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
+  bool ParseFileLocationList(StackFrameIndexProto* stack_frame_index);
+  bool ParseStackFramesList(StackFrameIndexProto* stack_frame_index);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1134,7 +1137,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_name(name);
   }
 
-  if (!ParseComputations(module)) {
+  if (!ParseStackFrameIndex(module) || !ParseComputations(module)) {
     return false;
   }
 
@@ -1145,7 +1148,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   module->set_name(name);
 
   if (is_scheduled.value_or(false)) {
-    TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+    CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
   HloModuleConfig config = module->config();
   bool default_config = true;
@@ -1172,14 +1175,14 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     for (int64_t p = 0; p < entry_computation->num_parameters(); p++) {
       const Shape& param_shape =
           entry_computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module->mutable_entry_computation_layout()
-                      ->mutable_parameter_layout(p)
-                      ->CopyLayoutFromShape(param_shape));
+      CHECK_OK(module->mutable_entry_computation_layout()
+                   ->mutable_parameter_layout(p)
+                   ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = entry_computation->root_instruction()->shape();
-    TF_CHECK_OK(module->mutable_entry_computation_layout()
-                    ->mutable_result_layout()
-                    ->CopyLayoutFromShape(result_shape));
+    CHECK_OK(module->mutable_entry_computation_layout()
+                 ->mutable_result_layout()
+                 ->CopyLayoutFromShape(result_shape));
   }
   if (frontend_attributes) {
     module->set_frontend_attributes(frontend_attributes.value());
@@ -1226,6 +1229,90 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   }
   DeduplicateOriginalValues(module);
 
+  return true;
+}
+
+// Parses a list of `int {file_name_id=int function_name_id=int line=int
+// end_line=int column=int end_column=int}` into
+// StackFrameIndexProto::file_locations.
+bool HloParserImpl::ParseFileLocationList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_name_id, function_name_id, line, end_line, column,
+      end_column;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_name_id", {/*required=*/true, AttrTy::kInt32, &file_name_id}},
+      {"function_name_id",
+       {/*required=*/true, AttrTy::kInt32, &function_name_id}},
+      {"line", {/*required=*/true, AttrTy::kInt32, &line}},
+      {"end_line", {/*required=*/true, AttrTy::kInt32, &end_line}},
+      {"column", {/*required=*/true, AttrTy::kInt32, &column}},
+      {"end_column", {/*required=*/true, AttrTy::kInt32, &end_column}}};
+  while (EatIfPresent(TokKind::kInt)) {
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::FileLocation* file_location =
+        stack_frame_index->add_file_locations();
+    file_location->set_file_name_id(*file_name_id);
+    file_location->set_function_name_id(*function_name_id);
+    file_location->set_line(*line);
+    file_location->set_end_line(*end_line);
+    file_location->set_column(*column);
+    file_location->set_end_column(*end_column);
+  }
+  return true;
+}
+
+// Parses a list of `int {function_location_id=int parent_frame_id=int}` into
+// StackFrameIndexProto::stack_frames.
+bool HloParserImpl::ParseStackFramesList(
+    StackFrameIndexProto* stack_frame_index) {
+  optional<int32_t> file_location_id, parent_frame_id;
+  absl::flat_hash_map<std::string, AttrConfig> attrs = {
+      {"file_location_id",
+       {/*required=*/true, AttrTy::kInt32, &file_location_id}},
+      {"parent_frame_id",
+       {/*required=*/true, AttrTy::kInt32, &parent_frame_id}}};
+  while (lexer_.GetKind() == TokKind::kInt) {
+    lexer_.Lex();
+    if (!ParseSubAttributes(attrs)) {
+      return false;
+    }
+    StackFrameIndexProto::StackFrame* stack_frame =
+        stack_frame_index->add_stack_frames();
+    stack_frame->set_file_location_id(*file_location_id);
+    stack_frame->set_parent_frame_id(*parent_frame_id - 1);
+  }
+  return true;
+}
+
+bool HloParserImpl::ParseStackFrameIndex(HloModule* module) {
+  if (!EatIfPresent(TokKind::kw_FileNames)) {
+    return true;
+  }
+  StackFrameIndexProto stack_frame_index;
+
+  // Parse file names.
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_file_names());
+  }
+
+  // Parse function names.
+  if (!ParseToken(TokKind::kw_FunctionNames, "expects 'FunctionNames'")) {
+    return false;
+  }
+  while (EatIfPresent(TokKind::kInt)) {
+    ParseString(stack_frame_index.add_function_names());
+  }
+
+  // Parse file locations and stack frames.
+  if (!ParseToken(TokKind::kw_FileLocations, "expects 'FileLocations'") ||
+      !ParseFileLocationList(&stack_frame_index) ||
+      !ParseToken(TokKind::kw_StackFrames, "expects 'StackFrames'") ||
+      !ParseStackFramesList(&stack_frame_index)) {
+    return false;
+  }
+  module->set_stack_frame_index(std::move(stack_frame_index));
   return true;
 }
 
@@ -1984,27 +2071,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
-      auto is_async_shape_correct = [](const Shape& shape) {
-        return shape.IsTuple() && shape.tuple_shapes().size() >= 2 &&
-               shape.tuple_shapes(0).IsTuple();
-      };
-      // Verify operand/resulting shapes
-      if (opcode == HloOpcode::kAsyncUpdate ||
-          opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 ||
-            !is_async_shape_correct(operands[0]->shape())) {
+      if (opcode == HloOpcode::kAsyncStart) {
+        if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
+            !shape->tuple_shapes(0).IsTuple()) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single operand in the form "
-              "of ((async-operands), async-outputs, state).");
-          return nullptr;
-        }
-      }
-      if (opcode == HloOpcode::kAsyncStart ||
-          opcode == HloOpcode::kAsyncUpdate) {
-        if (!is_async_shape_correct(*shape)) {
-          TokenError(
-              "AsyncStart and AsyncUpdate expect the op shape to be in the "
-              "form of "
+              "AsyncStart expects the op shape to be in the form of "
               "((async-operands), async-outputs, state).");
           return nullptr;
         }
@@ -2013,17 +2084,20 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 ||
-            !is_async_shape_correct(operands[0]->shape())) {
+        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
+            operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single operand in the form "
-              "of ((async-operands), async-outputs, state).");
+              "AsyncUpdate and AsyncDone expect a single async op as their "
+              "operand.");
           return nullptr;
         }
-        if (!operands[0]->IsAsynchronous()) {
+      }
+      // For AsyncUpdate, the operand and the result should have the same shape.
+      if (opcode == HloOpcode::kAsyncUpdate) {
+        if (operands[0]->shape() != *shape) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect their operand to be the "
-              "previous async op.");
+              "AsyncUpdate expects the op shape to be the same as the operand "
+              "shape.");
           return nullptr;
         }
       }
@@ -6784,6 +6858,7 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   optional<int32_t> source_end_line;
   optional<int32_t> source_column;
   optional<int32_t> source_end_column;
+  optional<int32_t> stack_frame_id;
   optional<std::vector<int64_t>> profile_type;
   optional<std::string> deduplicated_name;
   optional<std::string> scheduling_name;
@@ -6802,6 +6877,8 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
                                 &deduplicated_name};
   attrs["scheduling_name"] = {/*required=*/false, AttrTy::kString,
                               &scheduling_name};
+  attrs["stack_frame_id"] = {/*required=*/false, AttrTy::kInt32,
+                             &stack_frame_id};
   if (!ParseSubAttributes(attrs)) {
     return false;
   }
@@ -6839,6 +6916,9 @@ bool HloParserImpl::ParseMetadata(OpMetadata& metadata) {
   }
   if (scheduling_name) {
     metadata.set_scheduling_name(*scheduling_name);
+  }
+  if (stack_frame_id) {
+    metadata.set_stack_frame_id(*stack_frame_id);
   }
   return true;
 }
@@ -7561,7 +7641,7 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
-  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+  CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 

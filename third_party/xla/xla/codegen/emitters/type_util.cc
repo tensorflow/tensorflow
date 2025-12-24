@@ -33,7 +33,11 @@ namespace emitters {
 
 mlir::Type PrimitiveTypeToMlirType(PrimitiveType type, mlir::OpBuilder& b) {
   if (primitive_util::IsIntegralType(type)) {
-    return b.getIntegerType(primitive_util::BitWidth(type));
+    auto bitwidth = primitive_util::BitWidth(type);
+    if (bitwidth == 1) {
+      return b.getI8Type();
+    }
+    return b.getIntegerType(bitwidth);
   }
   return PrimitiveTypeToMlirTypeWithSign(type, b);
 }

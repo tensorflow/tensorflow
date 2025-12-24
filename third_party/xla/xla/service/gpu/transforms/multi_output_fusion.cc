@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
@@ -230,7 +231,7 @@ FusionDecision ProducerCandidateIsFusible(
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloDfsReachability& reachability,
     FusionInfoCache* fusion_info_cache,
-    const se::DeviceDescription& device_info,
+    const se::DeviceDescription& device_info, const GpuAliasInfo* alias_info,
     GpuPerformanceModelOwning& gpu_performance_model,
     GpuHloCostAnalysis* cost_analysis) {
   std::vector<HloInstruction*> fusion_candidates;
@@ -241,7 +242,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 
   // If the producer is not a valid candidate for MOF, no need to check any of
   // its users.
-  if (!IsProducerMultiOutputFusible(*producer, device_info)) {
+  if (!IsProducerMultiOutputFusible(*producer, alias_info, device_info)) {
     return fusion_candidates;
   }
 
@@ -453,7 +454,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
     // multi-output fusion will occur before the current op in the order of
     // traversal, and hence, not get into the way of subsequent fusion attempts.
     const auto candidates = GetProducerConsumerMultiOutputFusionCandidates(
-        producer, *reachability_, &fusion_info_cache, device_info_,
+        producer, *reachability_, &fusion_info_cache, device_info_, alias_info_,
         gpu_performance_model, &cost_analysis);
     auto* consumer_for_fusion = SelectPreferredFusionCandidate(candidates);
     if (consumer_for_fusion == nullptr) {

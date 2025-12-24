@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/scatter.h"
 #include "xla/backends/gpu/codegen/emitters/transpose.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/sort.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -53,8 +54,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
       return std::nullopt;
     }
 
-    return std::make_unique<DynamicMemcpyFusion>(analysis(),
-                                                 buffer_assignment_);
+    return std::make_unique<DynamicMemcpyFusion>(analysis());
   }
 
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
@@ -67,7 +67,7 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
     }
   }
 
-  return std::make_unique<MemcpyFusion>(analysis(), buffer_assignment_);
+  return std::make_unique<MemcpyFusion>(analysis());
 }
 
 bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
@@ -121,6 +121,9 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);
+    }
+    case HloFusionAnalysis::EmitterFusionKind::kSort: {
+      return std::make_unique<SortFusion>();
     }
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);

@@ -189,10 +189,11 @@ common:mkl_aarch64_threadpool -c opt
 # This is an alias for the mkl_aarch64_threadpool build.
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
-# Default CUDA, CUDNN and NVSHMEM versions.
+# Default CUDA, CUDNN, NCCL and NVSHMEM versions.
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -200,11 +201,11 @@ common:cuda --@rules_ml_toolchain//common:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-common:cuda --@cuda_driver//:include_cuda_umd_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-common:cuda_wheel --@cuda_driver//:include_cuda_umd_libs=false
+
+common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -274,8 +275,6 @@ common:rocm_base --copt=-Wno-gnu-offsetof-extensions
 common:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
-common:rocm_base --define=xnn_enable_avxvnniint8=false
-common:rocm_base --define=xnn_enable_avx512fp16=false
 common:rocm_base --repo_env TF_NEED_ROCM=1
 
 common:rocm_clang_official --config=rocm_base
@@ -289,7 +288,9 @@ common:rocm_ci --config=rocm
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_official
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx94X"
+common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_URL=https://therock-nightly-tarball.s3.amazonaws.com/therock-dist-linux-gfx94X-dcgpu-7.10.0a20251107.tar.gz"
+common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_HASH=486dbf647bcf9b78f21d7477f43addc7b2075b1a322a119045db9cdc5eb98380"
+common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_LINKS=llvm/amdgcn:amdgcn"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.
@@ -449,6 +450,13 @@ common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/tool
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 
+common:xla_windows_x86_cpu_2022 --config=win_clang_base
+common:xla_windows_x86_cpu_2022 --crosstool_top="//tools/toolchains/win2022/20241118:toolchain"
+common:xla_windows_x86_cpu_2022 --extra_toolchains="//tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+common:xla_windows_x86_cpu_2022 --extra_execution_platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
+common:xla_windows_x86_cpu_2022 --host_platform="//tools/toolchains/win2022:windows_ltsc2022_clang"
+common:xla_windows_x86_cpu_2022 --platforms="//tools/toolchains/win2022:windows_ltsc2022_clang"
+
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
 common:v2 --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
@@ -525,12 +533,6 @@ common:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crossto
 common:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
 common:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
 
-# Download CUDA/CUDNN redistributions to preserve the repositories cache between
-# CPU and GPU builds.
-# TODO(ybaturina): Uncomment when RBE is ready to support this.
-# common:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
-# common:rbe_linux_cpu --config=cuda_version
-
 common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu
 # dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
@@ -538,6 +540,8 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 common:rbe_linux_cuda --repo_env=TF_SYSROOT=
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
+# Update UMD version when RBE CUDA driver is updated.
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
@@ -557,6 +561,7 @@ common:rbe_win_base --nobuild_runfile_links
 common:rbe_win_base --define=override_eigen_strong_inline=true
 
 common:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_2022
+common:rbe_xla_windows_x86_cpu_2022 --config=rbe_win_base --config=xla_windows_x86_cpu_2022
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 

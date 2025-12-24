@@ -33,11 +33,8 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -1457,8 +1454,8 @@ TEST_F(IndexingMapTest, RangeVarSupportsAbslHashAndEqAndNe) {
 }
 
 TEST_F(IndexingMapTest, RTVarSupportsAbslHashAndEqAndNe) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(R"(
                             HloModule m
                             ENTRY e {
                               ROOT %constant = s64[] constant(42)
@@ -1554,7 +1551,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      range in [0, 1],
-     to_convert_1 in [0, 3]
+     to_convert_1 in [0, 3],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )");
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
@@ -1565,7 +1563,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
-     range in [0, 1]
+     range in [0, 1],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )"));
 }
 

@@ -98,8 +98,7 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/library_rewriter.h"
-#include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
-#include "xla/backends/cpu/xnn_support.h"
+#include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -250,10 +249,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_float_support.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #endif  // XLA_ONEDNN
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/ynn_support.h"
-#endif  // XLA_YNNPACK
 
 namespace xla {
 namespace {
@@ -492,22 +487,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     pipeline->AddPass<GatherSimplifier>();
   }
 
-  if (module->config()
-              .debug_options()
-              .xla_cpu_experimental_xnn_graph_fusion_mode() ==
-          DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED &&
-      !absl::c_contains(module->config()
-                            .debug_options()
-                            .xla_cpu_experimental_xnn_fusion_type(),
-                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE) &&
-      !absl::c_contains(module->config()
+  if (!absl::c_contains(module->config()
                             .debug_options()
                             .xla_cpu_experimental_ynn_fusion_type(),
                         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
     pipeline->AddPass<TreeReductionRewriter>();
   }
 
-#ifdef XLA_YNNPACK
   if (absl::c_contains(module->config()
                            .debug_options()
                            .xla_cpu_experimental_ynn_fusion_type(),
@@ -517,7 +503,6 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
           return !IsReduceOpOffloadedToYnn(hlo);
         });
   }
-#endif
 
   // BatchNormExpander can create zero-sized ops, so zero-sized HLO
   // elimination has to come after that pass.
@@ -542,28 +527,25 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   return pipeline;
 }
 
+auto LibrarySupportsConvolution(
+    HloModule* module, TargetMachineFeatures* target_machine_features) {
+  const bool ynnpack_convolution_enabled = absl::c_linear_search(
+      module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
+      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
+  return [=](const HloInstruction& instr) {
+    return ynnpack_convolution_enabled && IsConvolutionOpSupportedByYnn(&instr);
+  };
+}
+
 auto LibrarySupportsDot(HloModule* module,
                         TargetMachineFeatures* target_machine_features) {
-  // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
-  // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
-  // `XnnFusionThunk`.
-  const bool xnnpack_enabled =
-      module->config().debug_options().xla_cpu_use_xnnpack();
-  const auto xnn_graph_fusion_mode =
-      module->config()
-          .debug_options()
-          .xla_cpu_experimental_xnn_graph_fusion_mode();
-  const bool xnnpack_use_cost_model =
-      xnn_graph_fusion_mode !=
-      DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
-  const bool xnnpack_dot_enabled =
-      xnnpack_enabled &&
-      xnn_graph_fusion_mode != DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED;
+  // TODO(b/468895209): Stop calling YNNPACK from regular Dot thunks. All YNN
+  // Dots should be wrapped in an `__ynn_fusion` fusion region and processed in
+  // `YnnFusionThunk`.
   const bool ynnpack_dot_enabled = absl::c_linear_search(
       module->config().debug_options().xla_cpu_experimental_ynn_fusion_type(),
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
   return [=](const HloInstruction& instr) {
-#ifdef XLA_YNNPACK
     if (ynnpack_dot_enabled &&
         IsDotSupportedByYnn(instr.dot_dimension_numbers(),
                             instr.operand(0)->shape(),
@@ -571,16 +553,7 @@ auto LibrarySupportsDot(HloModule* module,
             .value_or(false)) {
       return true;
     }
-#endif  // XLA_YNNPACK
 
-    if (xnnpack_dot_enabled &&
-        IsDotSupportedByXnn(instr.dot_dimension_numbers(),
-                            instr.operand(0)->shape(),
-                            instr.operand(1)->shape(), instr.shape(),
-                            target_machine_features, xnnpack_use_cost_model)
-            .value_or(false)) {
-      return true;
-    }
     return false;
   };
 }
@@ -670,31 +643,41 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   auto library_supports_dot =
       LibrarySupportsDot(module, target_machine_features);
 
-  auto call_library_for_dot = [&](const HloInstruction& instr) {
-    if (instr.opcode() != HloOpcode::kDot) {
+  auto library_supports_convolution =
+      LibrarySupportsConvolution(module, target_machine_features);
+
+  auto call_library_for_instruction = [&](const HloInstruction& instr) {
+    if (instr.opcode() != HloOpcode::kDot &&
+        instr.opcode() != HloOpcode::kConvolution) {
       return false;
     }
 
-    auto dot_strategy = GetDotImplementationStrategy(
-        module->config(), instr, *target_machine_features,
-        /*allow_runtime_calls=*/true);
-    if (dot_strategy != DotImplementationStrategy::kEigen) {
-      // We aren't going to call a library for this dot.
-      return false;
+    if (instr.opcode() == HloOpcode::kDot) {
+      auto dot_strategy = GetDotImplementationStrategy(
+          module->config(), instr, *target_machine_features,
+          /*allow_runtime_calls=*/true);
+      if (dot_strategy != DotImplementationStrategy::kEigen) {
+        // We aren't going to call a library for this dot.
+        return false;
+      }
+      return library_supports_dot(instr);
+    }
+    if (instr.opcode() == HloOpcode::kConvolution) {
+      return library_supports_convolution(instr);
     }
 
-    return library_supports_dot(instr);
+    return false;
   };
 
   // If YNNPACK is enabled, we only need to upcast dots that YnnDotThunk does
   // not support. `upcaster_filter` returns false if the instruction shouldn't
   // be processed.
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    return !call_library_for_dot(*instr);
+    return !call_library_for_instruction(*instr);
   };
 
-  // xla::cpu::GetDotImplementationStrategy (used by call_library_for_dot)
-  // relies on the canonical form of dots.
+  // xla::cpu::GetDotImplementationStrategy (used by
+  // call_library_for_instruction) relies on the canonical form of dots.
   pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
@@ -754,7 +737,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
-  CpuFloatSupport bf16_support(BF16, call_library_for_dot);
+  CpuFloatSupport bf16_support(BF16, call_library_for_instruction);
 #ifdef XLA_ONEDNN
   bool use_onednn_graph =
       module->config().debug_options().xla_cpu_use_onednn() &&
@@ -798,17 +781,25 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     return false;
   };
   pipeline.AddPass<ConvolutionGroupConverter>(
-      /*should_expand=*/[](HloInstruction* conv) { return true; }, cost_model,
+      /*should_expand=*/
+      [&library_supports_convolution](HloInstruction* conv) {
+        return !library_supports_convolution(*conv);
+      },
+      cost_model,
       /*convert_batch_groups_only=*/true);
-  auto feature_group_should_expand = [](HloInstruction* conv) {
-    switch (conv->shape().element_type()) {
-      case F16:
-      case F32:
-        return false;
-      default:
-        return true;
-    }
-  };
+  auto feature_group_should_expand =
+      [&library_supports_convolution](HloInstruction* conv) {
+        if (library_supports_convolution(*conv)) {
+          return false;
+        }
+        switch (conv->shape().element_type()) {
+          case F16:
+          case F32:
+            return false;
+          default:
+            return true;
+        }
+      };
   pipeline.AddPass<ConvolutionGroupConverter>(
       feature_group_should_expand, cost_model,
       /*convert_batch_groups_only=*/false);
@@ -984,29 +975,20 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // XNNPACK ops availability checks depend on the layout information,
   // so until another solution is developed the passes creating XNNPACK fusions
   // have to run after layout assignment.
-  const bool use_ynnpack = absl::c_linear_search(
-      debug_options.xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
+  const bool use_ynnpack =
+      !debug_options.xla_cpu_experimental_ynn_fusion_type().empty();
   LibraryRewriterOptions options = {
       /*use_onednn=*/debug_options.xla_cpu_use_onednn(),
-      /*use_xnnpack=*/debug_options.xla_cpu_use_xnnpack(),
       /*use_ynnpack=*/use_ynnpack,
       /*onednn_fusion_types=*/
       &debug_options.xla_cpu_experimental_onednn_fusion_type(),
-      /*xnn_fusion_types=*/
-      &debug_options.xla_cpu_experimental_xnn_fusion_type(),
       /*ynn_fusion_types=*/
       &debug_options.xla_cpu_experimental_ynn_fusion_type()};
-  if (options.use_onednn || options.use_xnnpack || options.use_ynnpack) {
+  if (options.use_onednn || options.use_ynnpack) {
     HloPassPipeline lib_pipeline("dot-library-passes");
     lib_pipeline.AddPass<DotDecomposer>();
     lib_pipeline.AddPass<LibraryRewriter>(target_machine_features, options);
     TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
-  }
-
-  if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
-      DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
-    pipeline.AddPass<XnnGraphFusion>();
   }
 
   bool use_multi_output_fusion =
@@ -1017,11 +999,14 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   if (is_fusion_emitters) {
     bool use_experimental_loop_fusion =
         options::UseExperimentalLoopFusion(module->config());
-    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
+    bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
+    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion,
+                                    use_tiled_emitter);
   }
 
+  AliasInfo alias_info;
   if (use_multi_output_fusion) {
-    pipeline.AddPass<CpuMultiOutputFusion>();
+    pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
     pipeline.AddPass<TupleSimplifier>();
   }
 
@@ -1084,7 +1069,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
   // If enabled we'll use more precise region based analysis for copy removal.
-  AliasInfo alias_info;
   if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
     pipeline.AddPass<CopyInsertion>(
         &alias_info,
@@ -2019,11 +2003,10 @@ CpuCompiler::CompileCpuExecutable(
 
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
-      CpuExecutable::Create(
-          std::move(function_library), std::move(assignment), std::move(module),
-          std::move(thunks), std::move(constants),
-          std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map),
-          std::move(target_machine_options)));
+      CpuExecutable::Create(std::move(function_library), std::move(assignment),
+                            std::move(module), std::move(thunks),
+                            std::move(constants),
+                            std::move(target_machine_options)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2102,17 +2085,13 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CompileCpuExecutable(std::move(module), thunk_emitter_options,
                            std::move(ir_compiler)));
 
-  AliasInfo alias_info;
-  cpu_executable->set_debug_info(
-      cpu_executable->buffer_assignment().StatsString(&alias_info));
-
   VLOG(1) << "Compilation finished";
   cpu_executable->Finalize();
 
   return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                 const AotCompilationOptions& aot_options) {
   auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
@@ -2176,7 +2155,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   std::unique_ptr<llvm::TargetMachine> target_machine =
       target_machine_builder();
 
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  std::vector<std::unique_ptr<CompiledModule>> results;
   VLOG(1) << "Compiling ahead-of-time: " << hlo_module->name();
   if (hlo_module->has_schedule()) {
     return results;
@@ -2195,7 +2174,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   return std::move(results);
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuCompiler::CompileAheadOfTimeThunks(
     std::unique_ptr<HloModule> module,
     IrCompiler::TargetMachineBuilder target_machine_builder,
@@ -2247,12 +2226,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
   const ThunkSequence& thunk_sequence =
       cpu_executable->thunks().thunk_sequence();
 
-  std::unique_ptr<HloProfilePrinterData> executable_hlo_profile_printer_data =
-      cpu_executable->module().config().hlo_profiling_enabled()
-          ? std::make_unique<HloProfilePrinterData>(
-                cpu_executable->hlo_profile_printer_data())
-          : nullptr;
-
   if (cpu_executable->obj_files().size() > 1) {
     return Internal(
         "Expected at most one object file for AOT compilation, but got %d",
@@ -2270,7 +2243,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
-      std::move(executable_hlo_profile_printer_data),
       cpu_executable->target_machine_options().ToProto());
 }
 
@@ -2282,8 +2254,8 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
   return CpuExecutable::ShapeSizeBytes;
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
-    Executable* executable) const {
+absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
+    Executable* executable) {
   auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
@@ -2303,12 +2275,6 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
   std::vector<SymbolProto> compiled_symbols_proto =
       cpu_executable->get_compiled_symbols_proto();
 
-  std::unique_ptr<HloProfilePrinterData> executable_hlo_profile_printer_data =
-      cpu_executable->module().config().hlo_profiling_enabled()
-          ? std::make_unique<HloProfilePrinterData>(
-                cpu_executable->hlo_profile_printer_data())
-          : nullptr;
-
   TF_ASSIGN_OR_RETURN(auto compiled_symbols,
                       GetCompiledSymbolsFromProto(compiled_symbols_proto));
 
@@ -2323,11 +2289,10 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
       cpu_executable->module_name(), std::move(obj_files),
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
-      std::move(executable_hlo_profile_printer_data),
       cpu_executable->target_machine_options().ToProto());
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   return CpuAotLoader::LoadAotCompilationResult(serialized_aot_result);
@@ -2356,10 +2321,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
   // Run buffer allocation on the HLO graph.
   AliasInfo alias_info;
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   return BufferAssigner::Run(
       &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
       BufferSizeBytesFunction(), &alias_info, memory_alignment,
-      /*allocate_buffers_for_constants=*/true);
+      std::move(opts));
 }
 
 }  // namespace cpu

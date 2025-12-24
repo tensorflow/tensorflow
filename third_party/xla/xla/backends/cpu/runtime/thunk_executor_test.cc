@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -160,10 +160,10 @@ AddI32Thunk::AddI32Thunk(std::string name,
 absl::Status AddI32Thunk::Execute(const BufferAllocations* allocations,
                                   BufferAllocation::Slice src_slice,
                                   BufferAllocation::Slice dst_slice) {
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase src,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase src,
                       allocations->GetDeviceAddress(src_slice));
 
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase dst,
+  TF_ASSIGN_OR_RETURN(se::DeviceAddressBase dst,
                       allocations->GetDeviceAddress(dst_slice));
 
   CHECK_EQ(src.size() % sizeof(int32_t), 0);

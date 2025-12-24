@@ -54,9 +54,19 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "ffi",
+    hdrs = ["ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/ffi",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:c_api_internal",
     ],
 )
 
@@ -110,32 +120,10 @@ onednn_graph_cc_library(
     ],
 )
 
+# TODO: b/467367981, this is deprecated and should be removed.
 tf_proto_library(
     name = "xnn_fusion_options_proto",
     srcs = ["xnn_fusion_options.proto"],
-)
-
-cc_library(
-    name = "xnn_emitter",
-    srcs = ["xnn_emitter.cc"],
-    hdrs = ["xnn_emitter.h"],
-    deps = [
-        ":xnn_support",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
-        "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:statusor",
-        "@XNNPACK",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
 )
 
 cc_library(
@@ -151,71 +139,17 @@ cc_library(
         "//xla/backends/cpu/runtime:dot_dims",
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
         "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@XNNPACK//ynnpack",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "xnn_gemm_config",
-    srcs = ["xnn_gemm_config.cc"],
-    hdrs = ["xnn_gemm_config.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/backends/cpu/runtime:dot_dims",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Target",
-    ],
-)
-
-cc_library(
-    name = "xnn_support",
-    srcs = ["xnn_support.cc"],
-    hdrs = ["xnn_support.h"],
-    deps = [
-        ":xnn_gemm_config",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu/codegen:target_machine_features",
-        "//xla/backends/cpu/runtime:dot_dims",
-        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:pattern_matcher",
-        "//xla/tsl/platform:statusor",
-        "@XNNPACK",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "xnn_support_test",
-    srcs = ["xnn_support_test.cc"],
-    deps = [
-        ":xnn_support",
-        "//xla/hlo/ir:hlo",
-        "@XNNPACK",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -292,7 +226,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

@@ -15,6 +15,7 @@ limitations under the License.
 
 // TODO(opensource): Use a more generic sounding preprocessor name than
 // GOOGLE_CUDA
+#include "xla/pjrt/host_memory_allocator.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
@@ -1880,8 +1881,10 @@ Status BaseGPUDeviceFactory::CreateDevices(
     // TODO(chuanhao): Use the correct NUMA_NODE.
     const int64_t numa_node = 0;
 
-    std::unique_ptr<tsl::Allocator> pjrt_gpu_host_allocator(
-        process_state->GetGpuHostAllocator(/*options=*/{}, numa_node));
+    auto pjrt_gpu_host_allocator =
+        std::make_unique<xla::BasicHostMemoryAllocator>(
+            std::unique_ptr<tsl::Allocator>(
+                process_state->GetGpuHostAllocator(/*options=*/{}, numa_node)));
 
     if (populate_pjrt_gpu_client_creation_info &&
         !should_create_new_pjrt_client) {

@@ -34,7 +34,7 @@ class CompleteGroupCall : public CancellableCall {
   CompleteGroupCall(const CollGroupParams& group,
                     const DeviceAttributes& device,
                     CancellationManager* cancel_mgr,
-                    const string& remote_worker, WorkerCacheInterface* wc)
+                    const std::string& remote_worker, WorkerCacheInterface* wc)
       : CancellableCall(cancel_mgr, remote_worker, wc) {
     req_.set_group_key(group.group_key);
     req_.set_group_size(group.group_size);
@@ -55,9 +55,11 @@ class CompleteInstanceCall : public CancellableCall {
  public:
   CompleteInstanceCall(const CollGroupParams& group,
                        const CollInstanceParams& instance,
-                       const string& node_name, const string& device_name,
-                       bool is_source, CancellationManager* cancel_mgr,
-                       const string& remote_worker, WorkerCacheInterface* wc)
+                       const std::string& node_name,
+                       const std::string& device_name, bool is_source,
+                       CancellationManager* cancel_mgr,
+                       const std::string& remote_worker,
+                       WorkerCacheInterface* wc)
       : CancellableCall(cancel_mgr, remote_worker, wc) {
     req_.set_name(node_name);
     req_.set_type(instance.type);
@@ -91,7 +93,7 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverDistributed* dev_resolver,
     NcclCommunicatorInterface* nccl_communicator,
-    WorkerCacheInterface* worker_cache, const string& task_name)
+    WorkerCacheInterface* worker_cache, const std::string& task_name)
     : CollectiveParamResolverLocal(config, dev_mgr, dev_resolver,
                                    nccl_communicator, task_name),
       worker_cache_(worker_cache),
@@ -364,8 +366,8 @@ absl::Status CollectiveParamResolverDistributed::UpdateInstanceCache(
 }
 
 void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    const StatusCallback& done) {
+    const std::string& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, const StatusCallback& done) {
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, cp, done);

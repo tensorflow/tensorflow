@@ -248,8 +248,8 @@ LogicalResult ConvertReduceOpToArgMinMax<
   int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
 
   auto dim_type = RankedTensorType::get({1}, rewriter.getI32Type());
-  auto reduction_indices = rewriter.create<arith::ConstantOp>(
-      reduce_op.getLoc(), dim_type,
+  auto reduction_indices = arith::ConstantOp::create(
+      rewriter, reduce_op.getLoc(), dim_type,
       rewriter.getI32TensorAttr({static_cast<int32_t>(axis)}));
 
   // Generate a Max and an ArgMax of as the mhlo op returns both while in TF
@@ -260,24 +260,24 @@ LogicalResult ConvertReduceOpToArgMinMax<
   if (operand_type.getElementType().isInteger(1)) {
     // TF does not support min or max on boolean (int1) arguments.
     // Use AnyOp for MaxOp and AllOp for MinOp.
-    auto tf_reduce_op = rewriter.create<BooleanReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-        reduction_indices,
+    auto tf_reduce_op = BooleanReduce::create(
+        rewriter, reduce_op.getLoc(), reduce_op->getResult(0).getType(),
+        operand, reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
-    auto tf_argreduce_op = rewriter.create<ArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-        reduction_indices);
+    auto tf_argreduce_op = ArgReduce::create(rewriter, reduce_op.getLoc(),
+                                             reduce_op->getResult(1).getType(),
+                                             operand, reduction_indices);
 
     rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
   } else {
-    auto tf_reduce_op = rewriter.create<Reduce>(
-        reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-        reduction_indices,
+    auto tf_reduce_op = Reduce::create(
+        rewriter, reduce_op.getLoc(), reduce_op->getResult(0).getType(),
+        operand, reduction_indices,
         /*keep_dim=*/rewriter.getBoolAttr(false));
 
-    auto tf_argreduce_op = rewriter.create<ArgReduce>(
-        reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
-        reduction_indices);
+    auto tf_argreduce_op = ArgReduce::create(rewriter, reduce_op.getLoc(),
+                                             reduce_op->getResult(1).getType(),
+                                             operand, reduction_indices);
 
     rewriter.replaceOp(reduce_op, {tf_reduce_op, tf_argreduce_op});
   }
@@ -366,9 +366,10 @@ template <typename ReduceOp, typename BinaryOp, bool BuilderHasFAF = false>
 LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
                                        arith::ConstantOp reduction_indices,
                                        ConversionPatternRewriter& rewriter) {
-  Value reduce_result = rewriter.create<ReduceOp>(
-      reduce_op.getLoc(), reduce_op.getType(0), input, reduction_indices,
-      /*keep_dim=*/rewriter.getBoolAttr(false));
+  Value reduce_result =
+      ReduceOp::create(rewriter, reduce_op.getLoc(), reduce_op.getType(0),
+                       input, reduction_indices,
+                       /*keep_dim=*/rewriter.getBoolAttr(false));
 
   if constexpr (BuilderHasFAF) {
     rewriter.replaceOpWithNewOp<BinaryOp>(reduce_op, reduce_result,
@@ -455,7 +456,7 @@ class ConvertReduce : public OpConversionPattern<mhlo::ReduceOp> {
 
     auto tfl_dims = GetDimsAsI32Elements(rewriter, reduce_op);
     auto tfl_dims_op =
-        rewriter.create<arith::ConstantOp>(reduce_op.getLoc(), tfl_dims);
+        arith::ConstantOp::create(rewriter, reduce_op.getLoc(), tfl_dims);
 
     //
     // replace with new reduce op, chaining binary op if needed.

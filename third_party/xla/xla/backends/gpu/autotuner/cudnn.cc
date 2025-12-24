@@ -41,8 +41,8 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/stream.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -198,11 +199,11 @@ absl::StatusOr<std::vector<CudnnBackendConfig>> GetAlgorithms(
       TF_RETURN_IF_ERROR(dnn->GetConvolveRunners(
           conv_kind, input_type, output_type, stream,
           gpu_conv_config.input_descriptor,
-          /*input_data=*/se::DeviceMemoryBase(nullptr),
+          /*input_data=*/se::DeviceAddressBase(nullptr),
           gpu_conv_config.filter_descriptor,
-          /*filter_data=*/se::DeviceMemoryBase(nullptr),
+          /*filter_data=*/se::DeviceAddressBase(nullptr),
           gpu_conv_config.output_descriptor,
-          /*output_data=*/se::DeviceMemoryBase(nullptr),
+          /*output_data=*/se::DeviceAddressBase(nullptr),
           gpu_conv_config.conv_desc, use_fallback,
           /*scratch_allocator=*/nullptr, engine_options, &conv_runners));
       break;
@@ -238,6 +239,7 @@ GetCudnnFusionConfigs(const HloInstruction& instr,
   std::vector<std::unique_ptr<BackendConfig>> configs;
   int plan_count = CuDnnFusionCompiler::GetAvailablePlanCount(
       *stream_executor, *DynCast<HloFusionInstruction>(&instr));
+  VLOG(2) << "Found " << plan_count << " plans for cudnn fusion.";
   configs.reserve(plan_count);
   for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
     CudnnBackendConfig config;

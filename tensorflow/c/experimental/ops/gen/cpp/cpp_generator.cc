@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/cpp_generator.h"
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/c/experimental/ops/gen/common/path_config.h"

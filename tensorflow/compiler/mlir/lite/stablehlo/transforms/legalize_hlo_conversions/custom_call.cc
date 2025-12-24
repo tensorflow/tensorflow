@@ -82,9 +82,9 @@ LogicalResult ConvertCustomCallOp::matchAndRewrite(
   if (!call_target_name.starts_with("custom_call.")) {
     return failure();
   }
-  auto tfl_custom = rewriter.create<TFL::CustomOp>(
-      mhlo_custom_call.getLoc(), mhlo_custom_call.getResultTypes(),
-      mhlo_custom_call.getInputs());
+  auto tfl_custom = TFL::CustomOp::create(rewriter, mhlo_custom_call.getLoc(),
+                                          mhlo_custom_call.getResultTypes(),
+                                          mhlo_custom_call.getInputs());
   tfl_custom.setCustomCodeAttr(rewriter.getStringAttr(call_target_name));
 
   if (auto bc = mhlo_custom_call.getBackendConfig()) {

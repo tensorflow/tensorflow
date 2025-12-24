@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace testing {
@@ -43,6 +45,17 @@ TEST(SplitTest, SplitString) {
 
 TEST(SplitTest, SplitFloat) {
   EXPECT_THAT(Split<float>("1.0 B 1e-5", " "), ElementsAre(1.0, 0.0, 1e-5));
+}
+
+TEST(SplitTest, SplitHalf) {
+  EXPECT_THAT(Split<half>("1.0 2.5 1e-2", " "),
+              ElementsAre(half(1.0f), half(2.5f), half(0.01f)));
+}
+
+TEST(SplitTest, SplitBfloat16) {
+  EXPECT_THAT(Split<Eigen::bfloat16>("1.0 2.5 1e-2", " "),
+              ElementsAre(Eigen::bfloat16(1.0f), Eigen::bfloat16(2.5f),
+                          Eigen::bfloat16(0.01f)));
 }
 
 TEST(SplitTest, SplitInt) {

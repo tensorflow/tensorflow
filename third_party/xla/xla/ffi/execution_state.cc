@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/ffi/execution_state.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -74,9 +80,56 @@ absl::StatusOr<void*> ExecutionState::Get(TypeId type_id) const {
 
   return state_;
 }
+absl::StatusOr<ExecutionStateProto> ExecutionState::ToProto() const {
+  if (!IsSet()) {
+    return ExecutionStateProto();
+  }
+  if (!type_info_.serializer) {
+    return InvalidArgument("Type id %d does not have a registered serializer",
+                           type_id_.value());
+  }
+
+  TF_ASSIGN_OR_RETURN(absl::string_view type_name,
+                      TypeRegistry::GetTypeName(type_id_));
+  TF_ASSIGN_OR_RETURN(std::string state, type_info_.serializer(state_));
+
+  ExecutionStateProto proto;
+  proto.set_type_name(type_name);
+  *proto.mutable_state() = std::move(state);
+  return proto;
+}
+
+absl::StatusOr<ExecutionState> ExecutionState::FromProto(
+    const ExecutionStateProto& proto) {
+  ExecutionState state;
+  if (proto.type_name().empty()) {
+    return state;
+  }
+
+  TF_ASSIGN_OR_RETURN(TypeId type_id,
+                      TypeRegistry::GetTypeId(proto.type_name()));
+  TF_ASSIGN_OR_RETURN(TypeInfo type_info, TypeRegistry::GetTypeInfo(type_id));
+
+  if (!type_info.deserializer) {
+    return InvalidArgument(
+        "Type name %s does not have a registered deserializer",
+        proto.type_name());
+  }
+
+  TF_ASSIGN_OR_RETURN(auto opaque_state, type_info.deserializer(proto.state()));
+  TF_RETURN_IF_ERROR(state.Set(type_id, type_info, opaque_state.release()));
+  return state;
+}
 
 bool ExecutionState::IsSet() const {
   return type_id_ != TypeRegistry::kUnknownTypeId;
+}
+
+bool ExecutionState::IsSerializable() const {
+  if (!IsSet()) {
+    return true;
+  }
+  return type_info_.serializer != nullptr;
 }
 
 }  // namespace xla::ffi

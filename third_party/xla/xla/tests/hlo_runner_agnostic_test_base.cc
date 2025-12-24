@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "google/protobuf/message.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -107,9 +107,9 @@ HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule(
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
-HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
-    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
-  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+HloRunnerAgnosticTestBase::HloModuleFromXlaComputation(
+    const XlaComputation& computation,
+    const ExecutionOptions& execution_options) const {
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig module_config,
       HloModule::CreateModuleConfigFromProto(computation.proto(),
@@ -120,6 +120,13 @@ HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
       HloModule::CreateFromProto(computation.proto(), module_config));
   TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
   return module;
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloRunnerAgnosticTestBase::HloModuleFromXlaBuilder(
+    XlaBuilder* builder, const ExecutionOptions& execution_options) const {
+  TF_ASSIGN_OR_RETURN(XlaComputation computation, builder->Build());
+  return HloModuleFromXlaComputation(computation, execution_options);
 }
 
 HloComputation*
@@ -147,11 +154,10 @@ absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const absl::Span<const Literal* const> arguments,
-    const int64_t num_replicas, const bool use_threads,
-    const bool run_hlo_passes) {
+    const absl::Span<const Literal* const> arguments, const int64_t num_devices,
+    const bool use_threads, const bool run_hlo_passes) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = use_threads;
@@ -162,11 +168,11 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const absl::Span<const Literal* const> arguments,
-    const int64_t num_replicas, DeviceAssignment* const device_assignment,
-    const bool run_hlo_passes, const bool use_threads) {
+    const absl::Span<const Literal* const> arguments, const int64_t num_devices,
+    DeviceAssignment* const device_assignment, const bool run_hlo_passes,
+    const bool use_threads) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = use_threads;
@@ -180,10 +186,10 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
     absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
     absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
-    const int64_t num_replicas, const bool run_hlo_passes,
+    const int64_t num_devices, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_devices;
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
   return test_runner_->ExecuteReplicated(
@@ -195,11 +201,10 @@ absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const std::vector<std::vector<Literal*>> arguments,
-    const int64_t num_replicas, const bool run_hlo_passes,
+    const int64_t num_devices, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
-  CHECK(num_replicas > 0 && "expect at least one replica");
-  CHECK(num_replicas == arguments.size() &&
-        "expect arguments for each replica");
+  CHECK(num_devices > 0 && "expected at least one device");
+  CHECK(num_devices == arguments.size() && "expect arguments for each device");
   int64_t argument_count = arguments.front().size();
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   TF_ASSIGN_OR_RETURN(
@@ -212,13 +217,14 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
       [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
         return arguments[replica_idx][argument_idx];
       },
-      num_replicas, /*run_hlo_passes=*/run_hlo_passes,
+      num_devices, /*run_hlo_passes=*/run_hlo_passes,
       /*device_assignment=*/device_assignment);
 }
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     std::unique_ptr<HloModule> module, const bool run_hlo_passes,
-    const std::function<void(HloModule*)>& test_preprocessor) {
+    const std::function<void(HloModule*)>& test_preprocessor,
+    BufferAssignmentProto* buffer_assignment_proto) {
   const std::vector<Literal> fake_arguments =
       MakeFakeArguments(module.get()).value();
   if (const absl::StatusOr<bool> change = verifier().Run(module.get());
@@ -234,7 +240,13 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(std::move(module), fake_arguments,
+                                  run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                std::move(module), buffer_assignment_proto, fake_arguments,
+                run_hlo_passes);
+
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
@@ -251,11 +263,11 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
            << "Number of replicas is not the same: " << replica_count << " Vs "
            << module_1->config().replica_count();
   }
-  if (options.num_replicas != replica_count) {
+  if (options.num_devices != replica_count) {
     return ::testing::AssertionFailure()
            << "Number of execution replicas is different from number of "
               "replicas in the module: requested number of replicas = "
-           << options.num_replicas
+           << options.num_devices
            << ", number of replicas in hlo = " << replica_count;
   }
 
@@ -305,15 +317,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const std::vector<Literal>& fake_arguments, const bool run_hlo_passes,
     const bool use_threads, const std::optional<ErrorSpec>& error) {
-  const HloRunnerInterface::ReplicatedExecuteOptions options{
-      /*num_replicas=*/module_0->config().replica_count(),
-      /*arguments=*/LiteralUtil::MakePointers(fake_arguments),
-      /*infeed_values=*/{},
-      /*infeed_steps=*/-1,
-      /*outfeed_shape=*/{},
-      /*outfeed_values=*/nullptr,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*use_threads=*/use_threads};
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices =
+      module_0->config().replica_count() * module_0->config().num_partitions();
+  options.arguments = LiteralUtil::MakePointers(fake_arguments);
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = use_threads;
   return RunAndCompareTwoModulesReplicated(std::move(module_0),
                                            std::move(module_1), options, error);
 }
@@ -459,7 +468,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const tsl::protobuf::Message* backend_config, const bool use_random_data) {
+    const tsl::protobuf::Message* backend_config, const bool use_random_data,
+    BufferAssignmentProto* buffer_assignment_proto) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
   if (!module.ok()) {
@@ -490,8 +500,12 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(*std::move(module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/run_hlo_passes);
+      buffer_assignment_proto == nullptr
+          ? test_runner_->Execute(*std::move(module), fake_argument_ptrs,
+                                  /*run_hlo_passes=*/run_hlo_passes)
+          : test_runner_->ExecuteWithBufferAssignment(
+                *std::move(module), buffer_assignment_proto, fake_argument_ptrs,
+                /*run_hlo_passes=*/run_hlo_passes);
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
@@ -499,9 +513,10 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunReplicated(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const int64_t num_replicas, const tsl::protobuf::Message* backend_config) {
+    const int64_t num_devices, const tsl::protobuf::Message* backend_config) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
-      ParseAndReturnVerifiedModule(hlo_string, num_replicas);
+      ParseAndReturnVerifiedModule(hlo_string, /*num_replicas=*/num_devices,
+                                   /*num_partitions=*/1);
   if (!module.ok()) {
     return ::testing::AssertionFailure()
            << "Error while parsing HLO text format: "
@@ -527,7 +542,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   }
 
   HloRunnerInterface::ReplicatedExecuteOptions options;
-  options.num_replicas = num_replicas;
+  options.num_devices = num_devices;
   options.arguments = {fake_argument_ptrs.begin(), fake_argument_ptrs.end()};
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;

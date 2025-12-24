@@ -256,10 +256,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
       absl::Span<llvm::Value* const> accumulator_addrs,
       llvm::ArrayRef<llvm::Type*> accumulator_types, bool is_variadic);
 
-  // Composes a complex struct. imag may be nullptr for simple cast operations.
-  llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
-                                  llvm::Value* imag);
-
   // Emit `accumulator + lhs * rhs` for the given primitive type.
   llvm::Value* EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
                           llvm::Value* accumulator,
@@ -371,6 +367,11 @@ class ElementalIrEmitterForTests : public ElementalIrEmitter {
 
   HloToElementGeneratorMap generator_map_;
 };
+
+absl::StatusOr<llvm::Value*> EmitIota(
+    const HloInstruction* hlo, const llvm_ir::IrArray::Index& target_index,
+    llvm::Module* module, llvm::IRBuilderBase* b);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_ELEMENTAL_IR_EMITTER_H_

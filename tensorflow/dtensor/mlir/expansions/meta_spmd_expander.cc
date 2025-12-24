@@ -791,7 +791,7 @@ StatusOr<mlir::Operation*> ReshapeSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto const_attr =
       mlir::DenseIntElementsAttr::get(new_shape, local_reshape_const);
   auto new_reshape_const_op =
-      builder.create<mlir::TF::ConstOp>(DT_LOC(op), const_attr);
+      mlir::TF::ConstOp::create(builder, DT_LOC(op), const_attr);
   mlir::TF::ReshapeOp new_reshape_op = mlir::TF::ReshapeOp::create(
       builder, op->getLoc(), new_input, new_reshape_const_op);
 

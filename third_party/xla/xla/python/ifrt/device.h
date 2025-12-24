@@ -57,6 +57,9 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
   // reference will remain valid for the lifetime of the Device.
   virtual const AttributeMap& Attributes() const = 0;
 
+  // A string that uniquely identifies the platform, e.g., "tpu", "cuda", "cpu".
+  virtual absl::string_view PlatformName() const = 0;
+
   // A vendor-dependent string that uniquely identifies the kind of device,
   // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
   // compatible compilation.

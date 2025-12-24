@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -262,7 +262,7 @@ absl::Status CudaStream::BlockHostUntilDone() {
   return absl::OkStatus();
 }
 
-absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status CudaStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
@@ -277,7 +277,7 @@ absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
       "Failed to enqueue async memset operation");
 }
 
-absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status CudaStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) ==
           0 &&
       size % sizeof(uint32_t) == 0) {
@@ -291,22 +291,23 @@ absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
-absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status CudaStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
       executor_, absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
       absl::bit_cast<CUdeviceptr>(gpu_src.opaque()), size, stream_handle_);
 }
 
-absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status CudaStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   return AsynchronousMemcpyH2D(executor_,
                                absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
                                host_src, size, stream_handle_);
 }
 
-absl::Status CudaStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status CudaStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_, host_dst,
                                absl::bit_cast<CUdeviceptr>(gpu_src.opaque()),

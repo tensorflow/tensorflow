@@ -62,7 +62,7 @@ TEST_F(QuantizedOpTest, QuantizeV2) {
 template <typename T>
 std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                       const std::vector<T>& data) {
-  uint32 seed = 123;
+  uint32_t seed = 123;
   std::minstd_rand rng(seed);
   int64_t out_size = 1;
   for (int dim : dims) {
@@ -373,14 +373,14 @@ TEST_F(QuantizedOpTest, QuantizeV2_32Bit) {
   Tensor expected(allocator(), DT_QINT32, TensorShape({element_count}));
   test::FillValues<qint32>(&expected,
                            {
-                               std::numeric_limits<int32>::min(),
+                               std::numeric_limits<int32_t>::min(),
                                0,
-                               static_cast<int32>(1.0f * (1 << 23)),
-                               static_cast<int32>(1.25f * (1 << 23)),
-                               static_cast<int32>(1.75f * (1 << 23)),
-                               static_cast<int32>(127.0f * (1 << 23)),
-                               static_cast<int32>(255.0f * (1 << 23)),
-                               std::numeric_limits<int32>::max(),
+                               static_cast<int32_t>(1.0f * (1 << 23)),
+                               static_cast<int32_t>(1.25f * (1 << 23)),
+                               static_cast<int32_t>(1.75f * (1 << 23)),
+                               static_cast<int32_t>(127.0f * (1 << 23)),
+                               static_cast<int32_t>(255.0f * (1 << 23)),
+                               std::numeric_limits<int32_t>::max(),
                            });
   // We expect there will be some fuzziness in the lower bits, since this is
   // converting from float.

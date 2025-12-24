@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/platform.h"
@@ -64,16 +64,16 @@ static void BM_RowMajorGemm(benchmark::State& state) {
                           executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
-  se::DeviceMemory<float> a = executor->AllocateArray<float>(m * k, 0);
-  se::DeviceMemory<float> b = executor->AllocateArray<float>(k * n, 0);
-  se::DeviceMemory<float> c = executor->AllocateArray<float>(m * n, 0);
+  se::DeviceAddress<float> a = executor->AllocateArray<float>(m * k, 0);
+  se::DeviceAddress<float> b = executor->AllocateArray<float>(k * n, 0);
+  se::DeviceAddress<float> c = executor->AllocateArray<float>(m * n, 0);
 
   CHECK_OK(stream->Memset32(&a, BitPattern(1.1f), a.size()));
   CHECK_OK(stream->Memset32(&b, BitPattern(1.2f), b.size()));
   CHECK_OK(stream->MemZero(&c, c.size()));
 
-  se::KernelArgsDeviceMemoryArray args(
-      std::vector<se::DeviceMemoryBase>({a, b, c}),
+  stream_executor::KernelArgsDeviceAddressArray args(
+      std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
 
   for (auto s : state) {

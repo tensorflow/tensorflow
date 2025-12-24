@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {
@@ -75,10 +74,10 @@ absl::StatusOr<std::vector<Point>> GetPoints(
   const std::vector<std::string>& label_names =
       metric_descriptor->second->label_names;
   if (label_names.size() != labels.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Metric ", metric_name, " has ", label_names.size(), " labels: [",
         absl::StrJoin(label_names, ", "), "]. Got label values [",
-        absl::StrJoin(labels, ", "), "].");
+        absl::StrJoin(labels, ", "), "]."));
   }
   auto point_set = metrics.point_set_map.find(metric_name);
   if (point_set == metrics.point_set_map.end()) {
@@ -101,9 +100,9 @@ absl::StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
   TF_ASSIGN_OR_RETURN(std::vector<Point> points,
                       GetPoints(metrics, metric_name, labels));
   if (points.empty()) {
-    return errors::Unavailable("No data collected for metric ", metric_name,
-                               " with labels [", absl::StrJoin(labels, ", "),
-                               "].");
+    return absl::UnavailableError(
+        absl::StrCat("No data collected for metric ", metric_name,
+                     " with labels [", absl::StrJoin(labels, ", "), "]."));
   }
 
   bool same_start_time =

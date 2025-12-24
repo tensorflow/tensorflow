@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/macros.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/overload.h"
@@ -36,8 +37,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_metadata.h"
+#include "xla/stream_executor/tensor_map.h"
 
 namespace stream_executor {
 
@@ -52,12 +54,13 @@ class KernelArgs {
   using IsKernelArgs = std::enable_if_t<std::is_base_of<KernelArgs, T>::value>;
 
   enum class Kind {
-    // A list of type-erased DeviceMemoryBase pointers to on-device memory. This
+    // A list of type-erased DeviceAddressBase pointers to on-device memory.
+    // This
     // type of kernel arguments used only when the kernel has to do its own
     // custom packing, e.g. wrap all device pointers into a custom
     // structure, but can't be implemented as a TypedKernel because it has to be
     // passed around as a generic Kernel.
-    kDeviceMemoryArray,
+    kDeviceAddressArray,
 
     // A list of kernel arguments packed into a storage that can be passed
     // directly to device kernel as void** kernel parameters.
@@ -134,21 +137,21 @@ const T* DynCastOrNull(const KernelArgs* args) {
 }
 
 //===----------------------------------------------------------------------===//
-// Kernel arguments device memory array
+// Kernel arguments device address array
 //===----------------------------------------------------------------------===//
 
-class KernelArgsDeviceMemoryArray : public KernelArgs {
+class KernelArgsDeviceAddressArray : public KernelArgs {
  public:
-  KernelArgsDeviceMemoryArray(absl::Span<const DeviceMemoryBase> args,
-                              size_t shared_memory_bytes)
+  KernelArgsDeviceAddressArray(absl::Span<const DeviceAddressBase> args,
+                               size_t shared_memory_bytes)
       : device_memory_args_(args.begin(), args.end()),
         shared_memory_bytes_(shared_memory_bytes) {}
 
   static bool classof(const KernelArgs* args) {
-    return args->kind() == Kind::kDeviceMemoryArray;
+    return args->kind() == Kind::kDeviceAddressArray;
   }
 
-  Kind kind() const final { return Kind::kDeviceMemoryArray; }
+  Kind kind() const final { return Kind::kDeviceAddressArray; }
 
   size_t number_of_arguments() const final {
     return device_memory_args_.size() + (shared_memory_bytes_ > 0);
@@ -156,7 +159,7 @@ class KernelArgsDeviceMemoryArray : public KernelArgs {
 
   uint64_t number_of_shared_bytes() const final { return shared_memory_bytes_; }
 
-  absl::Span<const DeviceMemoryBase> device_memory_args() const {
+  absl::Span<const DeviceAddressBase> device_memory_args() const {
     return device_memory_args_;
   }
 
@@ -169,15 +172,19 @@ class KernelArgsDeviceMemoryArray : public KernelArgs {
   }
 
  private:
-  absl::InlinedVector<DeviceMemoryBase, 4> device_memory_args_;
+  absl::InlinedVector<DeviceAddressBase, 4> device_memory_args_;
   size_t shared_memory_bytes_ = 0;
 };
+
+// TODO(ezhulenev): Remove this alias once all users are migrated.
+using KernelArgsDeviceMemoryArray ABSL_DEPRECATE_AND_INLINE() =
+    KernelArgsDeviceAddressArray;
 
 //===----------------------------------------------------------------------===//
 // Kernel arguments packing for device memory and POD args
 //===----------------------------------------------------------------------===//
 
-// KernelArgsPackedArray is optimized for packing DeviceMemoryBase pointers
+// KernelArgsPackedArray is optimized for packing DeviceAddressBase pointers
 // and POD arguments (i.e. scalars) when the number and type of arguments are
 // not known at compile time.
 
@@ -255,7 +262,7 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   }
 
   // Adds a device memory argument to the list.
-  void add_device_memory_argument(const DeviceMemoryBase& arg) {
+  void add_device_memory_argument(const DeviceAddressBase& arg) {
     const void** copy_ptr =
         &device_memory_opaque_pointers_[number_of_argument_addresses_];
     *copy_ptr = arg.opaque();
@@ -300,14 +307,14 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   size_t number_of_argument_addresses_ = 0;
 };
 
-using KernelArgument = std::variant<DeviceMemoryBase, TensorMap, int64_t>;
+using KernelArgument = std::variant<DeviceAddressBase, TensorMap, int64_t>;
 
 namespace internal {
 template <int n>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
-    absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
+    absl::Span<const DeviceAddressBase> args, uint32_t shared_mem_bytes) {
   auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
-  for (const DeviceMemoryBase& buf : args) {
+  for (const DeviceAddressBase& buf : args) {
     packed->add_device_memory_argument(buf);
   }
   if (shared_mem_bytes > 0) {
@@ -323,7 +330,7 @@ std::unique_ptr<KernelArgsPackedArray<n, ArgsStorage>> PackKernelArgsImpl(
   for (const auto& arg : args) {
     std::visit(
         absl::Overload{
-            [&](const DeviceMemoryBase& device_memory) {
+            [&](const DeviceAddressBase& device_memory) {
               packed->add_device_memory_argument(device_memory);
             },
             [&](int64_t int_arg) {
@@ -435,8 +442,8 @@ namespace internal {
 //   (1) We always strip references and store a copy of an argument.
 //   (2) We do not support pointer arguments, as we should not be passing a
 //       pointers to host memory to device kernels.
-//   (3) DeviceMemory passed as an opaque `void*` pointer.
-//   (4) We have a special case for passing pointers to DeviceMemory where we
+//   (3) DeviceAddress passed as an opaque `void*` pointer.
+//   (4) We have a special case for passing pointers to DeviceAddress where we
 //       also pass it as an opaque device pointer.
 template <typename T>
 struct PackedArgType {
@@ -445,33 +452,33 @@ struct PackedArgType {
 };
 
 template <>
-struct PackedArgType<DeviceMemoryBase> {
+struct PackedArgType<DeviceAddressBase> {
   using Type = const void*;
 };
 
 template <typename T>
-struct PackedArgType<DeviceMemory<T>> {
-  using Type = typename PackedArgType<DeviceMemoryBase>::Type;
+struct PackedArgType<DeviceAddress<T>> {
+  using Type = typename PackedArgType<DeviceAddressBase>::Type;
 };
 
 template <>
-struct PackedArgType<DeviceMemoryBase*> {
-  using Type = typename PackedArgType<DeviceMemoryBase>::Type;
+struct PackedArgType<DeviceAddressBase*> {
+  using Type = typename PackedArgType<DeviceAddressBase>::Type;
 };
 
 template <>
-struct PackedArgType<const DeviceMemoryBase*> {
-  using Type = typename PackedArgType<DeviceMemoryBase>::Type;
+struct PackedArgType<const DeviceAddressBase*> {
+  using Type = typename PackedArgType<DeviceAddressBase>::Type;
 };
 
 template <typename T>
-struct PackedArgType<DeviceMemory<T>*> {
-  using Type = typename PackedArgType<DeviceMemoryBase>::Type;
+struct PackedArgType<DeviceAddress<T>*> {
+  using Type = typename PackedArgType<DeviceAddressBase>::Type;
 };
 
 template <typename T>
-struct PackedArgType<const DeviceMemory<T>*> {
-  using Type = typename PackedArgType<DeviceMemoryBase>::Type;
+struct PackedArgType<const DeviceAddress<T>*> {
+  using Type = typename PackedArgType<DeviceAddressBase>::Type;
 };
 
 // Overload set for packing kernel arguments. This overload set matches
@@ -481,18 +488,20 @@ T PackArg(const T& arg) {
   return arg;
 }
 
-inline const void* PackArg(const DeviceMemoryBase& arg) { return arg.opaque(); }
-inline const void* PackArg(const DeviceMemoryBase* arg) {
+inline const void* PackArg(const DeviceAddressBase& arg) {
+  return arg.opaque();
+}
+inline const void* PackArg(const DeviceAddressBase* arg) {
   return PackArg(*arg);
 }
 
 template <typename T>
-const void* PackArg(const DeviceMemory<T>& arg) {
+const void* PackArg(const DeviceAddress<T>& arg) {
   return arg.opaque();
 }
 
 template <typename T>
-const void* PackArg(const DeviceMemory<T>* arg) {
+const void* PackArg(const DeviceAddress<T>* arg) {
   return PackArg(*arg);
 }
 

@@ -38,7 +38,7 @@ class TpuPodState : public ResourceBase {
 
   ~TpuPodState() override;
 
-  string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   std::unique_ptr<TpuCompilationCacheService> cache_service_;

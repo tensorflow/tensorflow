@@ -151,8 +151,8 @@ class RewriteClusterToIfrtCallPass
       // ifrt program already exists
       builder.setInsertionPoint(cluster_func);
 
-      mlir::TF::IfrtCallOp ifrt_call_op = builder.create<mlir::TF::IfrtCallOp>(
-          cluster_func->getLoc(), cluster_func.getResultTypes(),
+      mlir::TF::IfrtCallOp ifrt_call_op = mlir::TF::IfrtCallOp::create(
+          builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
           cluster_func->getOperands());
 
       int64_t program_id;
@@ -189,8 +189,8 @@ class RewriteClusterToIfrtCallPass
     mlir::OpBuilder::InsertionGuard insertion_guard(builder);
     builder.setInsertionPoint(callee_func);
 
-    mlir::func::FuncOp cloned_ifrt_program = builder.create<mlir::func::FuncOp>(
-        callee_func->getLoc(), ifrt_program_name,
+    mlir::func::FuncOp cloned_ifrt_program = mlir::func::FuncOp::create(
+        builder, callee_func->getLoc(), ifrt_program_name,
         callee_func.getFunctionType());
     mlir::IRMapping mapper;
     callee_func.cloneInto(cloned_ifrt_program, mapper);
@@ -226,8 +226,8 @@ class RewriteClusterToIfrtCallPass
 
     builder.setInsertionPoint(cluster_func);
 
-    mlir::TF::IfrtCallOp ifrt_call_op = builder.create<mlir::TF::IfrtCallOp>(
-        cluster_func->getLoc(), cluster_func.getResultTypes(),
+    mlir::TF::IfrtCallOp ifrt_call_op = mlir::TF::IfrtCallOp::create(
+        builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
         cluster_func->getOperands());
 
     // TODO(b/304839793): populate variable names after adding a variable

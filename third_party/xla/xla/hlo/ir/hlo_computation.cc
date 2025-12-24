@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/literal.h"
@@ -70,11 +70,9 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -554,10 +552,9 @@ HloInstruction* HloComputation::ReplaceParameter(
   HloInstruction* new_instruction =
       AddInstructionInternal(std::move(instruction));
   HloInstruction* old_instruction = param_instructions_[param_no];
-  TF_CHECK_OK(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
+  CHECK_OK(old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   param_instructions_[param_no] = new_instruction;
-  TF_CHECK_OK(ForceRemoveInstruction(old_instruction));
+  CHECK_OK(ForceRemoveInstruction(old_instruction));
   return new_instruction;
 }
 
@@ -593,6 +590,36 @@ absl::Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
     }
   }
   param_instructions_.resize(param_instructions_.size() - removed);
+  return absl::OkStatus();
+}
+
+absl::Status HloComputation::PermuteParameters(
+    absl::Span<const int64_t> permutation) {
+  if (permutation.size() != num_parameters()) {
+    return absl::InvalidArgumentError(
+        "Permutation size must match the number of parameters.");
+  }
+  if (permutation.size() == 1) {
+    return absl::OkStatus();
+  }
+
+  std::vector<std::unique_ptr<HloInstruction>> new_param_instructions(
+      num_parameters());
+  for (int64_t i = 0; i < num_parameters(); ++i) {
+    int64_t new_param_number = permutation[i];
+    new_param_instructions[new_param_number] = HloInstruction::CreateParameter(
+        new_param_number, param_instructions_[i]->shape(),
+        param_instructions_[i]->name());
+  }
+
+  for (int64_t i = 0; i < num_parameters(); ++i) {
+    ReplaceParameter(i, std::move(new_param_instructions[permutation[i]]));
+  }
+
+  absl::c_sort(param_instructions_,
+               [](const HloInstruction* a, const HloInstruction* b) {
+                 return a->parameter_number() < b->parameter_number();
+               });
   return absl::OkStatus();
 }
 
@@ -1469,18 +1496,18 @@ void HloComputation::AppendInstructionsIntoCalledComputation(
     absl::Span<HloInstruction* const> instructions_to_append,
     HloInstruction* caller) {
   HloInstruction* root = instructions_to_append.front();
-  TF_CHECK_OK(caller->CopyAllControlDepsFrom(root));
-  TF_CHECK_OK(root->DropAllControlDeps());
-  TF_CHECK_OK(root->ReplaceAllUsesWith(caller));
+  CHECK_OK(caller->CopyAllControlDepsFrom(root));
+  CHECK_OK(root->DropAllControlDeps());
+  CHECK_OK(root->ReplaceAllUsesWith(caller));
   if (root == root_instruction()) {
     set_root_instruction(caller);
   }
-  TF_CHECK_OK(RemoveInstruction(root));
+  CHECK_OK(RemoveInstruction(root));
   for (size_t i = 1; i < instructions_to_append.size(); ++i) {
     HloInstruction* instruction = instructions_to_append[i];
     caller->AppendInstructionIntoCalledComputation(instruction);
     if (instruction->IsDead()) {
-      TF_CHECK_OK(RemoveInstruction(instruction));
+      CHECK_OK(RemoveInstruction(instruction));
     }
   }
 }
@@ -2184,7 +2211,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneInContext(
       // successor may not have been remapped, because it might have been
       // removed by the replacements map.
       if (replaced_successor != nullptr) {
-        TF_CHECK_OK(new_instr->AddControlDependencyTo(
+        CHECK_OK(new_instr->AddControlDependencyTo(
             context.GetInstruction(replaced_successor)));
       }
     }

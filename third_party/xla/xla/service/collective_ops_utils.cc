@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,9 +40,9 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
@@ -51,20 +53,6 @@ limitations under the License.
 
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
-
-absl::StatusOr<ReductionKind> StringToReductionKind(
-    absl::string_view reduction_kind) {
-  if (reduction_kind == "sum") {
-    return ReductionKind::SUM;
-  } else if (reduction_kind == "prod") {
-    return ReductionKind::PRODUCT;
-  } else if (reduction_kind == "min") {
-    return ReductionKind::MIN;
-  } else if (reduction_kind == "max") {
-    return ReductionKind::MAX;
-  }
-  return InvalidArgument("Invalid reduction kind: %s", reduction_kind);
-}
 
 // Match the instruction to a reduction kind. We can represent and/or of pred as
 // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
@@ -250,7 +238,8 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   return Internal("Unexpected instruction type.");
 }
 
-const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo) {
+const CollectiveDeviceListBase& GetCollectiveDeviceList(
+    const HloInstruction* hlo) {
   return Cast<HloCollectiveInstruction>(hlo)->device_list();
 }
 
@@ -387,21 +376,23 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    const CollectiveDeviceList& collective_device_list,
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode) {
   return GetParticipatingFlattenedIdGroups(
       collective_device_list, group_mode, device_assignment.replica_count(),
       device_assignment.computation_count());
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceList& collective_device_list,
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
   if (group_mode ==
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
-    return collective_device_list;
+    return collective_device_list.Clone();
   }
   std::vector<ReplicaGroup> filled_empty_replica_group;
   absl::Span<const ReplicaGroup> original_replica_groups =
@@ -468,27 +459,29 @@ absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
       }
     }
   }
-  return CollectiveDeviceList(flattened_replica_groups);
+  return std::make_unique<CollectiveDeviceList>(flattened_replica_groups);
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      CollectiveDeviceList collective_device_list,
+      std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
       GetParticipatingFlattenedIdGroups(device_assignment,
                                         GetCollectiveDeviceList(hlo), mode));
   return collective_device_list;
 }
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, int replica_count, int partition_count) {
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo, int replica_count,
+                                  int partition_count) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      CollectiveDeviceList collective_device_list,
+      std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
       GetParticipatingFlattenedIdGroups(GetCollectiveDeviceList(hlo), mode,
                                         replica_count, partition_count));
   return collective_device_list;
@@ -676,13 +669,12 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const CollectiveDeviceList& device_list = GetCollectiveDeviceList(hlo);
+  const CollectiveDeviceListBase& device_list = GetCollectiveDeviceList(hlo);
   auto config = hlo->GetModule()->config();
 
-  if (device_list.iota_replica_group_list().has_value()) {
-    return std::make_pair(
-        device_list.iota_replica_group_list()->num_replica_groups(),
-        device_list.iota_replica_group_list()->num_devices_per_group());
+  if (device_list.version() == CollectiveDeviceListVersion::kIota) {
+    return std::make_pair(device_list.num_replica_groups(),
+                          device_list.num_devices_per_group());
   }
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(hlo));
@@ -917,6 +909,22 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
     return true;
   }
   return false;
+}
+
+std::optional<double> GetCustomCallLatencyMetadata(
+    const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kCustomCall &&
+      instr->has_frontend_attributes()) {
+    auto it = instr->frontend_attributes().map().find("latency_metadata");
+    if (it != instr->frontend_attributes().map().end()) {
+      int64_t latency_metadata_ns = 0;
+      CHECK(absl::SimpleAtoi(it->second, &latency_metadata_ns))
+          << "Failed to parse latency from custom call for " << instr->name()
+          << " from latency_metadata:" << it->second;
+      return static_cast<double>(latency_metadata_ns) / 1000.0;
+    }
+  }
+  return std::nullopt;
 }
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,

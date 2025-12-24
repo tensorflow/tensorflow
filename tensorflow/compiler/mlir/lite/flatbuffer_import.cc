@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -101,7 +102,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -457,9 +457,9 @@ std::string GetMlirOpName(const tflite::OperatorT& op,
   return mlir::GetMlirOpNameFromOpCode(op_code);
 }
 
-StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
-                                          int32_t buffer_index,
-                                          OpBuilder builder, Location loc) {
+StatusOr<Operation*> BuildExternalConstOpWithBufferIndex(
+    const tflite::TensorT& tensor, int32_t buffer_index, OpBuilder builder,
+    Location loc) {
   TF_ASSIGN_OR_RETURN(mlir::TensorType type,
                       tfl::GetTensorType(tensor, builder,
                                          /*is_constant=*/true));
@@ -468,7 +468,45 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
     return errors::Internal("Constant doesn't have a shape");
   }
   auto op = builder.create<tfl::ExternalConstOp>(
-      loc, shaped_type, builder.getI32IntegerAttr(buffer_index));
+      loc, shaped_type,
+      /*buffer_index=*/builder.getI32IntegerAttr(buffer_index),
+      /*external_buffer=*/nullptr);
+  return op.getOperation();
+}
+
+StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
+    const tflite::ModelT& model, const tflite::TensorT& tensor,
+    OpBuilder builder, Location loc) {
+  TF_ASSIGN_OR_RETURN(mlir::TensorType type,
+                      tfl::GetTensorType(tensor, builder,
+                                         /*is_constant=*/true));
+  auto shaped_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
+  if (!shaped_type) {
+    return errors::Internal("Constant doesn't have a shape");
+  }
+
+  tflite::ExternalBufferT* external_buffer = nullptr;
+  for (const auto& extbuf : model.external_buffers) {
+    if (extbuf->id == tensor.external_buffer) {
+      external_buffer = extbuf.get();
+      break;
+    }
+  }
+  if (external_buffer == nullptr) {
+    return errors::Internal("External buffer not found");
+  }
+
+  std::string group_name =
+      model.external_buffer_groups[external_buffer->group]->name;
+  auto op = builder.create<tfl::ExternalConstOp>(
+      loc, shaped_type, /*buffer_index=*/nullptr,
+      /*external_buffer=*/
+      tfl::ExternalBufferAttr::get(
+          builder.getContext(),
+          /*group_name=*/builder.getStringAttr(group_name),
+          /*offset=*/external_buffer->offset,
+          /*length=*/external_buffer->length,
+          /*packing=*/builder.getStringAttr(external_buffer->packing)));
   return op.getOperation();
 }
 
@@ -936,8 +974,8 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
-    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
-                                          builder));
+    CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                       builder));
   }
   if (op_name == "tfl.while") {
     // Adds two empty regions for "tfl.while". We will fill the regions after
@@ -948,8 +986,8 @@ StatusOr<Operation*> ConvertOp(
     op_state.addRegion();
   }
   if (op_name == "tfl.unidirectional_sequence_lstm") {
-    TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
-                                          builder));
+    CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
+                                       builder));
   }
   if (op_name == "tfl.reshape") {
     // Flattens reshape ops when more than one dimension shape operand is given.
@@ -1347,7 +1385,8 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
 // ordered_output_arrays in the same order. If signature is not null, then the
 // inputs/outputs in signature will be attached to the FuncOp.
 StatusOr<FuncOp> ConvertSubgraph(
-    const tflite::SubGraphT& subgraph, llvm::StringRef name,
+    const tflite::ModelT& model, const tflite::SubGraphT& subgraph,
+    llvm::StringRef name,
     const std::vector<std::unique_ptr<tflite::OperatorCodeT>>& op_codes,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
@@ -1511,22 +1550,30 @@ StatusOr<FuncOp> ConvertSubgraph(
         StatusOr<Operation*> op_or_err;
         std::vector<uint8_t> buffer;
         // Check if constant tensor is stored outside of the flatbuffers.
-        if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
-          const uint8_t* file_begin_ptr =
-              reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
-          buffer = std::vector<uint8_t>(
-              file_begin_ptr + buffers[const_tensor.buffer]->offset,
-              file_begin_ptr + buffers[const_tensor.buffer]->offset +
-                  buffers[const_tensor.buffer]->size);
+        if (const_tensor.external_buffer != 0) {
+          op_or_err = BuildExternalConstOpWithExternalBuffer(
+              model, const_tensor, op_builder, const_loc);
         } else {
-          buffer = buffers[const_tensor.buffer]->data;
+          if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
+            const uint8_t* file_begin_ptr = reinterpret_cast<const uint8_t*>(
+                model_ptr->allocation()->base());
+
+            buffer = std::vector<uint8_t>(
+                file_begin_ptr + buffers[const_tensor.buffer]->offset,
+                file_begin_ptr + buffers[const_tensor.buffer]->offset +
+                    buffers[const_tensor.buffer]->size);
+          } else {
+            buffer = buffers[const_tensor.buffer]->data;
+          }
+          op_or_err =
+              use_external_constant
+                  ? BuildExternalConstOpWithBufferIndex(const_tensor,
+                                                        const_tensor.buffer,
+                                                        op_builder, const_loc)
+                  : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
+                                 op_builder, const_loc, use_stablehlo_constant);
         }
-        op_or_err =
-            use_external_constant
-                ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
-                                       op_builder, const_loc)
-                : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                               op_builder, const_loc, use_stablehlo_constant);
+
         if (!op_or_err.ok()) {
           return emitError(const_loc, op_or_err.status().ToString()),
                  op_or_err.status();
@@ -1584,23 +1631,29 @@ StatusOr<FuncOp> ConvertSubgraph(
       StatusOr<Operation*> op_or_err;
       std::vector<uint8_t> buffer;
       // Check if constant tensor is stored outside of the flatbuffers.
-      if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
-        const uint8_t* file_begin_ptr =
-            reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
-
-        buffer = std::vector<uint8_t>(
-            file_begin_ptr + buffers[const_tensor.buffer]->offset,
-            file_begin_ptr + buffers[const_tensor.buffer]->offset +
-                buffers[const_tensor.buffer]->size);
+      if (const_tensor.external_buffer != 0) {
+        op_or_err = BuildExternalConstOpWithExternalBuffer(
+            model, const_tensor, op_builder, const_loc);
       } else {
-        buffer = buffers[const_tensor.buffer]->data;
+        if (IsValidBufferOffset(buffers[const_tensor.buffer]->offset)) {
+          const uint8_t* file_begin_ptr =
+              reinterpret_cast<const uint8_t*>(model_ptr->allocation()->base());
+
+          buffer = std::vector<uint8_t>(
+              file_begin_ptr + buffers[const_tensor.buffer]->offset,
+              file_begin_ptr + buffers[const_tensor.buffer]->offset +
+                  buffers[const_tensor.buffer]->size);
+        } else {
+          buffer = buffers[const_tensor.buffer]->data;
+        }
+        op_or_err =
+            use_external_constant
+                ? BuildExternalConstOpWithBufferIndex(
+                      const_tensor, const_tensor.buffer, op_builder, const_loc)
+                : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
+                               op_builder, const_loc, use_stablehlo_constant);
       }
-      op_or_err =
-          use_external_constant
-              ? BuildExternalConstOp(const_tensor, const_tensor.buffer,
-                                     op_builder, const_loc)
-              : BuildConstOp(const_tensor, buffer, const_tensor.is_variable,
-                             op_builder, const_loc, use_stablehlo_constant);
+
       if (!op_or_err.ok()) {
         return emitError(const_loc, op_or_err.status().ToString()),
                op_or_err.status();
@@ -1862,8 +1915,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         SubgraphName(set_implicit_main_func, e.index(), *subgraph);
     uint32_t subgraph_index = static_cast<uint32_t>(e.index());
     auto func_or_error = ConvertSubgraph(
-        *subgraph, name, model->operator_codes, func_names, model->buffers,
-        base_loc, builder,
+        *model, *subgraph, name, model->operator_codes, func_names,
+        model->buffers, base_loc, builder,
         /*is_entry_point=*/
         set_implicit_main_func
             ? e.index() == 0

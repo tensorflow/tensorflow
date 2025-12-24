@@ -49,7 +49,7 @@ class MfccOp : public OpKernel {
                 errors::InvalidArgument(
                     "Input sample_rate should be a scalar tensor, got ",
                     sample_rate_tensor.shape().DebugString(), " instead."));
-    const int32_t sample_rate = sample_rate_tensor.scalar<int32>()();
+    const int32_t sample_rate = sample_rate_tensor.scalar<int32_t>()();
 
     const int spectrogram_channels = spectrogram.dim_size(2);
     const int spectrogram_samples = spectrogram.dim_size(1);
@@ -105,8 +105,8 @@ class MfccOp : public OpKernel {
  private:
   float upper_frequency_limit_;
   float lower_frequency_limit_;
-  int32 filterbank_channel_count_;
-  int32 dct_coefficient_count_;
+  int32_t filterbank_channel_count_;
+  int32_t dct_coefficient_count_;
 };
 REGISTER_KERNEL_BUILDER(Name("Mfcc").Device(DEVICE_CPU), MfccOp);
 

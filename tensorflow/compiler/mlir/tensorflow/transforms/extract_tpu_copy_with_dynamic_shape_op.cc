@@ -127,8 +127,8 @@ tf_device::LaunchOp CreateNewHostLaunchOpWithNewResult(
   for (Value result : new_launch_op_results)
     new_launch_op_results_types.push_back(result.getType());
 
-  auto new_launch_op = builder.create<tf_device::LaunchOp>(
-      old_launch_op->getLoc(), old_launch_op->getDeviceAttr(),
+  auto new_launch_op = tf_device::LaunchOp::create(
+      builder, old_launch_op->getLoc(), old_launch_op->getDeviceAttr(),
       /*result_types=*/new_launch_op_results_types);
 
   new_launch_op.getBody().takeBody(old_launch_op->getBody());
@@ -154,17 +154,16 @@ LogicalResult CreateNewDeviceLaunchOp(
     return failure();
   }
 
-  new_device_launch_op = builder.create<tf_device::LaunchOp>(
-      tpu_copy_with_dynamic_shape_op->getLoc(),
+  new_device_launch_op = tf_device::LaunchOp::create(
+      builder, tpu_copy_with_dynamic_shape_op->getLoc(),
       builder.getStringAttr(device_str),
       /*result_types=*/tpu_copy_with_dynamic_shape_op->getResultTypes());
 
   new_device_launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&new_device_launch_op.GetBody());
-  auto* return_op = builder
-                        .create<tf_device::ReturnOp>(
-                            tpu_copy_with_dynamic_shape_op->getLoc(),
-                            tpu_copy_with_dynamic_shape_op->getResults())
+  auto* return_op = tf_device::ReturnOp::create(
+                        builder, tpu_copy_with_dynamic_shape_op->getLoc(),
+                        tpu_copy_with_dynamic_shape_op->getResults())
                         .getOperation();
   tpu_copy_with_dynamic_shape_op->moveBefore(return_op);
   return success();

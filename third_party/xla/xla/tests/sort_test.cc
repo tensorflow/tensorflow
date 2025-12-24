@@ -91,6 +91,29 @@ TEST_F(SortTest, SortTwiceWithSameComparator) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
 
+// TODO(b/456833594): Enable this test once PJRT packs int4 types.
+TEST_F(SortTest, DISABLED_SortTuple) {
+  absl::string_view hlo_text_module = R"(
+    HloModule sort
+
+    compare {
+      p.0.lhs = s4[] parameter(0)
+      p.0.rhs = s4[] parameter(1)
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s4[2,1452]{1,0} parameter(0)
+      p1 = s32[2,1452]{1,0} iota(), iota_dimension=1
+      ROOT sort = (s4[2,1452]{1,0}, s32[2,1452]{1,0}) sort(p0, p1), dimensions={1}, is_stable=true, to_apply=compare
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
+}
+
 class SortManyInputsTest : public SortTest,
                            public ::testing::WithParamInterface<int> {
  public:

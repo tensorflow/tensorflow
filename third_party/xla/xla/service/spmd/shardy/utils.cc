@@ -260,12 +260,12 @@ void adjustOutputSharding(
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
                                                mlir::TypeRange resultTypes,
                                                mlir::IRRewriter& rewriter) {
-  auto customCallOp = rewriter.create<CustomCallOp>(
-      op.getLoc(), resultTypes, op.getOperands(), op.getCallTargetNameAttr(),
-      op.getHasSideEffectAttr(), op.getBackendConfigAttr(),
-      op.getApiVersionAttr(), op.getCalledComputations(),
-      op.getOperandLayoutsAttr(), op.getResultLayoutsAttr(),
-      op.getOutputOperandAliases());
+  auto customCallOp = CustomCallOp::create(
+      rewriter, op.getLoc(), resultTypes, op.getOperands(),
+      op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
+      op.getBackendConfigAttr(), op.getApiVersionAttr(),
+      op.getCalledComputations(), op.getOperandLayoutsAttr(),
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;

@@ -31,7 +31,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +45,8 @@ absl::StatusOr<xla::PrimitiveType> AsXlaPrimitiveType(blas::DataType dtype);
 
 absl::StatusOr<blas::ComputationType> GetBlasComputationType(
     xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
-    xla::PrimitiveType output_dtype, int64_t compute_precision);
+    xla::PrimitiveType output_dtype, int64_t compute_precision,
+    const GpuComputeCapability& cc);
 
 // Returns the type for the alpha and beta scalars.
 blas::DataType GetScaleType(blas::DataType c_type,
@@ -86,15 +88,15 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
 // compact version of the matrix layout to be used to pass matrices
 // to underlying blas API
 struct MatrixDescriptor {
-  DeviceMemoryBase data;
+  DeviceAddressBase data;
   int64_t leading_dim_stride = 0;
   int64_t batch_stride = 0;
   blas::DataType type{};
   blas::Transpose transpose{};
 
   template <typename T>
-  DeviceMemory<T> cast() const {
-    return DeviceMemory<T>(data);
+  DeviceAddress<T> cast() const {
+    return DeviceAddress<T>(data);
   }
 };
 
@@ -165,11 +167,11 @@ struct BlasLt {
   };
 
   struct MemoryArgs {
-    DeviceMemoryBase a, b, c, d;                          // these are mandatory
-    DeviceMemoryBase bias, aux;                           // these may be null
-    DeviceMemoryBase a_scale, b_scale, c_scale, d_scale;  // these may be null
-    DeviceMemoryBase d_amax;                              // this may be null
-    DeviceMemoryBase workspace;                           // either workspace or
+    DeviceAddressBase a, b, c, d;  // these are mandatory
+    DeviceAddressBase bias, aux;   // these may be null
+    DeviceAddressBase a_scale, b_scale, c_scale, d_scale;  // these may be null
+    DeviceAddressBase d_amax;                              // this may be null
+    DeviceAddressBase workspace;          // either workspace or
     ScratchAllocator* scratch_allocator;  // scratch_allocator must not be null
   };
 
@@ -177,13 +179,13 @@ struct BlasLt {
     // This function is to be removed once TF interface is fixed,
     // see tensorflow/core/kernels/matmul_util.cc
     absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
-        DeviceMemoryBase c, DeviceMemoryBase d,
-        DeviceMemoryBase bias,  // may be null
-        DeviceMemoryBase aux,   // may be null
-        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-        DeviceMemoryBase d_amax, const MatmulAlgorithm& algorithm,
+        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
+        DeviceAddressBase c, DeviceAddressBase d,
+        DeviceAddressBase bias,  // may be null
+        DeviceAddressBase aux,   // may be null
+        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
+        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
+        DeviceAddressBase d_amax, const MatmulAlgorithm& algorithm,
         ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
       // Temporary hack until Tensorflow side is fixed
@@ -192,37 +194,37 @@ struct BlasLt {
       return ExecuteOnStream(
           stream,
           MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceMemoryBase{}, &scratch_allocator},
+                     d_amax, DeviceAddressBase{}, &scratch_allocator},
           profile_result);
     }
 
     // API that uses scratch_allocator to allocate workspace.
     // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
     absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
-        DeviceMemoryBase c, DeviceMemoryBase d,
-        DeviceMemoryBase bias,  // may be null
-        DeviceMemoryBase aux,   // may be null
-        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-        DeviceMemoryBase d_amax, ScratchAllocator& scratch_allocator,
+        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
+        DeviceAddressBase c, DeviceAddressBase d,
+        DeviceAddressBase bias,  // may be null
+        DeviceAddressBase aux,   // may be null
+        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
+        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
+        DeviceAddressBase d_amax, ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
       return ExecuteOnStream(
           stream,
           MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceMemoryBase{}, &scratch_allocator},
+                     d_amax, DeviceAddressBase{}, &scratch_allocator},
           profile_result);
     }
 
     // API that uses pre-allocated buffer as workspace.
     absl::Status ExecuteOnStream(
-        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
-        DeviceMemoryBase c, DeviceMemoryBase d,
-        DeviceMemoryBase bias,  // may be null
-        DeviceMemoryBase aux,   // may be null
-        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-        DeviceMemoryBase d_amax, DeviceMemoryBase workspace,
+        Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
+        DeviceAddressBase c, DeviceAddressBase d,
+        DeviceAddressBase bias,  // may be null
+        DeviceAddressBase aux,   // may be null
+        DeviceAddressBase a_scale, DeviceAddressBase b_scale,
+        DeviceAddressBase c_scale, DeviceAddressBase d_scale,
+        DeviceAddressBase d_amax, DeviceAddressBase workspace,
         blas::ProfileResult* profile_result = nullptr) const {
       return ExecuteOnStream(
           stream,

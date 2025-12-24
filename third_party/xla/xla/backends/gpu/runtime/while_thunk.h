@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -99,6 +100,13 @@ class WhileThunk : public Thunk {
           fn) override;
 
   std::string ToString(int indent) const override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(condition_result_buffer_index_,
+                        ShapeUtil::MakeShape(PRED, {})),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
