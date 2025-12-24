@@ -1640,7 +1640,7 @@ ValueRange EmitXlaLoopOp(
         ImplicitLocOpBuilder& nested_b, ValueRange /*ivs*/,
         ValueRange /*map_results*/, ValueRange /*iter_args*/)>
         create_body,
-    bool vectorize) {
+    bool vectorize, bool disable_loop_unrolling) {
   SmallVector<Value, 4> vector_inits;
   if (vectorize) {
     CHECK_EQ(indexing_map.GetSymbolBounds().back().lower, 0);
@@ -1680,8 +1680,10 @@ ValueRange EmitXlaLoopOp(
     }
     nested_b.create<xla::YieldOp>(results);
   };
-  return b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb)
-      .getResults();
+  auto loop = b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb,
+                               disable_loop_unrolling);
+
+  return loop.getResults();
 }
 
 ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
