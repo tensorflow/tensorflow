@@ -1565,7 +1565,7 @@ struct FuseMulAndFullyConnected
         rewriter, location,
         /*lhs=*/fc_op.getFilter(),
         /*rhs=*/mul_op.getRhs(),
-        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+        /*fusedActivationFunction=*/rewriter.getStringAttr("NONE"));
     // Create the updated FC.
     auto new_fc = TFL::FullyConnectedOp::create(
         rewriter, location, fc_op.getOutput().getTypes(),
