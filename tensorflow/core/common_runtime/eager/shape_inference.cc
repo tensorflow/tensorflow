@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/shape_inference.h"
 
+#include <cstddef>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/public/version.h"

@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 namespace tensorflow {
