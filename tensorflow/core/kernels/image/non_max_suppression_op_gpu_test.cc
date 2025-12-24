@@ -195,8 +195,7 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestInconsistentBoxAndScoreShapes) {
   Status s = RunOpKernel();
 
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "scores has incompatible shape"))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
@@ -210,7 +209,7 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
+      absl::StrContains(s.ToString(), "iou_threshold must be in [0, 1]"))
       << s;
 }
 
