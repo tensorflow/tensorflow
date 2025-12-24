@@ -107,7 +107,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
           gemm_config.output_layout.dtype, gemm_config.compute_precision,
           target_config().device_description.gpu_compute_capability()));
 
-  se::blas::BlasSupport* blas = stream_executor()->AsBlas();
+  se::blas::BlasSupport* blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("Failed to getBlas support.");
   }

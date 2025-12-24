@@ -722,7 +722,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         }
 
         BlasScratchAllocator scratch_allocator(context, max_scratch_size);
-        auto blas = stream->parent()->AsBlas();
+        auto blas = stream->AsBlas();
         OP_REQUIRES(context, blas != nullptr,
                     absl::InternalError("No blas support for stream"));
         bool blas_launch_status = blas->DoBlasGemmBatched(
@@ -787,7 +787,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
       // C' = B' x A', where ' stands for transpose (not adjoint).
       // TODO(yangzihao): Choose the best of the three strategies using
       // autotune.
-      auto blas = stream->parent()->AsBlas();
+      auto blas = stream->AsBlas();
       OP_REQUIRES(context, blas != nullptr,
                   absl::InternalError("No blas support for stream"));
       if (batch_size == 1) {

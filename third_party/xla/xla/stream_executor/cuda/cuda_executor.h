@@ -102,7 +102,6 @@ class CudaExecutor : public GpuExecutor {
       Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceAddressBase* mem) override;
-  blas::BlasSupport* AsBlas() override;
   fft::FftSupport* AsFft() override;
   dnn::DnnSupport* AsDnn() override;
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;

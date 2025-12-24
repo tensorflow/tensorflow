@@ -384,10 +384,9 @@ AutotuneFusedMatmul(
         AutotuneMatMulImpl(ctx, runners, cudnn_use_autotune, launch_func,
                            scratch_size_limit, rz_allocator));
     // Only log on an AutotuneConv cache miss.
-    LogFusedMatmulAutotuneResults(element_type, element_type, a_ptr, b_ptr,
-                                  c_ptr, bias_ptr, trans_a, trans_b, m, n, k,
-                                  lda, ldb, ldc, activation_mode,
-                                  stream->parent(), results);
+    LogFusedMatmulAutotuneResults(
+        element_type, element_type, a_ptr, b_ptr, c_ptr, bias_ptr, trans_a,
+        trans_b, m, n, k, lda, ldb, ldc, activation_mode, stream, results);
 
     // Two-level autotuning: Cudnn frontend supports two engine lists:
     // heuristics and fallback. Heuristics engines are normally faster.
@@ -421,8 +420,8 @@ AutotuneFusedMatmul(
 
       LogFusedMatmulAutotuneResults(element_type, element_type, a_ptr, b_ptr,
                                     c_ptr, bias_ptr, trans_a, trans_b, m, n, k,
-                                    lda, ldb, ldc, activation_mode,
-                                    stream->parent(), fallback_results);
+                                    lda, ldb, ldc, activation_mode, stream,
+                                    fallback_results);
 
       TF_ASSIGN_OR_RETURN(autotune_entry,
                           BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(

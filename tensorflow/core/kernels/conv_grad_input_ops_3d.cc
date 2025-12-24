@@ -718,7 +718,7 @@ void LaunchConvBackpropInputOpImpl(
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   OP_REQUIRES(context, blas != nullptr,
               absl::InternalError("No BLAS for stream."));
 

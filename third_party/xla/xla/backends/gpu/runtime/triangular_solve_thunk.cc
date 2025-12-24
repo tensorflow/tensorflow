@@ -159,7 +159,7 @@ absl::Status RunTriangularSolve(se::DeviceAddressBase a_data,
   const int lda = side == se::blas::Side::kLeft ? m : n;
   const int ldb = m;
 
-  auto blas = stream->parent()->AsBlas();
+  auto blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No BLAS support in stream.");
   }
