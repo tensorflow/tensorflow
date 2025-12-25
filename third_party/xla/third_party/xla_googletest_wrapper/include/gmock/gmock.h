@@ -1,5 +1,3 @@
-<<<<<<< Conflict 1 of 1
-%%%%%%% Changes from base to side #1
  /* Copyright 2025 The Abseil Authors & TensorFlow Authors. All Rights Reserved.
  
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,8 +62,7 @@
    ASSERT_THAT(expression, ::xla_testing::internal::IsOk())
  
  #define ASSERT_OK_AND_ASSIGN(lhs, rexpr)                            \
--  TF_ASSERT_OK_AND_ASSIGN_IMPL(                                     \
-+  ASSERT_OK_AND_ASSIGN_IMPL(                                        \
+  ASSERT_OK_AND_ASSIGN_IMPL(                                        \
        XLA_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), \
        lhs, rexpr);
  
@@ -130,5 +127,3 @@
  }  // namespace xla_testing
  
  #endif  // GOOGLETEST_WRAPPER_GMOCK_GMOCK_H_
-+++++++ Contents of side #2
->>>>>>> Conflict 1 of 1 ends
