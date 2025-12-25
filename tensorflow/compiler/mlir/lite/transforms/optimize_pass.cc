@@ -99,24 +99,25 @@ ElementsAttr ReshapeNCHWBiasToNHWC(Value v, Attribute a) {
   return elements.reshape(new_type);
 }
 
+// The TFLite L2-normalization kernel only supports normalization along the last
+// dimension. This function checks if the reduction `axis` for an L2
+// normalization pattern corresponds to the last dimension.
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
-  if (axis.getNumElements() == 0) {
-    return false;
-  }
-  if (mlir::cast<ShapedType>(sq_op.getType()).getRank() - 1 ==
-          *axis.getValues<int>().begin() ||
-      *axis.getValues<int>().begin() == -1) {
-    return true;
-  }
-  if (mlir::cast<ShapedType>(sq_op.getType()).getRank() !=
-      axis.getNumElements()) {
-    return false;
-  }
   auto shape = mlir::cast<ShapedType>(sq_op.getType());
-  SmallVector<int, 4> elems{axis.getValues<int>().begin(),
-                            axis.getValues<int>().end()};
-  for (int i = 0; i < shape.getRank(); ++i) {
-    if (i != elems[i]) return false;
+  if (!shape.hasRank()) {
+    return false;
+  }
+
+  int64_t rank = shape.getRank();
+  auto shape_dims = shape.getShape();
+  for (auto axis_val_ap : axis.getValues<APInt>()) {
+    int64_t axis_val = axis_val_ap.getSExtValue();
+    if (axis_val == rank - 1 || axis_val == -1) continue;
+    int64_t normalized_axis = axis_val;
+    if (normalized_axis < 0) normalized_axis += rank;
+    if (normalized_axis < 0 || normalized_axis >= rank ||
+        shape_dims[normalized_axis] != 1)
+      return false;
   }
   return true;
 }
