@@ -316,7 +316,6 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   return EmitKernelPrototype(module, name, arguments, results);
 }
 
-#define PRINT_BATCHSIZE
 llvm::Value* KernelApiIrBuilder::EmitGetBatchDim(llvm::IRBuilderBase& builder,
                                                  llvm::Value* call_frame) {
   llvm::LLVMContext& ctx = builder.getContext();

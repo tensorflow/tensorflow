@@ -90,7 +90,7 @@ void ArgOp::Compute(OpKernelContext* ctx) {
       else if (cur_val > 0) {
         int64_t batch_size = val->dim_size(0);
         int64_t ctx_batch_size = ctx->batch_size();
-        LOG(INFO) << "Context batch_size: " << ctx_batch_size << " new batch size: " << batch_size;
+        VLOG(4) << "Context batch_size: " << ctx_batch_size << " new batch size: " << batch_size;
         if (ctx_batch_size == 0 || batch_size == ctx_batch_size) {
           ss->SetBatchSize(batch_size);
           ctx->set_batch_size(batch_size);

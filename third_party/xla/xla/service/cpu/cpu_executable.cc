@@ -313,7 +313,9 @@ absl::Status CpuExecutable::ExecuteThunks(
     absl::Span<MaybeOwningDeviceMemory const> buffers) {
   uint64_t start_ns = tsl::Env::Default()->NowNanos();
 
+  #if defined(PRINT_BATCHSIZE)
   PrintScalars(buffers);
+  #endif
 
   size_t profile_counters_size = 0;
   int64_t* profile_counters = nullptr;
