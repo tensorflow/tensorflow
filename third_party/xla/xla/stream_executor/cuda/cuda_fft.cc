@@ -460,15 +460,19 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
-  absl::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          cuda::kCudaPlatformId, "cuFFT",
-          [](StreamExecutor *parent) -> fft::FftSupport * {
-            return new gpu::CUDAFft(parent);
-          });
-  if (!status.ok()) {
-    LOG(INFO) << "Unable to register cuFFT factory: " << status.message();
-  }
+  static absl::once_flag once;
+  absl::call_once(once, [] {
+    absl::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
+            cuda::kCudaPlatformId, "cuFFT",
+            [](StreamExecutor* parent) -> fft::FftSupport* {
+              return new gpu::CUDAFft(parent);
+            });
+
+    if (!status.ok()) {
+      LOG(INFO) << "Unable to register cuFFT factory: " << status.message();
+    }
+  });
 }
 
 }  // namespace stream_executor
