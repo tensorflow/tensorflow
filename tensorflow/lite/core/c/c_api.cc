@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/version.h"
+#include "tensorflow/lite/logger.h"
 
 namespace {
 class CallbackErrorReporter : public tflite::ErrorReporter {
@@ -126,6 +127,18 @@ struct TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
 
 void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOptions* options) {
   delete options;
+}
+
+TfLiteLogSeverity TfLiteLoggerOptionsGetMinimumLogSeverity() {
+  return static_cast<TfLiteLogSeverity>(
+      tflite::LoggerOptions::GetMinimumLogSeverity());
+}
+
+TfLiteLogSeverity TfLiteLoggerOptionsSetMinimumLogSeverity(
+    TfLiteLogSeverity new_severity) {
+  return static_cast<TfLiteLogSeverity>(
+      tflite::LoggerOptions::SetMinimumLogSeverity(
+          static_cast<tflite::LogSeverity>(new_severity)));
 }
 
 void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
