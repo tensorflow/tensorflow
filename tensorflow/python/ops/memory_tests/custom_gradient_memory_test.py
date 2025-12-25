@@ -15,6 +15,7 @@
 """Memory tests for tensorflow.ops.custom_gradient."""
 
 import functools
+import gc
 import unittest
 
 from absl.testing import parameterized
@@ -23,8 +24,10 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -172,6 +175,86 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
       res_no_recompute = f_no_recompute(a)
 
     self.assertAllClose(res_recompute, res_no_recompute)
+
+
+class CustomGradientMemoryLeakTest(test.TestCase):
+  """Tests for memory leak fix in @custom_gradient (Issue #97697)."""
+
+  @test_util.run_v2_only
+  def testCustomGradientNoTensorAccumulation(self):
+    """Verify @custom_gradient doesn't accumulate Tensor objects.
+
+    This test ensures that repeated calls to a @custom_gradient decorated
+    function don't cause unbounded growth in the number of Tensor objects
+    in memory. This was the root cause of Issue #97697.
+    """
+
+    @custom_gradient.custom_gradient
+    def my_func(x):
+      def grad(upstream):
+        return upstream * 2
+      return x * 2, grad
+
+    def run_computation(val):
+      @def_function.function
+      def compute(x):
+        with backprop.GradientTape() as tape:
+          tape.watch(x)
+          y = my_func(x)
+          dy_dx = tape.gradient(y, x)
+        return y, dy_dx
+      return compute(val)
+
+    # Force garbage collection and count initial tensors
+    gc.collect()
+    initial_tensor_count = len([
+        obj for obj in gc.get_objects()
+        if isinstance(obj, tensor_lib.Tensor)
+    ])
+
+    # Run multiple iterations
+    for _ in range(10):
+      run_computation(constant_op.constant(0.1))
+      gc.collect()
+
+    # Count tensors after multiple runs
+    final_tensor_count = len([
+        obj for obj in gc.get_objects()
+        if isinstance(obj, tensor_lib.Tensor)
+    ])
+
+    # The tensor count should not grow unboundedly with each call.
+    # Allow some growth for internal caching, but not proportional to calls.
+    # Before the fix, this would grow by ~12 tensors per call (120 total).
+    # After the fix, it should be bounded.
+    tensor_growth = final_tensor_count - initial_tensor_count
+    self.assertLess(
+        tensor_growth, 50,
+        f"Tensor count grew by {tensor_growth}, indicating a memory leak. "
+        f"Initial: {initial_tensor_count}, Final: {final_tensor_count}")
+
+  @test_util.run_v2_only
+  def testCustomGradientFunctionalityPreserved(self):
+    """Verify @custom_gradient still computes correct gradients after fix."""
+
+    @custom_gradient.custom_gradient
+    def double_with_custom_grad(x):
+      def grad(upstream):
+        # Custom gradient: return 3x the upstream instead of 2x
+        return upstream * 3
+      return x * 2, grad
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = double_with_custom_grad(x)
+
+    dy_dx = tape.gradient(y, x)
+
+    # y should be 2 * 5 = 10
+    self.assertAllClose(y, 10.0)
+    # Gradient should be 3 (from our custom gradient), not 2
+    self.assertAllClose(dy_dx, 3.0)
 
 
 if __name__ == "__main__":

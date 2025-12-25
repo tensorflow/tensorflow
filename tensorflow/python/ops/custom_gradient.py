@@ -17,6 +17,7 @@
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -486,20 +487,36 @@ def _graph_mode_decorator(f, args, kwargs):
 
   all_tensors = flat_result + flat_args + variables
 
+  # Pre-compute the flattened result structure to avoid capturing 'result'
+  # in the closure for non-CompositeTensor cases (memory leak fix for #97697)
+  flat_result_structure = nest.flatten(result)
+  has_composite_tensors = any(
+      isinstance(x, composite_tensor.CompositeTensor)
+      for x in flat_result_structure
+  )
+  # If no composite tensors, we don't need to keep the structure
+  if not has_composite_tensors:
+    flat_result_structure = None
+
   def tape_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
-    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
-        nest.flatten(result), result_grad_components[:flat_result_len])
-    if not isinstance(result_grads, (list, tuple)):
-      result_grads = [result_grads]
+    if flat_result_structure is not None:
+      # CompositeTensor case - need original structure for reconstruction
+      grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+          flat_result_structure, result_grad_components[:flat_result_len])
+    else:
+      # Common case - no CompositeTensors, just use gradients directly
+      grads = list(result_grad_components[:flat_result_len])
+    if not isinstance(grads, (list, tuple)):
+      grads = [grads]
 
     if variables:
-      input_grads, variable_grads = grad_fn(*result_grads, variables=variables)
+      input_grads, variable_grads = grad_fn(*grads, variables=variables)
       if len(variable_grads) != len(variables):
         raise ValueError("Must return gradient for each variable from "
                          "@custom_gradient grad_fn.")
     else:
-      input_grads = grad_fn(*result_grads)
+      input_grads = grad_fn(*grads)
       variable_grads = []
 
     # Need to return one value per input to the IdentityN, so pad the
@@ -567,20 +584,36 @@ def _eager_mode_decorator(f, args, kwargs):
   recorded_inputs = input_tensors
   arg_count = len(flat_args)
 
+  # Pre-compute the flattened result structure to avoid capturing 'result'
+  # in the closure for non-CompositeTensor cases (consistency with graph mode)
+  flat_result_structure = nest.flatten(result)
+  has_composite_tensors = any(
+      isinstance(x, composite_tensor.CompositeTensor)
+      for x in flat_result_structure
+  )
+  # If no composite tensors, we don't need to keep the structure
+  if not has_composite_tensors:
+    flat_result_structure = None
+
   def actual_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
-    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
-        nest.flatten(result), result_grad_components)
-    if not isinstance(result_grads, (list, tuple)):
-      result_grads = [result_grads]
+    if flat_result_structure is not None:
+      # CompositeTensor case - need original structure for reconstruction
+      grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
+          flat_result_structure, result_grad_components)
+    else:
+      # Common case - no CompositeTensors, just use gradients directly
+      grads = list(result_grad_components)
+    if not isinstance(grads, (list, tuple)):
+      grads = [grads]
 
     if variables:
-      input_grads, variable_grads = grad_fn(*result_grads, variables=variables)
+      input_grads, variable_grads = grad_fn(*grads, variables=variables)
       if len(variable_grads) != len(variables):
         raise ValueError("Must return gradient for each variable from "
                          "@custom_gradient grad_fn.")
     else:
-      input_grads = grad_fn(*result_grads)
+      input_grads = grad_fn(*grads)
       variable_grads = []
     flat_grads = composite_tensor_gradient.get_flat_tensors_for_gradients(
         nest.flatten(input_grads))
