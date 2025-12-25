@@ -23,9 +23,10 @@ limitations under the License.
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11_abseil/status_caster.h"  // from @pybind11_abseil
+#include "pybind11_abseil/statusor_caster.h"  // from @pybind11_abseil
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
 
@@ -151,71 +152,5 @@ using tsl::MaybeRaiseRegisteredFromTFStatusWithGIL;
 using tsl::SetRegisteredErrFromStatus;
 using tsl::SetRegisteredErrFromTFStatus;
 }  // namespace tensorflow
-
-namespace pybind11 {
-namespace detail {
-
-// Convert tensorflow::Status
-//
-// Raise an exception if a given status is not OK, otherwise return None.
-//
-// The correspondence between status codes and exception classes is given
-// by PyExceptionRegistry. Note that the registry should be initialized
-// in order to be used, see PyExceptionRegistry::Init.
-template <>
-struct type_caster<absl::Status> {
- public:
-  PYBIND11_TYPE_CASTER(absl::Status, _("Status"));
-  static handle cast(absl::Status status, return_value_policy, handle) {
-    tensorflow::MaybeRaiseFromStatus(status);
-    return none().inc_ref();
-  }
-};
-
-// Convert tensorflow::StatusOr
-//
-// Uses the same logic as the Abseil implementation: raise an exception if the
-// status is not OK, otherwise return its payload.
-template <typename PayloadType>
-struct type_caster<tensorflow::StatusOr<PayloadType>> {
- public:
-  using PayloadCaster = make_caster<PayloadType>;
-  using StatusCaster = make_caster<absl::Status>;
-  static constexpr auto name = PayloadCaster::name;
-
-  static handle cast(const tensorflow::StatusOr<PayloadType>* src,
-                     return_value_policy policy, handle parent) {
-    if (!src) return none().release();
-    return cast_impl(*src, policy, parent);
-  }
-
-  static handle cast(const tensorflow::StatusOr<PayloadType>& src,
-                     return_value_policy policy, handle parent) {
-    return cast_impl(src, policy, parent);
-  }
-
-  static handle cast(tensorflow::StatusOr<PayloadType>&& src,
-                     return_value_policy policy, handle parent) {
-    return cast_impl(std::move(src), policy, parent);
-  }
-
- private:
-  template <typename CType>
-  static handle cast_impl(CType&& src, return_value_policy policy,
-                          handle parent) {
-    if (src.ok()) {
-      // Convert and return the payload.
-      return PayloadCaster::cast(std::forward<CType>(src).value(), policy,
-                                 parent);
-    } else {
-      // Convert and return the error.
-      return StatusCaster::cast(std::forward<CType>(src).status(),
-                                return_value_policy::move, parent);
-    }
-  }
-};
-
-}  // namespace detail
-}  // namespace pybind11
 
 #endif  // TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_STATUS_H_
