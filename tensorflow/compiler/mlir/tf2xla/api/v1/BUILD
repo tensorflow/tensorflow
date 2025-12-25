@@ -77,6 +77,7 @@ cc_library(
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service/llvm_ir:llvm_command_line_options",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:base",
