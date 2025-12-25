@@ -153,7 +153,7 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/passes.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/outer_dimension_propagation.h"
-#include "xla/service/outer_dimension_propagation_example.h"
+#include "xla/service/get_outer_batch_value_simplifier.h"
 #include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
@@ -930,7 +930,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 
   pipeline.AddPass<OuterDimensionPropagationPass>();
-  // pipeline.AddPass<OuterDimensionPropagationExamplePass>();
+  pipeline.AddPass<GetOuterBatchValueSimplifier>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }

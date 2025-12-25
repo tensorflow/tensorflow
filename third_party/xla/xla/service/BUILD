@@ -138,9 +138,9 @@ cc_library(
 )
 
 cc_library(
-    name = "outer_dimension_propagation_example",
-    srcs = ["outer_dimension_propagation_example.cc"],
-    hdrs = ["outer_dimension_propagation_example.h"],
+    name = "get_outer_batch_value_simplifier",
+    srcs = ["get_outer_batch_value_simplifier.cc"],
+    hdrs = ["get_outer_batch_value_simplifier.h"],
     deps = [
         "hlo_proto_util",
         "//xla/hlo/ir:hlo",
