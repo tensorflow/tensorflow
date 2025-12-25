@@ -897,6 +897,7 @@ class HloGraphNode {
     return result;
   }
   bool HasRecursiveResources() const { return has_recursive_resources_; }
+  bool HasCalledComputations() const { return has_called_computations_; }
   const absl::flat_hash_map<int64_t, int64_t>& GetRecursiveResources() const {
     return rare_->recursive_resources;
   }
@@ -920,6 +921,7 @@ class HloGraphNode {
     releases_selective_resource_ = false;
     occupies_selective_resource_ = false;
     has_recursive_resources_ = false;
+    has_called_computations_ = false;
   }
 
   // Some of the fields in this are rarely non-empty (in one large compilation,
@@ -964,11 +966,6 @@ class HloGraphNode {
   // but do it after evaluating the early target scheduling rule.
   bool force_delay_after_target_ = false;
 
-  // Preference value used for scheduling heuristics,
-  // a graph node having a higher preference value means it's scheduled
-  // earlier. See ReadySetLt::operator()
-  float preference_ = 0.0;
-
   // Other boolean fields are less performance sensitive so can be stored in
   // bitfields.  These are initialized to default values in InitBitFields() (due
   // to older c++ versions not supporting initializers for bit fields).
@@ -994,8 +991,16 @@ class HloGraphNode {
   bool occupies_selective_resource_ : 1;
   // Whether recursive_resources_.size() > 0
   bool has_recursive_resources_ : 1;
+  // Whether the instruction has called computations
+  bool has_called_computations_ : 1;
   // The position of this node in the original order.
   int32_t original_position_;
+
+  // Preference value used for scheduling heuristics,
+  // a graph node having a higher preference value means it's scheduled
+  // earlier. See ReadySetLt::operator()
+  float preference_ = 0.0;
+
   // Pointer to the HloGraphNode::Rare entry for this node in the parent object
   // (Actual storage is managed by rare_storage_ in parent object)
   Rare* rare_ = nullptr;
@@ -1273,6 +1278,19 @@ class MemoryPressureTracker {
     int64_t memory_peak = 0;
     absl::flat_hash_set<HloBuffer::Id> live_ids_at_bottom;
   };
+  /*
+  MemoryPressureTracker is used to track the memory pressure of a single
+  computation. It is initialized with the initial live buffers at the bottom of
+  the computation. As the algorithm progresses, the live buffers change and the
+  memory pressure changes.
+  The memory pressure of a computation is the sum of the initial memory
+  pressure and the live memory pressure.
+  The live memory pressure is the difference between the current memory usage
+  and the initial memory pressure.
+
+  The memory pressure of a computation at a certain point is the sum of the
+  initial memory pressure and the live memory pressure at that
+  */
   MemoryPressureTracker(
       const HloAliasAnalysis* hlo_alias_analysis,
       const BufferInfoTracker& buffer_tracker,
@@ -1292,7 +1310,8 @@ class MemoryPressureTracker {
              const LiveBufferSet& initial_live_buffers);
   // After an instruction is scheduled, update the memory pressure effect on
   // other instructions.
-  void UpdateBuffers(const HloInstruction* instruction);
+  void UpdateBuffers(const HloInstruction* instruction,
+                     bool skip_called_computations = false);
   // Return the memory pressure difference estimation if this instruction was
   // scheduled.
   // Returns a pair of (increase, peak) values.
@@ -1442,7 +1461,14 @@ class ModulePressureState {
       : module_(module),
         hlo_alias_analysis_(hlo_alias_analysis),
         buffer_tracker_(module, hlo_alias_analysis, shape_size_bytes) {}
-  void InitializePressureStates();
+  void InitializePressureStates(
+      std::shared_ptr<absl::flat_hash_map<
+          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
+          pressure_trackers = nullptr);
+  void ResetPressureStates(
+      std::shared_ptr<absl::flat_hash_map<
+          const HloComputation*, std::shared_ptr<MemoryPressureTracker>>>
+          pressure_trackers);
   bool ComputationIsMemoryTracked(const HloComputation* computation) const {
     return ContainsKey(memory_pressure_states_, computation);
   }
@@ -1469,7 +1495,7 @@ class ModulePressureState {
         memory_peak_ = std::max(memory_peak_, memory_state.second.memory_peak);
       }
     } else {
-      memory_peak_ = state.memory_peak;
+      memory_peak_ = std::max(memory_peak_, state.memory_peak);
     }
   }
   // Returns the underlying pressure state cache object
@@ -1605,7 +1631,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     // states related to the async instructions.
     const AsyncTracker* async_tracker;
     // Tracker of memory pressure for the computation.
-    std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker;
+    std::shared_ptr<MemoryPressureTracker> memory_pressure_tracker;
     // Vector containing a list of nodes that aren't ready to schedule yet in
     // order of time when they are going to become ready.
     std::vector<const HloGraphNode*> next_ready_stack;
@@ -1640,12 +1666,12 @@ class DefaultSchedulerCore : public SchedulerCore {
     SchedulingState(
         const HloInstructionSequence* instr_sequence,
         std::shared_ptr<const SchedulingContext>& scheduling_context,
-        std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker,
+        std::shared_ptr<MemoryPressureTracker> memory_pressure_tracker,
         const SchedulerConfig& config)
         : sched_graph(&instr_sequence->instructions(), scheduling_context),
           latency_estimator(scheduling_context->GetLatencyEstimator().get()),
           async_tracker(scheduling_context->GetAsyncTracker().get()),
-          memory_pressure_tracker(std::move(memory_pressure_tracker)),
+          memory_pressure_tracker(memory_pressure_tracker),
           config(config) {}
   };
 
@@ -1744,6 +1770,10 @@ class DefaultSchedulerCore : public SchedulerCore {
       const LatencyEstimator& estimator,
       const std::vector<HloInstruction*>& instructions);
 
+  ModulePressureState* GetModulePressureState() {
+    return module_pressure_state_.get();
+  }
+
  protected:
   virtual void LogInstruction(const HloInstruction* instr) const;
   // Schedules the given annotated node.
@@ -1766,6 +1796,9 @@ class DefaultSchedulerCore : public SchedulerCore {
       DefaultSchedulerCore::ShouldSkipNodeFunction should_skip_node);
 
   std::unique_ptr<ModulePressureState> module_pressure_state_;
+  std::shared_ptr<absl::flat_hash_map<const HloComputation*,
+                                      std::shared_ptr<MemoryPressureTracker>>>
+      pressure_trackers_;
   SchedulerConfig config_;
   TargetSchedulingRule target_scheduling_rule_ = nullptr;
   TargetSchedulingRule early_target_scheduling_rule_ = nullptr;
@@ -1829,15 +1862,17 @@ class LatencyHidingScheduler : public HloModulePass {
       const HloComputation* computation,
       std::shared_ptr<const SchedulingContext> scheduling_context,
       const ModulePressureState* pressure_state = nullptr,
-      MemoryPressureTracker* memory_pressure_tracker = nullptr);
+      MemoryPressureTracker* memory_pressure_tracker = nullptr,
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state = nullptr);
 
   // Even with random preferences this function will always return a schedule
   // that obeys overlap constraints.
   absl::StatusOr<
       std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
-  ScheduleWithPreferences(HloModule* module,
-                          const std::vector<double>& preferences,
-                          const HloComputation* computation);
+  ScheduleWithPreferences(
+      HloModule* module, const std::vector<double>& preferences,
+      const HloComputation* computation,
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state);
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
