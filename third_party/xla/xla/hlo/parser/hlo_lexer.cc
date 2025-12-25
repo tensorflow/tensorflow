@@ -237,6 +237,7 @@ TokKind HloLexer::LexToken(uint64_t skip_mask) {
         }
         return TokKind::kError;
       case '"':
+      case '\'':
         return LexString();
     }
   }
@@ -595,10 +596,16 @@ absl::string_view HloLexer::GetLine(LocTy loc) const {
 // Lexes quoted string with escaping characters. If matched, the quoted string
 // will be unescaped and stored to token_state_.str_val.
 TokKind HloLexer::LexString() {
+  char quote = *token_state_.token_start;
   absl::string_view consumable = StringViewFromPointers(
       token_state_.token_start, buf_.data() + buf_.size());
-  static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
-  if (RE2::Consume(&consumable, *escaping_pattern)) {
+  static LazyRE2 double_quote_pattern = {R"("([^"\\]|\\.)*")"};
+  static LazyRE2 single_quote_pattern = {R"('([^'\\]|\\.)*')"};
+
+  const RE2& pattern =
+      (quote == '"') ? *double_quote_pattern : *single_quote_pattern;
+
+  if (RE2::Consume(&consumable, pattern)) {
     current_ptr_ = consumable.data();
     absl::string_view raw =
         StringViewFromPointers(token_state_.token_start + 1, current_ptr_ - 1);

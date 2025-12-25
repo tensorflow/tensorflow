@@ -73,6 +73,8 @@ class Mesh {
       : Mesh(TileAssignment(std::make_shared<Array<int64_t>>(
                  std::move(device_assignment))),
              axes_names) {}
+  // TODO: Shouldn't there be a canonicalization pattern here or actually in
+  // TileAssignment itself?
 
   explicit Mesh(TileAssignment device_assignment,
                 absl::Span<const absl::string_view> axes_names);

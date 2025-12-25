@@ -2219,10 +2219,19 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target) {
+  HloSharding tiled_source = source;
+  if (source.UseNamedShardingLeaf()) {
+    tiled_source = HloSharding::V3ToV2Sharding(source.named_sharding());
+  }
+  HloSharding tiled_target = target;
+  if (target.UseNamedShardingLeaf()) {
+    tiled_target = HloSharding::V3ToV2Sharding(target.named_sharding());
+  }
   return !source.IsTileMaximal() && !target.IsTileMaximal() &&
          source.dimensions() == target.dimensions() &&
-         source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
-         source.tile_assignment() != target.tile_assignment();
+         tiled_source.ReplicateOnLastTileDim() ==
+             tiled_target.ReplicateOnLastTileDim() &&
+         tiled_source.tile_assignment() != tiled_target.tile_assignment();
 }
 
 std::optional<GroupedSharding> AlignGroupsWithInternal(
