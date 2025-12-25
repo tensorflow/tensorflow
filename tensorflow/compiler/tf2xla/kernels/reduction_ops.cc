@@ -149,7 +149,7 @@ class MeanOp : public XlaReductionOp {
     xla::Shape bounded_shape = builder->GetShape(input).value();
     int64_t divisor_value = bounded_shape.dimensions(dimensions_to_reduce[0]);
     xla::XlaOp divisor;
-    MarkForCompilationPassFlags* flags = MarkForCompilationPassFlags();
+    MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     if (flags->tf_xla_enable_dynamic_sizes && dimensions_to_reduce[0] == 0) {
       divisor = xla::GetOuterBatchValue(input);
     } else {
