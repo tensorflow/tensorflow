@@ -17,39 +17,37 @@ limitations under the License.
 
 #include "tensorflow/core/util/onednn_env_vars.h"
 
-#include "absl/base/call_once.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
 bool AreWeightsFrozen() {
-  static bool weights_const = false;
-  static absl::once_flag once;
-  absl::call_once(once, [&] {
+  static bool weights_const = []() {
+    bool setting;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_ASSUME_FROZEN_WEIGHTS",
-                                   /*default_value*/ false, &weights_const));
-  });
+                                   /*default_value*/ false, &setting));
+    return setting;
+  }();
   return weights_const;
 }
 
 bool UseSystemAlloc() {
-  static bool use_sys_alloc = false;
-  static absl::once_flag once;
-  absl::call_once(once, [&] {
+  static bool use_sys_alloc = []() {
+    bool setting;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_USE_SYSTEM_ALLOCATOR",
-                                   /*default_value*/ false, &use_sys_alloc));
-  });
+                                   /*default_value*/ false, &setting));
+    return setting;
+  }();
   return use_sys_alloc;
 }
 
 bool ThreadPoolUseCallerThread() {
-  static bool threadpool_use_caller_thread = false;
-  static absl::once_flag once;
-  absl::call_once(once, [&] {
+  static bool threadpool_use_caller_thread = []() {
+    bool setting;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_THREADPOOL_USE_CALLER_THREAD",
-                                   /*default_value*/ false,
-                                   &threadpool_use_caller_thread));
-  });
+                                   /*default_value*/ false, &setting));
+    return setting;
+  }();
   return threadpool_use_caller_thread;
 }
 
