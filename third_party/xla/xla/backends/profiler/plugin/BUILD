@@ -2,6 +2,7 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -59,6 +60,7 @@ cc_library(
         "//xla/pjrt/c:__pkg__",
     ],
     deps = [
+        ":plugin_metadata",
         ":profiler_c_api_hdrs",
         ":profiler_error",
         "//xla/tsl/platform:logging",
@@ -73,6 +75,49 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "plugin_metadata_oss",
+    srcs = ["plugin_metadata_oss.cc"],
+    hdrs = ["plugin_metadata.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "plugin_metadata_google",
+    srcs = ["plugin_metadata_google.cc"],
+    hdrs = ["plugin_metadata.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/base:builddata",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "plugin_metadata",
+    hdrs = ["plugin_metadata.h"],
+    visibility = ["//visibility:public"],
+    deps = if_google(
+        [":plugin_metadata_google"],
+        [":plugin_metadata_oss"],
+    ) + [
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
+    ],
+)
+
 xla_cc_test(
     name = "plugin_tracer_impl_test",
     srcs = ["plugin_tracer_impl_test.cc"],
@@ -83,6 +128,8 @@ xla_cc_test(
         ":profiler_error",
         "//xla/tsl/platform:logging",
         "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
