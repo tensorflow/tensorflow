@@ -86,7 +86,7 @@ absl::Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
   TF_RETURN_IF_ERROR(CapturedFunction::Create(
       ctx, func_metadata_, kShardFuncOtherArgs, &captured_func));
 
-  uint64 num_elements = 0;
+  uint64_t num_elements = 0;
   TF_RETURN_IF_ERROR(WriteData(ctx, dataset, std::move(captured_func), run_dir,
                                &num_elements));
   TF_RETURN_IF_ERROR(WriteMetadataFile(ctx->env(), path, run_id,
@@ -98,7 +98,7 @@ absl::Status SaveDatasetOp::DoCompute(OpKernelContext* ctx) {
 absl::Status SaveDatasetOp::WriteData(
     OpKernelContext* ctx, DatasetBase* dataset,
     std::unique_ptr<CapturedFunction> captured_func, const std::string& run_dir,
-    uint64* num_elements) {
+    uint64_t* num_elements) {
   IteratorContext::Params params(ctx);
   auto function_handle_cache =
       std::make_unique<FunctionHandleCache>(params.flr);
@@ -187,12 +187,13 @@ absl::Status SaveDatasetOp::GetShardIndex(
 }
 
 absl::Status SaveDatasetOp::WriteMetadataFile(
-    Env* env, const std::string& path, uint64 run_id,
-    const DataTypeVector& output_dtypes, uint64 num_elements, bool finalized) {
+    Env* env, const std::string& path, uint64_t run_id,
+    const DataTypeVector& output_dtypes, uint64_t num_elements,
+    bool finalized) {
   SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
   metadata.set_run_id(
-      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
+      absl::StrFormat("%llu", static_cast<unsigned long long>(run_id)));
   metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : output_dtypes) {
     metadata.add_dtype(output_dtype);
@@ -219,7 +220,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -232,7 +233,7 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -424,10 +425,10 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurrentCheckpointId),
                                             &current_checkpoint_id));
 
-      run_id_ = static_cast<uint64>(run_id_signed);
+      run_id_ = static_cast<uint64_t>(run_id_signed);
       run_dir_ = snapshot_util::RunDirectory(
           io::JoinPath(dataset()->writer_prefix_, dataset()->path_), run_id_);
-      current_checkpoint_id_ = static_cast<uint64>(current_checkpoint_id);
+      current_checkpoint_id_ = static_cast<uint64_t>(current_checkpoint_id);
 
       if (ctx->is_restoring()) {
         TF_RETURN_IF_ERROR(ctx->env()->RecursivelyCreateDir(run_dir_));
@@ -463,14 +464,14 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     }
 
     absl::Status WriteMetadataFile(Env* env, const std::string& path,
-                                   uint64 run_id,
+                                   uint64_t run_id,
                                    const DataTypeVector& output_dtypes,
-                                   uint64 num_elements, bool finalized)
+                                   uint64_t num_elements, bool finalized)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       SnapshotMetadataRecord metadata;
       metadata.set_creation_timestamp(EnvTime::NowMicros());
       metadata.set_run_id(
-          strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
+          absl::StrFormat("%llu", static_cast<unsigned long long>(run_id)));
       metadata.set_version(kFileFormatVersion);
       for (const auto& output_dtype : output_dtypes) {
         metadata.add_dtype(output_dtype);
@@ -501,10 +502,10 @@ class SaveDatasetV2Op::Dataset : public DatasetBase {
     absl::Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
     bool writers_closed_ TF_GUARDED_BY(mu_);
 
-    uint64 run_id_ TF_GUARDED_BY(mu_);
+    uint64_t run_id_ TF_GUARDED_BY(mu_);
     tstring run_dir_ TF_GUARDED_BY(mu_);
 
-    uint64 current_checkpoint_id_ TF_GUARDED_BY(mu_);
+    uint64_t current_checkpoint_id_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_shard_func_
         TF_GUARDED_BY(mu_);
   };
