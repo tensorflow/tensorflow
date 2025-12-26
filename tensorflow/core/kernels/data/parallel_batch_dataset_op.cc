@@ -91,7 +91,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
             {{"autotune",
               num_parallel_calls == model::kAutotune ? "true" : "false"},
              {"batch_size",
-              strings::Printf("%lld", static_cast<long long>(batch_size))},
+              absl::StrFormat("%lld", static_cast<long long>(batch_size))},
              {"drop_remainder", drop_remainder ? "true" : "false"},
              {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
@@ -112,7 +112,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -125,7 +125,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(batch_size_);
     return name_utils::DatasetDebugString(kDatasetType, params);
@@ -339,10 +339,10 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           "parallelism",
           parallelism == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(parallelism))));
+              : absl::StrFormat("%lld", static_cast<long long>(parallelism))));
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -555,7 +555,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(std::make_shared<BatchResult>(ctx));
       std::shared_ptr<BatchResult> result = batch_results_.back();
-      string batch_prefix = absl::StrCat(kBatchResults, "_", index);
+      std::string batch_prefix = absl::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
       result->end_of_input = reader->Contains(
           prefix(), absl::StrCat(batch_prefix, "_", kEndOfInput));
@@ -581,7 +581,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     absl::Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       std::shared_ptr<BatchResult> result = batch_results_[index];
-      string batch_prefix = absl::StrCat(kBatchResults, "_", index);
+      std::string batch_prefix = absl::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
       if (result->end_of_input) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -643,7 +643,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // root node to this node (not including this node) in the input pipeline
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
-    int64 interleave_depth_ = -1;
+    int64_t interleave_depth_ = -1;
     // Background thread used for coordinating input processing.
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };

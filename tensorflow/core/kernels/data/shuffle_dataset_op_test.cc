@@ -33,7 +33,7 @@ class ShuffleDatasetParams : public DatasetParams {
                        bool reshuffle_each_iteration,
                        DataTypeVector output_dtypes,
                        std::vector<PartialTensorShape> output_shapes,
-                       string node_name)
+                       std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         buffer_size_(buffer_size),
@@ -59,7 +59,8 @@ class ShuffleDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(ShuffleDatasetOpBase::kInputDataset);
     input_names->emplace_back(ShuffleDatasetOpBase::kBufferSize);
@@ -81,7 +82,7 @@ class ShuffleDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     if (count_ != 1) {
       return ShuffleAndRepeatDatasetOp::kDatasetType;
     }
