@@ -15,7 +15,7 @@ func.func @main(%arg0: tensor<i32>) {
   // CHECK-DAG:    %[[RECV_SIZE_TYPE]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}>
   // CHECK-DAG:    %[[RECV_SLICE_SIZE]] = "tf.Const"() <{value = dense<1> : tensor<1xi32>}>
   // CHECK-DAG:    %[[RECV_SCALAR_TYPE]] = "tf.Const"() <{value = dense<> : tensor<0xi32>}>
-  // COMMENT: Recv and Send seperated by the output tensor.
+  // COMMENT: Recv and Send separated by the output tensor.
   // CHECK:   %[[PROGRAM_KEY:.*]] = "tf._XlaCompileMlirPlaceholderProgramKey"
   // CHECK-NEXT:   %[[CONST_OUT:.*]] = "tf.Const"() <{value = dense<10> : tensor<1xi32>}>
   // CHECK-NEXT:   %[[LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT]])
