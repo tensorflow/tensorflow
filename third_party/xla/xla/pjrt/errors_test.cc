@@ -33,4 +33,13 @@ TEST(ErrorsTest, SetCompilationErrorWithPayload) {
   EXPECT_TRUE(HasCompilationErrorPayload(status_with_payload));
 }
 
+TEST(ErrorsTest, UncacheableErrors) {
+  absl::Status original = absl::InvalidArgumentError("fractally bad");
+  absl::Status s = SetUncacheableCompilationErrorWithPayload(original);
+  EXPECT_FALSE(HasCompilationErrorPayload(s));
+
+  s = SetCompilationErrorWithPayload(s);
+  EXPECT_FALSE(HasCompilationErrorPayload(s));
+}
+
 }  // namespace xla

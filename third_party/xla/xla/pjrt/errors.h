@@ -24,8 +24,15 @@ namespace xla {
 bool HasCompilationErrorPayload(const absl::Status& status);
 
 // Sets the payload of the compilation error status to the compilation error
-// payload. Useful to denote compilation errors separately from other errors.
+// payload. Useful to denote cacheable compilation errors separately from other
+// errors. If the uncacheable payload below is set, does nothing.
 absl::Status SetCompilationErrorWithPayload(absl::Status status);
+
+// Marks the compilation error as uncacheable, clearing the compilation-error
+// payload if present. An error might be uncacheable if it depends on state that
+// is not part of a typical cache key, such as command-line flags.
+absl::Status SetUncacheableCompilationErrorWithPayload(absl::Status status);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_ERRORS_H_
