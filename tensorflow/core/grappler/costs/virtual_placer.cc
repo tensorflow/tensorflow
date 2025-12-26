@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace grappler {
 
 VirtualPlacer::VirtualPlacer(
-    const std::unordered_map<string, DeviceProperties>& devices)
+    const std::unordered_map<std::string, DeviceProperties>& devices)
     : devices_(devices),
       // Default job name for canonical device name. Needs to be set before the
       // first call to to_lfqn_or_empty()
@@ -56,8 +56,10 @@ VirtualPlacer::VirtualPlacer(
     // TODO(dyoon): This logic assumes single machine with CPU and GPU devices.
     // Make it more general to support multiple machines, job types, and devices
     // other than CPU and GPU.
-    std::map<int, string> cpu_devices;  // CPU device map: id -> device name.
-    std::map<int, string> gpu_devices;  // GPU device map: id -> device name.
+    std::map<int, std::string>
+        cpu_devices;  // CPU device map: id -> device name.
+    std::map<int, std::string>
+        gpu_devices;  // GPU device map: id -> device name.
     for (const auto& kv : lfqn_map_) {
       const auto& lfqn = kv.first;
       const auto& cluster_device_name = kv.second;
@@ -89,7 +91,7 @@ VirtualPlacer::VirtualPlacer(
 
   // Scan the device names from the cluster, and if there is one job name used,
   // use it for canonical device name.
-  std::unordered_set<string> job_names_from_cluster;
+  std::unordered_set<std::string> job_names_from_cluster;
   for (const auto& device : lfqn_map_) {
     const auto& lfqn = device.first;
     DeviceNameUtils::ParsedName parsed_name;
@@ -113,7 +115,7 @@ VirtualPlacer::VirtualPlacer(
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
-  string device = get_canonical_device_name(node);
+  std::string device = get_canonical_device_name(node);
   VLOG(3) << "node.name=" << node.name() << " node.device=" << node.device()
           << " is placed on: " << device;
   auto it = devices_.find(device);
@@ -121,7 +123,8 @@ const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
   return it->second;
 }
 
-string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
+std::string VirtualPlacer::get_canonical_device_name(
+    const NodeDef& node) const {
   if (node.device().empty()) {
     return default_device_name_;
   }
@@ -139,7 +142,8 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
   return default_device_name_;
 }
 
-string VirtualPlacer::to_lfqn_or_empty(const string& device_name) const {
+std::string VirtualPlacer::to_lfqn_or_empty(
+    const std::string& device_name) const {
   DeviceNameUtils::ParsedName parsed_name;
   const auto lowercase_name = absl::AsciiStrToLower(device_name);
   bool parsed = DeviceNameUtils::ParseFullName(lowercase_name, &parsed_name);
@@ -165,7 +169,7 @@ string VirtualPlacer::to_lfqn_or_empty(const string& device_name) const {
   // Have to do this, because parser returns uppercase types for CPU and GPU.
   parsed_name.type = absl::AsciiStrToLower(parsed_name.type);
 
-  string lfqn = strings::StrCat(
+  std::string lfqn = strings::StrCat(
       "/job:", parsed_name.job, "/replica:", parsed_name.replica,
       "/task:", parsed_name.task, "/device:", parsed_name.type, ":",
       parsed_name.id);
