@@ -81,7 +81,7 @@ absl::StatusOr<NodeDef> GetDatasetNodeDef(const GraphDef& graph_def);
 // that corresponds to an optimization as long as the optimization is not
 // explicitly disabled.
 absl::flat_hash_set<tstring> SelectOptimizations(
-    const absl::flat_hash_set<string>& experiments,
+    const absl::flat_hash_set<std::string>& experiments,
     const absl::flat_hash_set<tstring>& optimizations_enabled,
     const absl::flat_hash_set<tstring>& optimizations_disabled,
     const absl::flat_hash_set<tstring>& optimizations_default);

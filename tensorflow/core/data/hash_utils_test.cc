@@ -43,7 +43,7 @@ using ::testing::ContainsRegex;
 
 class DatasetHashUtilsTest : public ::testing::Test {
  protected:
-  uint64 GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
+  uint64_t GetHash(const FunctionDefLibrary& library, const FunctionDef& fn) {
     // Construct a node with a function as an attr.
     GraphDef graph_def;
     *graph_def.mutable_library() = library;
@@ -52,7 +52,7 @@ class DatasetHashUtilsTest : public ::testing::Test {
     NameAttrList func;
     func.set_name(fn.signature().name());
     AddNodeAttr("f", func, node);
-    uint64 hash = 0;
+    uint64_t hash = 0;
     TF_CHECK_OK(HashNode(graph_def, *node, &hash));
     return hash;
   }
@@ -80,14 +80,14 @@ class DatasetHashUtilsTest : public ::testing::Test {
     return CheckSubgraphsEqual(graph_def, node1, graph_def, node2);
   }
 
-  uint64 GetHash(const GraphDef& graph, const NodeDef& node) {
-    uint64 hash = 0;
+  uint64_t GetHash(const GraphDef& graph, const NodeDef& node) {
+    uint64_t hash = 0;
     TF_CHECK_OK(HashNode(graph, node, &hash));
     return hash;
   }
 
-  uint64 GetHash(const Tensor& tensor) {
-    uint64 hash = 0;
+  uint64_t GetHash(const Tensor& tensor) {
+    uint64_t hash = 0;
     TF_CHECK_OK(HashTensor(tensor, &hash));
     return hash;
   }
@@ -166,7 +166,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
 }
 
 TEST_F(DatasetHashUtilsTest, HashGraphWithMultipleCycles) {
-  uint64 hash = 0;
+  uint64_t hash = 0;
   for (int i = 0; i < 1000; ++i) {
     GraphDef g;
     NodeDef* output_node = g.add_node();
@@ -190,7 +190,7 @@ TEST_F(DatasetHashUtilsTest, HashGraphWithMultipleCycles) {
     TF_CHECK_OK(NodeDefBuilder("E", "Floor")
                     .Input("B", 0, DT_FLOAT)
                     .Finalize(g.add_node()));
-    uint64 t = GetHash(g, *output_node);
+    uint64_t t = GetHash(g, *output_node);
     if (hash == 0) {
       hash = t;
     } else {
@@ -240,8 +240,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentNames) {
                   .Input(n5->name(), 0, DT_INT32)
                   .Finalize(n6));
 
-  uint64 hash1 = GetHash(gd, *n3);
-  uint64 hash2 = GetHash(gd, *n6);
+  uint64_t hash1 = GetHash(gd, *n3);
+  uint64_t hash2 = GetHash(gd, *n6);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n3, gd, n6));
 }
@@ -275,8 +275,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
                   .Input(n2->name(), 0, DT_INT32)
                   .Finalize(n4));
 
-  uint64 hash1 = GetHash(gd, *n3);
-  uint64 hash2 = GetHash(gd, *n4);
+  uint64_t hash1 = GetHash(gd, *n3);
+  uint64_t hash2 = GetHash(gd, *n4);
   // We expect different hashes because the op has changed.
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
@@ -351,8 +351,8 @@ TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
                   .Device("CPU:0")
                   .Finalize(shuffle_ds_2));
 
-  uint64 hash1 = GetHash(gd, *shuffle_ds);
-  uint64 hash2 = GetHash(gd, *shuffle_ds_2);
+  uint64_t hash1 = GetHash(gd, *shuffle_ds);
+  uint64_t hash2 = GetHash(gd, *shuffle_ds_2);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, shuffle_ds, gd, shuffle_ds_2));
 }
@@ -400,8 +400,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameGraphDifferentColocationNames) {
                   .Input(n2->name(), 0, DT_INT32)
                   .Finalize(n6));
 
-  uint64 hash1 = GetHash(gd, *n3);
-  uint64 hash2 = GetHash(gd, *n6);
+  uint64_t hash1 = GetHash(gd, *n3);
+  uint64_t hash2 = GetHash(gd, *n6);
 
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n3, gd, n6));
@@ -436,8 +436,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
                   .Input(n1->name(), 0, DT_INT32)
                   .Finalize(n4));
 
-  uint64 hash1 = GetHash(gd, *n3);
-  uint64 hash2 = GetHash(gd, *n4);
+  uint64_t hash1 = GetHash(gd, *n3);
+  uint64_t hash2 = GetHash(gd, *n4);
   // We expect different hashes because the inputs of n3 are swapped.
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
@@ -474,8 +474,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
                   .Input(n2->name(), 2, DT_INT32)
                   .Finalize(n4));
 
-  uint64 hash1 = GetHash(gd, *n3);
-  uint64 hash2 = GetHash(gd, *n4);
+  uint64_t hash1 = GetHash(gd, *n3);
+  uint64_t hash2 = GetHash(gd, *n4);
   // We expect different hashes because the input ports for nodes used by n3
   // has changed.
   EXPECT_NE(hash1, hash2);
@@ -542,8 +542,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionDifferentNames) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n2, gd, n3));
 }
@@ -608,8 +608,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionListsDifferentNames) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n2, gd, n3));
 }
@@ -656,8 +656,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionsOps) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n2, gd, n3));
 }
@@ -704,8 +704,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
@@ -775,8 +775,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
@@ -848,8 +848,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionLists) {
                   .Device("CPU:0")
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n2);
-  uint64 hash2 = GetHash(gd, *n3);
+  uint64_t hash1 = GetHash(gd, *n2);
+  uint64_t hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
@@ -894,8 +894,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
                   .Finalize(n5));
 
   // Control inputs are different between these two graphs.
-  uint64 hash1 = GetHash(gd, *n4);
-  uint64 hash2 = GetHash(gd, *n5);
+  uint64_t hash1 = GetHash(gd, *n4);
+  uint64_t hash2 = GetHash(gd, *n5);
   EXPECT_NE(hash1, hash2);
   absl::Status s = CheckSubgraphsEqual(gd, n4, gd, n5);
   EXPECT_NE(s.code(), error::OK);
@@ -939,8 +939,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeControlInputDifferentOrdering) {
                   .ControlInput(n2->name())
                   .Finalize(n5));
 
-  uint64 hash1 = GetHash(gd, *n4);
-  uint64 hash2 = GetHash(gd, *n5);
+  uint64_t hash1 = GetHash(gd, *n4);
+  uint64_t hash2 = GetHash(gd, *n5);
   EXPECT_EQ(hash1, hash2);
   TF_EXPECT_OK(CheckSubgraphsEqual(gd, n4, gd, n5));
 }
@@ -968,7 +968,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphSamePartialGraph) {
                   .Input(n2->name(), 0, DT_INT32)
                   .Finalize(n3));
 
-  uint64 hash1 = GetHash(gd, *n1);
+  uint64_t hash1 = GetHash(gd, *n1);
 
   n3->Clear();
   TF_CHECK_OK(NodeDefBuilder("graph_1/node_3", "Mul")
@@ -977,7 +977,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphSamePartialGraph) {
                   .Input(n2->name(), 0, DT_INT32)
                   .Finalize(n3));
 
-  uint64 hash2 = GetHash(gd, *n1);
+  uint64_t hash2 = GetHash(gd, *n1);
 
   EXPECT_EQ(hash1, hash2);
 }
@@ -1011,7 +1011,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionsWithControlDependencyLoop) {
   NameAttrList* nal1 = a1.mutable_func();
   nal1->set_name("AddAndMul");
 
-  std::pair<string, FunctionDefHelper::AttrValueWrapper> func_attr = {
+  std::pair<std::string, FunctionDefHelper::AttrValueWrapper> func_attr = {
       "body", FunctionDefHelper::AttrValueWrapper(*nal1)};
 
   FunctionDef func = FunctionDefHelper::Create(
@@ -1148,14 +1148,14 @@ TEST_F(DatasetHashUtilsTest, HashInt32Tensor) {
   EXPECT_NE(GetHash(s1), GetHash(s3));
 
   Tensor v1(DT_INT32, TensorShape({2}));
-  v1.vec<int32>()(0) = 0;
-  v1.vec<int32>()(1) = 1;
+  v1.vec<int32_t>()(0) = 0;
+  v1.vec<int32_t>()(1) = 1;
   Tensor v2(DT_INT32, TensorShape({2}));
-  v2.vec<int32>()(0) = 0;
-  v2.vec<int32>()(1) = 1;
+  v2.vec<int32_t>()(0) = 0;
+  v2.vec<int32_t>()(1) = 1;
   Tensor v3(DT_INT32, TensorShape({2}));
-  v3.vec<int32>()(0) = 0;
-  v3.vec<int32>()(1) = 2;
+  v3.vec<int32_t>()(0) = 0;
+  v3.vec<int32_t>()(1) = 2;
 
   EXPECT_EQ(GetHash(v1), GetHash(v2));
   EXPECT_NE(GetHash(v1), GetHash(v3));
@@ -1227,7 +1227,7 @@ static void BM_ParallelFunctionCallsGraph(benchmark::State& state) {
     *target->add_input() = absl::StrCat("^", node->name());
   }
 
-  uint64 hash_value;
+  uint64_t hash_value;
   for (auto _ : state) {
     TF_CHECK_OK(HashNode(graph_def, *target, &hash_value));
   }
@@ -1279,7 +1279,7 @@ static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
 
   const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
 
-  uint64 hash_value;
+  uint64_t hash_value;
   for (auto _ : state) {
     TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }
@@ -1352,7 +1352,7 @@ static void BM_ComposedFunctionCallsGraph(benchmark::State& state) {
 
   const NodeDef& target = graph_def.node(graph_def.node_size() - 1);
 
-  uint64 hash_value;
+  uint64_t hash_value;
   for (auto _ : state) {
     TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }

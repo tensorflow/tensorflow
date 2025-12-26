@@ -63,14 +63,14 @@ class RootDataset : public DatasetBase {
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
   int64_t CardinalityInternal(CardinalityOptions options) const override;
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override;
   absl::Status CheckExternalState() const override;
-  string DebugString() const override;
+  std::string DebugString() const override;
   absl::Status InputDatasets(
       std::vector<const DatasetBase*>* inputs) const override;
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override;
+      const std::string& prefix) const override;
   absl::Status RandomIndexingCompatible() const override {
     return random_indexing_compatible_;
   }
