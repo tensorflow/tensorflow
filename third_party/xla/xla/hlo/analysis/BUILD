@@ -813,6 +813,7 @@ cc_library(
         ":interval",
         "//xla:permutation_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/mlir_hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
