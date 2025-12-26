@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 
