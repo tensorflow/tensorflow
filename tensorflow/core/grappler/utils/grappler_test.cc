@@ -109,13 +109,13 @@ void GrapplerTest::EnableAllOptimizers() {
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names) const {
+    const GraphDef& graph, const std::vector<std::string>& node_names) const {
   return EvaluateNodes(graph, node_names, {});
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
-    const GraphDef& graph, const std::vector<string>& node_names,
-    const std::vector<std::pair<string, Tensor>>& inputs) const {
+    const GraphDef& graph, const std::vector<std::string>& node_names,
+    const std::vector<std::pair<std::string, Tensor>>& inputs) const {
   std::unique_ptr<tensorflow::Session> session(NewSession(options_));
   TF_CHECK_OK(session->Create(graph));
   RunOptions run_options;
@@ -144,13 +144,14 @@ std::vector<Tensor> GrapplerTest::EvaluateFetchNodes(
 }
 
 NodeDef* GrapplerTest::AddNode(
-    const string& name, const string& op, const std::vector<string>& inputs,
-    const std::vector<std::pair<string, AttrValue>>& attributes,
+    const std::string& name, const std::string& op,
+    const std::vector<std::string>& inputs,
+    const std::vector<std::pair<std::string, AttrValue>>& attributes,
     GraphDef* graph) const {
   NodeDef* node = graph->add_node();
   node->set_name(name);
   node->set_op(op);
-  for (const string& input : inputs) {
+  for (const std::string& input : inputs) {
     node->add_input(input);
   }
   for (auto attr : attributes) {
@@ -171,30 +172,33 @@ void GrapplerTest::CompareNodes(const NodeDef& want, const NodeDef& got) const {
   EXPECT_EQ(want.name(), got.name());
   EXPECT_EQ(want.op(), got.op());
 
-  std::vector<string> want_inputs(want.input().begin(), want.input().end());
-  std::vector<string> got_inputs(got.input().begin(), got.input().end());
+  std::vector<std::string> want_inputs(want.input().begin(),
+                                       want.input().end());
+  std::vector<std::string> got_inputs(got.input().begin(), got.input().end());
   EXPECT_EQ(want_inputs, got_inputs);
 
-  const auto attr_name = [](const std::pair<const string, AttrValue>& attr) {
-    return attr.first;
-  };
+  const auto attr_name =
+      [](const std::pair<const std::string, AttrValue>& attr) {
+        return attr.first;
+      };
 
-  std::vector<string> want_attrs;
-  std::vector<string> got_attrs;
+  std::vector<std::string> want_attrs;
+  std::vector<std::string> got_attrs;
   absl::c_transform(want.attr(), std::back_inserter(want_attrs), attr_name);
   absl::c_transform(got.attr(), std::back_inserter(got_attrs), attr_name);
   absl::c_sort(want_attrs);
   absl::c_sort(got_attrs);
   EXPECT_EQ(want_attrs, got_attrs);
 
-  for (const string& attr : want_attrs) {
+  for (const std::string& attr : want_attrs) {
     EXPECT_TRUE(AreAttrValuesEqual(want.attr().at(attr), got.attr().at(attr)));
   }
 }
 
 bool GrapplerTest::IsNodesDirectlyConnected(const NodeMap& node_map,
-                                            const string& src,
-                                            const string& dst, int position) {
+                                            const std::string& src,
+                                            const std::string& dst,
+                                            int position) {
   const NodeDef* src_node = node_map.GetNode(src);
   const NodeDef* dst_node = node_map.GetNode(dst);
   EXPECT_TRUE(src_node != nullptr) << src << " node not found";
@@ -202,7 +206,7 @@ bool GrapplerTest::IsNodesDirectlyConnected(const NodeMap& node_map,
   return src_node && dst_node && dst_node->input(position) == src_node->name();
 }
 
-int GrapplerTest::CountOpNodes(const GraphDef& graph, const string& op) {
+int GrapplerTest::CountOpNodes(const GraphDef& graph, const std::string& op) {
   return std::count_if(graph.node().begin(), graph.node().end(),
                        [&op](const NodeDef& node) { return node.op() == op; });
 }
