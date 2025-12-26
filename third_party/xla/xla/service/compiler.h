@@ -310,6 +310,10 @@ class Compiler {
   static absl::StatusOr<std::unique_ptr<Compiler>> GetForPlatform(
       const se::Platform* platform);
 
+  static bool ExistsForPlatform(const se::Platform* platform) {
+    return GetPlatformCompilerFactories()->contains(platform->id());
+  }
+
   // Returns a function that computes the size in bytes of the logical
   // buffer that contains a shape.
   virtual HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const = 0;

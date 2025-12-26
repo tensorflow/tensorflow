@@ -144,7 +144,8 @@ Compiler::GetPlatformCompilers() {
     const se::Platform* platform) {
   absl::MutexLock lock(platform_compiler_mutex_);
 
-  auto* factories = GetPlatformCompilerFactories();
+  absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>* factories =
+      GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
   if (it == factories->end()) {
     return NotFound(
