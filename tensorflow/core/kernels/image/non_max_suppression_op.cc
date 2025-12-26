@@ -971,6 +971,15 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const Tensor& boxes = context->input(0);
     // scores: [batch_size, num_anchors, num_classes]
     const Tensor& scores = context->input(1);
+    
+    // Validate input tensor ranks
+    OP_REQUIRES(context, boxes.dims() == 4,
+                errors::InvalidArgument("boxes must be 4-D <batch, num_boxes, q, 4>; got shape ",
+                                        boxes.shape().DebugString()));
+    OP_REQUIRES(context, scores.dims() == 3,
+                errors::InvalidArgument("scores must be 3-D <batch, num_boxes, num_classes>; got shape ",
+                                        scores.shape().DebugString()));
+    
     OP_REQUIRES(
         context, (boxes.dim_size(0) == scores.dim_size(0)),
         errors::InvalidArgument("boxes and scores must have same batch size"));
