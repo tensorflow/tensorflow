@@ -15,6 +15,7 @@
 """Implementation of Neural Net (NN) functions."""
 
 import math
+import warnings
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
