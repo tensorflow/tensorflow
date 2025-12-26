@@ -288,9 +288,7 @@ common:rocm_ci --config=rocm
 
 common:rocm_ci_hermetic --dynamic_mode=off
 common:rocm_ci_hermetic --config=rocm_clang_official
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_URL=https://therock-nightly-tarball.s3.amazonaws.com/therock-dist-linux-gfx94X-dcgpu-7.10.0a20251107.tar.gz"
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_HASH=486dbf647bcf9b78f21d7477f43addc7b2075b1a322a119045db9cdc5eb98380"
-common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_LINKS=llvm/amdgcn:amdgcn"
+common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx90X"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
 # This config option is used for SYCL as GPU backend.

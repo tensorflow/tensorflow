@@ -527,6 +527,7 @@ def _get_file_name(url):
 def _download_package(repository_ctx, pkg):
     file_name = _get_file_name(pkg["url"])
 
+    print("Downloading {}".format(pkg["url"]))
     repository_ctx.report_progress("Downloading and extracting {}, expected hash is {}".format(pkg["url"], pkg["sha256"]))  # buildifier: disable=print
     repository_ctx.download_and_extract(
         url = pkg["url"],
@@ -569,17 +570,17 @@ def _setup_rocm_distro_dir(repository_ctx):
     if rocm_distro_url:
         rocm_distro_hash = repository_ctx.os.environ.get(_ROCM_DISTRO_HASH)
         if not rocm_distro_hash:
-            fail("{} environment variable is required", _ROCM_DISTRO_HASH)
+            fail("{} environment variable is required".format(_ROCM_DISTRO_HASH))
         rocm_distro_links = repository_ctx.os.environ.get(_ROCM_DISTRO_LINKS, "")
         rocm_distro = create_rocm_distro(rocm_distro_url, rocm_distro_hash, rocm_distro_links)
         return _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro)
 
     rocm_distro = repository_ctx.os.environ.get(_ROCM_DISTRO_VERSION)
-    multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
     if rocm_distro:
-        redist = rocm_redist[rocm_distro]
-        return _setup_rocm_distro_dir_impl(repository_ctx, rocm_distro)
-    elif multiple_paths:
+        return _setup_rocm_distro_dir_impl(repository_ctx, rocm_redist[rocm_distro])
+
+    multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
+    if multiple_paths:
         paths_list = multiple_paths.split(":")
         for rocm_custom_path in paths_list:
             cmd = "find " + rocm_custom_path + "/* \\( -type f -o -type l \\)"
