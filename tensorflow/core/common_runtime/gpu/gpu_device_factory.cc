@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
