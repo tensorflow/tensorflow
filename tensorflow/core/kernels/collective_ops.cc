@@ -44,15 +44,15 @@ namespace tensorflow {
 
 namespace {
 
-static string CollectiveKey(OpKernelContext* ctx, int32_t group_key,
-                            int32_t instance_key) {
+static std::string CollectiveKey(OpKernelContext* ctx, int32_t group_key,
+                                 int32_t instance_key) {
   return strings::StrCat(group_key, ":", instance_key, ":",
                          ctx->frame_iter().frame_id, ":",
                          ctx->frame_iter().iter_id);
 }
 
 static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
-                                               const string& name,
+                                               const std::string& name,
                                                NodeDef* sub_node) {
   std::unique_ptr<OpKernel> k;
   if (name.empty() || name == "Id") return k;
@@ -108,7 +108,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
 
   // A string encoding instance, frame and iter to be handed off to
   // the implementation for use in generating RecvBuf keys.
-  string GetCollectiveKey(OpKernelContext* c) {
+  std::string GetCollectiveKey(OpKernelContext* c) {
     return CollectiveKey(c, col_params_->group.group_key,
                          col_params_->instance.instance_key);
   }
@@ -148,9 +148,9 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
                                 CollectiveExecutor* col_exec,
                                 DoneCallback done) = 0;
 
-  string name_;
+  std::string name_;
   CollectiveParams* col_params_;
-  std::vector<int32> dependencies_;
+  std::vector<int32_t> dependencies_;
 };
 
 class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
@@ -246,14 +246,14 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("subdiv_offsets",
                       &col_params_->instance.impl_details.subdiv_offsets));
-    string merge_op_name;
+    std::string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
     if (merge_op_name == "Max") {
       merge_op_name = "Maximum";
     } else if (merge_op_name == "Min") {
       merge_op_name = "Minimum";
     }
-    string final_op_name;
+    std::string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES(c, final_op_name == "Id" || final_op_name == "Div",
                 errors::InvalidArgument(
@@ -552,7 +552,7 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
             group_id, ", base_key = ", base_key);
       }
       for (int color = 0; color < group_assignment.dim_size(1); color++) {
-        const auto index = group_assignment.matrix<int32>()(group_id, color);
+        const auto index = group_assignment.matrix<int32_t>()(group_id, color);
         if (index < 0 || index >= group_assignment.shape().num_elements()) {
           return errors::InvalidArgument("Not all items in group_assignment ",
                                          group_assignment.DebugString(),
@@ -622,13 +622,13 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     }
     col_params->name = name_;
     col_params->group.device_type = device_type_;
-    col_params->group.group_size = group_size.unaligned_flat<int32>()(0);
+    col_params->group.group_size = group_size.unaligned_flat<int32_t>()(0);
     if (col_params->group.group_size <= 0) {
       return errors::InvalidArgument(
           "group_size must be positive integer but got ",
           col_params->group.group_size);
     }
-    col_params->group.group_key = group_key.unaligned_flat<int32>()(0);
+    col_params->group.group_key = group_key.unaligned_flat<int32_t>()(0);
     // FIXME(b/270426314): TFRT hostruntime doesn't forward node names.
     // A more proper way of checking DTensor provenance is to add a new attr
     // to all V2 ops. Or perhaps use an ordering_token based heuristics
@@ -641,7 +641,8 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     }
     col_params->instance.type = collective_type;
     col_params->instance.data_type = data_type_;
-    col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
+    col_params->instance.instance_key =
+        instance_key.unaligned_flat<int32_t>()(0);
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
     return absl::OkStatus();
@@ -761,9 +762,9 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   }
 
  protected:
-  string name_;
+  std::string name_;
   DataType data_type_ = DT_INVALID;
-  string communication_hint_;
+  std::string communication_hint_;
   float timeout_seconds_ = 0;
   DeviceType device_type_;
 };
@@ -772,14 +773,14 @@ class CollectiveReduceV2OpKernel : public CollectiveOpV2Kernel {
  public:
   explicit CollectiveReduceV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
-    string merge_op_name;
+    std::string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
     if (merge_op_name == "Max") {
       merge_op_name = "Maximum";
     } else if (merge_op_name == "Min") {
       merge_op_name = "Minimum";
     }
-    string final_op_name;
+    std::string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES_OK(
         c, c->GetAttr("max_subdivs_per_device", &max_subdivs_per_device_));
@@ -1001,8 +1002,8 @@ REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecvV2")
  */
 class CollectiveGroupResource : public ResourceBase {
  public:
-  CollectiveGroupResource(int32 group_key, int32 rank, int32 group_size,
-                          string communication_hint, float timeout_seconds)
+  CollectiveGroupResource(int32_t group_key, int32_t rank, int32_t group_size,
+                          std::string communication_hint, float timeout_seconds)
       : group_key_(group_key),
         rank_(rank),
         group_size_(group_size),
@@ -1019,19 +1020,19 @@ class CollectiveGroupResource : public ResourceBase {
     return instance_key_.fetch_add(1, std::memory_order_relaxed);
   }
 
-  int32 group_key() const { return group_key_; }
+  int32_t group_key() const { return group_key_; }
 
-  int32 rank() const { return rank_; }
+  int32_t rank() const { return rank_; }
 
-  int32 group_size() const { return group_size_; }
+  int32_t group_size() const { return group_size_; }
 
-  string communication_hint() const { return communication_hint_; }
+  std::string communication_hint() const { return communication_hint_; }
 
   float timeout_seconds() const { return timeout_seconds_; }
 
  private:
-  int32 group_key_, rank_, group_size_;
-  string communication_hint_;
+  int32_t group_key_, rank_, group_size_;
+  std::string communication_hint_;
   std::atomic<int> instance_key_{0};
   float timeout_seconds_ = 0;
 };
@@ -1066,12 +1067,12 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
           rank_t.shape().DebugString());
     }
 
-    auto group_size = group_size_t.unaligned_flat<int32>()(0);
+    auto group_size = group_size_t.unaligned_flat<int32_t>()(0);
     if (group_size <= 0) {
       return errors::InvalidArgument(
           "group_size must be positive integer but got ", group_size);
     }
-    auto rank = rank_t.unaligned_flat<int32>()(0);
+    auto rank = rank_t.unaligned_flat<int32_t>()(0);
     if (rank < 0) {
       return errors::InvalidArgument(
           "rank must be non-negative integer but got ", rank);
@@ -1092,9 +1093,9 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(c, CheckInputs(group_size_t, group_key_t, rank_t),
                          done);
 
-    auto group_size = group_size_t.unaligned_flat<int32>()(0);
-    auto group_key = group_key_t.unaligned_flat<int32>()(0);
-    auto rank = rank_t.unaligned_flat<int32>()(0);
+    auto group_size = group_size_t.unaligned_flat<int32_t>()(0);
+    auto group_key = group_key_t.unaligned_flat<int32_t>()(0);
+    auto rank = rank_t.unaligned_flat<int32_t>()(0);
 
     ResourceHandle resource_handle =
         MakeResourceHandle<CollectiveGroupResource>(
@@ -1143,7 +1144,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
   }
 
  private:
-  string communication_hint_;
+  std::string communication_hint_;
   DeviceType device_type_;
   float timeout_seconds_ = 0;
 };
@@ -1179,8 +1180,8 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
                                     const Tensor& group_assignment,
                                     CollectiveType collective_type,
                                     CollectiveGroupResource* resource) {
-    int64 group_id;
-    int64 group_size;
+    int64_t group_id;
+    int64_t group_size;
     if (group_assignment.NumElements() == 0) {
       // No group assignments, perform collective as a single group.
       group_id = 0;
@@ -1191,7 +1192,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
 
     // Construct instance key with format:
     // <11 bits for group><21 bits for atomic incremented instance key>
-    int32 instance_key = group_id << 21 | resource->get_next_instance_key();
+    int32_t instance_key = group_id << 21 | resource->get_next_instance_key();
     col_params->name = name_;
     col_params->group.device_type = device_type_;
     col_params->group.group_size = group_size;
@@ -1263,7 +1264,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
   }
 
  protected:
-  string name_;
+  std::string name_;
   DataType data_type_ = DT_INVALID;
   DeviceType device_type_;
   float timeout_seconds_ = 0;
@@ -1273,7 +1274,7 @@ class CollectiveReduceV3OpKernel : public CollectiveOpV3Kernel {
  public:
   explicit CollectiveReduceV3OpKernel(OpKernelConstruction* c)
       : CollectiveOpV3Kernel(c) {
-    string reduction;
+    std::string reduction;
     OP_REQUIRES_OK(c, c->GetAttr("reduction", &reduction));
     if (reduction == "Max") {
       reduction = "Maximum";
@@ -1431,14 +1432,14 @@ class CollectiveReduceScatterV2OpKernel : public CollectiveOpV2Kernel {
  public:
   explicit CollectiveReduceScatterV2OpKernel(OpKernelConstruction* c)
       : CollectiveOpV2Kernel(c) {
-    string merge_op_name;
+    std::string merge_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
     if (merge_op_name == "Max") {
       merge_op_name = "Maximum";
     } else if (merge_op_name == "Min") {
       merge_op_name = "Minimum";
     }
-    string final_op_name;
+    std::string final_op_name;
     OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
     OP_REQUIRES_OK(
         c, c->GetAttr("max_subdivs_per_device", &max_subdivs_per_device_));

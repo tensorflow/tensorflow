@@ -73,11 +73,11 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
                   int col_stride, const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format) {
-    std::vector<int32> dilations(4, 1);
+    std::vector<int32_t> dilations(4, 1);
     dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;
     dilations[GetTensorDimIndex(data_format, 'W')] = col_dilation;
 
-    std::vector<int32> strides(4, 1);
+    std::vector<int32_t> strides(4, 1);
     strides[GetTensorDimIndex(data_format, 'H')] = row_stride;
     strides[GetTensorDimIndex(data_format, 'W')] = col_stride;
     TensorShape filter_shape = filter_backprop->shape();

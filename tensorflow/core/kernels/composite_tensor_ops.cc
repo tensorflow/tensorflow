@@ -29,7 +29,7 @@ class CompositeTensorVariantFromComponents : public OpKernel {
  public:
   explicit CompositeTensorVariantFromComponents(OpKernelConstruction* context)
       : OpKernel(context) {
-    string type_spec_string;
+    std::string type_spec_string;
     OP_REQUIRES_OK(context, context->GetAttr("metadata", &type_spec_string));
     OP_REQUIRES(context, metadata_.ParseFromString(type_spec_string),
                 errors::InvalidArgument("Error parsing metadata"));
@@ -56,7 +56,7 @@ class CompositeTensorVariantToComponents : public OpKernel {
  public:
   explicit CompositeTensorVariantToComponents(OpKernelConstruction* context)
       : OpKernel(context) {
-    string type_spec_string;
+    std::string type_spec_string;
     OP_REQUIRES_OK(context, context->GetAttr("metadata", &type_spec_string));
     OP_REQUIRES(context, metadata_.ParseFromString(type_spec_string),
                 errors::InvalidArgument("Error parsing `metadata`"));

@@ -231,12 +231,12 @@ REGISTER_KERNEL(GPU, uint4);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("index_type")
                             .HostMemory("dims")
                             .HostMemory("value")
                             .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
+                        FillOp<CPUDevice, int32_t, int32_t>);
 
 #undef REGISTER_KERNEL
 
@@ -301,9 +301,9 @@ REGISTER_KERNEL(Variant, GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("y"),
-                        ZerosLikeOp<CPUDevice, int32>);
+                        ZerosLikeOp<CPUDevice, int32_t>);
 
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
@@ -347,9 +347,9 @@ REGISTER_KERNEL(bfloat16, GPU);
 
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("y"),
-                        OnesLikeOp<CPUDevice, int32>);
+                        OnesLikeOp<CPUDevice, int32_t>);
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));

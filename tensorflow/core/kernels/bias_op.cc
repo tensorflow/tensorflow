@@ -44,8 +44,8 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
-                      int32* batch, int32* height, int32* width, int32* depth,
-                      int32* channel) {
+                      int32_t* batch, int32_t* height, int32_t* width,
+                      int32_t* depth, int32_t* channel) {
   *batch = 1;
   *height = 1;
   *width = 1;
@@ -53,19 +53,19 @@ void GetBiasValueDims(const Tensor& value_tensor, TensorFormat data_format,
   *channel = 1;
   if (data_format == FORMAT_NHWC) {
     int32_t channel_dim = value_tensor.dims() - 1;
-    *channel = static_cast<int32>(value_tensor.dim_size(channel_dim));
+    *channel = static_cast<int32_t>(value_tensor.dim_size(channel_dim));
     for (int32_t i = 0; i < channel_dim; i++) {
-      *batch *= static_cast<int32>(value_tensor.dim_size(i));
+      *batch *= static_cast<int32_t>(value_tensor.dim_size(i));
     }
   } else if (data_format == FORMAT_NCHW) {
-    *batch = static_cast<int32>(value_tensor.dim_size(0));
-    *channel = static_cast<int32>(value_tensor.dim_size(1));
-    *height = static_cast<int32>(value_tensor.dim_size(2));
+    *batch = static_cast<int32_t>(value_tensor.dim_size(0));
+    *channel = static_cast<int32_t>(value_tensor.dim_size(1));
+    *height = static_cast<int32_t>(value_tensor.dim_size(2));
     if (value_tensor.dims() > 3) {
-      *width = static_cast<int32>(value_tensor.dim_size(3));
+      *width = static_cast<int32_t>(value_tensor.dim_size(3));
     }
     if (value_tensor.dims() > 4) {
-      *depth = static_cast<int32>(value_tensor.dim_size(4));
+      *depth = static_cast<int32_t>(value_tensor.dim_size(4));
     }
   }
 }
@@ -88,7 +88,7 @@ template <typename Device, typename T>
 class BiasOp : public BinaryOp<T> {
  public:
   explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -158,7 +158,7 @@ template <typename Device, typename T>
 class BiasGradOp : public OpKernel {
  public:
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     if (context->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -178,7 +178,7 @@ class BiasGradOp : public OpKernel {
     OP_REQUIRES(
         context,
         FastBoundsCheck(output_backprop.NumElements(),
-                        std::numeric_limits<int32>::max()),
+                        std::numeric_limits<int32_t>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int channel_dim;
