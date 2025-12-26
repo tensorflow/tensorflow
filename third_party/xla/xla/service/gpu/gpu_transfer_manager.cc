@@ -115,7 +115,7 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
-  char* base = reinterpret_cast<char*>(pinned_chunk_->opaque());
+  char* base = reinterpret_cast<char*>(pinned_chunk_->address().opaque());
   for (char* buf = base; buf < base + kPinnedChunkBytes;
        buf += kPinnedBufferBytes) {
     pinned_buffers_.push_back(buf);
@@ -262,7 +262,7 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
                       GetOrCreateStagingBuffer(stream->parent()));
 
   absl::MutexLock lock(staging_buffer->mutex);
-  void* staging = staging_buffer->allocation->opaque();
+  void* staging = staging_buffer->allocation->address().opaque();
 
   // Transfer chunk of data from device to destination via staging buffer.
   auto transfer_chunk = [&](size_t chunk_offset,
@@ -303,7 +303,7 @@ absl::Status GpuTransferManager::TransferBufferToDevice(
                       GetOrCreateStagingBuffer(stream->parent()));
 
   absl::MutexLock lock(staging_buffer->mutex);
-  void* staging = staging_buffer->allocation->opaque();
+  void* staging = staging_buffer->allocation->address().opaque();
 
   // Transfer chunk of data from device to destination.
   auto transfer_chunk = [&](size_t chunk_offset, size_t chunk_size) {
