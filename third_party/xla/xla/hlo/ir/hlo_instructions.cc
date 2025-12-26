@@ -1475,6 +1475,57 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
                                                 dimensions(), to_apply());
 }
 
+HloScanInstruction::HloScanInstruction(const Shape& shape, HloInstruction* init,
+                                       HloInstruction* input,
+                                       HloComputation* to_apply,
+                                       int64_t scan_dimension, bool is_reverse)
+    : HloDimensionsInstruction(HloOpcode::kScan, shape, {scan_dimension}),
+      is_reverse_(is_reverse) {
+  AppendOperand(init);
+  AppendOperand(input);
+  AppendComputation(to_apply);
+}
+
+HloInstructionProto HloScanInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64_t dimension : dimensions_) {
+    proto.add_dimensions(dimension);
+  }
+  proto.set_is_reverse(is_reverse_);
+  return proto;
+}
+
+void HloScanInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) {
+    printer->Append("dimensions={");
+    AppendJoin(printer, dimensions(), ",");
+    printer->Append("}");
+  });
+  if (is_reverse_) {
+    printer.Next([](Printer* printer) { printer->Append("is_reverse=true"); });
+  }
+}
+
+bool HloScanInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloScanInstruction&>(other);
+  return dimensions() == casted_other.dimensions() &&
+         is_reverse() == casted_other.is_reverse() &&
+         eq_computations(to_apply(), casted_other.to_apply());
+}
+
+std::unique_ptr<HloInstruction> HloScanInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return std::make_unique<HloScanInstruction>(shape, new_operands[0],
+                                              new_operands[1], to_apply(),
+                                              scan_dimension(), is_reverse());
+}
+
 HloSortInstruction::HloSortInstruction(
     const Shape& shape, int64_t dimension,
     absl::Span<HloInstruction* const> operands, HloComputation* compare,

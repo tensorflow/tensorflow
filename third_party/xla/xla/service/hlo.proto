@@ -113,7 +113,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 94
+// Next ID: 95
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -399,6 +399,9 @@ message HloInstructionProto {
 
   // Accuracy for unary functions with multiple implementations.
   xla.ResultAccuracy result_accuracy = 91;
+
+  // Whether the scan instruction is in reverse order.
+  bool is_reverse = 94;
 }
 
 // Serialization of HloComputation.

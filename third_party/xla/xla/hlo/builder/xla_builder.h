@@ -892,6 +892,11 @@ class XlaBuilder {
       XlaComputationId computation,
       absl::Span<const int64_t> dimensions_to_reduce);
 
+  XlaOp Scan(XlaOp init, XlaOp operand, const XlaComputation& computation,
+             int64_t scan_dimension, bool is_reverse = false);
+  XlaOp Scan(XlaOp init, XlaOp operand, XlaComputationId computation,
+             int64_t scan_dimension, bool is_reverse = false);
+
   XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                   XlaComputationId computation);
 
@@ -1638,6 +1643,11 @@ class XlaBuilder {
                       absl::Span<const XlaOp> init_values,
                       XlaComputationId computation,
                       absl::Span<const int64_t> dimensions_to_reduce);
+  friend XlaOp Scan(XlaOp init, XlaOp operand,
+                    const XlaComputation& computation, int64_t scan_dimension,
+                    bool is_reverse);
+  friend XlaOp Scan(XlaOp init, XlaOp operand, XlaComputationId computation,
+                    int64_t scan_dimension, bool is_reverse);
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
   friend XlaOp ReduceWindow(XlaOp operand, XlaOp init_value,
@@ -2771,6 +2781,12 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
              absl::Span<const XlaOp> init_values, XlaComputationId computation,
              absl::Span<const int64_t> dimensions_to_reduce);
+
+// Enqueues a scan instruction onto the computation.
+XlaOp Scan(XlaOp init, XlaOp operand, const XlaComputation& computation,
+           int64_t scan_dimension, bool is_reverse = false);
+XlaOp Scan(XlaOp init, XlaOp operand, XlaComputationId computation,
+           int64_t scan_dimension, bool is_reverse = false);
 
 // Convenience wrapper around the above that reduces all the dimensions in the
 // operand shape.

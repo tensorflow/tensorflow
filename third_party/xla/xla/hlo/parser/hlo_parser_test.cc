@@ -2671,6 +2671,26 @@ ENTRY BitcastConvertUsage {
 
 )"
 },
+// Scan
+{
+"Scan",
+R"(HloModule scan_module, entry_computation_layout={(f32[4]{0})->(f32[], f32[4]{0})}
+
+add_F32 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  add = f32[] add(lhs, rhs)
+  ROOT t = (f32[], f32[]) tuple(add, add)
+}
+
+ENTRY Scan {
+  init = f32[] constant(0)
+  input = f32[4]{0} parameter(0)
+  ROOT scan = (f32[], f32[4]{0}) scan(init, input), dimensions={0}, is_reverse=true, to_apply=add_F32
+}
+
+)"
+},
 });
   // clang-format on
 }

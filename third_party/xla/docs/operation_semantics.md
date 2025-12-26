@@ -4554,6 +4554,52 @@ For more information on `result_accuracy` see
 For StableHLO information see
 [StableHLO - rsqrt](https://openxla.org/stablehlo/spec#rsqrt).
 
+## Scan
+
+See also
+[`XlaBuilder::Scan`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Applies a reduction function to an array across a given dimension, producing a
+final state and an array of intermediate values.
+
+**`Scan(init, input, to_apply, scan_dimension, is_reverse)`**
+
+| Arguments | Type | Semantics |
+| :--- | :--- | :--- |
+| `init` | `XlaOp` | A value of type `S`. |
+| `input` | `XlaOp` | An array of type `I`. |
+| `to_apply` | `XlaComputation` | Computation of type `S, I -> S, O`. |
+| `scan_dimension` | `int64` | The dimension to scan across. |
+| `is_reverse` | `bool` | If true, scan in reverse order. |
+
+The function `to_apply` is applied sequentially to elements in `input` along
+`scan_dimension`. If `is_reverse` is false, elements are processed in order
+0 to N-1, where N is the size of `scan_dimension`. If `is_reverse` is true,
+elements are processed from N-1 down to 0.
+
+The `to_apply` function takes two operands:
+1. The carry value from the previous step (or `init` for the first element).
+Type `S`.
+2. The current element from `input`. Type `I`.
+It returns a tuple containing the new carry value (type `S`) and the output
+value (type `O`).
+
+The Scan operation produces a tuple of two values:
+1. The final carry value (type `S`) after processing all elements.
+2. The output array (array of type `O`) with the same shape as `input`,
+containing the output values for each step.
+
+For example, for initial carry `i`, input `[a, b, c]`, function `f`, and
+`scan_dimension=0`, `is_reverse=false`, where `f(s, x) -> (s', y)`:
+
+- Step 0: `f(i, a) -> (s0, y0)`
+- Step 1: `f(s0, b) -> (s1, y1)`
+- Step 2: `f(s1, c) -> (s2, y2)`
+
+The output of `Scan` is `(s2, [y0, y1, y2])`.
+
+> **Note:** `Scan` is only found in HLO. It is not found in StableHLO.
+
 ## Scatter
 
 See also

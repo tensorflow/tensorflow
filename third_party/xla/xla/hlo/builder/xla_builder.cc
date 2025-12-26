@@ -3684,6 +3684,51 @@ absl::StatusOr<XlaOp> XlaBuilder::ReduceInternal(
   });
 }
 
+XlaOp XlaBuilder::Scan(XlaOp init, XlaOp operand,
+                       const XlaComputation& computation,
+                       int64_t scan_dimension, bool is_reverse) {
+  return Scan(init, operand, AddSubComputation(computation), scan_dimension,
+              is_reverse);
+}
+
+XlaOp XlaBuilder::Scan(XlaOp init, XlaOp operand, XlaComputationId computation,
+                       int64_t scan_dimension, bool is_reverse) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init));
+    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                        GetSubcomputationShape(computation));
+
+    const Shape& result_shape = program_shape.result();
+    if (!result_shape.IsTuple() || result_shape.tuple_shapes().size() != 2) {
+      return InvalidArgument(
+          "Scan computation must return a tuple of 2 elements, but got %s",
+          ShapeUtil::HumanString(result_shape));
+    }
+
+    const Shape& output_element_shape = result_shape.tuple_shapes(1);
+    if (output_element_shape.dimensions().size() !=
+        operand_shape->dimensions().size() - 1) {
+      return InvalidArgument("Scan output element rank mismatch.");
+    }
+    std::vector<int64_t> output_dims(output_element_shape.dimensions().begin(),
+                                     output_element_shape.dimensions().end());
+    output_dims.insert(output_dims.begin() + scan_dimension,
+                       operand_shape->dimensions(scan_dimension));
+    Shape output_array_shape =
+        ShapeUtil::MakeShape(output_element_shape.element_type(), output_dims);
+    Shape final_shape =
+        ShapeUtil::MakeTupleShape({*init_shape, output_array_shape});
+
+    HloInstructionProto instr;
+    *instr.mutable_shape() = final_shape.ToProto();
+    instr.add_dimensions(scan_dimension);
+    instr.set_is_reverse(is_reverse);
+    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    return AddInstruction(std::move(instr), HloOpcode::kScan, {init, operand});
+  });
+}
+
 XlaOp XlaBuilder::ReduceAll(XlaOp operand, XlaOp init_value,
                             XlaComputationId computation) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -5808,6 +5853,18 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
              absl::Span<const int64_t> dimensions_to_reduce) {
   return Reduce(builder, operands, init_values,
                 builder->AddSubComputation(computation), dimensions_to_reduce);
+}
+
+XlaOp Scan(XlaOp init, XlaOp operand, const XlaComputation& computation,
+           int64_t scan_dimension, bool is_reverse) {
+  return operand.builder()->Scan(init, operand, computation, scan_dimension,
+                                 is_reverse);
+}
+
+XlaOp Scan(XlaOp init, XlaOp operand, XlaComputationId computation,
+           int64_t scan_dimension, bool is_reverse) {
+  return operand.builder()->Scan(init, operand, computation, scan_dimension,
+                                 is_reverse);
 }
 
 XlaOp ReduceAll(const XlaOp operand, const XlaOp init_value,

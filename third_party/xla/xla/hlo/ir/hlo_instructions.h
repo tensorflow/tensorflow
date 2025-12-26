@@ -1109,6 +1109,40 @@ class HloReduceInstruction : public HloDimensionsInstruction {
       HloCloneContext* context) const override;
 };
 
+class HloScanInstruction : public HloDimensionsInstruction {
+ public:
+  explicit HloScanInstruction(const Shape& shape, HloInstruction* init,
+                              HloInstruction* input, HloComputation* to_apply,
+                              int64_t scan_dimension, bool is_reverse);
+
+  // Returns the dimension along which to scan.
+  int64_t scan_dimension() const { return HloInstruction::dimensions(0); }
+
+  // Returns whether the scan is in reverse order.
+  bool is_reverse() const { return is_reverse_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kScan;
+  }
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool is_reverse_;
+};
+
 class HloSortInstruction : public HloDimensionsInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64_t dimension,

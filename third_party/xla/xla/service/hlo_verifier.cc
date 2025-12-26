@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -943,7 +944,7 @@ absl::Status ShapeVerifier::CheckIsTokenOperand(
     return Internal(
         "Expected operand %d to be token-shaped, actual shape is "
         "%s:\n%s",
-        operand_no, StringifyShape(token->shape()), instruction->ToString());
+        operand_no, token->shape().ToString(), instruction->ToString());
   }
   return absl::OkStatus();
 }
@@ -983,8 +984,8 @@ absl::Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
     return Internal(
         "Expected outfeed shape to be equal to operand's shape %s, "
         "actual shape is %s:\n%s",
-        StringifyShape(outfeed->operand(0)->shape()),
-        StringifyShape(outfeed->outfeed_shape()), outfeed->ToString());
+        outfeed->operand(0)->shape().ToString(),
+        outfeed->outfeed_shape().ToString(), outfeed->ToString());
   }
   return CheckShape(outfeed, ShapeUtil::MakeTokenShape());
 }
@@ -1076,7 +1077,7 @@ absl::Status ShapeVerifier::HandleRngGetAndUpdateState(
   if (!ShapeUtil::Compatible(result_shape, expected_shape)) {
     return Internal(
         "Invalid RngGetAndUpdateState, expect result to have shape %s, got %s ",
-        StringifyShape(expected_shape), StringifyShape(result_shape));
+        expected_shape.ToString(), result_shape.ToString());
   }
 
   return absl::OkStatus();
@@ -1108,7 +1109,7 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
     return Internal(
         "The Sort compare computation shape does not lead to a scalar "
         "predicate shape: %s",
-        StringifyShape(compare_shape));
+        compare_shape.ToString());
   }
 
   // Check that the number of parameters of the 'compare' computation is
@@ -1130,8 +1131,8 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
       return Internal(
           "Expected the %lld-th parameter of the compare computation of sort "
           "to have shape %s, but got %s",
-          parameter_idx, StringifyShape(expected_scalar_shape),
-          StringifyShape(actual_parameter_shape));
+          parameter_idx, expected_scalar_shape.ToString(),
+          actual_parameter_shape.ToString());
     }
   }
 
@@ -1142,8 +1143,8 @@ absl::Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
       return Internal(
           "Expected sort to have to have the same dimensions for all operands. "
           "First operand shape is: %s\n, shape (operand index %lld) is: %s",
-          StringifyShape(sort->operand(0)->shape()), operand,
-          StringifyShape(sort->operand(operand)->shape()));
+          sort->operand(0)->shape().ToString(), operand,
+          sort->operand(operand)->shape().ToString());
     }
   }
 
@@ -1243,6 +1244,117 @@ absl::Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
              ? absl::OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce, reduce->operand_count());
+}
+
+namespace {
+absl::Status CheckScanParameters(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  int64_t scan_dim = scan->scan_dimension();
+  const HloComputation* to_apply = scan->to_apply();
+
+  if (to_apply->num_parameters() != 2) {
+    return Internal(
+        "Expected computation %s called from %s to have 2 parameters, has %d",
+        to_apply->name(), scan->name(), to_apply->num_parameters());
+  }
+
+  const Shape& init_shape = scan->operand(0)->shape();
+  const Shape& input_shape = scan->operand(1)->shape();
+
+  if (scan_dim < 0 || scan_dim >= input_shape.dimensions().size()) {
+    return Internal("Scan dimension %d out of bounds for operand %d in %s",
+                    scan_dim, 0, scan->ToString());
+  }
+
+  Shape expected_input_element_shape = input_shape;
+  expected_input_element_shape.DeleteDimension(scan_dim);
+
+  // Check to_apply parameters.
+  // Param 0: carry (matches init shape)
+  // Param 1: input element (matches input element shape)
+  if (!shapes_same(to_apply->parameter_instruction(0)->shape(), init_shape)) {
+    return Internal(
+        "Parameter %d of to_apply computation shape %s does not match init "
+        "shape %s in %s",
+        0, to_apply->parameter_instruction(0)->shape().ToString(),
+        init_shape.ToString(), scan->ToString());
+  }
+  if (!shapes_same(to_apply->parameter_instruction(1)->shape(),
+                   expected_input_element_shape)) {
+    return Internal(
+        "Parameter %d of to_apply computation shape %s does not match input "
+        "element shape %s in %s",
+        1, to_apply->parameter_instruction(1)->shape().ToString(),
+        expected_input_element_shape.ToString(), scan->ToString());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckScanToApplyShape(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  const HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  if (!root_shape.IsTuple() || root_shape.tuple_shapes().size() != 2) {
+    return Internal("Computation %s result shape must be a tuple of size 2",
+                    to_apply->name());
+  }
+
+  if (!shapes_same(root_shape.tuple_shapes(0), scan->operand(0)->shape())) {
+    return Internal(
+        "Computation %s result first element shape %s does not match init "
+        "shape %s in %s",
+        to_apply->name(), root_shape.tuple_shapes(0).ToString(),
+        scan->operand(0)->shape().ToString(), scan->ToString());
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
+  auto scan_instr = Cast<HloScanInstruction>(scan);
+  if (scan->operand_count() != 2) {
+    return Internal("Expected 2 operands for %s instruction: %s",
+                    HloOpcodeString(scan->opcode()), scan->ToString());
+  }
+
+  auto shapes_same = [&](const Shape& a, const Shape& b) {
+    return ShapesSame(a, b);
+  };
+  TF_RETURN_IF_ERROR(CheckScanParameters(scan_instr, shapes_same));
+  TF_RETURN_IF_ERROR(CheckScanToApplyShape(scan_instr, shapes_same));
+
+  const HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  const Shape& output_element_shape = root_shape.tuple_shapes(1);
+  const Shape& input_shape = scan->operand(1)->shape();
+  int64_t scan_dim = scan_instr->scan_dimension();
+  int64_t scan_dim_size = input_shape.dimensions(scan_dim);
+
+  Shape output_array_shape = output_element_shape;
+  std::vector<int64_t> dimensions(output_array_shape.dimensions().begin(),
+                                  output_array_shape.dimensions().end());
+  dimensions.insert(dimensions.begin() + scan_dim, scan_dim_size);
+  output_array_shape =
+      ShapeUtil::MakeShape(output_element_shape.element_type(), dimensions);
+  if (output_element_shape.has_layout()) {
+    std::vector<int64_t> minor_to_major(
+        output_element_shape.layout().minor_to_major().begin(),
+        output_element_shape.layout().minor_to_major().end());
+    for (int64_t& d : minor_to_major) {
+      if (d >= scan_dim) {
+        ++d;
+      }
+    }
+    // We place the scan dimension as the most major dimension.
+    minor_to_major.push_back(scan_dim);
+    *output_array_shape.mutable_layout() =
+        LayoutUtil::MakeLayout(minor_to_major);
+  }
+
+  return CheckShape(scan, ShapeUtil::MakeTupleShape(
+                              {scan->operand(0)->shape(), output_array_shape}));
 }
 
 absl::Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
@@ -1596,7 +1708,7 @@ absl::Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
     return Internal(
         "Conditional computation shape does not lead to a scalar predicate "
         "shape: %s",
-        StringifyShape(conditional_shape));
+        conditional_shape.ToString());
   }
   // The shape of kWhile should match the shape of the body computation it
   // calls.
@@ -1798,8 +1910,7 @@ absl::Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
     return Internal(
         "Source and destination buffers in CopyDone arguments need to be the "
         "same shape found %s and %s\n%s",
-        StringifyShape(dest_shape), StringifyShape(src_shape),
-        copy_done->ToString());
+        dest_shape.ToString(), src_shape.ToString(), copy_done->ToString());
   }
   return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
                                    copy_done->operand(0)->shape(), 0));
@@ -2094,7 +2205,7 @@ absl::Status ShapeVerifier::CheckShape(
     return Internal(
         "Expected instruction to have shape equal to %s, actual "
         "shape is %s:\n%s",
-        StringifyShape(inferred_shape), StringifyShape(instruction->shape()),
+        inferred_shape.ToString(), instruction->shape().ToString(),
         instruction->ToString());
   }
   return absl::OkStatus();
@@ -2161,8 +2272,8 @@ absl::Status ShapeVerifier::VerifyEntryComputationLayout(
     return Internal(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
-        StringifyShape(computation->root_instruction()->shape()),
-        StringifyShape(result_layout.shape()));
+        computation->root_instruction()->shape().ToString(),
+        result_layout.shape().ToString());
   }
 
   if (computation->num_parameters() != layout.parameter_count()) {
@@ -2187,8 +2298,8 @@ absl::Status ShapeVerifier::VerifyEntryComputationLayout(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
           "layout %s",
-          i, StringifyShape(parameter->shape()),
-          StringifyShape(layout.parameter_shape(i)));
+          i, parameter->shape().ToString(),
+          layout.parameter_shape(i).ToString());
     }
   }
 
@@ -2215,9 +2326,9 @@ absl::Status ShapeVerifier::VerifyEntryComputationLayout(
               "Shape and memory space of the result at index %s (%s) "
               "must be the same as the shape and memory spaceof aliased "
               "parameter %d at index %s (%s)",
-              result_index.ToString(), StringifyShape(result_shape),
+              result_index.ToString(), result_shape.ToString(),
               alias.parameter_number, alias.parameter_index.ToString(),
-              StringifyShape(parameter_shape));
+              parameter_shape.ToString());
         }
 
         return absl::OkStatus();
