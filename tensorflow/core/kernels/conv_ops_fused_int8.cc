@@ -574,7 +574,7 @@ void operator()(
                                                  &autotune_entry)) {
     VLOG(2) << "Autotuning fused convolution: "
             << fused_conv_parameters.ToString();
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto dnn = stream->parent()->AsDnn();
