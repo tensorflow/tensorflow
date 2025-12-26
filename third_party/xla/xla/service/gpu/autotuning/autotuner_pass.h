@@ -48,7 +48,8 @@ class AutotunerPass : public HloModulePass {
       const Compiler::GpuTargetConfig* target_config,
       se::DeviceAddressAllocator* allocator = nullptr,
       bool optimize_scratch_bytes = true,
-      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore());
+      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore(),
+      bool allow_reg_spills = false);
 
   absl::string_view name() const override { return "autotuner"; }
 

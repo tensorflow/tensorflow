@@ -79,9 +79,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(
       stream_(stream),
       allocator_(allocator),
       opts_(opts) {
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      opts_,
-      /*force_allow_register_spills=*/false);
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(opts_);
 }
 
 absl::StatusOr<AutotunerCompileUtil::ProfilingOutput>

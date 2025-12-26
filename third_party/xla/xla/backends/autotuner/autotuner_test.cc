@@ -999,6 +999,7 @@ TEST(AutotuneConfigTest, ToString) {
   config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
+  config.allow_reg_spills = false;
 
   std::string expected =
       "{\n"
@@ -1012,7 +1013,8 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"exclude_cublas_config\": true,\n"
       "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
-      "  \"dump_hlos\": false\n"
+      "  \"dump_hlos\": false,\n"
+      "  \"allow_reg_spills\": false\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

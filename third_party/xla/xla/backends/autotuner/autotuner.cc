@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -307,6 +308,27 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   return best_config;
 }
 
+bool Autotuner::IsValid(
+    Config& config, absl::StatusOr<std::unique_ptr<Executable>>& executable) {
+  if (!executable.ok()) {
+    VLOG(4) << "Compilation failed for config " << config.ToString()
+            << " with status: " << executable.status();
+    return false;
+  }
+
+  if (autotune_config_.allow_reg_spills) {
+    ModuleStats module_stats = executable.value()->module_stats();
+    for (const auto& [_, stats] : module_stats) {
+      if (stats.store_bytes_spilled > 0 || stats.load_bytes_spilled > 0) {
+        VLOG(4) << "Discarding compilation for config " << config.ToString()
+                << " due to register spilling.";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
     HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
@@ -324,13 +346,9 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
 
   std::vector<ExecutableCandidate> executable_candidates;
   for (int i = 0; i < executables.size(); ++i) {
-    if (executables[i].ok()) {
+    if (IsValid(supported_configs[i], executables[i])) {
       executable_candidates.push_back(
           {std::move(supported_configs[i]), std::move(executables[i].value())});
-    } else {
-      VLOG(4) << "Compilation failed for config "
-              << supported_configs[i].ToString()
-              << " with status: " << executables[i].status();
     }
   }
 
@@ -748,7 +766,8 @@ std::string AutotuneConfig::ToString() const {
       "  \"exclude_cublas_config\": %s,\n"
       "  \"select_first_config\": %s,\n"
       "  \"use_default_config\": %s,\n"
-      "  \"dump_hlos\": %s\n"
+      "  \"dump_hlos\": %s,\n"
+      "  \"allow_reg_spills\": %s\n"
       "}",
       check_buffers ? "true" : "false", relative_tolerance,
       crash_on_check_failure ? "true" : "false",
@@ -756,7 +775,8 @@ std::string AutotuneConfig::ToString() const {
       expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
       exclude_cublas_config ? "true" : "false",
       select_first_config ? "true" : "false",
-      use_default_config ? "true" : "false", dump_hlos ? "true" : "false");
+      use_default_config ? "true" : "false", dump_hlos ? "true" : "false",
+      allow_reg_spills ? "true" : "false");
 }
 
 }  // namespace xla
