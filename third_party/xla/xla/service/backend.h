@@ -204,7 +204,8 @@ class Backend {
   // This must be a shared_ptr, as this is passed all the way down to the
   // cluster compilation. This allows asynchronous compilation to hold a
   // referecence until the compilation is finished.
-  std::shared_ptr<se::StreamExecutorMemoryAllocator> memory_allocator_;
+  std::shared_ptr<stream_executor::StreamExecutorAddressAllocator>
+      memory_allocator_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   struct IntraOpThreadPool;
