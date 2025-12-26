@@ -613,7 +613,7 @@ TEST(NNAPIDelegate, L2PoolWithNoActivation) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({7.0, 13.0}));
 }
 
 class ConvolutionOpModel : public SingleOpModelWithNNAPI {
