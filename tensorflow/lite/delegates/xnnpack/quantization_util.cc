@@ -19,23 +19,26 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "fp16.h"  // from @FP16
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace xnnpack {
 
-void DequantizeFloat16(const uint16_t *packed_fp16_data,
-                       float *unpacked_fp32_data, size_t tensor_elements) {
-  std::transform(packed_fp16_data, packed_fp16_data + tensor_elements,
-                 unpacked_fp32_data, fp16_ieee_to_fp32_value);
+void DequantizeFloat16(const uint16_t* packed_fp16_data,
+                       float* unpacked_fp32_data, size_t tensor_elements) {
+  const tflite::half* fp16_data =
+      reinterpret_cast<const tflite::half*>(packed_fp16_data);
+  for (size_t i = 0; i < tensor_elements; ++i) {
+    unpacked_fp32_data[i] = static_cast<float>(fp16_data[i]);
+  }
 }
 
-void DequantizeInt8(const int8_t *packed_s8_data, float *unpacked_fp32_data,
-                    const RuntimeShape &tensor_shape, int32_t zero_point,
+void DequantizeInt8(const int8_t* packed_s8_data, float* unpacked_fp32_data,
+                    const RuntimeShape& tensor_shape, int32_t zero_point,
                     double scale) {
   DequantizationParams op_params;
   op_params.zero_point = zero_point;

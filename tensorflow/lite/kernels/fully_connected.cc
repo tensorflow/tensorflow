@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/types/half.h"
 
 #ifdef TFLITE_HAVE_CPUINFO
 #include "include/cpuinfo.h"
@@ -974,7 +975,7 @@ TfLiteStatus EvalBlockwise4Bit(
   const TfLiteTensor& scale = context->tensors[quantization_params->scale];
   int num_scales = NumElements(&scale);
   std::vector<float> dequantized_scale(num_scales, 0);
-  const Eigen::half* half_data = reinterpret_cast<const Eigen::half*>(
+  const tflite::half* half_data = reinterpret_cast<const tflite::half*>(
       GetTensorData<TfLiteFloat16>(&scale));
   reference_ops::Dequantize(GetTensorShape(&scale), half_data,
                             GetTensorShape(&scale), dequantized_scale.data());
