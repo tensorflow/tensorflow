@@ -1241,7 +1241,7 @@ BundleCache::FileState* BundleCache::EnsureOpened(std::string name) {
   // Get the file, opening it if necessary.
   FileState* f;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto& slot = opened_files_[name];
     if (slot == nullptr) {
       slot = std::make_unique<FileState>();
