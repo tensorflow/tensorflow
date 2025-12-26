@@ -1,0 +1,172 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index f82404c..509398d 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,152 +1 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
+---- a/clang/lib/Serialization/ASTReaderDecl.cpp
+-+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
+-@@ -2107,8 +2107,9 @@
+-     auto *Def = DD.Definition;
+-     DD = std::move(MergeDD);
+-     DD.Definition = Def;
+--    for (auto *D : Def->redecls())
+--      cast<CXXRecordDecl>(D)->DefinitionData = &DD;
+-+    for (auto *R = Reader.getMostRecentExistingDecl(Def); R;
+-+         R = R->getPreviousDecl())
+-+      cast<CXXRecordDecl>(R)->DefinitionData = &DD;
+-     return;
+-   }
+- 
+-diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+---- a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+-+++ b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+-@@ -61,14 +61,14 @@
+- LIBC_INLINE static void write_mxcsr(uint32_t w) { _mm_setcsr(w); }
+- 
+- LIBC_INLINE static void clear_except(uint16_t excepts) {
+--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
+-+  uint32_t mxcsr = get_mxcsr();
+-   mxcsr &= ~static_cast<uint32_t>(excepts);
+--  _MM_SET_EXCEPTION_STATE(mxcsr);
+-+  write_mxcsr(mxcsr);
+- }
+- 
+- LIBC_INLINE static uint16_t test_except(uint16_t excepts) {
+-   uint32_t mxcsr = get_mxcsr();
+--  return static_cast<uint16_t>(excepts & mxcsr);
+-+  return static_cast<uint16_t>(excepts & ExceptionFlags::ALL_F & mxcsr);
+- }
+- 
+- LIBC_INLINE static uint16_t get_except() {
+-@@ -83,9 +83,9 @@
+- }
+- 
+- LIBC_INLINE static void raise_except(uint16_t excepts) {
+--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
+--  mxcsr |= excepts;
+--  _MM_SET_EXCEPTION_STATE(mxcsr);
+-+  uint32_t mxcsr = get_mxcsr();
+-+  mxcsr |= excepts & ExceptionFlags::ALL_F;
+-+  write_mxcsr(mxcsr);
+- #ifdef LIBC_TRAP_ON_RAISE_FP_EXCEPT
+-   // We will try to trigger the SIGFPE if floating point exceptions are not
+-   // masked.  Since we already set all the floating point exception flags, we
+-diff -ruN --strip-trailing-cr a/libcxx/include/__flat_map/flat_map.h b/libcxx/include/__flat_map/flat_map.h
+---- a/libcxx/include/__flat_map/flat_map.h
+-+++ b/libcxx/include/__flat_map/flat_map.h
+-@@ -465,13 +465,13 @@
+-   }
+- 
+-   // [flat.map.access], element access
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
+-     requires is_constructible_v<mapped_type>
+-   {
+-     return try_emplace(__x).first->second;
+-   }
+- 
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
+-     requires is_constructible_v<mapped_type>
+-   {
+-     return try_emplace(std::move(__x)).first->second;
+-@@ -480,7 +480,7 @@
+-   template <class _Kp>
+-     requires(__is_compare_transparent && is_constructible_v<key_type, _Kp> && is_constructible_v<mapped_type> &&
+-              !is_convertible_v<_Kp &&, const_iterator> && !is_convertible_v<_Kp &&, iterator>)
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
+-     return try_emplace(std::forward<_Kp>(__x)).first->second;
+-   }
+- 
+-diff -ruN --strip-trailing-cr a/libcxx/include/map b/libcxx/include/map
+---- a/libcxx/include/map
+-+++ b/libcxx/include/map
+-@@ -1092,9 +1092,9 @@
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type size() const _NOEXCEPT { return __tree_.size(); }
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type max_size() const _NOEXCEPT { return __tree_.max_size(); }
+- 
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+- #  ifndef _LIBCPP_CXX03_LANG
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+- #  endif
+- 
+-   template <class _Arg,
+-diff -ruN --strip-trailing-cr a/libcxx/include/unordered_map b/libcxx/include/unordered_map
+---- a/libcxx/include/unordered_map
+-+++ b/libcxx/include/unordered_map
+-@@ -1262,9 +1262,9 @@
+-   }
+- #  endif // _LIBCPP_STD_VER >= 20
+- 
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+- #  ifndef _LIBCPP_CXX03_LANG
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+- #  endif
+- 
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& at(const key_type& __k);
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+-@@ -66,9 +66,9 @@
+-   TransparentKey<int> tkey;
+- 
+-   std::flat_map<int, int> nfm;
+--  nfm[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  fm[std::move(key)];  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  fm[std::move(tkey)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  nfm[key];            // no-warning
+-+  fm[std::move(key)];  // no-warning
+-+  fm[std::move(tkey)]; // no-warning
+- 
+-   fm.at(key);   // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-   cfm.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+-@@ -55,8 +55,8 @@
+- 
+-   int key = 0;
+- 
+--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  m[key];            // no-warning
+-+  m[std::move(key)]; // no-warning
+- 
+- #if TEST_STD_VER >= 14
+-   std::map<std::string, int, std::less<>> strMap;
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+-@@ -81,8 +81,8 @@
+-   ctm.equal_range(tkey); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+- #endif
+- 
+--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  m[key];            // no-warning
+-+  m[std::move(key)]; // no-warning
+- 
+-   m.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-   cm.at(key); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 29af0ff..55a1ce3 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "7d381f2a5634d1e41b61299839d652cc4a021898"
+-    LLVM_SHA256 = "f1641918fd3f5e1667d39afb9c261da39ed9f74e30f1c2f98031d6d609a8de15"
++    LLVM_COMMIT = "0812f41cd68d63d10a4c3a02271b0ea8276dbe57"
++    LLVM_SHA256 = "c5bbfd7e6accbb4bfbeeb990666aa64654a667c6569366e90aa1f8d8b28dbf8c"
+ 
+     tf_http_archive(
+         name = name,
