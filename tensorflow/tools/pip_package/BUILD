@@ -108,6 +108,7 @@ filegroup(
         "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
         "@gemmlowp//:LICENSE",
+        "@jpegxl//lib:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
