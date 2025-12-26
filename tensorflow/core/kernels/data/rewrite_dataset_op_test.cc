@@ -25,10 +25,10 @@ constexpr char kReplicateOnSplit[] = "replicate_on_split";
 class RewriteDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  RewriteDatasetParams(T input_dataset_params, string rewrite_name,
+  RewriteDatasetParams(T input_dataset_params, std::string rewrite_name,
                        DataTypeVector output_dtypes,
                        std::vector<PartialTensorShape> output_shapes,
-                       string node_name)
+                       std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         rewrite_name_(rewrite_name) {
@@ -42,7 +42,8 @@ class RewriteDatasetParams : public DatasetParams {
     return {CreateTensor<tstring>(TensorShape({}), {rewrite_name_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {RewriteDatasetOp::kInputDataset,
                     RewriteDatasetOp::kRewriteName};
     return absl::OkStatus();
@@ -54,12 +55,12 @@ class RewriteDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return RewriteDatasetOp::kDatasetType;
   }
 
  private:
-  string rewrite_name_;
+  std::string rewrite_name_;
 };
 
 class RewriteDatasetOpTest : public DatasetOpsTestBase {};
