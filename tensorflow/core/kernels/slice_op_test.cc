@@ -46,12 +46,12 @@ static void SliceHelper(::testing::benchmark::State& state) {
   CHECK_LT(size, kMaxSize);
 
   Tensor begin(DT_INT32, TensorShape({2}));
-  begin.flat<int32>()(0) = 10;
-  begin.flat<int32>()(1) = 10;
+  begin.flat<int32_t>()(0) = 10;
+  begin.flat<int32_t>()(1) = 10;
 
   Tensor sizes(DT_INT32, TensorShape({2}));
-  sizes.flat<int32>()(0) = kDim;
-  sizes.flat<int32>()(1) = size;
+  sizes.flat<int32_t>()(0) = kDim;
+  sizes.flat<int32_t>()(1) = size;
 
   Tensor input(dt, TensorShape({2 * kDim, kMaxSize}));
   input.flat<T>().setRandom();

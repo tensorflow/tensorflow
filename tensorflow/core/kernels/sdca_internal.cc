@@ -370,7 +370,7 @@ absl::Status Examples::Initialize(OpKernelContext* const context,
   auto example_weights = example_weights_t->flat<float>();
 
   if (example_weights.size() >= std::numeric_limits<int>::max()) {
-    return errors::InvalidArgument(strings::Printf(
+    return errors::InvalidArgument(absl::StrFormat(
         "Too many examples in a mini-batch: %zu > %d", example_weights.size(),
         std::numeric_limits<int>::max()));
   }
