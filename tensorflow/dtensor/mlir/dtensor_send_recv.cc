@@ -99,7 +99,7 @@ StatusOr<mlir::Value> GetDeviceOrdinal(const Mesh& mesh,
                                        mlir::OpBuilder* builder,
                                        bool return_int64_type) {
   // Create as many entries as the number of devices in the entire mesh.
-  llvm::SmallVector<int32, 4> device_id_to_ordinal(mesh.num_devices(), 0);
+  llvm::SmallVector<int32_t, 4> device_id_to_ordinal(mesh.num_devices(), 0);
   // Only fill in entries with indices equal to local device IDs. For TPUs,
   // there are usually 8 local devices.
   for (int i = 0; i < mesh.local_device_ids().size(); ++i) {
