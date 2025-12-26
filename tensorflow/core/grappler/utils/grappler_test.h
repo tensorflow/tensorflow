@@ -49,10 +49,10 @@ class GrapplerTest : public ::testing::Test {
 
   std::vector<Tensor> EvaluateFetchNodes(const GrapplerItem& item) const;
 
-  NodeDef* AddNode(const string& name, const string& op,
-                   const std::vector<string>& inputs,
-                   const std::vector<std::pair<string, AttrValue>>& attributes,
-                   GraphDef* graph) const;
+  NodeDef* AddNode(
+      const string& name, const string& op, const std::vector<string>& inputs,
+      const std::vector<std::pair<std::string, AttrValue>>& attributes,
+      GraphDef* graph) const;
 
   void DisableAllOptimizers(RewriterConfig* cfg);
 

@@ -1114,7 +1114,7 @@ TEST_F(MutationTest, ExistingNodesConflictingNames) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'b' exists in "
       "Mutation.";
   EXPECT_EQ(s.message(), expected_error_msg);
