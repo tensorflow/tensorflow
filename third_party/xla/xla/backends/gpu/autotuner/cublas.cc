@@ -58,7 +58,8 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
 
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor());
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       allocator->GetStream(stream_executor()->device_ordinal()));

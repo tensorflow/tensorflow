@@ -109,7 +109,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
                            &target_config, mlir_context);
 
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
   auto profiler =
       GpuProfiler::Create(stream_executor, ProfileOptions(), allocator.get());
