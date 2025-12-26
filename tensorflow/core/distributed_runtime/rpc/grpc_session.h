@@ -55,7 +55,7 @@ class GrpcSession : public Session {
                              std::unique_ptr<GrpcSession>* out_session);
   // Resets the resource containers.
   static absl::Status Reset(const SessionOptions& options,
-                            const std::vector<string>& containers);
+                            const std::vector<std::string>& containers);
 
   ~GrpcSession() override;
 
@@ -69,14 +69,14 @@ class GrpcSession : public Session {
   absl::Status Create(const RunOptions& run_options, GraphDef&& graph) override;
 
   // Runs with and without RunOptions.
-  absl::Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
-                   const std::vector<string>& output_tensor_names,
-                   const std::vector<string>& target_node_names,
+  absl::Status Run(const std::vector<std::pair<std::string, Tensor> >& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
                    std::vector<Tensor>* outputs) override;
   absl::Status Run(const RunOptions& run_options,
-                   const std::vector<std::pair<string, Tensor> >& inputs,
-                   const std::vector<string>& output_tensor_names,
-                   const std::vector<string>& target_node_names,
+                   const std::vector<std::pair<std::string, Tensor> >& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
                    std::vector<Tensor>* outputs,
                    RunMetadata* run_metadata) override;
 
@@ -89,15 +89,15 @@ class GrpcSession : public Session {
   absl::Status Close() override;
 
   // NOTE: This API is still experimental and may change.
-  absl::Status PRunSetup(const std::vector<string>& input_names,
-                         const std::vector<string>& output_names,
-                         const std::vector<string>& target_nodes,
-                         string* handle) override;
+  absl::Status PRunSetup(const std::vector<std::string>& input_names,
+                         const std::vector<std::string>& output_names,
+                         const std::vector<std::string>& target_nodes,
+                         std::string* handle) override;
 
   // NOTE: This API is still experimental and may change.
-  absl::Status PRun(const string& handle,
-                    const std::vector<std::pair<string, Tensor> >& inputs,
-                    const std::vector<string>& output_names,
+  absl::Status PRun(const std::string& handle,
+                    const std::vector<std::pair<std::string, Tensor> >& inputs,
+                    const std::vector<std::string>& output_names,
                     std::vector<Tensor>* outputs) override;
 
   absl::Status ListDevices(std::vector<DeviceAttributes>* response) override;
@@ -114,7 +114,7 @@ class GrpcSession : public Session {
   // Takes ownership of `*master`.
   void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
   // Allows subclasses to customize Session creation.
-  void SetHandleAndGraphVersion(string handle, int64_t graph_version)
+  void SetHandleAndGraphVersion(std::string handle, int64_t graph_version)
       TF_LOCKS_EXCLUDED(mu_);
 
  private:
@@ -123,21 +123,22 @@ class GrpcSession : public Session {
   mutex mu_;
 
   // handle_ returned by the master to identify this session.
-  string handle_ TF_GUARDED_BY(mu_);
+  std::string handle_ TF_GUARDED_BY(mu_);
 
   // The current version of the graph.
   int64_t current_graph_version_ TF_GUARDED_BY(mu_);
 
   bool is_local_ = false;
 
-  absl::Status Handle(string* out_handle) TF_LOCKS_EXCLUDED(mu_);
+  absl::Status Handle(std::string* out_handle) TF_LOCKS_EXCLUDED(mu_);
 
-  absl::Status RunHelper(const RunOptions& run_options,
-                         const std::vector<std::pair<string, Tensor> >& inputs,
-                         const std::vector<string>& output_tensor_names,
-                         const std::vector<string>& target_node_names,
-                         std::vector<Tensor>* outputs,
-                         RunMetadata* run_metadata, const string& prun_handle);
+  absl::Status RunHelper(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor> >& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_node_names,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+      const std::string& prun_handle);
 
   absl::Status RunProto(CallOptions* call_options,
                         MutableRunStepRequestWrapper* req,
