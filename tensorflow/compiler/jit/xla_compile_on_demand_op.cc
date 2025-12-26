@@ -121,9 +121,9 @@ absl::Status XlaCompileOnDemandOp::Run(
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-  std::shared_ptr<se::DeviceMemoryAllocator> allocator_ptr =
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> allocator_ptr =
       GetAllocator(ctx->device(), stream, platform_info_);
-  se::DeviceMemoryAllocator* allocator = allocator_ptr.get();
+  stream_executor::DeviceAddressAllocator* allocator = allocator_ptr.get();
   XlaComputationLaunchContext launch_context(
       client, allocator, client->default_device_ordinal(),
       /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
