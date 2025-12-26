@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/resource_loader.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
