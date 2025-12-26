@@ -179,7 +179,7 @@ __global__ void SparseApplyFtrlKernel(T* var, T* accum, T* linear, const T* lr,
 
 template <typename T>
 __global__ __launch_bounds__(1024) void ApplyAdamKernel(
-    int32 data_dim, T* var, T* m, T* v, const T* const beta1_power_,
+    int32_t data_dim, T* var, T* m, T* v, const T* const beta1_power_,
     const T* const beta2_power_, const T* const lr_, const T* const beta1_,
     const T* const beta2_, const T* const epsilon_, const T* grad,
     bool use_nesterov) {
@@ -195,9 +195,9 @@ __global__ __launch_bounds__(1024) void ApplyAdamKernel(
   const T beta1 = (*beta1_);
   const T one_minus_beta1 = static_cast<T>(1.0) - (beta1);
   const T one_minus_beta2 = static_cast<T>(1.0) - (*beta2_);
-  const int32 stripe = gridDim.x * blockDim.x;
+  const int32_t stripe = gridDim.x * blockDim.x;
 
-  for (int32 i = blockIdx.x * blockDim.x + threadIdx.x; i < data_dim;
+  for (int32_t i = blockIdx.x * blockDim.x + threadIdx.x; i < data_dim;
        i += stripe) {
     auto m_i = m[i];
     auto g_i = grad[i];
@@ -372,7 +372,7 @@ typename T::ConstPointerType to_pointers(const T& x) {
 template <typename T, typename... CallerArgs, typename... KernelArgs>
 void wrap_kernel_call(void (*func)(KernelArgs...), const GPUDevice& d, T var,
                       CallerArgs... args) {
-  int32 data_dim = var.dimension(0);
+  int32_t data_dim = var.dimension(0);
   auto config = GetGpuLaunchConfig(data_dim, d);
   TF_CHECK_OK(GpuLaunchKernel(func, config.block_count, config.thread_per_block,
                               0, d.stream(), config, var.data(),
@@ -429,18 +429,18 @@ struct ApplyAdagradV2<GPUDevice, T> {
 
 template <typename T, typename Tindex, bool has_epsilon>
 struct SparseApplyAdagrad<GPUDevice, T, Tindex, has_epsilon> {
-  Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar epsilon,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
-                    bool update_slots) {
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                          typename TTypes<T>::Matrix accum,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar epsilon,
+                          typename TTypes<T>::ConstMatrix grad,
+                          typename TTypes<Tindex>::ConstVec indices,
+                          int64_t inner_dim, bool update_slots) {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(
@@ -489,19 +489,19 @@ struct ApplyProximalAdagrad<GPUDevice, T> {
 
 template <typename T, typename Tindex>
 struct SparseApplyProximalAdagrad<GPUDevice, T, Tindex> {
-  Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar l1,
-                    typename TTypes<T>::ConstScalar l2,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices,
-                    int64 inner_dim) {
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                          typename TTypes<T>::Matrix accum,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar l1,
+                          typename TTypes<T>::ConstScalar l2,
+                          typename TTypes<T>::ConstMatrix grad,
+                          typename TTypes<Tindex>::ConstVec indices,
+                          int64_t inner_dim) {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(SparseApplyProximalAdagradKernel<T, Tindex>,
@@ -696,22 +696,22 @@ struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T> {
 
 template <typename T, typename Tindex, bool has_l2_shrinkage>
 struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
-  Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::Matrix linear,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar l1,
-                    typename TTypes<T>::ConstScalar l2,
-                    typename TTypes<T>::ConstScalar l2_shrinkage,
-                    typename TTypes<T>::ConstScalar lr_power,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
-                    bool multiply_linear_by_lr) {
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                          typename TTypes<T>::Matrix accum,
+                          typename TTypes<T>::Matrix linear,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar l1,
+                          typename TTypes<T>::ConstScalar l2,
+                          typename TTypes<T>::ConstScalar l2_shrinkage,
+                          typename TTypes<T>::ConstScalar lr_power,
+                          typename TTypes<T>::ConstMatrix grad,
+                          typename TTypes<Tindex>::ConstVec indices,
+                          int64_t inner_dim, bool multiply_linear_by_lr) {
     const Tindex first_dim_size = var.dimension(0);
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // The simpler overload of GetGpuLaunchConfig() would result in a "too many
     // resources requested for launch" error.
@@ -872,7 +872,7 @@ struct ApplyAdam<GPUDevice, T> {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
-    int32 data_dim = grad.dimension(0);
+    int32_t data_dim = grad.dimension(0);
     if (data_dim == 0) {
       return;
     }  // No work load.
@@ -880,7 +880,7 @@ struct ApplyAdam<GPUDevice, T> {
     eigen_assert(static_cast<int64_t>(grad.dimension(0)) +
                      static_cast<int64_t>(config.block_count) *
                          static_cast<int64_t>(config.thread_per_block) <
-                 std::numeric_limits<int32>::max());
+                 std::numeric_limits<int32_t>::max());
 
     TF_CHECK_OK(GpuLaunchKernel(
         ApplyAdamKernel<T>, config.block_count, config.thread_per_block, 0,

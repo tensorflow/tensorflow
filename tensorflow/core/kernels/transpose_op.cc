@@ -224,17 +224,18 @@ TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER)
 #undef REGISTER
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                       gtl::ArraySlice<int32> perm,
-                                       Tensor* out) {
+    absl::Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx,
+                                             const Tensor& in,
+                                             absl::Span<const int32> perm,
+                                             Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<GPUDevice>(), in, perm,
                                    out);
 }
-Status ConjugateTransposeGpuOp::DoTranspose(OpKernelContext* ctx,
-                                            const Tensor& in,
-                                            gtl::ArraySlice<int32> perm,
-                                            Tensor* out) {
+absl::Status ConjugateTransposeGpuOp::DoTranspose(OpKernelContext* ctx,
+                                                  const Tensor& in,
+                                                  absl::Span<const int32> perm,
+                                                  Tensor* out) {
   typedef Eigen::GpuDevice GPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<GPUDevice>(), in,
                                             perm, out);
