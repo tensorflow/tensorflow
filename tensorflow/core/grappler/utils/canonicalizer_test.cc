@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-NodeDef MakeNode(const string& op) {
+NodeDef MakeNode(const std::string& op) {
   NodeDef node;
   node.set_name("node");
   node.set_op(op);
