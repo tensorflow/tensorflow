@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace {
