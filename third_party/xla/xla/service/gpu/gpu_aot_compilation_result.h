@@ -42,7 +42,7 @@ namespace xla::gpu {
 // Unlike `LegacyGpuAotCompilationResult`, this result contains the entire
 // optimized executable, including the Thunks, as opposed to just the optimized
 // HLO.
-class GpuAotCompilationResult : public AotCompilationResult {
+class GpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromProto(
       GpuExecutableProto executable) {
