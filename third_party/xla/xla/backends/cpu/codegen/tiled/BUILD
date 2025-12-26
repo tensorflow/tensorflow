@@ -41,6 +41,7 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/gpu/codegen/triton:tiled_emitter_constraints",
         "//xla/codegen:kernel_definition",
