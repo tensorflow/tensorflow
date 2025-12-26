@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

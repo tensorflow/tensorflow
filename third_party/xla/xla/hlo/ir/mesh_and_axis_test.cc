@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 using ::tsl::proto_testing::EqualsProto;
 
