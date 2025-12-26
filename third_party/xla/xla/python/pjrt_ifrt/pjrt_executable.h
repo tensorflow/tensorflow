@@ -169,7 +169,11 @@ class PjRtExecutable final
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
-    return pjrt_executable_->GetOutputMemoryKinds();
+    DCHECK(this);
+    std::vector<std::vector<absl::string_view>> output_memory_kinds;
+    output_memory_kinds.reserve(1);
+    output_memory_kinds.push_back(output_memory_kinds_);
+    return output_memory_kinds;
   }
 
   static char ID;  // NOLINT
@@ -177,6 +181,7 @@ class PjRtExecutable final
  protected:
   PjRtExecutable(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+      std::vector<int> donatable_input_indices,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
       std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
       std::vector<absl::string_view> output_memory_kinds,
@@ -184,6 +189,8 @@ class PjRtExecutable final
           output_layouts);
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
+
+  std::vector<int> donatable_input_indices_;
 
   // Output array specs.
   std::vector<DType> output_dtypes_;
@@ -209,7 +216,13 @@ class PjRtLoadedExecutable final
       PjRtClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
-      DeviceListRef executable_devices);
+      DeviceListRef executable_devices,
+      std::vector<int> donatable_input_indices,
+      std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+      std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
+      std::vector<absl::string_view> output_memory_kinds,
+      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          output_layouts);
 
   // Creates PjRtExecutable from an MHLO or StableHLO MLIR module. We expect
   // that xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
@@ -245,8 +258,7 @@ class PjRtLoadedExecutable final
 
   absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
       const override {
-    return absl::UnimplementedError(
-        "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
+    return donatable_input_indices_;
   }
 
   UserContextRef user_context() const override { return user_context_; }
@@ -282,10 +294,8 @@ class PjRtLoadedExecutable final
 
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
-  executable_version() const override {
-    return absl::UnimplementedError("Not implemented");
-  }
+  absl::StatusOr<std::unique_ptr<ExecutableVersion>> executable_version()
+      const override;
 
   absl::StatusOr<std::string> Serialize() const override;
 
@@ -321,7 +331,13 @@ class PjRtLoadedExecutable final
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     DCHECK(this);
-    return pjrt_loaded_executable_->GetOutputMemoryKinds();
+    std::vector<std::vector<absl::string_view>> output_memory_kinds(1);
+    output_memory_kinds.front().reserve(output_shardings_.size());
+    for (const auto& output_sharding : output_shardings_) {
+      output_memory_kinds.front().push_back(
+          output_sharding->memory_kind().memory_kind().value_or(""));
+    }
+    return output_memory_kinds;
   }
 
   PjRtClient* client() const override {
@@ -361,6 +377,7 @@ class PjRtLoadedExecutable final
       DeviceListRef devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
+      std::vector<int> donatable_input_indices,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
       std::vector<ShardingRef> output_shardings,
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
@@ -377,6 +394,8 @@ class PjRtLoadedExecutable final
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
+
+  std::vector<int> donatable_input_indices_;
 
   // Output array specs.
   std::vector<DType> output_dtypes_;

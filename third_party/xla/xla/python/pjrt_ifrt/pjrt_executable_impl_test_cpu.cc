@@ -18,9 +18,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
-  // This implementation does not export executables in the standard format yet.
-  static constexpr absl::string_view kFilter =
-      "-ExecutableTest.ExecutableSerialization";
+  static constexpr absl::string_view kFilter = "-";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   testing::InitGoogleTest(&argc, argv);
