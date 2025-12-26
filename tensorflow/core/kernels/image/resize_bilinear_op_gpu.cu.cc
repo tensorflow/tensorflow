@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
+#include <algorithm>
+#include <cmath>
+#include <type_traits>
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU

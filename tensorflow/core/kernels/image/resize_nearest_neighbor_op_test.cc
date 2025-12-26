@@ -16,6 +16,9 @@ limitations under the License.
 // TODO(shlens, sherrym): Consider adding additional tests in image_ops.py in
 // order to compare the reference implementation for image resizing in Python
 // Image Library.
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
