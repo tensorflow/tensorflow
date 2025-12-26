@@ -162,6 +162,7 @@ common --incompatible_enforce_config_setting_visibility
 
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
+common --enable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
