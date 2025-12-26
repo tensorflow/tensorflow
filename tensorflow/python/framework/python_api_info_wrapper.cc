@@ -38,7 +38,7 @@ void InitializeFromParamSpecs(
     PythonAPIInfo* api_info,
     const std::map<std::string, std::string>& input_specs,
     const std::map<std::string, std::string>& attr_specs,
-    const std::vector<string>& param_names, py::handle defaults_tuple) {
+    const std::vector<std::string>& param_names, py::handle defaults_tuple) {
   auto result = api_info->InitializeFromParamSpecs(
       input_specs, attr_specs, param_names, defaults_tuple.ptr());
   if (!result.ok()) {
