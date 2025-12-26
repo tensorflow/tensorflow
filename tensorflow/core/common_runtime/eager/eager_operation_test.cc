@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"

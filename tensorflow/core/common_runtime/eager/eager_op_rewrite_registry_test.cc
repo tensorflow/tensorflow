@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
