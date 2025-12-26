@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 
 #include <algorithm>
-#include <cmath>
+#include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
