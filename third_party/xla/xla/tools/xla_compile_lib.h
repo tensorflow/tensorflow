@@ -41,13 +41,13 @@ namespace xla {
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::GpuTargetConfig> target_config,
-    CompilationResult& result);
+    CompilationResultProto& result);
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
 absl::Status WriteResultFile(absl::string_view result_output_file,
                              TimerStats& stats,
-                             CompilationResult& compilation_result);
+                             CompilationResultProto& compilation_result);
 
 // Loads the HLO, MHLO, or StableHLO module at the given file path.
 absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
