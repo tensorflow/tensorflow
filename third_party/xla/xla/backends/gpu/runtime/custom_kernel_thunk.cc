@@ -102,8 +102,8 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     PrintBufferContents(params.stream, kernel_args);
   }
 
-  se::KernelArgsDeviceMemoryArray args(buffer_args,
-                                       custom_kernel_.shared_memory_bytes());
+  stream_executor::KernelArgsDeviceAddressArray args(
+      buffer_args, custom_kernel_.shared_memory_bytes());
 
   return kernel->Launch(custom_kernel_.thread_dims(),
                         custom_kernel_.block_dims(),
