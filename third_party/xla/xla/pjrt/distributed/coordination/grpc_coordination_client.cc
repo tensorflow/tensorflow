@@ -15,16 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 
-#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
-#include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
-#include "absl/synchronization/mutex.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/generic/generic_stub.h"
