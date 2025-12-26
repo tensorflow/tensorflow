@@ -12760,6 +12760,27 @@ is the corresponding input gradient.
   }];
 }
 
+def TF_RecordEventMetricForTensorOp : TF_Op<"RecordEventMetricForTensor", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = [{
+Records an event to a streamz RecordEventMetric (i.e. distribution) for all the
+  }];
+
+  let description = [{
+values of the input tensors. The streamz can be found at
+/video/youtube/discovery/tensorflow/ops/streamz/events.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to be recorded when this op runs.}]>:$value,
+
+    StrAttr:$label
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {
   let summary = "Receives the named tensor from send_device on recv_device.";
 
