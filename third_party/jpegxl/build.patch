@@ -1,0 +1,11 @@
+diff --git a/lib/BUILD b/lib/BUILD
+index 3d48919..9198da5 100644
+--- a/lib/BUILD
++++ b/lib/BUILD
+@@ -76 +76,5 @@ licenses(["notice"])
+-exports_files(["LICENSE"])
++alias(
++    name = "LICENSE",
++    actual = "@jpegxl//:LICENSE",
++    visibility = ["//visibility:public"],
++)
