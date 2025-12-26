@@ -112,7 +112,7 @@ TEST_F(XlaActivityListenerTest, Test) {
     tensor_3x3.matrix<float>()(i / 3, i % 3) = 5 * i;
   }
 
-  std::vector<std::pair<string, Tensor>> inputs_2x2 = {{"A", tensor_2x2}};
+  std::vector<std::pair<std::string, Tensor>> inputs_2x2 = {{"A", tensor_2x2}};
 
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(session->Run(inputs_2x2, output_names,
@@ -172,7 +172,7 @@ summary {
   EXPECT_EQ(listener()->jit_compilation_activity().cumulative_compile_time_us(),
             first_compile_time);
 
-  std::vector<std::pair<string, Tensor>> inputs_3x3 = {{"A", tensor_3x3}};
+  std::vector<std::pair<std::string, Tensor>> inputs_3x3 = {{"A", tensor_3x3}};
 
   outputs.clear();
   for (int i = 0; i < 3; i++) {
