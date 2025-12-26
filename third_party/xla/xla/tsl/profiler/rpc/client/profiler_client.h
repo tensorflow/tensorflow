@@ -35,6 +35,15 @@ absl::Status ProfileGrpc(const std::string& service_address,
                          const tensorflow::ProfileRequest& request,
                          tensorflow::ProfileResponse* response);
 
+absl::Status ContinuousProfilingGrpc(
+    const std::string& service_address,
+    const tensorflow::ProfileRequest& request,
+    tensorflow::ContinuousProfilingResponse* response);
+
+absl::Status GetSnapshotGrpc(const std::string& service_address,
+                             const tensorflow::GetSnapshotRequest& request,
+                             tensorflow::ProfileResponse* response);
+
 absl::Status NewSessionGrpc(const std::string& service_address,
                             const tensorflow::NewProfileSessionRequest& request,
                             tensorflow::NewProfileSessionResponse* response);
