@@ -123,10 +123,10 @@ namespace functor {
       typename TTypes<float, 4>::Tensor output);                    \
   extern template struct AdjustContrast<GPUDevice, T>;
 
-DECLARE_GPU_SPEC(uint8);
-DECLARE_GPU_SPEC(int8);
-DECLARE_GPU_SPEC(int16);
-DECLARE_GPU_SPEC(int32);
+DECLARE_GPU_SPEC(uint8_t);
+DECLARE_GPU_SPEC(int8_t);
+DECLARE_GPU_SPEC(int16_t);
+DECLARE_GPU_SPEC(int32_t);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
@@ -137,10 +137,10 @@ DECLARE_GPU_SPEC(double);
   REGISTER_KERNEL_BUILDER(                                              \
       Name("AdjustContrast").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       AdjustContrastOp<GPUDevice, T>);
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(int16);
-REGISTER_GPU_KERNEL(int32);
+REGISTER_GPU_KERNEL(uint8_t);
+REGISTER_GPU_KERNEL(int8_t);
+REGISTER_GPU_KERNEL(int16_t);
+REGISTER_GPU_KERNEL(int32_t);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL

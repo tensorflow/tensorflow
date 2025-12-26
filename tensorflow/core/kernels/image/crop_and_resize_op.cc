@@ -821,7 +821,7 @@ TF_CALL_double(REGISTER_KERNEL);
 namespace functor {
 template <>
 void CheckValidBoxIndexHelper<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<int32, 1>::ConstTensor box_index,
+    const GPUDevice& d, typename TTypes<int32_t, 1>::ConstTensor box_index,
     int batch_size, typename TTypes<bool, 0>::Tensor isvalid);
 extern template struct CheckValidBoxIndexHelper<GPUDevice>;
 }  // namespace functor
@@ -831,8 +831,9 @@ namespace {
 // Specialization of CheckValidBoxIndex for a GPUDevice.
 template <>
 inline void RunIfBoxIndexIsValid<GPUDevice>(
-    OpKernelContext* context, typename TTypes<int32, 1>::ConstTensor box_index,
-    int batch_size, const Callback& compute, const Callback& done) {
+    OpKernelContext* context,
+    typename TTypes<int32_t, 1>::ConstTensor box_index, int batch_size,
+    const Callback& compute, const Callback& done) {
   const int num_boxes = box_index.dimension(0);
   if (num_boxes == 0) {
     compute();
@@ -868,7 +869,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       context->allocate_temp(DataTypeToEnum<bool>::value, TensorShape({}),
                              &isvalid_host_tensor, alloc_attr),
       done);
-  se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
+  stream_executor::DeviceAddressBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
           ->Memcpy(isvalid_host_tensor.scalar<bool>().data() /* destination */,
