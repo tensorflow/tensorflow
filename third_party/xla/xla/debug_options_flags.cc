@@ -471,7 +471,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_detect_unstable_reductions_post_optimizations(
       DebugOptions::DETECTION_MODE_NONE);
-  opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
+  opts.set_xla_gpu_experimental_scaled_dot_with_triton(true);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
 
   opts.add_xla_gpu_experimental_autotune_backends(
