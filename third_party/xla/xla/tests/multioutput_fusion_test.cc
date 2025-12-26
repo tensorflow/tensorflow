@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
@@ -378,22 +380,35 @@ TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
 TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
-      p0 = f32[32,32,2]{2,1,0} parameter(0)
+      p0 = f32[$0,$0,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
-      r1 = f32[32,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
-      mul = f32[32,32,2]{2,1,0} multiply(p0, p0)
+      r1 = f32[$0,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
+      mul = f32[$0,$0,2]{2,1,0} multiply(p0, p0)
       c1 = f32[] constant(5)
-      r2 = f32[32,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
-      ROOT tuple = (f32[32,2]{1,0}, f32[32,32,2]{2,1,0}, f32[32,2]{1,0})
+      r2 = f32[$0,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
+      ROOT tuple = (f32[$0,2]{1,0}, f32[$0,$0,2]{2,1,0}, f32[$0,2]{1,0})
                      tuple(r1, mul, r2)
     }
 
     ENTRY reduce {
-      p = f32[32,32,2]{2,1,0} parameter(0)
-      ROOT fusion = (f32[32,2]{1,0}, f32[32,32,2]{2,1,0}, f32[32,2]{1,0})
+      p = f32[$0,$0,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[$0,2]{1,0}, f32[$0,$0,2]{2,1,0}, f32[$0,2]{1,0})
         fusion(p), kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).value();
+
+  // This test requires the input tensor's dimensions to match the warp size of
+  // a target architecture (which could be different on ROCM). This is because
+  // the decision on whether to Elemental IR Emitter for reductions
+  // (IsUnnestedReductionFasterThanElemental) is based on the warp size.
+  TF_ASSERT_OK_AND_ASSIGN(auto* platform, PlatformUtil::GetDefaultPlatform());
+  int warp_size = 32;
+  if (absl::AsciiStrToUpper(platform->Name()) == "ROCM") {
+    TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+    warp_size = desc->threads_per_warp();
+  }
+
+  std::string hlo = absl::Substitute(testcase, warp_size);
+  auto module = ParseAndReturnVerifiedModule(hlo).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 

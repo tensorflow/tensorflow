@@ -3477,6 +3477,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:platform_util",
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
