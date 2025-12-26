@@ -67,7 +67,7 @@ std::string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version) {
   return DriverVersionToString(version.value());
 }
 
-absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
+absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
     return absl::InvalidArgumentError(absl::StrFormat(
@@ -99,18 +99,18 @@ absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   }
 
   DriverVersion result{major, minor, patch};
-  VLOG(2) << "version string \"" << value << "\" made value "
-          << DriverVersionToString(result);
+  LOG(ERROR) << "version string \"" << value << "\" made value "
+             << DriverVersionToString(result);
   return result;
 }
 
 void PrintLdLibraryPathIntoVlog() {
-  const char *value = std::getenv("LD_LIBRARY_PATH");
+  const char* value = std::getenv("LD_LIBRARY_PATH");
   std::string library_path = value == nullptr ? "" : value;
-  VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
+  LOG(ERROR) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
   std::vector<std::string> pieces = absl::StrSplit(library_path, ':');
-  for (const auto &piece : pieces) {
+  for (const auto& piece : pieces) {
     if (piece.empty()) {
       continue;
     }
@@ -118,19 +118,19 @@ void PrintLdLibraryPathIntoVlog() {
     absl::Status status =
         tsl::Env::Default()->GetChildren(piece, &dir_children);
     if (!status.ok()) {
-      VLOG(1) << "could not open \"" << piece << "\": " << status;
+      LOG(ERROR) << "could not open \"" << piece << "\": " << status;
       continue;
     }
-    for (const std::string &filename : dir_children) {
-      VLOG(1) << piece << " :: " << filename;
+    for (const std::string& filename : dir_children) {
+      LOG(ERROR) << piece << " :: " << filename;
     }
   }
 }
 
 #if !defined(PLATFORM_WINDOWS)
-static const char *kDriverVersionPath = "/proc/driver/nvidia/version";
+static const char* kDriverVersionPath = "/proc/driver/nvidia/version";
 #else
-static const char *kDriverVersionPath = "NO NVIDIA DRIVER VERSION FILE";
+static const char* kDriverVersionPath = "NO NVIDIA DRIVER VERSION FILE";
 #endif
 
 // -- class Diagnostician
@@ -142,57 +142,57 @@ std::string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
 void Diagnostician::LogDiagnosticInformation() {
 #if !defined(PLATFORM_WINDOWS)
   if (access(kDriverVersionPath, F_OK) != 0) {
-    VLOG(1) << "kernel driver does not appear to be running on this host "
-            << "(" << tsl::port::Hostname() << "): "
-            << "/proc/driver/nvidia/version does not exist";
+    LOG(ERROR) << "kernel driver does not appear to be running on this host "
+               << "(" << tsl::port::Hostname() << "): "
+               << "/proc/driver/nvidia/version does not exist";
     return;
   }
   auto dev0_path = GetDevNodePath(0);
   if (access(dev0_path.c_str(), F_OK) != 0) {
-    VLOG(1) << "no NVIDIA GPU device is present: " << dev0_path
-            << " does not exist";
+    LOG(ERROR) << "no NVIDIA GPU device is present: " << dev0_path
+               << " does not exist";
     return;
   }
 #endif
 
-  const char *visible_devices_env = std::getenv("CUDA_VISIBLE_DEVICES");
+  const char* visible_devices_env = std::getenv("CUDA_VISIBLE_DEVICES");
   if (visible_devices_env != nullptr) {
-    LOG(INFO) << "env: CUDA_VISIBLE_DEVICES=\"" << visible_devices_env << "\"";
+    LOG(ERROR) << "env: CUDA_VISIBLE_DEVICES=\"" << visible_devices_env << "\"";
     std::set<std::string> common_disable_gpu_values = {"", "-1", "none"};
     if (common_disable_gpu_values.count(visible_devices_env)) {
-      LOG(INFO) << "CUDA_VISIBLE_DEVICES is set to "
-                << (std::string{} == visible_devices_env ? "an empty string"
-                                                         : visible_devices_env)
-                << " - this hides all GPUs from CUDA";
+      LOG(ERROR) << "CUDA_VISIBLE_DEVICES is set to "
+                 << (std::string{} == visible_devices_env ? "an empty string"
+                                                          : visible_devices_env)
+                 << " - this hides all GPUs from CUDA";
     }
   }
 
   if (!VLOG_IS_ON(1)) {
-    LOG(INFO) << "verbose logging is disabled. Rerun with verbose logging "
-                 "(usually --v=1 or --vmodule=cuda_diagnostics=1) to get more "
-                 "diagnostic output from this module";
+    LOG(ERROR) << "verbose logging is disabled. Rerun with verbose logging "
+                  "(usually --v=1 or --vmodule=cuda_diagnostics=1) to get more "
+                  "diagnostic output from this module";
   }
 
-  LOG(INFO) << "retrieving CUDA diagnostic information for host: "
-            << tsl::port::Hostname();
+  LOG(ERROR) << "retrieving CUDA diagnostic information for host: "
+             << tsl::port::Hostname();
 
   LogDriverVersionInformation();
 }
 
 /* static */ void Diagnostician::LogDriverVersionInformation() {
-  LOG(INFO) << "hostname: " << tsl::port::Hostname();
+  LOG(ERROR) << "hostname: " << tsl::port::Hostname();
 #ifndef PLATFORM_WINDOWS
   if (VLOG_IS_ON(1)) {
     cuda::PrintLdLibraryPathIntoVlog();
   }
 
   absl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
-  LOG(INFO) << "libcuda reported version is: "
-            << cuda::DriverVersionStatusToString(dso_version);
+  LOG(ERROR) << "libcuda reported version is: "
+             << cuda::DriverVersionStatusToString(dso_version);
 
   absl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
-  LOG(INFO) << "kernel reported version is: "
-            << cuda::DriverVersionStatusToString(kernel_version);
+  LOG(ERROR) << "kernel reported version is: "
+             << cuda::DriverVersionStatusToString(kernel_version);
 
   if (kernel_version.ok() && dso_version.ok()) {
     WarnOnDsoKernelMismatch(dso_version, kernel_version);
@@ -210,26 +210,30 @@ absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 #if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
-  auto iterate_phdr = [](struct dl_phdr_info *info, size_t size,
-                         void *data) -> int {
+  auto iterate_phdr = [](struct dl_phdr_info* info, size_t size,
+                         void* data) -> int {
+    LOG(ERROR) << "iterate_phdr: " << info->dlpi_name;
     if (!strstr(info->dlpi_name, "libcuda.so.1")) {
       return 0;
     }
 
-    VLOG(1) << "found CUDA DLL info with name: " << info->dlpi_name;
+    LOG(ERROR) << "found CUDA DLL info with name: " << info->dlpi_name;
     char resolved_path_buf[PATH_MAX] = {0};
     if (realpath(info->dlpi_name, resolved_path_buf) == nullptr) {
+      LOG(ERROR) << "realpath failed for: " << info->dlpi_name;
       return 0;
     }
     absl::string_view resolved_path(resolved_path_buf);
-    VLOG(1) << "found DLL info with resolved path: " << resolved_path;
+    LOG(ERROR) << "found DLL info with resolved path: " << resolved_path;
     size_t slash = resolved_path.rfind('/');
     if (slash == absl::string_view::npos) {
+      LOG(ERROR) << "slash not found in resolved path: " << resolved_path;
       return 0;
     }
     absl::string_view so_suffix = ".so.";
     size_t dot = resolved_path.find(so_suffix, slash);
     if (dot == absl::string_view::npos) {
+      LOG(ERROR) << "dot not found in resolved path: " << resolved_path;
       return 0;
     }
 
@@ -237,7 +241,7 @@ absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
         resolved_path.substr(dot + so_suffix.size());
     absl::string_view stripped_dso_version =
         absl::StripSuffix(dso_version, ".ld64");
-    auto result = static_cast<absl::StatusOr<DriverVersion> *>(data);
+    auto result = static_cast<absl::StatusOr<DriverVersion>*>(data);
     *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
     return 1;
   };
@@ -249,8 +253,8 @@ absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 }
 
 absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
-    const std::string &driver_version_file_contents) {
-  static const char *kDriverFilePrelude = "Kernel Module";
+    const std::string& driver_version_file_contents) {
+  static const char* kDriverFilePrelude = "Kernel Module";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
     return absl::NotFoundError(
@@ -258,7 +262,7 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
   }
-  static const char *kDriverVersionPrelude = "  ";
+  static const char* kDriverVersionPrelude = "  ";
   offset = driver_version_file_contents.find(kDriverVersionPrelude, offset);
   if (offset == std::string::npos) {
     return absl::NotFoundError(
@@ -281,8 +285,8 @@ void Diagnostician::WarnOnDsoKernelMismatch(
     absl::StatusOr<DriverVersion> kernel_version) {
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.value() == kernel_version.value()) {
-    LOG(INFO) << "kernel version seems to match DSO: "
-              << cuda::DriverVersionToString(kernel_version.value());
+    LOG(ERROR) << "kernel version seems to match DSO: "
+               << cuda::DriverVersionToString(kernel_version.value());
   } else {
     LOG(ERROR) << "kernel version "
                << cuda::DriverVersionStatusToString(kernel_version)
@@ -293,7 +297,7 @@ void Diagnostician::WarnOnDsoKernelMismatch(
 }
 
 absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
-  FILE *driver_version_file = fopen(kDriverVersionPath, "r");
+  FILE* driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
     return absl::PermissionDeniedError(
         absl::StrCat("could not open driver version path for reading: ",
@@ -310,8 +314,8 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   contents[kContentsSize - 1] = '\0';
 
   if (retcode != 0) {
-    VLOG(1) << "driver version file contents: \"\"\"" << contents.begin()
-            << "\"\"\"";
+    LOG(ERROR) << "driver version file contents: \"\"\"" << contents.begin()
+               << "\"\"\"";
     fclose(driver_version_file);
     return FindKernelModuleVersion(contents.begin());
   }
