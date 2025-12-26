@@ -704,12 +704,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     }
 
     bool is_variable = tensor->is_variable();
-    if (buffer_ptr) {
+    if (buffer_ptr || tensor->external_buffer() != 0) {
       if (is_variable) {
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Tensor %d is a variable tensor with buffer. "
-                             "It's not supported now.\n",
-                             i);
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Tensor %d is a variable tensor with buffer or external buffer. "
+            "It's not supported now.\n",
+            i);
         status = kTfLiteError;
       }
 
