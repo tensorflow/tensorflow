@@ -247,7 +247,7 @@ std::string IfrtIrExecutableVersion::ToString() const {
             llvm::dyn_cast<XlaExecutableVersion>(runtime_abi_version.get())) {
       runtime_abi_version_strs.push_back(absl::StrCat(
           "{platform_id=", xla_executable_version->platform_id,
-          ", runtime_abi_version=", xla_executable_version->runtime_abi_version,
+          ", runtime_abi_version=", xla_executable_version->ToString(),
           ", devices=[",
           absl::StrJoin(atom_devices, ",",
                         [](std::string* out, xla::ifrt::DeviceId device_id) {

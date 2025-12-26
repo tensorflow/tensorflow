@@ -27,14 +27,17 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/xla_runtime_abi_version.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace ifrt {
 
 [[maybe_unused]] char XlaExecutableVersion::ID = 0;
 
-XlaExecutableVersion::XlaExecutableVersion(uint64_t platform_id,
-                                           std::string runtime_abi_version)
+XlaExecutableVersion::XlaExecutableVersion(
+    uint64_t platform_id,
+    std::unique_ptr<XlaRuntimeAbiVersion> runtime_abi_version)
     : platform_id(platform_id),
       runtime_abi_version(std::move(runtime_abi_version)) {}
 
@@ -43,11 +46,13 @@ bool XlaExecutableVersion::IsCompatibleWith(
   if (this == &other) {
     return true;
   }
-  if (auto other_xla_executable_version =
+  if (auto* other_xla_executable_version =
           llvm::dyn_cast<XlaExecutableVersion>(&other)) {
-    return platform_id == other_xla_executable_version->platform_id &&
-           runtime_abi_version ==
-               other_xla_executable_version->runtime_abi_version;
+    if (platform_id != other_xla_executable_version->platform_id) {
+      return false;
+    }
+    return runtime_abi_version->IsCompatibleWith(
+        *other_xla_executable_version->runtime_abi_version);
   }
   return false;
 }
@@ -64,7 +69,10 @@ absl::Status XlaExecutableVersion::ToProto(
   executable_version_proto.Clear();
   executable_version_proto.set_version_number(SerDesVersionNumber(0).value());
   executable_version_proto.set_platform_id(platform_id);
-  executable_version_proto.set_runtime_abi_version(runtime_abi_version);
+  ASSIGN_OR_RETURN(std::string serialized_runtime_abi_version,
+                   runtime_abi_version->Serialize());
+  executable_version_proto.set_runtime_abi_version(
+      serialized_runtime_abi_version);
 
   return absl::OkStatus();
 }
@@ -77,8 +85,11 @@ XlaExecutableVersion::FromProto(const SerializedXlaExecutableVersion& proto) {
         absl::StrCat("Unsupported ", version_number,
                      " for XlaExecutableVersion deserialization"));
   }
-  return std::make_unique<XlaExecutableVersion>(proto.platform_id(),
-                                                proto.runtime_abi_version());
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<XlaRuntimeAbiVersion> xla_runtime_abi_version,
+      XlaRuntimeAbiVersion::Deserialize(proto.runtime_abi_version()));
+  return std::make_unique<XlaExecutableVersion>(
+      proto.platform_id(), std::move(xla_runtime_abi_version));
 }
 
 absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> ToXlaExecutableVersion(
