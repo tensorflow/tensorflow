@@ -38,7 +38,7 @@ class GraphOptimizer {
   GraphOptimizer() : deadline_usec_(0) {}
   virtual ~GraphOptimizer() {}
 
-  virtual string name() const = 0;
+  virtual std::string name() const = 0;
 
   // Returns true if the optimizer requires a valid function library to perform
   // graph optimization. If false, optimized GrapplerItem will have a stub
@@ -67,16 +67,16 @@ class GraphOptimizer {
 
   // Set deadline in microseconds since epoch. A value of zero means no
   // deadline.
-  void set_deadline_usec(uint64 deadline_usec) {
+  void set_deadline_usec(uint64_t deadline_usec) {
     deadline_usec_ = deadline_usec;
   }
-  uint64 deadline_usec() const { return deadline_usec_; }
+  uint64_t deadline_usec() const { return deadline_usec_; }
   bool DeadlineExceeded() const {
     return deadline_usec_ > 0 && Env::Default()->NowMicros() > deadline_usec_;
   }
 
  private:
-  uint64 deadline_usec_;
+  uint64_t deadline_usec_;
 };
 
 #define GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED()                \
