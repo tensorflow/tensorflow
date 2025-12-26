@@ -59,18 +59,18 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RangeInitKernel(const T start, const T delta, const int32 size,
-                                T* out) {
+__global__ void RangeInitKernel(const T start, const T delta,
+                                const int32_t size, T* out) {
   GPU_1D_KERNEL_LOOP(i, size) { out[i] = start + i * delta; }
 }
 
-__global__ void MoveValuesKernel(const int32* keys, const int32* values,
-                                 const int32* size, int32 out_size,
-                                 int32* out) {
-  int32 N = min(ldg(size), out_size);
+__global__ void MoveValuesKernel(const int32_t* keys, const int32_t* values,
+                                 const int32_t* size, int32_t out_size,
+                                 int32_t* out) {
+  int32_t N = min(ldg(size), out_size);
   GPU_1D_KERNEL_LOOP(i, N) {
-    int32 key = ldg(keys + i);
-    int32 value = ldg(values + i);
+    int32_t key = ldg(keys + i);
+    int32_t value = ldg(values + i);
     if (FastBoundsCheck(key, out_size)) out[key] = value;
   }
 }
@@ -79,7 +79,7 @@ __global__ void MoveValuesKernel(const int32* keys, const int32* values,
 // This is needed because tf.range has no GPU implementation.
 template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
-               const int32 size, typename TTypes<T>::Flat out) {
+               const int32_t size, typename TTypes<T>::Flat out) {
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
   TF_CHECK_OK(GpuLaunchKernel(RangeInitKernel<T>, config.block_count,
                               config.thread_per_block, 0, d.stream(), start,
@@ -88,8 +88,8 @@ void RangeInit(const GPUDevice& d, const T start, const T delta,
 
 // Given *num_runs pairs (key, value), this function moves the value
 // corresponding to key i at position i in the array out.
-void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
-                int32 out_size, int32* out) {
+void MoveValues(const GPUDevice& d, int32_t* keys, int32_t* values,
+                int32_t* num_runs, int32_t out_size, int32_t* out) {
   // Because num_runs is located on the GPU, we can not access it directly.
   // So we launch the kernel with size = out_size.
   // This is valid for correct inputs, because then out_size >= *num_runs.
@@ -102,7 +102,7 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
 }
 
 struct IdentityOp {
-  __device__ int32 __forceinline__ operator()(const int32& a) const {
+  __device__ int32_t __forceinline__ operator()(const int32_t& a) const {
     return a;
   }
 };
@@ -110,22 +110,22 @@ struct IdentityOp {
 // Define an output iterator that only allows assignment to
 // positions between [base, base + limit).
 class BoundedOutputIterator
-    : public TransformOutputIterator<int32, int32, IdentityOp> {
+    : public TransformOutputIterator<int32_t, int32_t, IdentityOp> {
  private:
-  int32 limit;
-  int32* base;
+  int32_t limit;
+  int32_t* base;
 
   struct BoundedReference : Reference {
-    int32 limit;
-    int32* base;
+    int32_t limit;
+    int32_t* base;
     // Constructor
     __host__ __device__ __forceinline__
-    BoundedReference(int32* __restrict__ ptr, int32* __restrict__ base,
-                     IdentityOp op, int32 limit)
+    BoundedReference(int32_t* __restrict__ ptr, int32_t* __restrict__ base,
+                     IdentityOp op, int32_t limit)
         : Reference(ptr, op), limit(limit), base(base) {}
 
     // Assignment
-    __host__ __device__ __forceinline__ int32 operator=(int32 val) {
+    __host__ __device__ __forceinline__ int32_t operator=(int32_t val) {
       if (ptr - base < limit && ptr - base >= 0) *ptr = val;
       return val;
     }
@@ -136,12 +136,12 @@ class BoundedOutputIterator
   typedef BoundedReference reference;
 
   __host__ __device__ __forceinline__
-  BoundedOutputIterator(int32* __restrict__ ptr, IdentityOp op, int32 size)
+  BoundedOutputIterator(int32_t* __restrict__ ptr, IdentityOp op, int32_t size)
       : TransformOutputIterator(ptr, op), limit(size), base(ptr) {}
 
   __host__ __device__ __forceinline__
-  BoundedOutputIterator(int32* __restrict__ ptr, int32* __restrict__ base,
-                        IdentityOp op, int32 size)
+  BoundedOutputIterator(int32_t* __restrict__ ptr, int32_t* __restrict__ base,
+                        IdentityOp op, int32_t size)
       : TransformOutputIterator(ptr, op), limit(size), base(base) {}
 
   // Indirection
@@ -150,18 +150,18 @@ class BoundedOutputIterator
   }
 
   // Array subscript
-  __host__ __device__ __forceinline__ reference operator[](int32 n) const {
+  __host__ __device__ __forceinline__ reference operator[](int32_t n) const {
     return BoundedReference(ptr + n, base, conversion_op, limit);
   }
 
   // Addition
-  __host__ __device__ __forceinline__ self_type operator+(int32 n) const {
+  __host__ __device__ __forceinline__ self_type operator+(int32_t n) const {
     self_type retval(ptr + n, base, conversion_op, limit);
     return retval;
   }
 
   // Subtraction
-  __host__ __device__ __forceinline__ self_type operator-(int32 n) const {
+  __host__ __device__ __forceinline__ self_type operator-(int32_t n) const {
     self_type retval(ptr - n, base, conversion_op, limit);
     return retval;
   }
@@ -186,10 +186,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                 errors::InvalidArgument("num_partitions must be at least 1"));
   }
 
-  void AllocateTempSpace(OpKernelContext* c, int32 N, Tensor* indices_in,
+  void AllocateTempSpace(OpKernelContext* c, int32_t N, Tensor* indices_in,
                          Tensor* partitions_out, Tensor* indices_out,
                          DoneCallback done) {
-    int32 M = std::max(N, num_partitions_);
+    int32_t M = std::max(N, num_partitions_);
     // indices_in will be made slightly larger to accommodate
     // later computations.
     OP_REQUIRES_OK_ASYNC(
@@ -203,7 +203,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
   void AllocateOutputs(OpKernelContext* c, const Tensor* data,
                        const Tensor* partitions, const Tensor* partition_count,
                        OpOutputList* Tout, DoneCallback done) {
-    auto e_part_count = partition_count->flat<int32>();
+    auto e_part_count = partition_count->flat<int32_t>();
     // Allocate output tensors of the right size
     OP_REQUIRES_OK_ASYNC(c, c->output_list("outputs", Tout), done);
     for (int p = 0; p < num_partitions_; p++) {
@@ -241,7 +241,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
           c->allocate_temp(DT_INT32, TensorShape({num_partitions_}),
                            &partition_count, alloc_attr),
           done);
-      auto e_part_count = partition_count.flat<int32>();
+      auto e_part_count = partition_count.flat<int32_t>();
       for (int i = 0; i < num_partitions_; i++) e_part_count(i) = 0;
       OpOutputList outputs;
       this->AllocateOutputs(c, &data, &partitions, &partition_count, &outputs,
@@ -278,12 +278,13 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         c->allocate_temp(partition_count.dtype(), partition_count.shape(),
                          &cpu_tensor, alloc_attr),
         done);
-    se::DeviceMemoryBase wrapped(partition_count.flat<int32>().data(),
-                                 num_partitions_ * sizeof(int32));
+    stream_executor::DeviceAddressBase wrapped(
+        partition_count.flat<int32_t>().data(),
+        num_partitions_ * sizeof(int32_t));
     OP_REQUIRES_OK_ASYNC(
         c,
-        stream->Memcpy(cpu_tensor.flat<int32>().data(), wrapped,
-                       num_partitions_ * sizeof(int32)),
+        stream->Memcpy(cpu_tensor.flat<int32_t>().data(), wrapped,
+                       num_partitions_ * sizeof(int32_t)),
         done);
 
     // Keep a reference to partition_count so that the buffer
@@ -304,8 +305,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
           partition_ref.Unref();
           return;
         }
-        int32 N = partitions.NumElements();
-        int64 slice_size = data.NumElements() / N;
+        int32_t N = partitions.NumElements();
+        int64_t slice_size = data.NumElements() / N;
         this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
         partition_ref.Unref();
       }  // Release ActivateContext to prevent deadlock when done
@@ -323,23 +324,23 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
   void RadixSort(OpKernelContext* c, const Tensor* partitions,
                  Tensor* indices_in, Tensor* partitions_out,
                  Tensor* indices_out, DoneCallback done) {
-    int32 N = partitions->NumElements();
+    int32_t N = partitions->NumElements();
     const GPUDevice& device = c->eigen_device<GPUDevice>();
     const auto& cu_stream = GetGpuStream(c);
 
     // Initialize the indices_in tensor using the Range GPU kernel.
-    RangeInit(device, 0, 1, N, indices_in->flat<int32>());
+    RangeInit(device, 0, 1, N, indices_in->flat<int32_t>());
     // Obtain the pointers to inner buffers.
-    const int32* partitions_ptr = partitions->flat<int32>().data();
-    int32* partitions_out_ptr = partitions_out->flat<int32>().data();
-    int32* indices_in_ptr = indices_in->flat<int32>().data();
-    int32* indices_out_ptr = indices_out->flat<int32>().data();
+    const int32_t* partitions_ptr = partitions->flat<int32_t>().data();
+    int32_t* partitions_out_ptr = partitions_out->flat<int32_t>().data();
+    int32_t* indices_in_ptr = indices_in->flat<int32_t>().data();
+    int32_t* indices_out_ptr = indices_out->flat<int32_t>().data();
     // Determine temporary device storage requirements.
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
     auto gpuResult = gpuprim::DeviceRadixSort::SortPairs(
         NULL, temp_storage_bytes, partitions_ptr, partitions_out_ptr,
-        indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
+        indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32_t) * 8, cu_stream);
 
     OP_REQUIRES(
         c, gpuResult == gpuSuccess,
@@ -356,9 +357,9 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         done);
     // Radix-sort the partition information.
     gpuResult = gpuprim::DeviceRadixSort::SortPairs(
-        cub_temp_storage.flat<int8>().data(), temp_storage_bytes,
+        cub_temp_storage.flat<int8_t>().data(), temp_storage_bytes,
         partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N,
-        0, sizeof(int32) * 8, cu_stream);
+        0, sizeof(int32_t) * 8, cu_stream);
 
     OP_REQUIRES(
         c, gpuResult == gpuSuccess,
@@ -373,7 +374,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                          DoneCallback done) {
     const GPUDevice& device = c->eigen_device<GPUDevice>();
     const auto& cu_stream = GetGpuStream(c);
-    int32 N = partitions->NumElements();
+    int32_t N = partitions->NumElements();
     Tensor indices_in;
     Tensor partitions_out;
     Tensor aggregates_out;
@@ -389,8 +390,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // each index appears in partitions.
 
     // Zero-out the partition_count tensor.
-    functor::SetZeroFunctor<GPUDevice, int32> zero_functor;
-    zero_functor(device, partition_count->flat<int32>());
+    functor::SetZeroFunctor<GPUDevice, int32_t> zero_functor;
+    zero_functor(device, partition_count->flat<int32_t>());
     // Allocate memory for aggregates_out.
     OP_REQUIRES_OK_ASYNC(
         c,
@@ -398,10 +399,10 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                          &aggregates_out),
         done);
     // Obtain the pointers to inner buffers.
-    int32* keys_in_ptr = partitions_out.flat<int32>().data();
+    int32_t* keys_in_ptr = partitions_out.flat<int32_t>().data();
     // Here we reuse the indices_in tensor for the unique keys output.
-    int32* unique_out_ptr = indices_in.flat<int32>().data();
-    int32* aggregates_out_ptr = aggregates_out.flat<int32>().data();
+    int32_t* unique_out_ptr = indices_in.flat<int32_t>().data();
+    int32_t* aggregates_out_ptr = aggregates_out.flat<int32_t>().data();
     // We wrap the pointers in bounded output iterators to guard against
     // wrong inputs (more than num_partitions distinct indices).
     IdentityOp id_op;
@@ -411,7 +412,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
 
 #if GOOGLE_CUDA
 #if THRUST_VERSION >= 200802
-    thrust::constant_iterator<int32> values_in(1);
+    thrust::constant_iterator<int32_t> values_in(1);
 #else
     cub::ConstantInputIterator<int32> values_in(1);
 #endif
@@ -426,7 +427,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     Tensor num_runs;
     OP_REQUIRES_OK_ASYNC(
         c, c->allocate_temp(DT_INT32, TensorShape({1}), &num_runs), done);
-    int32* num_runs_ptr = num_runs.flat<int32>().data();
+    int32_t* num_runs_ptr = num_runs.flat<int32_t>().data();
 
     // Determine temporary device storage requirements
     Tensor cub_temp_storage;
@@ -453,7 +454,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // in unique_out, while the count is stored in aggregates_out.
     // The total number of distinct indices is stored in num_runs.
     gpuResult = gpuprim::DeviceReduce::ReduceByKey(
-        cub_temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in_ptr,
+        cub_temp_storage.flat<int8_t>().data(), temp_storage_bytes, keys_in_ptr,
         unique_out_it, values_in, aggregates_out_it, num_runs_ptr, reduction_op,
         N, cu_stream);
 
@@ -468,20 +469,20 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // to the corresponding position in partition_count. This will handle
     // possibly empty parts.
     MoveValues(device, unique_out_ptr, aggregates_out_ptr, num_runs_ptr,
-               num_partitions_, partition_count->flat<int32>().data());
+               num_partitions_, partition_count->flat<int32_t>().data());
   }  // At this point indices_in, partitions_out, aggregates_out
      // and cub_temp_storage will be marked for deallocation.
 
   void GatherSlices(OpKernelContext* c, const Tensor* data,
-                    const Tensor* indices, int32 N, int64 slice_size,
+                    const Tensor* indices, int32_t N, int64_t slice_size,
                     OpOutputList& outs) {
     const GPUDevice& device = c->eigen_device<GPUDevice>();
-    const int32* ind_base = indices->flat<int32>().data();
+    const int32_t* ind_base = indices->flat<int32_t>().data();
     const T* data_base = data->flat<T>().data();
 
     for (int p = 0; p < num_partitions_; p++) {
-      int32 indices_size = outs[p]->dim_size(0);
-      int64 out_size = outs[p]->NumElements();
+      int32_t indices_size = outs[p]->dim_size(0);
+      int64_t out_size = outs[p]->NumElements();
       T* out_base = outs[p]->flat<T>().data();
       if (out_size > 0)
         TF_CHECK_OK(LaunchGatherKernel</*is_axis_zero = */ true>(
@@ -491,7 +492,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     }
   }
 
-  int32 num_partitions_;
+  int32_t num_partitions_;
 };
 
 #define REGISTER_DYNAMIC_PARTITION_GPU(T)                                 \

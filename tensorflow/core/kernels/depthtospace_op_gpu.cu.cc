@@ -30,7 +30,7 @@ using GPUDevice = Eigen::GpuDevice;
 // Depth2Space kernel for FORMAT_NHWC.
 // See 'depthtospace_op.h' for a more detailed description.
 template <typename dtype>
-__global__ void D2S_NHWC(const int32 nthreads,
+__global__ void D2S_NHWC(const int32_t nthreads,
                          const dtype* __restrict__ input_ptr,
                          const int block_size, const int batch_size,
                          const int input_height, const int input_width,
@@ -61,7 +61,7 @@ __global__ void D2S_NHWC(const int32 nthreads,
 // Depth2Space kernel for FORMAT_NCHW.
 // See 'spacetodepth_op.h' for a more detailed description.
 template <typename dtype>
-__global__ void D2S_NCHW(const int32 nthreads,
+__global__ void D2S_NCHW(const int32_t nthreads,
                          const dtype* __restrict__ input_ptr,
                          const int block_size, const int input_width,
                          const int output_depth_by_input_height,
@@ -98,7 +98,7 @@ __global__ void D2S_NCHW(const int32 nthreads,
 }
 
 template <typename dtype, int block_size>
-__global__ void D2S_NCHW_LOOP(const int32 nthreads,
+__global__ void D2S_NCHW_LOOP(const int32_t nthreads,
                               const dtype* __restrict__ input,
                               const int input_width, const int output_width,
                               const int output_depth_by_input_area,
