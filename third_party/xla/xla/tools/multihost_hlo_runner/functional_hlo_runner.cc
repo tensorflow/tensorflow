@@ -950,7 +950,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
             MakeFakeArguments(my_hlo_module, kUseRandomInputs,
                               /*use_large_range=*/false,
                               /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+                              /*max_bits_of_precision=*/std::nullopt,
+                              running_options.argument_integer_range, engine));
         CHECK_EQ(tupled_argument_literals.size(), 1);
         CHECK(tupled_argument_literals.front().shape().IsTuple());
         argument_literals = tupled_argument_literals.front().DecomposeTuple();
@@ -960,7 +961,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
             MakeFakeArguments(my_hlo_module, kUseRandomInputs,
                               /*use_large_range=*/false,
                               /*treat_gte_as_data_formatting=*/false,
-                              /*max_bits_of_precision=*/std::nullopt, engine));
+                              /*max_bits_of_precision=*/std::nullopt,
+                              running_options.argument_integer_range, engine));
       }
       if (kUseSharedInputs) {
         break;
