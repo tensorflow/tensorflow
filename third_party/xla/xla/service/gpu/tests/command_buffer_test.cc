@@ -911,7 +911,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   // Flatten tuple parameter into individual leaves for PJRT replicated execute.
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
   ASSERT_EQ(results.size(), 2);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));
