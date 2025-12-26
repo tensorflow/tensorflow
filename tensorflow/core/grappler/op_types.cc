@@ -127,8 +127,8 @@ bool IsBroadcastTo(const NodeDef& node) { return node.op() == "BroadcastTo"; }
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
 bool IsCastLike(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kCastLikeOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kCastLikeOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "Angle", "Bucketize", "Cast", "Dequantize", "HistogramFixedWidth",
           "Imag", "IsFinite", "IsInf", "IsNan", "Quantize",
           "QuantizeDownAndShrinkRange", "QuantizeV2", "QuantizedInstanceNorm",
@@ -227,15 +227,16 @@ bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
 // e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
 // e.g. inv.
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
-  static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kMonotonicNonDecreasingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
           "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
           "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
           "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
-  static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
+  static const gtl::FlatSet<std::string>* const kMonotonicNonIncreasingOps =
+      CHECK_NOTNULL(
+          (new gtl::FlatSet<std::string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
@@ -607,8 +608,8 @@ bool IsTanh(const NodeDef& node) { return node.op() == "Tanh"; }
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
 bool IsTensorArray(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kTensorArrayOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kTensorArrayOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "TensorArray",
           "TensorArrayV2",
           "TensorArrayV3",
@@ -672,7 +673,7 @@ bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
 namespace {
-bool GetBoolAttr(const NodeDef& node, const string& name) {
+bool GetBoolAttr(const NodeDef& node, const std::string& name) {
   return node.attr().count(name) > 0 && node.attr().at(name).b();
 }
 }  // namespace
@@ -697,7 +698,7 @@ bool HasRefInput(const NodeDef& node) {
 }
 
 bool IsDataset(const NodeDef& node) {
-  const string& op = node.op();
+  const std::string& op = node.op();
   // See `GetNodeClassForOp` in core/graph/graph.cc.
   return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
          op == "DatasetToSingleElement" || op == "ReduceDataset";
@@ -705,7 +706,7 @@ bool IsDataset(const NodeDef& node) {
 
 bool IsStateful(const NodeDef& node, const OpRegistryInterface* op_registry) {
   const OpDef* op_def = nullptr;
-  const string& op_name = node.op();
+  const std::string& op_name = node.op();
   absl::Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to lookup OpDef for " << op_name
@@ -726,7 +727,7 @@ bool IsFreeOfSideEffect(const NodeDef& node,
     return false;
   }
   const OpDef* op_def = nullptr;
-  const string& op_name = node.op();
+  const std::string& op_name = node.op();
   absl::Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
@@ -741,7 +742,7 @@ bool IsFreeOfSideEffect(const NodeDef& node,
     }
   }
   // Queue ops modify the queue which is a side effect.
-  if (node.op().find("Queue") != string::npos) {
+  if (node.op().find("Queue") != std::string::npos) {
     return false;
   }
   // Sending a tensor via a network is a side effect.
@@ -757,7 +758,7 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  const string& op_name = node.op();
+  const std::string& op_name = node.op();
 
   // Ops that modify resource variables effectively modify one of their inputs.
   if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
@@ -796,9 +797,9 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kInvolutionOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{"Conj", "Reciprocal", "Invert",
-                                              "Neg", "LogicalNot"}));
+  static const gtl::FlatSet<std::string>* const kInvolutionOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
+          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
   return kInvolutionOps->count(node.op()) > 0;
 }
 
@@ -806,18 +807,19 @@ bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const gtl::FlatSet<string>* const kValueAndOrderAndShapePreservingOps =
-      CHECK_NOTNULL((new const gtl::FlatSet<string>{
-          "CheckNumerics",
-          "DebugGradientIdentity",
-          "DeepCopy",
-          "Enter",
-          "Exit",
-          "PreventGradient",
-          "Print",
-          "Snapshot",
-          "StopGradient",
-      }));
+  static const gtl::FlatSet<std::string>* const
+      kValueAndOrderAndShapePreservingOps =
+          CHECK_NOTNULL((new const gtl::FlatSet<std::string>{
+              "CheckNumerics",
+              "DebugGradientIdentity",
+              "DeepCopy",
+              "Enter",
+              "Exit",
+              "PreventGradient",
+              "Print",
+              "Snapshot",
+              "StopGradient",
+          }));
   return kValueAndOrderAndShapePreservingOps->count(node.op()) > 0 ||
          IsIdentity(node);
 }
@@ -826,8 +828,8 @@ bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const gtl::FlatSet<string>* const kValueAndOrderPreservingOps =
-      CHECK_NOTNULL((new const gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kValueAndOrderPreservingOps =
+      CHECK_NOTNULL((new const gtl::FlatSet<std::string>{
           "ExpandDims",
           "Reshape",
           "Squeeze",
@@ -837,8 +839,8 @@ bool IsValueAndOrderPreserving(const NodeDef& node) {
 }
 
 bool IsValuePreserving(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kValuePreservingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kValuePreservingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "InvertPermutation",
           "Reverse",
           "ReverseV2",
@@ -856,8 +858,8 @@ bool IsValuePreserving(const NodeDef& node) {
 }
 
 bool IsUnaryElementWise(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kElementWiseOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
+  static const gtl::FlatSet<std::string>* const kElementWiseOps =
+      CHECK_NOTNULL((new gtl::FlatSet<std::string>{
           "Abs",      "Acos",     "Acosh",      "Asin",       "Asinh",
           "Atan",     "Atanh",    "Ceil",       "ComplexAbs", "Conj",
           "Cos",      "Cosh",     "Digamma",    "Elu",        "Erf",
@@ -884,112 +886,113 @@ bool IsIdempotent(const NodeDef& node) {
 }
 
 bool NeverForwardsInputs(const NodeDef& node) {
-  static const gtl::FlatSet<string>* const kNonForwardingOps = CHECK_NOTNULL(
-      (new gtl::FlatSet<string>{"ArgMax",
-                                "ArgMin",
-                                "AudioSpectrogram",
-                                "AvgPool",
-                                "BatchMatMul",
-                                "BatchMatMulV2",
-                                "BatchNormWithGlobalNormalization",
-                                "BatchToSpace",
-                                "BatchToSpaceND",
-                                "Bincount",
-                                "BroadcastArgs",
-                                "BroadcastGradientArgs",
-                                "Bucketize",
-                                "CTCBeamSearchDecoder",
-                                "CTCGreedyDecoder",
-                                "CTCLoss",
-                                "CompareAndBitpack",
-                                "ComplexAbs",
-                                "Concat",
-                                "ConcatOffset",
-                                "ConcatV2",
-                                "Conv2D",
-                                "Copy",
-                                "CopyHost",
-                                "Cross",
-                                "CudnnRNN",
-                                "CudnnRNNBackprop",
-                                "CudnnRNNBackpropV2",
-                                "CudnnRNNBackpropV3",
-                                "CudnnRNNCanonicalToParams",
-                                "CudnnRNNCanonicalToParamsV2",
-                                "CudnnRNNParamsSize",
-                                "CudnnRNNParamsToCanonical",
-                                "CudnnRNNParamsToCanonicalV2",
-                                "CudnnRNNV2",
-                                "CudnnRNNV3",
-                                "CumProd",
-                                "CumSum",
-                                "DebugNanCount",
-                                "DebugNumericSummary",
-                                "DecodeProtoV2",
-                                "DecodeWav",
-                                "DeepCopy",
-                                "DepthToSpace",
-                                "Dequantize",
-                                "Diag",
-                                "DiagPart",
-                                "EditDistance",
-                                "Empty",
-                                "EncodeProtoV2",
-                                "EncodeWav",
-                                "ExtractImagePatches",
-                                "ExtractVolumePatches",
-                                "Fill",
-                                "Gather",
-                                "GatherNd",
-                                "GatherV2",
-                                "HistogramFixedWidth",
-                                "InvertPermutation",
-                                "IsInf",
-                                "IsNan",
-                                "Isfinite",
-                                "LinSpace",
-                                "LowerBound",
-                                "MatMul",
-                                "MatrixDiag",
-                                "MatrixDiagPart",
-                                "MatrixDiagPartV2",
-                                "MatrixDiagV2",
-                                "Mfcc",
-                                "Multinomial",
-                                "OneHot",
-                                "Pack",
-                                "ParameterizedTruncatedNormal",
-                                "PopulationCount",
-                                "RandomGamma",
-                                "RandomPoisson",
-                                "RandomPoissonV2",
-                                "RandomStandardNormal",
-                                "RandomUniform",
-                                "RandomUniformInt",
-                                "Range",
-                                "Rank",
-                                "RequantizationRange",
-                                "Requantize",
-                                "ReverseSequence",
-                                "Shape",
-                                "ShapeN",
-                                "Size",
-                                "SpaceToBatch",
-                                "SpaceToBatchND",
-                                "SpaceToDepth",
-                                "SparseMatMul",
-                                "Split",
-                                "SplitV",
-                                "TruncatedNormal",
-                                "Unique",
-                                "UniqueV2",
-                                "UniqueWithCounts",
-                                "UniqueWithCountsV2",
-                                "Unpack",
-                                "UnravelIndex",
-                                "UpperBound",
-                                "Where"}));
-  const string& op_name = node.op();
+  static const gtl::FlatSet<std::string>* const kNonForwardingOps =
+      CHECK_NOTNULL(
+          (new gtl::FlatSet<std::string>{"ArgMax",
+                                         "ArgMin",
+                                         "AudioSpectrogram",
+                                         "AvgPool",
+                                         "BatchMatMul",
+                                         "BatchMatMulV2",
+                                         "BatchNormWithGlobalNormalization",
+                                         "BatchToSpace",
+                                         "BatchToSpaceND",
+                                         "Bincount",
+                                         "BroadcastArgs",
+                                         "BroadcastGradientArgs",
+                                         "Bucketize",
+                                         "CTCBeamSearchDecoder",
+                                         "CTCGreedyDecoder",
+                                         "CTCLoss",
+                                         "CompareAndBitpack",
+                                         "ComplexAbs",
+                                         "Concat",
+                                         "ConcatOffset",
+                                         "ConcatV2",
+                                         "Conv2D",
+                                         "Copy",
+                                         "CopyHost",
+                                         "Cross",
+                                         "CudnnRNN",
+                                         "CudnnRNNBackprop",
+                                         "CudnnRNNBackpropV2",
+                                         "CudnnRNNBackpropV3",
+                                         "CudnnRNNCanonicalToParams",
+                                         "CudnnRNNCanonicalToParamsV2",
+                                         "CudnnRNNParamsSize",
+                                         "CudnnRNNParamsToCanonical",
+                                         "CudnnRNNParamsToCanonicalV2",
+                                         "CudnnRNNV2",
+                                         "CudnnRNNV3",
+                                         "CumProd",
+                                         "CumSum",
+                                         "DebugNanCount",
+                                         "DebugNumericSummary",
+                                         "DecodeProtoV2",
+                                         "DecodeWav",
+                                         "DeepCopy",
+                                         "DepthToSpace",
+                                         "Dequantize",
+                                         "Diag",
+                                         "DiagPart",
+                                         "EditDistance",
+                                         "Empty",
+                                         "EncodeProtoV2",
+                                         "EncodeWav",
+                                         "ExtractImagePatches",
+                                         "ExtractVolumePatches",
+                                         "Fill",
+                                         "Gather",
+                                         "GatherNd",
+                                         "GatherV2",
+                                         "HistogramFixedWidth",
+                                         "InvertPermutation",
+                                         "IsInf",
+                                         "IsNan",
+                                         "Isfinite",
+                                         "LinSpace",
+                                         "LowerBound",
+                                         "MatMul",
+                                         "MatrixDiag",
+                                         "MatrixDiagPart",
+                                         "MatrixDiagPartV2",
+                                         "MatrixDiagV2",
+                                         "Mfcc",
+                                         "Multinomial",
+                                         "OneHot",
+                                         "Pack",
+                                         "ParameterizedTruncatedNormal",
+                                         "PopulationCount",
+                                         "RandomGamma",
+                                         "RandomPoisson",
+                                         "RandomPoissonV2",
+                                         "RandomStandardNormal",
+                                         "RandomUniform",
+                                         "RandomUniformInt",
+                                         "Range",
+                                         "Rank",
+                                         "RequantizationRange",
+                                         "Requantize",
+                                         "ReverseSequence",
+                                         "Shape",
+                                         "ShapeN",
+                                         "Size",
+                                         "SpaceToBatch",
+                                         "SpaceToBatchND",
+                                         "SpaceToDepth",
+                                         "SparseMatMul",
+                                         "Split",
+                                         "SplitV",
+                                         "TruncatedNormal",
+                                         "Unique",
+                                         "UniqueV2",
+                                         "UniqueWithCounts",
+                                         "UniqueWithCountsV2",
+                                         "Unpack",
+                                         "UnravelIndex",
+                                         "UpperBound",
+                                         "Where"}));
+  const std::string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
          absl::StrContains(op_name, "Segment") ||
          absl::StartsWith(op_name, "Quantize");
