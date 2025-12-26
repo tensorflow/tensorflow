@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "google/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
