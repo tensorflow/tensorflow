@@ -27,6 +27,7 @@ limitations under the License.
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 #ifdef SWIG
+hackhackhack
 using tsl::OkStatus;
 using tsl::Status;
 #else

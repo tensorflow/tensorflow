@@ -124,6 +124,7 @@ enum class TFRNNInputMode {
 };
 
 namespace {
+using absl::StatusOr;
 using se::DeviceMemory;
 using se::DeviceMemoryBase;
 using se::ScratchAllocator;
@@ -136,7 +137,6 @@ using se::dnn::RnnMode;
 using se::dnn::RnnSequenceTensorDescriptor;
 using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
-using tsl::StatusOr;
 
 absl::StatusOr<stream_executor::dnn::DnnSupport*> GetDnn(Stream* stream) {
   auto dnn = stream->parent()->AsDnn();

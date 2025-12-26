@@ -51,13 +51,13 @@ limitations under the License.
 namespace mlir {
 namespace hlo {
 
+using ::absl::Status;
+using ::absl::StatusOr;
 using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
 using ::mlir::OpBuilder;
 using ::mlir::Operation;
 using ::mlir::func::FuncOp;
-using ::tsl::Status;
-using ::tsl::StatusOr;
 using ::xla::ReplicaGroup;
 using ::xla::ShapeUtil;
 using ::xla::XlaBuilder;

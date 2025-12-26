@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,8 +33,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tsl::Status;
-using tsl::StatusOr;
+using Status ABSL_DEPRECATE_AND_INLINE() = ::absl::Status;
+
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 struct GraphdefToMlirOptions {
   std::string debug_info_file;

@@ -34,7 +34,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 namespace se_tpu = ::stream_executor::tpu;
-using tsl::Status;
+using absl::Status;
 }  // namespace
 
 TPUExecutableInfoProto TpuProgramGroup::ConstructExecutableInfo(

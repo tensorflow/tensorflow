@@ -95,9 +95,9 @@ namespace mlir {
 namespace hlo {
 namespace {
 
+using absl::StatusOr;
 using ::mlir::ModuleOp;
 using ::tensorflow::Tensor;
-using ::tsl::StatusOr;
 using ::xla::XlaComputation;
 
 // The OpOrArgLocNameMapper adds invalid characters to the name of the op when

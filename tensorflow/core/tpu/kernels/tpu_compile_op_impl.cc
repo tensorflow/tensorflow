@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-using tsl::StatusOr;
+using absl::StatusOr;
 
 absl::Status TpuCompileOpKernelImpl::Compile(
     const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
