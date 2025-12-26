@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/computation_canonicalizers.h"
 
+#include <cstddef>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
