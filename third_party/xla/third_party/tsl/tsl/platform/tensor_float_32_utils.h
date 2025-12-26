@@ -20,6 +20,15 @@ namespace tsl {
 
 // NOTE: The usage of this function is only supported through the Tensorflow
 // framework.
+// If TensorFloat-32 is enabled, float32 inputs of supported ops, such as
+// `tf.linalg.matmul`, will be rounded from 23 bits of precision to 10 bits of
+// precision in most cases. This allows the ops to execute much faster by
+// utilizing the GPU's tensor cores. TensorFloat-32 has the same dynamic range
+// as float32, meaning it is no more likely to underflow or overflow than
+// float32. Ops still use float32 accumulation when TensorFloat-32 is enabled.
+// Enabling or disabling TensorFloat-32 only affects Ampere GPUs and above.
+// See enable_tensor_float_32_execution in python/framework/config.py for more
+// details.
 void enable_tensor_float_32_execution(bool enabled);
 
 bool tensor_float_32_execution_enabled();
