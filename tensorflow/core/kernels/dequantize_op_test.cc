@@ -64,7 +64,7 @@ class DequantizeOpTest : public OpsTestBase {
   // to not use eigen gives equivalent results to using eigen.
   template <typename T>
   void RunDequantizeMinCombinedTest(float min_range, float max_range,
-                                    const string& op_name) {
+                                    const std::string& op_name) {
     TF_ASSERT_OK(NodeDefBuilder("dequantize_op", op_name)
                      .Input(FakeInput(DataTypeToEnum<T>::v()))
                      .Input(FakeInput(DT_FLOAT))
@@ -129,7 +129,7 @@ class DequantizeOpTest : public OpsTestBase {
   template <typename T>
   std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                         const std::vector<T>& data) {
-    uint32 seed = 123;
+    uint32_t seed = 123;
     std::minstd_rand rng(seed);
     int64_t out_size = 1;
     for (int dim : dims) {

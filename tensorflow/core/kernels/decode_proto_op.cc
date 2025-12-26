@@ -65,16 +65,16 @@ const bool kFailOnDecodeError = true;
 // type of the output tensor.
 struct DefaultValue {
   DataType dtype = DataType::DT_INVALID;
-  absl::variant<bool,     // DT_BOOL
-                double,   // DT_DOUBLE
-                float,    // DT_FLOAT
-                int8,     // DT_INT8
-                int32,    // DT_INT32
-                int64_t,  // DT_INT64
-                tstring,  // DT_STRING
-                uint8,    // DT_UINT8
-                uint32,   // DT_UINT32
-                uint64>   // DT_UINT64
+  absl::variant<bool,      // DT_BOOL
+                double,    // DT_DOUBLE
+                float,     // DT_FLOAT
+                int8_t,    // DT_INT8
+                int32_t,   // DT_INT32
+                int64_t,   // DT_INT64
+                tstring,   // DT_STRING
+                uint8_t,   // DT_UINT8
+                uint32_t,  // DT_UINT32
+                uint64_t>  // DT_UINT64
       value;
 };
 
@@ -100,22 +100,22 @@ absl::Status InitDefaultValue(DataType dtype, const T value,
       result->value = static_cast<float>(value);
       break;
     case DT_INT8:
-      result->value = static_cast<int8>(value);
+      result->value = static_cast<int8_t>(value);
       break;
     case DT_INT32:
-      result->value = static_cast<int32>(value);
+      result->value = static_cast<int32_t>(value);
       break;
     case DT_INT64:
       result->value = static_cast<int64_t>(value);
       break;
     case DT_UINT8:
-      result->value = static_cast<uint8>(value);
+      result->value = static_cast<uint8_t>(value);
       break;
     case DT_UINT32:
-      result->value = static_cast<uint32>(value);
+      result->value = static_cast<uint32_t>(value);
       break;
     case DT_UINT64:
-      result->value = static_cast<uint64>(value);
+      result->value = static_cast<uint64_t>(value);
       break;
     default:
       // We should never get here, given the type checking that occurs earlier.
@@ -245,7 +245,7 @@ class CountCollector {
   CountCollector() = delete;
 
   // The count may be stored inside an Eigen Tensor to eliminate copying.
-  explicit CountCollector(int32* count) : count_ptr_(count) {}
+  explicit CountCollector(int32_t* count) : count_ptr_(count) {}
 
   // Reads (in this case counts) a single value.
   absl::Status ReadValue(CodedInputStream* input, const FieldInfo& field) {
@@ -275,7 +275,7 @@ class CountCollector {
     // This is safe because the underlying storage for the CodedInputStream is
     // owned by the input tensor. If it were a Cord or file-backed stream this
     // pointer would go stale after the bytes were skipped.
-    const uint8* buf = reinterpret_cast<const uint8*>(tmpbuf);
+    const uint8_t* buf = reinterpret_cast<const uint8_t*>(tmpbuf);
 
     // Important: we skipped the input->{Push,Pop}Limit() calls for speed,
     // so the bounds check on buf_size inside Skip() is critical, and
@@ -304,10 +304,10 @@ class CountCollector {
         st = CountPackedVarint(buf, buf_size);
         break;
       case WireFormatLite::TYPE_FIXED64:
-        st = CountPackedFixed<uint64>(buf, buf_size);
+        st = CountPackedFixed<uint64_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_FIXED32:
-        st = CountPackedFixed<uint32>(buf, buf_size);
+        st = CountPackedFixed<uint32_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_BOOL:
         st = CountPackedVarint(buf, buf_size);
@@ -331,7 +331,7 @@ class CountCollector {
         st = CountPackedVarint(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED32:
-        st = CountPackedFixed<int32>(buf, buf_size);
+        st = CountPackedFixed<int32_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED64:
         st = CountPackedFixed<int64_t>(buf, buf_size);
@@ -357,7 +357,7 @@ class CountCollector {
  private:
   // Skips a length-delimited value.
   static bool SkipBytes(CodedInputStream* input) {
-    uint32 length;
+    uint32_t length;
     if (!input->ReadVarint32(&length)) {
       return false;
     }
@@ -367,8 +367,8 @@ class CountCollector {
   // Counts the number of packed varints in an array. The end of a varint is
   // signaled by a value < 0x80, so counting them requires parsing the
   // bytestream. It is the caller's responsibility to ensure that len > 0.
-  absl::Status CountPackedVarint(const uint8* buf, size_t len) {
-    const uint8* bound = buf + len;
+  absl::Status CountPackedVarint(const uint8_t* buf, size_t len) {
+    const uint8_t* bound = buf + len;
     int count;
 
     // The last byte in a valid encoded varint is guaranteed to have the high
@@ -381,7 +381,7 @@ class CountCollector {
 
     // Now we can trust ReadVarint64FromArray to stay in bounds.
     for (count = 0; buf < bound; ++count) {
-      uint64 temp;
+      uint64_t temp;
       bool ok;
       buf = internal::ReadVarint64FromArray(buf, &ok, &temp);
       if (!ok) {
@@ -396,7 +396,7 @@ class CountCollector {
   // Counts the number of fixed-size values in a packed field. This can be done
   // without actually parsing anything.
   template <typename T>
-  absl::Status CountPackedFixed(const uint8* unused_buf, size_t len) {
+  absl::Status CountPackedFixed(const uint8_t* unused_buf, size_t len) {
     int count = len / sizeof(T);
     if (count * sizeof(T) != len) {
       return errors::DataLoss(
@@ -410,7 +410,7 @@ class CountCollector {
   // typed field skipper based on the schema type tag. This is not as permissive
   // as just handling the wire type.
   static bool SkipValue(CodedInputStream* input, const FieldInfo& field) {
-    uint32 tmp32;
+    uint32_t tmp32;
     protobuf_uint64 tmp64;
     switch (field.type) {
       case WireFormatLite::TYPE_DOUBLE:
@@ -455,7 +455,7 @@ class CountCollector {
     }
   }
 
-  int32* count_ptr_ = nullptr;
+  int32_t* count_ptr_ = nullptr;
 };
 
 // A DenseCollector accumulates values from a proto into a tensor.
@@ -473,7 +473,8 @@ class DenseCollector {
 
   // A DenseCollector applies to one field of a serialized message.
   // Note that default_value.dtype is the type of the output tensor.
-  DenseCollector(uint8* datap, DefaultValue default_value, int max_repeat_count)
+  DenseCollector(uint8_t* datap, DefaultValue default_value,
+                 int max_repeat_count)
       : datap_(datap),
         default_value_(default_value),
         max_repeat_count_(max_repeat_count) {}
@@ -542,19 +543,19 @@ class DenseCollector {
       case DataType::DT_DOUBLE:
         return FillDefault(absl::get<double>(default_value_.value));
       case DataType::DT_INT8:
-        return FillDefault(absl::get<int8>(default_value_.value));
+        return FillDefault(absl::get<int8_t>(default_value_.value));
       case DataType::DT_INT32:
-        return FillDefault(absl::get<int32>(default_value_.value));
+        return FillDefault(absl::get<int32_t>(default_value_.value));
       case DataType::DT_INT64:
         return FillDefault(absl::get<int64_t>(default_value_.value));
       case DataType::DT_STRING:
         return FillDefault(absl::get<tstring>(default_value_.value));
       case DataType::DT_UINT8:
-        return FillDefault(absl::get<uint8>(default_value_.value));
+        return FillDefault(absl::get<uint8_t>(default_value_.value));
       case DataType::DT_UINT32:
-        return FillDefault(absl::get<uint32>(default_value_.value));
+        return FillDefault(absl::get<uint32_t>(default_value_.value));
       case DataType::DT_UINT64:
-        return FillDefault(absl::get<uint64>(default_value_.value));
+        return FillDefault(absl::get<uint64_t>(default_value_.value));
       default:
         // There are many tensorflow dtypes not handled here, but they
         // should not come up unless type casting is added to the Op.
@@ -576,7 +577,7 @@ class DenseCollector {
     return absl::OkStatus();
   }
 
-  int32 next_repeat_index_ = 0;
+  int32_t next_repeat_index_ = 0;
 
   // This is a pointer to data_[message_index_]. There is no bounds checking at
   // this level: we computed the max repeat size for each field in
@@ -591,7 +592,7 @@ class DenseCollector {
 class DecodeProtoOp : public OpKernel {
  public:
   explicit DecodeProtoOp(OpKernelConstruction* context) : OpKernel(context) {
-    string descriptor_source;
+    std::string descriptor_source;
     OP_REQUIRES_OK(context,
                    context->GetAttr("descriptor_source", &descriptor_source));
 
@@ -601,7 +602,7 @@ class DecodeProtoOp : public OpKernel {
     OP_REQUIRES_OK(context, GetDescriptorPool(context->env(), descriptor_source,
                                               &desc_pool, &owned_desc_pool_));
 
-    string message_type;
+    std::string message_type;
     OP_REQUIRES_OK(context, context->GetAttr("message_type", &message_type));
 
     const Descriptor* message_desc =
@@ -610,7 +611,7 @@ class DecodeProtoOp : public OpKernel {
                 errors::InvalidArgument("No descriptor found for message type ",
                                         message_type));
 
-    std::vector<string> field_names;
+    std::vector<std::string> field_names;
     OP_REQUIRES_OK(context, context->GetAttr("field_names", &field_names));
     std::vector<DataType> output_types;
     OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_types));
@@ -623,9 +624,9 @@ class DecodeProtoOp : public OpKernel {
     int field_index = 0;
     std::vector<const FieldDescriptor*> field_descs;
     std::vector<const FieldDescriptor*> exts;
-    absl::flat_hash_map<string, const FieldDescriptor*> ext_name_to_field;
+    absl::flat_hash_map<std::string, const FieldDescriptor*> ext_name_to_field;
     std::vector<const FieldDescriptor*>::iterator ext_it = exts.begin();
-    for (const string& name : field_names) {
+    for (const std::string& name : field_names) {
       auto fd = message_desc->FindFieldByName(name);
       if (fd == nullptr) {
         // If field can't be found in original message, try to find a matching
@@ -701,7 +702,7 @@ class DecodeProtoOp : public OpKernel {
     OP_REQUIRES(context, message_prototype_ != nullptr,
                 errors::InvalidArgument("Couldn't get prototype message: ",
                                         message_desc->full_name()));
-    string format;
+    std::string format;
     OP_REQUIRES_OK(context, context->GetAttr("message_format", &format));
     OP_REQUIRES(
         context, format == "binary" || format == "text",
@@ -769,7 +770,7 @@ class DecodeProtoOp : public OpKernel {
     // conditional when handling the output data. The caller can distinguish
     // between real data and defaults using the repeat count matrix that is
     // returned by decode_proto.
-    std::vector<int32> max_sizes(field_count, 1);
+    std::vector<int32_t> max_sizes(field_count, 1);
     for (int mi = 0; mi < message_count; ++mi) {
       CountFields(ctx, mi, *bufs[mi], sizes_tensor, &max_sizes);
       if (!ctx->status().ok()) {
@@ -826,13 +827,13 @@ class DecodeProtoOp : public OpKernel {
 
   // Count the number of occurrences of each requested field in a message batch.
   void CountFields(OpKernelContext* ctx, int message_index, const tstring& buf,
-                   Tensor* sizes_tensor, std::vector<int32>* max_sizes) {
+                   Tensor* sizes_tensor, std::vector<int32_t>* max_sizes) {
     int field_count = fields_.size();
 
-    CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
+    CodedInputStream input(reinterpret_cast<const uint8_t*>(buf.c_str()),
                            buf.size());
 
-    std::vector<int32> field_sizes(field_count, 0);
+    std::vector<int32_t> field_sizes(field_count, 0);
     std::vector<CountCollector> counters;
     counters.reserve(field_count);
     for (int i = 0; i < field_count; i++) {
@@ -860,7 +861,7 @@ class DecodeProtoOp : public OpKernel {
     }
 
     // Update the size tensor and max repeat size for each field.
-    auto sizes = sizes_tensor->flat_inner_dims<int32>();
+    auto sizes = sizes_tensor->flat_inner_dims<int32_t>();
     for (int fi = 0; fi < field_count; fi++) {
       int32_t size = field_sizes[fi];
       sizes(message_index, fields_[fi]->output_index) = size;
@@ -889,18 +890,18 @@ class DecodeProtoOp : public OpKernel {
           stride = last_dim_size * element_size;
 
           const int64_t flatshape[1] = {tensor->NumElements() * element_size};
-          data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
+          data = tensor->bit_casted_shaped<uint8_t, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
           stride = last_dim_size * sizeof(tstring);
-          data = reinterpret_cast<uint8*>(tensor->flat<tstring>().data());
+          data = reinterpret_cast<uint8_t*>(tensor->flat<tstring>().data());
         }
       }
 
       DataType dtype;
       int last_dim_size;
       int stride;
-      uint8* data;
+      uint8_t* data;
     };
 
     int field_count = fields_.size();
@@ -926,7 +927,7 @@ class DecodeProtoOp : public OpKernel {
       }
 
       // Fill in output tensors from the wire.
-      CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
+      CodedInputStream input(reinterpret_cast<const uint8_t*>(buf.c_str()),
                              buf.size());
       absl::Status st = Collect(&input, absl::MakeSpan(collectors));
       if (st.ok() && !input.ConsumedEntireMessage()) {
@@ -965,7 +966,7 @@ class DecodeProtoOp : public OpKernel {
     auto expected_field_info_iter = fields_.begin();
 
     // The 'tag' variable should always be treated as tainted.
-    for (uint32 tag = input->ReadTag();
+    for (uint32_t tag = input->ReadTag();
          tag != 0 && WireFormatLite::GetTagWireType(tag) !=
                          WireFormatLite::WIRETYPE_END_GROUP;
          tag = input->ReadTag()) {
@@ -1074,7 +1075,7 @@ class DecodeProtoOp : public OpKernel {
     return collector->ReadValue(input, field);
   }
 
-  string message_type_;
+  std::string message_type_;
   // Note that fields are sorted by increasing field number, which is not in
   // general the order given by the user-specified field_names and output_types
   // Op attributes.

@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 template <typename T>
-inline void CopyToBuffer(const T& value, uint8* output) {
+inline void CopyToBuffer(const T& value, uint8_t* output) {
   // Memcpy to string is endian-dependent. We choose little-endian as
   // standard. On big-endian machines, bytes should be reversed.
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -40,12 +40,12 @@ inline void CopyToBuffer(const T& value, uint8* output) {
 #endif
 }
 
-void FarmhashFingerprint64(TTypes<uint8, 2>::ConstTensor input,
-                           TTypes<uint8, 2>::Matrix output) {
+void FarmhashFingerprint64(TTypes<uint8_t, 2>::ConstTensor input,
+                           TTypes<uint8_t, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
-  DCHECK_EQ(output.dimension(1), sizeof(uint64));
+  DCHECK_EQ(output.dimension(1), sizeof(uint64_t));
   for (int64_t i = 0; i < output.dimension(0); ++i) {
-    const uint64 fingerprint =
+    const uint64_t fingerprint =
         Fingerprint64({reinterpret_cast<const char*>(&input(i, 0)),
                        static_cast<std::size_t>(input.dimension(1))});
     CopyToBuffer(fingerprint, &output(i, 0));
@@ -53,11 +53,11 @@ void FarmhashFingerprint64(TTypes<uint8, 2>::ConstTensor input,
 }
 
 void FarmhashFingerprint64(TTypes<tstring>::ConstFlat input,
-                           TTypes<uint8, 2>::Matrix output) {
+                           TTypes<uint8_t, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
-  DCHECK_EQ(output.dimension(1), sizeof(uint64));
+  DCHECK_EQ(output.dimension(1), sizeof(uint64_t));
   for (int64_t i = 0; i < input.dimension(0); ++i) {
-    const uint64 fingerprint =
+    const uint64_t fingerprint =
         Fingerprint64({input(i).data(), input(i).size()});
     CopyToBuffer(fingerprint, &output(i, 0));
   }
@@ -115,24 +115,25 @@ class FingerprintOp : public OpKernel {
         // and each row contains the fingerprint value of corresponding string.
         // To compute fingerprints of multiple strings, this op fingerprints the
         // buffer containing the string fingerprints.
-        FarmhashFingerprint64(input.flat<tstring>(), temp.tensor<uint8, 2>());
-        FarmhashFingerprint64(static_cast<const Tensor&>(temp).shaped<uint8, 2>(
-                                  {dim0, dim1 * kFingerprintSize}),
-                              output->matrix<uint8>());
+        FarmhashFingerprint64(input.flat<tstring>(), temp.tensor<uint8_t, 2>());
+        FarmhashFingerprint64(
+            static_cast<const Tensor&>(temp).shaped<uint8_t, 2>(
+                {dim0, dim1 * kFingerprintSize}),
+            output->matrix<uint8_t>());
       } else {
         // In case dim1 == 1, each string computes into its own fingerprint
         // value. There is no need to fingerprint twice.
-        FarmhashFingerprint64(input.flat<tstring>(), output->matrix<uint8>());
+        FarmhashFingerprint64(input.flat<tstring>(), output->matrix<uint8_t>());
       }
     } else {
-      auto data = input.bit_casted_shaped<uint8, 2>(
+      auto data = input.bit_casted_shaped<uint8_t, 2>(
           {dim0, dim1 * DataTypeSize(input.dtype())});
-      FarmhashFingerprint64(data, output->matrix<uint8>());
+      FarmhashFingerprint64(data, output->matrix<uint8_t>());
     }
   }
 
  private:
-  static constexpr int kFingerprintSize = sizeof(uint64);
+  static constexpr int kFingerprintSize = sizeof(uint64_t);
 };
 
 REGISTER_KERNEL_BUILDER(Name("Fingerprint").Device(tensorflow::DEVICE_CPU),
