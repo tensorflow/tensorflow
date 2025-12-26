@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -787,14 +788,62 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
   }
 };
 
+template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
+          typename UnsignedIntArithOp = IntArithOp>
+class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
+ public:
+  using OpRewritePattern<StableHloOp>::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
+    if (result_type.isFloat()) {
+      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+    } else {
+      Operation* new_op = nullptr;
+      bool should_guard_ub = mlir::isa<stablehlo::DivOp, stablehlo::RemOp>(op);
+
+      if (result_type.isUnsignedInteger()) {
+        new_op = rewriter.replaceOpWithNewOp<UnsignedIntArithOp>(
+            op, op.getOperands());
+      } else {
+        new_op = rewriter.replaceOpWithNewOp<IntArithOp>(op, op.getOperands());
+      }
+
+      // Special case for division with zero.
+      if (should_guard_ub) {
+        new_op->setAttr("xla.guard_ub", rewriter.getUnitAttr());
+      }
+    }
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce, LowerReshape, LowerDotGeneral>(mlir_context);
+    patterns.add<
+        LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
+        LowerReshape, LowerDotGeneral,
+        LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
+        LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
+                                arith::SubIOp>,
+        LowerStableHloOpToArith<stablehlo::MulOp, arith::MulFOp, arith::MulIOp>,
+        LowerStableHloOpToArith<stablehlo::AndOp, arith::AndIOp, arith::AndIOp>,
+        LowerStableHloOpToArith<stablehlo::OrOp, arith::OrIOp, arith::OrIOp>,
+        LowerStableHloOpToArith<stablehlo::XorOp, arith::XOrIOp, arith::XOrIOp>,
+        LowerStableHloOpToArith<stablehlo::DivOp, arith::DivFOp, arith::DivSIOp,
+                                arith::DivUIOp>,
+        LowerStableHloOpToArith<stablehlo::RemOp, arith::RemFOp, arith::RemSIOp,
+                                arith::RemUIOp>,
+        LowerStableHloOpToArith<stablehlo::MaxOp, arith::MaximumFOp,
+                                arith::MaxSIOp, arith::MaxUIOp>,
+        LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
+                                arith::MinSIOp, arith::MinUIOp>>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
