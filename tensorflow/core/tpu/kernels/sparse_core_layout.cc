@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_layout.pb.h"
@@ -72,11 +73,9 @@ SparseCoreLayoutStacker::SparseCoreLayoutStacker(int num_partitions,
       activation_mem_bytes_limit_(GetXlaSparseCoreStackingMemLimit()),
       variable_shard_bytes_limit_(GetXlaSparseCoreStackingTableShardLimit()) {}
 
-absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
-                                               int64_t table_height,
-                                               int64_t table_width,
-                                               absl::string_view group,
-                                               int64_t output_samples) {
+absl::Status SparseCoreLayoutStacker::AddTable(
+    absl::string_view table_name, int64_t table_height, int64_t table_width,
+    absl::string_view group, int64_t output_samples, int64_t num_features) {
   if (stacks_by_group_.empty()) {  // First call?
     VLOG(1) << "Stacking parameters: stacking_enabled_ = " << stacking_enabled_
             << ", activation_mem_bytes_limit_ = " << activation_mem_bytes_limit_
@@ -153,6 +152,8 @@ absl::Status SparseCoreLayoutStacker::AddTable(absl::string_view table_name,
   layout.add_unsharded_padded_shape(padded_width);
   layout.set_sparse_core_shard_row_offset(stack->unsharded_height /
                                           num_sparse_cores_);
+  layout.set_per_sparse_core_batch_size(samples_per_sparse_core);
+  layout.set_num_features(num_features);
   // Rotation is such that we advance one TPU chip (4 sparse core shards) for
   // each table. Because of the mod sharding across sparse cores, one row
   // advances one sparse core, so to advance one chip, we want to advance by
