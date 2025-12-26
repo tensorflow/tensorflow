@@ -34,9 +34,9 @@
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_data_structures.h"
+#include "xla/hlo/transforms/simplifiers/hlo_rematerialization_memory_tracker.h"
+#include "xla/hlo/transforms/simplifiers/hlo_rematerialization_options.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_cost_analysis.h"
-#include "xla/shape.h"
 
 namespace xla {
 
@@ -59,10 +59,6 @@ class HloRematerialization : public HloPassInterface {
   // rematerialization.
   constexpr static int64_t kMinimumCostEstimateMemoryLimitBytes =
       1073741824;  // 1 GiB
-  using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
-
-  using CompactShapeFunction =
-      std::function<absl::StatusOr<Shape>(const Shape&)>;
 
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
@@ -71,127 +67,8 @@ class HloRematerialization : public HloPassInterface {
     int64_t after_bytes = -1;
   };
 
-  // The high-level rematerialization algorithm to use. Will significantly
-  // affect the runtime performance of the pass and the memory utilization of
-  // the HLO module.
-  enum class RematAlgorithm {
-    kAlwaysRemat,   // Rematerializes anything it can at any point the HLO is
-                    // above the memory limit. Default rematerialization
-                    // algorithm.
-    kPeakPriority,  // Prioritize rematerializing the highest peak in the module
-                    // at any given step. Much slower than the default algorithm
-                    // but can offer better memory utilization in certain cases.
-  };
-
-  // Mode in which the rematerialization algorithm should be run.
-  struct RematerializationModeConfig {
-    RematerializationModeConfig(bool recompute, bool compress,
-                                bool host_offload)
-        : recompute(recompute),
-          compress(compress),
-          host_offload(host_offload) {}
-    bool recompute;     // Enables the kRecompute RematStrategy.
-    bool compress;      // Enables the kCompress RematStrategy.
-    bool host_offload;  // Enables the kHostOffload RematStrategy.
-  };
-
-  // This is a struct containing configuration options that are specific to the
-  // Host Memory Offload strategy.
-  struct HostMemoryOffloadConfig {
-    explicit HostMemoryOffloadConfig(int64_t host_memory_space,
-                                     float bandwidth_to_host_bytes_per_second,
-                                     float bandwidth_from_host_bytes_per_second)
-        : host_memory_space(host_memory_space),
-          bandwidth_to_host_bytes_per_second(
-              bandwidth_to_host_bytes_per_second),
-          bandwidth_from_host_bytes_per_second(
-              bandwidth_from_host_bytes_per_second) {}
-
-    // The host memory space, which is used during the host offload strategy.
-    int64_t host_memory_space;
-
-    float bandwidth_to_host_bytes_per_second;
-
-    float bandwidth_from_host_bytes_per_second;
-  };
-
-  static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
-
-  struct Options {
-    explicit Options(
-        HloCostAnalysis& hlo_cost_analysis,
-        const RematerializationModeConfig& remat_mode_config,
-        int64_t memory_limit_bytes, int block_size_limit,
-        float block_rematerialization_factor, int64_t min_remat_size,
-        CompactShapeFunction compact_shape_function,
-        std::optional<HostMemoryOffloadConfig> host_memory_offload_config =
-            std::nullopt,
-        absl::flat_hash_map<HloComputation*, int64_t>
-            async_computation_parallelism = {},
-        RematAlgorithm remat_algorithm = RematAlgorithm::kAlwaysRemat)
-        : hlo_cost_analysis(hlo_cost_analysis),
-          remat_mode_config(remat_mode_config),
-          memory_limit_bytes(memory_limit_bytes),
-          block_size_limit(block_size_limit),
-          block_rematerialization_factor(block_rematerialization_factor),
-          min_remat_size(min_remat_size),
-          compact_shape_function(compact_shape_function == nullptr
-                                     ? DefaultCompactShapeFunction
-                                     : std::move(compact_shape_function)),
-          host_memory_offload_config(host_memory_offload_config),
-          async_computation_parallelism(
-              std::move(async_computation_parallelism)),
-          remat_algorithm(remat_algorithm) {}
-
-    // The cost model used for decisions during rematerialization for host
-    // memory offload. It is also used for getting Shape size.
-    HloCostAnalysis& hlo_cost_analysis;
-
-    // Holds the rematerialization strategy configuration to be used by the
-    // pass.
-    RematerializationModeConfig remat_mode_config;
-
-    // Function which computes the size of the top-level buffer of a shape.
-    const ShapeSizeFunction size_function;
-
-    // The threshold number of bytes to reduce memory use to via
-    // rematerialization. This limit is adjusted in the pass by subtracting the
-    // size of all module outputs. Callers should consider reducing the amount
-    // of available memory by also subtracting the size of module parameters,
-    // and to add the size of aliased outputs to avoid subtracting twice for
-    // parameter and output.
-    int64_t memory_limit_bytes;
-
-    // Maximum number of consecutive instructions to consider for
-    // rematerialization.
-    int block_size_limit;
-
-    // Controls the amount of effort spent trying to find large blocks for
-    // rematerialization. Larger values leads to longer compilation times in
-    // return for potentially reduced memory consumption.
-    float block_rematerialization_factor;
-
-    // The minimum size, in bytes, of a tensor to be considered for
-    // rematerialization. All tensors smaller than this size will be skipped
-    // over.
-    int64_t min_remat_size;
-
-    // Converts a shape into compact form, returns the same shape if a shape is
-    // already considered compact.
-    CompactShapeFunction compact_shape_function;
-
-    std::optional<HostMemoryOffloadConfig> host_memory_offload_config;
-
-    // Collection of async entry computations and their number of parallel
-    // invocations.
-    absl::flat_hash_map<HloComputation*, int64_t> async_computation_parallelism;
-
-    // The high-level rematerialization algorithm to be used.
-    RematAlgorithm remat_algorithm;
-  };
-
   explicit HloRematerialization(
-      Options options, RematerializationSizes& sizes,
+      HloRematerializationOptions options, RematerializationSizes& sizes,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr)
       : options_(std::move(options)),
@@ -205,12 +82,13 @@ class HloRematerialization : public HloPassInterface {
   // Get the next available channel id and increment count.
   int64_t NextChannelId() { return next_channel_id_++; }
 
-  // Get the peak memory for the computation.
-  int64_t ComputationPeakMemory(const HloComputation* computation) const {
-    return computation_peak_memory_.at(computation);
-  }
+  // Performs the appropriate peak memory lookup on either
+  // computation_peak_memory_ or computation_peak_memory_tracker_ depending on
+  // the remat algorithm.
+  absl::StatusOr<int64_t> GetComputationPeakMemory(
+      const HloComputation* computation);
 
-  HloRematerialization::RematAlgorithm remat_algorithm() const {
+  HloRematerializationOptions::RematAlgorithm remat_algorithm() const {
     return options_.remat_algorithm;
   }
 
@@ -258,13 +136,6 @@ class HloRematerialization : public HloPassInterface {
     const HloInstruction* peak_memory_instruction = nullptr;
   };
 
-  // Holds the memory usage and instruction at a given program point (usually
-  // the peak memory).
-  struct MemoryUsageAndInstruction {
-    int64_t memory_usage;
-    const HloInstruction* instruction;
-  };
-
   absl::Status on_rematerialized(HloInstruction* original,
                                  HloInstruction* remat) {
     if (on_rematerialized_ != nullptr) {
@@ -294,8 +165,8 @@ class HloRematerialization : public HloPassInterface {
   // reflect the new instructions, updating the instruction list to reflect
   // the new schedule, and computing the new peak memory and instruction.
   absl::StatusOr<MemoryUsageAndInstruction> PeakPriorityUpdateVariables(
-      HloRematInstructionList& instruction_list, HloComputation* computation,
-      HloSchedule* schedule,
+      const HloRematInstructionList& instruction_list,
+      HloComputation* computation, HloSchedule* schedule,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Rematerializes instructions within the given computation. 'schedule'
@@ -328,7 +199,6 @@ class HloRematerialization : public HloPassInterface {
   // Returns whether the module was changed and whether the rematerialization
   // should be stopped.
   absl::StatusOr<RematSubpassResult> PeakPrioritySubPass(
-      const HloInstruction* peak_memory_instruction,
       HloRematerialization::RematerializationStateData& state,
       HloComputation* computation, const CallGraphNode& call_graph_node,
       int64_t min_remat_size, int64_t peak_memory_during_remat,
@@ -338,7 +208,7 @@ class HloRematerialization : public HloPassInterface {
   // Returns the rematerialization algorithm function corresponding to the given
   // rematerialization algorithm enum.
   virtual absl::StatusOr<RematAlgorithmFunction> GetRematAlgorithmFunction(
-      RematAlgorithm remat_algorithm);
+      HloRematerializationOptions::RematAlgorithm remat_algorithm);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
@@ -360,7 +230,7 @@ class HloRematerialization : public HloPassInterface {
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
-  const Options options_;
+  const HloRematerializationOptions options_;
 
   // Reference to data structure which records the peak memory usage of the HLO
   // module before/after rematerialization.
@@ -369,10 +239,26 @@ class HloRematerialization : public HloPassInterface {
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
 
-  // The peak memory usage of each computation. The map contains only those
-  // computations called from sequential context (CallContext::kSequential).
-  // These values are updated as rematerialization occurs.
+  // When the kAlways remat algorithm is used, we directly maintain the peak
+  // memory usage of each computation. This map contains only those computations
+  // called from sequential context (CallContext::kSequential). These values
+  // are updated as rematerialization occurs by constructing new
+  // HloRematerializationSweepMemoryTracker's.
   absl::flat_hash_map<const HloComputation*, int64_t> computation_peak_memory_;
+
+  // When the kPeakPriority remat algorithm is used, we indirectly maintain the
+  // peak memory usage of each computation by keeping instruction lists and
+  // memory trackers. Again, this map contains only those computations called
+  // from sequential context (CallContext::kSequential). These values are kept
+  // updated via calls to PeakPriorityUpdateVariables() and
+  // HloRematerializationPeakMemoryTracker::CalleeComputationWasUpdated() as
+  // rematerialization occurs.
+  absl::flat_hash_map<const HloComputation*,
+                      std::unique_ptr<HloRematInstructionList>>
+      computation_instruction_list_;
+  absl::flat_hash_map<const HloComputation*,
+                      std::unique_ptr<HloRematerializationPeakMemoryTracker>>
+      computation_peak_memory_tracker_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
