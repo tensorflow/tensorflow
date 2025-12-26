@@ -43,7 +43,7 @@ TEST_F(UniformQuantizedClipByValueOpTest, PerChannel) {
   AddInputFromArray<qint32>(TensorShape({3}), {-1, -5, -1});
   AddInputFromArray<qint32>(TensorShape({3}), {1, 1, 5});
   AddInputFromArray<float>(TensorShape({3}), {2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({3}), {-20, 0, 20});
+  AddInputFromArray<int32_t>(TensorShape({3}), {-20, 0, 20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));
@@ -70,7 +70,7 @@ TEST_F(UniformQuantizedClipByValueOpTest, PerTensor) {
   AddInputFromArray<qint32>(TensorShape({}), {-1});
   AddInputFromArray<qint32>(TensorShape({}), {1});
   AddInputFromArray<float>(TensorShape({}), {2});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT32, TensorShape({2, 3}));

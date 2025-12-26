@@ -67,8 +67,8 @@ void QuantizedAdd(const Tensor& lhs, const Tensor& rhs,
   const T* rhs_data = rhs.flat<T>().data();
   T* output_data = output.flat<T>().data();
 
-  const int32* output_zero_points_data =
-      output_zero_points.flat<int32>().data();
+  const int32_t* output_zero_points_data =
+      output_zero_points.flat<int32_t>().data();
 
   for (int64_t output_idx = 0; output_idx < output.NumElements();
        ++output_idx) {
