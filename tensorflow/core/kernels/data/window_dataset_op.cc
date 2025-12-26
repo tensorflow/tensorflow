@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/errors.h"
