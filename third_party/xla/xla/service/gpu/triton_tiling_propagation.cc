@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
-#include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -898,7 +897,7 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.operand_count() > 0 &&
-             legacy_triton::IsTritonSupportedElementwiseUpToFloatNormalization(
+             IsTritonSupportedElementwiseUpToFloatNormalization(
                  hlo.opcode(), hlo.operand(0)->shape().element_type())) {
     return GetPropagatedDimOrdersForElementwise(hlo, direction, src_dim_order);
   } else if (hlo.opcode() == HloOpcode::kBitcast) {
@@ -1137,8 +1136,9 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
         "Not fusing power with multiple users because it may result in "
         "expensive op duplication.");
   }
-  if (auto decision =
-          legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
+  if (CodegenDecision decision =
+          IsTritonSupportedInstruction(hlo, gpu_version,
+                                       /*is_fused_computation=*/false);
       !decision.CanFuse()) {
     return decision;
   }
