@@ -249,7 +249,7 @@ ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3fn[3] {
 R"(HloModule ConstantR1F8E4M3B11_module, entry_computation_layout={()->f8e4m3b11fnuz[2]{0}}
 
 ENTRY %IsFiniteR1F32s.v2 () -> f8e4m3b11fnuz[2] {
-  ROOT %constant = f8e4m3b11fnuz[2]{0} constant({-nan, 7})
+  ROOT %constant = f8e4m3b11fnuz[2]{0} constant({nan, 7})
 }
 
 )"

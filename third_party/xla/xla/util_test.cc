@@ -179,7 +179,7 @@ TEST(UtilTest, RoundTripFpToString) {
             "-nan");
   EXPECT_EQ(RoundTripFpToString(
                 std::numeric_limits<tsl::float8_e4m3b11fnuz>::quiet_NaN()),
-            "-nan");
+            "nan");
   EXPECT_EQ(RoundTripFpToString(
                 std::numeric_limits<tsl::float8_e4m3fnuz>::quiet_NaN()),
             "-nan");
