@@ -32,16 +32,77 @@ inline VecType VectorTanh(const VecType x) {
   return *reinterpret_cast<const VecType*>(&result);
 }
 
+template <typename VecType>
+inline VecType VectorLog(const VecType x) {
+  using ArrayType = typename ArrayMap<VecType>::type;
+  ArrayType x_array = *reinterpret_cast<const ArrayType*>(&x);
+  ArrayType result = x_array.log();
+  return *reinterpret_cast<const VecType*>(&result);
+}
+
 //===--------------------------------------------------------------------===//
 // XLA entrypoints, renamed with asm in header file.
 //===--------------------------------------------------------------------===//
 
+using FloatArrayType = Eigen::Array<float, 16, 1>;
+
 // Single precision
 float tanh_f32(float x) { return Eigen::internal::ptanh_float(x); }
+Vec4f tanh_v4f32(Vec4f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec4f*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec4f*>(&buffer);
+}
+Vec8f tanh_v8f32(Vec8f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec8f*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec8f*>(&buffer);
+}
 Vec16f tanh_v16f32(Vec16f x) { return VectorTanh(x); }
 
+float log_f32(float x) {
+  Eigen::Array<float, 1, 1> a;
+  a(0) = x;
+  return a.log()(0);
+}
+Vec4f log_v4f32(Vec4f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec4f*>(&buffer) = x;
+  buffer = buffer.log();
+  return *reinterpret_cast<Vec4f*>(&buffer);
+}
+Vec8f log_v8f32(Vec8f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec8f*>(&buffer) = x;
+  buffer = buffer.log();
+  return *reinterpret_cast<Vec8f*>(&buffer);
+}
+Vec16f log_v16f32(Vec16f x) { return VectorLog(x); }
+
 // Double precision
+using DoubleArrayType = Eigen::Array<double, 8, 1>;
 double tanh_f64(double x) { return Eigen::internal::ptanh_double(x); }
+Vec4d tanh_v4f64(Vec4d x) {
+  DoubleArrayType buffer;
+  *reinterpret_cast<Vec4d*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec4d*>(&buffer);
+}
 Vec8d tanh_v8f64(Vec8d x) { return VectorTanh(x); }
+
+double log_f64(double x) {
+  Eigen::Array<double, 1, 1> a;
+  a(0) = x;
+  return a.log()(0);
+}
+Vec4d log_v4f64(Vec4d x) {
+  DoubleArrayType buffer;
+  *reinterpret_cast<Vec4d*>(&buffer) = x;
+  buffer = buffer.log();
+  return *reinterpret_cast<Vec4d*>(&buffer);
+}
+Vec8d log_v8f64(Vec8d x) { return VectorLog(x); }
 
 }  // namespace xla::codegen

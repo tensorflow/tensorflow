@@ -187,6 +187,7 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
+        "//xla/codegen/intrinsic/cpp:intrinsic_declarations",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
