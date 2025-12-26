@@ -28,6 +28,70 @@ namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 
+template <typename T>
+__device__ __forceinline__ bool IsNan(T v) {
+  return Isnan(v);
+}
+
+template <>
+__device__ __forceinline__ bool IsNan<Eigen::half>(Eigen::half v) {
+  return __hIsnan(v);
+}
+
+template <>
+__device__ __forceinline__ bool IsNan<bfloat16>(bfloat16 v) {
+  return Isnan(static_cast<float>(v));
+}
+
+
+template <>
+struct CastFunctor<GPUDevice, int32, float> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<int32>::Flat out,
+                  typename TTypes<float>::ConstFlat in,
+                  bool truncate) {
+    out.device(d) = in.unaryExpr([] __device__ (float v) {
+      return Isnan(v) ? 0 : static_cast<int32>(v);
+    });
+  }
+};
+
+template <>
+struct CastFunctor<GPUDevice, int64, float> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<int64>::Flat out,
+                  typename TTypes<float>::ConstFlat in,
+                  bool truncate) {
+    out.device(d) = in.unaryExpr([] __device__ (float v) {
+      return Isnan(v) ? 0 : static_cast<int64>(v);
+    });
+  }
+};
+
+template <>
+struct CastFunctor<GPUDevice, int32, double> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<int32>::Flat out,
+                  typename TTypes<double>::ConstFlat in,
+                  bool truncate) {
+    out.device(d) = in.unaryExpr([] __device__ (double v) {
+      return Isnan(v) ? 0 : static_cast<int32>(v);
+    });
+  }
+};
+
+template <>
+struct CastFunctor<GPUDevice, int64, double> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<int64>::Flat out,
+                  typename TTypes<double>::ConstFlat in,
+                  bool truncate) {
+    out.device(d) = in.unaryExpr([] __device__ (double v) {
+      return Isnan(v) ? 0 : static_cast<int64>(v);
+    });
+  }
+};
+
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 CAST_FUNCTORS_SUBSET(GPUDevice);
 #else
