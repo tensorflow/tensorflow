@@ -131,13 +131,13 @@ struct SparseXentFunctor<CPUDevice, T, Index> {
           .TypeConstraint<T>("T")                 \
           .TypeConstraint<Index>("Tlabels"),      \
       SparseSoftmaxXentWithLogitsOp<Dev##Device, T, Index>);
-REGISTER(CPU, float, int32)
+REGISTER(CPU, float, int32_t)
 REGISTER(CPU, float, int64_t)
-REGISTER(CPU, double, int32)
+REGISTER(CPU, double, int32_t)
 REGISTER(CPU, double, int64_t)
-REGISTER(CPU, Eigen::half, int32)
+REGISTER(CPU, Eigen::half, int32_t)
 REGISTER(CPU, Eigen::half, int64_t)
-REGISTER(CPU, bfloat16, int32)
+REGISTER(CPU, bfloat16, int32_t)
 REGISTER(CPU, bfloat16, int64_t)
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

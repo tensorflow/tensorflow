@@ -115,7 +115,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
                               .TypeConstraint<type>("elem_type"),         \
                           StackPopOp);
 
-REGISTER_DEFAULT_HOST_KERNEL(int32);
+REGISTER_DEFAULT_HOST_KERNEL(int32_t);
 REGISTER_DEFAULT_HOST_KERNEL(bool);
 
 #undef REGISTER_DEFAULT_HOST_KERNEL

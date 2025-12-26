@@ -22,7 +22,7 @@ namespace {
 class StringLengthOp : public OpKernel {
  public:
   explicit StringLengthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string unit;
+    std::string unit;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("unit", &unit));
     OP_REQUIRES_OK(ctx, ParseCharUnit(unit, &unit_));
   }
@@ -35,7 +35,7 @@ class StringLengthOp : public OpKernel {
                    context->allocate_output(0, input.shape(), &output));
 
     auto src = input.flat<tstring>();
-    auto dst = output->flat<int32>();
+    auto dst = output->flat<int32_t>();
 
     switch (unit_) {
       case CharUnit::BYTE:
