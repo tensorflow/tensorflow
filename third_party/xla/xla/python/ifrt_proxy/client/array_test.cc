@@ -214,7 +214,7 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
   auto result = Array::MakeArraysFromHostBufferShards(
       mock_client_.get(), rpc_helper_, absl::MakeSpan(specs),
       xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
   ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout1);
@@ -239,7 +239,7 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
   auto result = Array::MakeErrorArrays(mock_client_.get(), rpc_helper_,
                                        absl::InternalError("test error"),
                                        absl::MakeSpan(specs));
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->pjrt_layout());
   ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
@@ -269,7 +269,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysSuccess) {
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
   ASSERT_NE(layout, nullptr);
   EXPECT_EQ(*layout, *kLayout1);
@@ -300,7 +300,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
       SingleDeviceShardSemantics::kAllShards);
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
   EXPECT_EQ(layout, nullptr);
 }
@@ -345,7 +345,7 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
                          absl::MakeSpan(arrays),
                          ArrayCopySemantics::kAlwaysCopy);
 
-  TF_ASSERT_OK(result.status());
+  ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->pjrt_layout());
   ASSERT_NE(layout_1, nullptr);
   EXPECT_EQ(*layout_1, *kLayout2);
