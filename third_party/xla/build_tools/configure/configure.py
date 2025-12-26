@@ -247,6 +247,7 @@ class DiscoverablePathsAndVersions:
   cuda_version: Optional[str] = None
   cuda_compute_capabilities: Optional[list[str]] = None
   cudnn_version: Optional[str] = None
+  cccl_version: Optional[str] = None
   local_cuda_path: Optional[str] = None
   local_cudnn_path: Optional[str] = None
   local_nccl_path: Optional[str] = None
@@ -399,6 +400,10 @@ class XLAConfigOptions:
         rc.append(
             f"build:cuda --repo_env HERMETIC_CUDNN_VERSION={dpav.cudnn_version}"
         )
+      if dpav.cccl_version:
+        rc.append(
+            f"build:cuda --repo_env HERMETIC_CCCL_VERSION={dpav.cccl_version}"
+        )
       if dpav.local_cuda_path:
         rc.append(
             f"build:cuda --repo_env LOCAL_CUDA_PATH={dpav.local_cuda_path}"
@@ -547,6 +552,10 @@ def _parse_args():
       help="Optional: CUDNN will be downloaded by Bazel if the flag is set",
   )
   parser.add_argument(
+      "--cccl_version",
+      help="Optional: CCCL will be downloaded by Bazel if the flag is set",
+  )
+  parser.add_argument(
       "--local_cuda_path",
       help=(
           "Optional: Local CUDA dir will be used in dependencies if the flag"
@@ -598,6 +607,7 @@ def main():
           ld_library_path=args.ld_library_path,
           cuda_version=args.cuda_version,
           cudnn_version=args.cudnn_version,
+          cccl_version=args.cccl_version,
           cuda_compute_capabilities=args.cuda_compute_capabilities,
           local_cuda_path=args.local_cuda_path,
           local_cudnn_path=args.local_cudnn_path,

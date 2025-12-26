@@ -194,6 +194,7 @@ common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
+common:cuda_version --repo_env=HERMETIC_CCCL_VERSION="2.8.3"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -719,12 +720,14 @@ build:pjrt_cuda12 --config=cuda_nvcc
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:pjrt_cuda12 --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+build:pjrt_cuda12 --repo_env=HERMETIC_CCCL_VERSION="2.8.3"
 build:pjrt_cuda12 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,sm_90,sm_100,compute_120"
 
 build:pjrt_cuda13 --config=cuda_nvcc
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
 build:pjrt_cuda13 --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
+build:pjrt_cuda13 --repo_env=HERMETIC_CCCL_VERSION="3.0.2"
 build:pjrt_cuda13 --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
 
 build:pjrt_x86_release --config=pjrt_release --config=pjrt_x86

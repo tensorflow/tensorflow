@@ -973,6 +973,22 @@ def set_hermetic_cudnn_version(environ_cp):
     )
 
 
+def set_hermetic_cccl_version(environ_cp):
+  """Set HERMETIC_CCCL_VERSION."""
+  ask_cccl_version = (
+      'Please specify the hermetic CCCL version you want to use '
+      'or leave empty to use the default version. '
+  )
+  hermetic_cccl_version = get_from_env_or_user_or_default(
+      environ_cp, 'HERMETIC_CCCL_VERSION', ask_cccl_version, None
+  )
+  if hermetic_cccl_version:
+    environ_cp['HERMETIC_CCCL_VERSION'] = hermetic_cccl_version
+    write_repo_env_to_bazelrc(
+        'cuda', 'HERMETIC_CCCL_VERSION', hermetic_cccl_version
+    )
+
+
 def set_hermetic_cuda_compute_capabilities(environ_cp):
   """Set HERMETIC_CUDA_COMPUTE_CAPABILITIES."""
   while True:
@@ -1283,6 +1299,7 @@ def main():
   if environ_cp.get('TF_NEED_CUDA') == '1':
     set_hermetic_cuda_version(environ_cp)
     set_hermetic_cudnn_version(environ_cp)
+    set_hermetic_cccl_version(environ_cp)
     set_hermetic_cuda_compute_capabilities(environ_cp)
     set_cuda_local_path(environ_cp, 'CUDA', 'LOCAL_CUDA_PATH')
     set_cuda_local_path(environ_cp, 'CUDNN', 'LOCAL_CUDNN_PATH')
