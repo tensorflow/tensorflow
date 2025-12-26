@@ -98,7 +98,8 @@ tsl::thread::ThreadPool* GetHostExecuteThreadPool(
 
 bool IsBufferOnDevice(se::Stream* stream, const void* ptr) {
   auto memory_type = stream->parent()->GetPointerMemorySpace(ptr);
-  return memory_type.ok() && *memory_type == se::MemoryType::kDevice;
+  return memory_type.ok() &&
+         *memory_type == stream_executor::MemorySpace::kDevice;
 }
 
 // We ignore memory spaces in shape comparison since the memory can be on
