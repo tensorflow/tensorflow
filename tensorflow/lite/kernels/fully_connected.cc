@@ -517,7 +517,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   const bool is_hybrid =
       (input->type == kTfLiteFloat32 &&
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
-        filter->type == kTfLiteInt4));
+        filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
     // Use optimized implementation for 4bit
