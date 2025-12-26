@@ -542,10 +542,10 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     // Disable verifier because the Triton code may be invalid due to the
     // unsupported types.
     pm.enableVerifier(/*enabled=*/false);
-    pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
+    pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::CreateXTileLowerToTritonPass());
 
     std::string libdevice_path =

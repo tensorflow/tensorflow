@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -1080,7 +1081,7 @@ absl::StatusOr<TensorValue> EmitPad(
     TensorValue threshold_splat = xtile::Splat(b, threshold, padded_tile_sizes);
     Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
                                       threshold_splat);
-    mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
+    mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
     return values[tiled_operand];
@@ -1498,9 +1499,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
       mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
   mlir::ImplicitLocOpBuilder b(loc, &mlir_context);
 
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+  mlir::OwningOpRef<mlir::ModuleOp> xtile_module =
       llvm_ir::CreateMlirModuleOp(loc);
-  b.setInsertionPointToEnd(triton_module->getBody());
+  b.setInsertionPointToEnd(xtile_module->getBody());
 
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
@@ -1545,7 +1546,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
                                  &mlir_context));
 
   b.create<xtile::EntryFuncReturnOp>();
-  return triton_module;
+
+  {
+    // Verify that the emitted module contains only ops from dialects that can
+    // be shared between backends.
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(xtile::createVerifyLegalXTileOpsPass());
+    if (mlir::failed(pm.run(*xtile_module))) {
+      return Internal("Failed to verify XTile module.");
+    }
+  }
+
+  return xtile_module;
 }
 
 }  // namespace gpu

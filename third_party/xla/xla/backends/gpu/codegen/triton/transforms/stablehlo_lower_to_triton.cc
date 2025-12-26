@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -53,6 +55,7 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
@@ -787,14 +790,263 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
   }
 };
 
+template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
+          typename UnsignedIntArithOp = IntArithOp>
+class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
+ public:
+  using OpRewritePattern<StableHloOp>::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
+    if (result_type.isFloat()) {
+      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+    } else {
+      Operation* new_op = nullptr;
+      bool should_guard_ub = mlir::isa<stablehlo::DivOp, stablehlo::RemOp>(op);
+
+      if (result_type.isUnsignedInteger()) {
+        new_op = rewriter.replaceOpWithNewOp<UnsignedIntArithOp>(
+            op, op.getOperands());
+      } else {
+        new_op = rewriter.replaceOpWithNewOp<IntArithOp>(op, op.getOperands());
+      }
+
+      // Special case for division with zero.
+      if (should_guard_ub) {
+        new_op->setAttr("xla.guard_ub", rewriter.getUnitAttr());
+      }
+    }
+    return mlir::success();
+  }
+};
+
+std::optional<arith::CmpIPredicate> GetCmpIPredicate(
+    stablehlo::ComparisonDirection direction, bool is_signed) {
+  switch (direction) {
+    case stablehlo::ComparisonDirection::EQ:
+      return arith::CmpIPredicate::eq;
+    case stablehlo::ComparisonDirection::NE:
+      return arith::CmpIPredicate::ne;
+    case stablehlo::ComparisonDirection::LT:
+      return is_signed ? arith::CmpIPredicate::slt : arith::CmpIPredicate::ult;
+    case stablehlo::ComparisonDirection::GT:
+      return is_signed ? arith::CmpIPredicate::sgt : arith::CmpIPredicate::ugt;
+    case stablehlo::ComparisonDirection::LE:
+      return is_signed ? arith::CmpIPredicate::sle : arith::CmpIPredicate::ule;
+    case stablehlo::ComparisonDirection::GE:
+      return is_signed ? arith::CmpIPredicate::sge : arith::CmpIPredicate::uge;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<arith::CmpFPredicate> GetCmpFPredicate(
+    stablehlo::ComparisonDirection direction) {
+  switch (direction) {
+    case stablehlo::ComparisonDirection::EQ:
+      return arith::CmpFPredicate::OEQ;
+    case stablehlo::ComparisonDirection::NE:
+      return arith::CmpFPredicate::UNE;
+    case stablehlo::ComparisonDirection::GE:
+      return arith::CmpFPredicate::OGE;
+    case stablehlo::ComparisonDirection::GT:
+      return arith::CmpFPredicate::OGT;
+    case stablehlo::ComparisonDirection::LE:
+      return arith::CmpFPredicate::OLE;
+    case stablehlo::ComparisonDirection::LT:
+      return arith::CmpFPredicate::OLT;
+    default:
+      return std::nullopt;
+  }
+}
+
+class LowerConvertOp : public mlir::OpRewritePattern<stablehlo::ConvertOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::ConvertOp op, mlir::PatternRewriter& rewriter) const override {
+    Value value = op.getOperand();
+    Type src_ty = value.getType();
+    Type src_element_ty = getElementTypeOrSelf(src_ty);
+    Type fp16_ty = rewriter.getF16Type();
+    Type fp32_ty = rewriter.getF32Type();
+    Type dst_ty = op.getResult().getType();
+    Type dst_element_ty = getElementTypeOrSelf(dst_ty);
+
+    if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+      fp16_ty =
+          src_shaped_ty.clone(src_shaped_ty.getShape(), rewriter.getF16Type());
+      fp32_ty =
+          src_shaped_ty.clone(src_shaped_ty.getShape(), rewriter.getF32Type());
+    }
+
+    auto builder = mlir::ImplicitLocOpBuilder(op.getLoc(), rewriter);
+
+    // All operations on bf16 are done through f32.
+    if (src_element_ty.isBF16()) {
+      auto cast = ::xla::xtile::Cast(
+          builder, arith::ExtFOp::create(rewriter, op.getLoc(), fp32_ty, value),
+          dst_element_ty);
+      rewriter.replaceOp(op, cast);
+      return mlir::success();
+    }
+    if (dst_element_ty.isBF16()) {
+      // S8 -> BF16 is directly supported and doesn't need to go through f32.
+      if (!src_element_ty.isInteger(8)) {
+        rewriter.replaceOpWithNewOp<arith::TruncFOp>(
+            op, dst_ty,
+            ::xla::xtile::Cast(builder, value, rewriter.getF32Type()));
+        return mlir::success();
+      }
+    }
+
+    // float => float
+    auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
+    auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
+    if (src_fp_element_ty && dst_fp_element_ty) {
+      if (src_fp_element_ty && dst_fp_element_ty &&
+          src_fp_element_ty.getIntOrFloatBitWidth() == 8 &&
+          dst_fp_element_ty.getIntOrFloatBitWidth() == 8) {
+        // FP8 <-> FP8 conversion needs to go through FP16
+        auto fp16_value =
+            arith::ExtFOp::create(rewriter, op.getLoc(), fp16_ty, value);
+        rewriter.replaceOpWithNewOp<arith::TruncFOp>(op, dst_ty, fp16_value);
+        return mlir::success();
+      }
+
+      if (src_fp_element_ty.getFPMantissaWidth() >
+          dst_fp_element_ty.getFPMantissaWidth()) {
+        rewriter.replaceOpWithNewOp<arith::TruncFOp>(op, dst_ty, value);
+        return mlir::success();
+      }
+      rewriter.replaceOpWithNewOp<arith::ExtFOp>(op, dst_ty, value);
+      return mlir::success();
+    }
+    // int => int
+    if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
+        mlir::isa<mlir::IntegerType>(dst_element_ty)) {
+      auto value = op.getOperand();
+      if (src_element_ty.getIntOrFloatBitWidth() <
+          dst_element_ty.getIntOrFloatBitWidth()) {
+        if (src_element_ty.isInteger(1) || src_element_ty.isUnsignedInteger()) {
+          rewriter.replaceOpWithNewOp<arith::ExtUIOp>(op, dst_ty, value);
+          return mlir::success();
+        }
+        rewriter.replaceOpWithNewOp<arith::ExtSIOp>(op, dst_ty, value);
+        return mlir::success();
+      }
+      // int => bool is always value != 0.
+      if (dst_element_ty.isInteger(1)) {
+        mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
+        rewriter.replaceOpWithNewOp<arith::CmpIOp>(
+            op, arith::CmpIPredicate::ne, value,
+            ::xla::xtile::ZerosLike(builder, value));
+
+        return mlir::success();
+      }
+      rewriter.replaceOpWithNewOp<arith::TruncIOp>(op, dst_ty, value);
+      return mlir::success();
+    }
+    // int => float
+    if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
+      // The current logic handles signed integer types only.
+      if (src_element_ty.isInteger(1)) {
+        rewriter.replaceOpWithNewOp<arith::UIToFPOp>(op, dst_ty, value);
+        return mlir::success();
+      }
+      rewriter.replaceOpWithNewOp<arith::SIToFPOp>(op, dst_ty, value);
+    }
+    // float => int
+    if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
+      if (dst_element_ty.isInteger(1)) {
+        rewriter.replaceOpWithNewOp<arith::CmpFOp>(
+            op, arith::CmpFPredicate::UNE, value,
+            ::xla::xtile::ZerosLike(builder, value));
+        return mlir::success();
+      }
+      // The current logic handles signed integer types only. Additional
+      // handling is needed for unsigned integer types.
+      auto cst_int = [&](int64_t x) -> Value {
+        if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+          return ::xla::xtile::CreateConst(builder, dst_element_ty, x,
+                                           src_shaped_ty.getShape());
+        }
+        return ::xla::xtile::CreateConst(builder, dst_element_ty, x);
+      };
+      auto cst_float = [&](int64_t x) -> Value {
+        if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
+          return ::xla::xtile::CreateConst(builder, src_fp_element_ty, x,
+                                           src_shaped_ty.getShape());
+        }
+        return ::xla::xtile::CreateConst(builder, src_fp_element_ty, x);
+      };
+      auto fptosi =
+          arith::FPToSIOp::create(rewriter, op.getLoc(), dst_ty, value);
+      int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
+      int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
+
+      // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
+      auto clamped = arith::SelectOp::create(
+          rewriter, op.getLoc(),
+          arith::CmpFOp::create(rewriter, op.getLoc(),
+                                arith::CmpFPredicate::OLE, value,
+                                cst_float(min)),
+          cst_int(min), fptosi);
+      // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
+      clamped = arith::SelectOp::create(
+          rewriter, op.getLoc(),
+          arith::CmpFOp::create(rewriter, op.getLoc(),
+                                arith::CmpFPredicate::OGE, value,
+                                cst_float(max)),
+          cst_int(max), clamped);
+      // isnan(value) ? 0 : ...
+      rewriter.replaceOpWithNewOp<arith::SelectOp>(
+          op,
+          arith::CmpFOp::create(rewriter, op.getLoc(),
+                                arith::CmpFPredicate::UNO, value, value),
+          cst_int(0), clamped);
+
+      return mlir::success();
+    }
+
+    return rewriter.notifyMatchFailure(
+        op->getLoc(),
+        absl::StrCat("Type conversion not supported: ",
+                     ::xla::llvm_ir::DumpToString(src_element_ty), " -> ",
+                     ::xla::llvm_ir::DumpToString(dst_element_ty)));
+
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce, LowerReshape, LowerDotGeneral>(mlir_context);
+    patterns.add<
+        LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
+        LowerReshape, LowerDotGeneral, LowerConvertOp,
+        LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
+        LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
+                                arith::SubIOp>,
+        LowerStableHloOpToArith<stablehlo::MulOp, arith::MulFOp, arith::MulIOp>,
+        LowerStableHloOpToArith<stablehlo::AndOp, arith::AndIOp, arith::AndIOp>,
+        LowerStableHloOpToArith<stablehlo::OrOp, arith::OrIOp, arith::OrIOp>,
+        LowerStableHloOpToArith<stablehlo::XorOp, arith::XOrIOp, arith::XOrIOp>,
+        LowerStableHloOpToArith<stablehlo::DivOp, arith::DivFOp, arith::DivSIOp,
+                                arith::DivUIOp>,
+        LowerStableHloOpToArith<stablehlo::RemOp, arith::RemFOp, arith::RemSIOp,
+                                arith::RemUIOp>,
+        LowerStableHloOpToArith<stablehlo::MaxOp, arith::MaximumFOp,
+                                arith::MaxSIOp, arith::MaxUIOp>,
+        LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
+                                arith::MinSIOp, arith::MinUIOp>>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

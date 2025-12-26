@@ -193,14 +193,24 @@ absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
       return b.getBF16Type();
     case S64:
       return b.getI64Type();
+    case U64:
+      return b.getIntegerType(/*width=*/64, /*isSigned=*/false);
     case S32:
       return b.getI32Type();
+    case U32:
+      return b.getIntegerType(/*width=*/32, /*isSigned=*/false);
     case S16:
       return b.getI16Type();
+    case U16:
+      return b.getIntegerType(/*width=*/16, /*isSigned=*/false);
     case S8:
       return b.getI8Type();
+    case U8:
+      return b.getIntegerType(/*width=*/8, /*isSigned=*/false);
     case S4:
       return b.getI4Type();
+    case U4:
+      return b.getIntegerType(/*width=*/4, /*isSigned=*/false);
     case PRED:
       return b.getI1Type();
     case F8E5M2:
@@ -224,11 +234,11 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isF32()) return F32;
   if (t.isF16()) return F16;
   if (t.isBF16()) return BF16;
-  if (t.isInteger(64)) return S64;
-  if (t.isInteger(32)) return S32;
-  if (t.isInteger(16)) return S16;
-  if (t.isInteger(8)) return S8;
-  if (t.isInteger(4)) return S4;
+  if (t.isInteger(64)) return t.isSignedInteger() ? S64 : U64;
+  if (t.isInteger(32)) return t.isSignedInteger() ? S32 : U32;
+  if (t.isInteger(16)) return t.isSignedInteger() ? S16 : U16;
+  if (t.isInteger(8)) return t.isSignedInteger() ? S8 : U8;
+  if (t.isInteger(4)) return t.isSignedInteger() ? S4 : U4;
   if (t.isInteger(1)) return PRED;
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
@@ -251,16 +261,10 @@ bool IsFp8Type(Type t) {
 }
 
 Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
-  Type src_ty = value.getType();
-  Type src_element_ty = src_ty;
-  Type fp16_ty = b.getF16Type();
-  Type fp32_ty = b.getF32Type();
-  Type dst_ty = dst_element_ty;
+  auto src_ty = value.getType();
+  auto dst_ty = dst_element_ty;
   if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-    src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
-    fp16_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF16Type());
-    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
   }
   if (src_ty == dst_ty) {
     return value;
@@ -270,106 +274,11 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return ma::IndexCastOp::create(b, dst_ty, value);
   }
 
-  // All operations on bf16 are done through f32.
-  if (src_element_ty.isBF16()) {
-    return Cast(b, ma::ExtFOp::create(b, fp32_ty, value), dst_element_ty);
-  }
-  if (dst_element_ty.isBF16()) {
-    // S8 -> BF16 is directly supported and doesn't need to go through f32.
-    if (!src_element_ty.isInteger(8)) {
-      return ma::TruncFOp::create(b, dst_ty, Cast(b, value, b.getF32Type()));
-    }
-  }
-
-  // float => float
-  auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
-  auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
-  if (src_fp_element_ty && dst_fp_element_ty) {
-    if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
-      // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value = ma::ExtFOp::create(b, fp16_ty, value);
-      return ma::TruncFOp::create(b, dst_ty, fp16_value);
-    }
-
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return ma::TruncFOp::create(b, dst_ty, value);
-    }
-    return ma::ExtFOp::create(b, dst_ty, value);
-  }
-  // int => int
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
-      mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (src_element_ty.getIntOrFloatBitWidth() <
-        dst_element_ty.getIntOrFloatBitWidth()) {
-      if (src_element_ty.isInteger(1)) {
-        return ma::ExtUIOp::create(b, dst_ty, value);
-      }
-      return ma::ExtSIOp::create(b, dst_ty, value);
-    }
-    // int => bool is always value != 0.
-    if (dst_element_ty.isInteger(1)) {
-      return ma::CmpIOp::create(b, ma::CmpIPredicate::ne, value,
-                                ZerosLike(b, value));
-    }
-    return ma::TruncIOp::create(b, dst_ty, value);
-  }
-  // int => float
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
-    // The current logic handles signed integer types only.
-    if (src_element_ty.isInteger(1)) {
-      return ma::UIToFPOp::create(b, dst_ty, value);
-    }
-    return ma::SIToFPOp::create(b, dst_ty, value);
-  }
-  // float => int
-  if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (dst_element_ty.isInteger(1)) {
-      return ma::CmpFOp::create(b, ma::CmpFPredicate::UNE, value,
-                                ZerosLike(b, value));
-    }
-    // The current logic handles signed integer types only. Additional handling
-    // is needed for unsigned integer types.
-    auto cst_int = [&](int64_t x) -> Value {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
-      }
-      return CreateConst(b, dst_element_ty, x);
-    };
-    auto cst_float = [&](int64_t x) -> Value {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
-      }
-      return CreateConst(b, src_fp_element_ty, x);
-    };
-    auto fptosi = ma::FPToSIOp::create(b, dst_ty, value);
-    int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
-    int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
-
-    // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    auto clamped = ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OLE, value, cst_float(min)),
-        cst_int(min), fptosi);
-    // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OGE, value, cst_float(max)),
-        cst_int(max), clamped);
-    // isnan(value) ? 0 : ...
-    return ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::UNO, value, value),
-        cst_int(0), clamped);
-  }
-
-  LOG(FATAL) << "Type conversion not supported: "
-             << llvm_ir::DumpToString(src_element_ty) << " -> "
-             << llvm_ir::DumpToString(dst_element_ty);
+  return mlir::stablehlo::ConvertOp::create(b, dst_ty, value);
 }
 
 Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
-  if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
-    return ma::SubIOp::create(b, values[0], values[1]);
-  }
-  return ma::SubFOp::create(b, values[0], values[1]);
+  return mlir::stablehlo::SubtractOp::create(b, values[0], values[1]);
 }
 
 Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
@@ -393,28 +302,22 @@ Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
 
 Value Maximum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
-  if (mlir::isa<mlir::FloatType>(type)) {
-    return ma::MaximumFOp::create(b, values);
-  }
 
   if (type.isInteger(1)) {
     return ma::OrIOp::create(b, values);
   }
 
-  return ma::MaxSIOp::create(b, values);
+  return mlir::stablehlo::MaxOp::create(b, values);
 }
 
 Value Minimum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
-  if (mlir::isa<mlir::FloatType>(type)) {
-    return ma::MinimumFOp::create(b, values);
-  }
 
   if (type.isInteger(1)) {
     return ma::AndIOp::create(b, values);
   }
 
-  return ma::MinSIOp::create(b, values);
+  return mlir::stablehlo::MinOp::create(b, values);
 }
 
 absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
@@ -437,7 +340,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kFloor:
       return mm::FloorOp::create(b, inputs[0]);
     case HloOpcode::kNot:
-      return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0].getType()));
+      return mlir::stablehlo::XorOp::create(b, inputs[0],
+                                            OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
       if (is_integer) {
         return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
@@ -455,16 +359,12 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
         if (getElementTypeOrSelf(inputs[0]).isInteger(1)) {
           return ma::OrIOp::create(b, inputs[0], inputs[1]);
         }
-        return ma::AddIOp::create(b, inputs[0], inputs[1]);
       }
-      return ma::AddFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::AddOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kSubtract:
       return Subtract(b, inputs);
     case HloOpcode::kMultiply:
-      if (is_integer) {
-        return ma::MulIOp::create(b, inputs[0], inputs[1]);
-      }
-      return ma::MulFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::MulOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kMaximum:
       return Maximum(b, inputs);
     case HloOpcode::kMinimum:
@@ -472,21 +372,13 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kClamp:
       return Minimum(b, {Maximum(b, {inputs[0], inputs[1]}), inputs[2]});
     case HloOpcode::kAnd:
-      return ma::AndIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
-      return ma::OrIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::OrOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kXor:
-      return ma::XOrIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::XorOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kDivide:
-      if (is_integer) {
-        // Unsigned not supported yet.
-        auto div = ma::DivSIOp::create(b, inputs[0], inputs[1]);
-        // Attr signifies that this op should be re-written to guard against
-        // undefined behavior.
-        div->setAttr("xla.guard_ub", b.getUnitAttr());
-        return div;
-      }
-      return ma::DivFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::DivOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kCompare:
       return Compare(
           b, inputs,
@@ -531,14 +423,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kPower:
       return mm::PowFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
-      if (is_integer) {
-        auto rem = ma::RemSIOp::create(b, inputs[0], inputs[1]);
-        // Attr signifies that this op should be re-written to guard against
-        // undefined behavior.
-        rem->setAttr("xla.guard_ub", b.getUnitAttr());
-        return rem;
-      }
-      return ma::RemFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::RemOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
       return mm::RsqrtOp::create(b, inputs[0]);
     case HloOpcode::kSin:

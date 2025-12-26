@@ -431,6 +431,35 @@ ENTRY e {
       )"));
 }
 
+TEST_F(XTileDialectTest, HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+add_fusion {
+  p0 = u32[150] parameter(0)
+  ROOT add = u32[150] add(p0, p0)
+}
+
+ENTRY e {
+  p0 = u32[150] parameter(0)
+  ROOT custom-call = u32[150] fusion(p0), kind=kCustom,
+    calls=add_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("add_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: stablehlo.add{{.*}}: tensor<16xui32>
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
