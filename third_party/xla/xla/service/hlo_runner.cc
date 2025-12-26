@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/maybe_owning_device_address.h"

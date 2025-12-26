@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/hlo_phi_graph.h"
 
+#include <cstdint>
+#include <memory>
+
+#include <gtest/gtest.h>
 #include "xla/literal_util.h"
 #include "tsl/platform/test.h"
 
