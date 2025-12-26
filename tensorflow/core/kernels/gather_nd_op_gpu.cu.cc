@@ -29,9 +29,10 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T, typename Index, int IXDIM>
 __global__ void GatherSliceOpKernel(
     const T* __restrict__ params, const Index* __restrict__ indices,
-    T* __restrict__ out, const Eigen::array<int64, IXDIM> batch_strides,
-    const Eigen::array<int64, IXDIM> batch_indices, const int64 indices_size,
-    const int64 slice_size, const int64 out_size) {
+    T* __restrict__ out, const Eigen::array<int64_t, IXDIM> batch_strides,
+    const Eigen::array<int64_t, IXDIM> batch_indices,
+    const int64_t indices_size, const int64_t slice_size,
+    const int64_t out_size) {
   // TODO(ebrevdo): reduce inner loop into two loops:
   // one over the number of locs, and one over the offsets inside the locs.
   GPU_1D_KERNEL_LOOP(i, out_size) {
@@ -70,15 +71,15 @@ namespace functor {
 template <typename T, typename Index, int IXDIM>
 struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
   Index operator()(const GPUDevice& d, const Index unused_slice_size,
-                   typename TTypes<int32>::Scalar Tscratch,
+                   typename TTypes<int32_t>::Scalar Tscratch,
                    typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
                    typename TTypes<T>::Matrix Tout) {
-    const int64 indices_size = Tindices.dimension(1);
-    const int64 out_size = Tout.size();
-    int64 s_size = Tout.dimension(1);
-    Eigen::array<int64, IXDIM> batch_strides;
-    Eigen::array<int64, IXDIM> batch_indices;
+    const int64_t indices_size = Tindices.dimension(1);
+    const int64_t out_size = Tout.size();
+    int64_t s_size = Tout.dimension(1);
+    Eigen::array<int64_t, IXDIM> batch_strides;
+    Eigen::array<int64_t, IXDIM> batch_indices;
     if (IXDIM > 0) {
       batch_strides[size_t(IXDIM - 1)] = s_size;
       batch_indices[size_t(IXDIM - 1)] = Tparams.dimension(IXDIM - 1);
