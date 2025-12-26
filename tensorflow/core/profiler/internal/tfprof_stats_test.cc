@@ -32,7 +32,7 @@ namespace tfprof {
 class TFProfStatsTest : public ::testing::Test {
  protected:
   TFProfStatsTest() {
-    string graph_path =
+    std::string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb =
@@ -42,20 +42,20 @@ class TFProfStatsTest : public ::testing::Test {
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb =
         std::make_unique<tensorflow::RunMetadata>();
-    string run_meta_path =
+    std::string run_meta_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/run_meta");
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
     std::unique_ptr<OpLogProto> op_log_pb = std::make_unique<OpLogProto>();
-    string op_log_path =
+    std::string op_log_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/tfprof_log");
     TF_CHECK_OK(ReadBinaryProto(Env::Default(), op_log_path, op_log_pb.get()));
 
-    string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                    "core/profiler/internal/testdata/ckpt");
+    std::string ckpt_path = io::JoinPath(
+        testing::TensorFlowSrcRoot(), "core/profiler/internal/testdata/ckpt");
     TF_Status* status = TF_NewStatus();
     std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader =
         std::make_unique<checkpoint::CheckpointReader>(ckpt_path, status);
@@ -68,8 +68,8 @@ class TFProfStatsTest : public ::testing::Test {
     tf_stats_->BuildAllViews();
   }
 
-  string TestToFromProto(const string& cmd, const Options& opts) {
-    string profile_file = io::JoinPath(testing::TmpDir(), "profile");
+  std::string TestToFromProto(const std::string& cmd, const Options& opts) {
+    std::string profile_file = io::JoinPath(testing::TmpDir(), "profile");
     tf_stats_->WriteProfile(profile_file);
     TFStats new_stats(profile_file, nullptr);
     new_stats.BuildAllViews();

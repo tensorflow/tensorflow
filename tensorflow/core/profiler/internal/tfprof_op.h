@@ -51,7 +51,7 @@ class TFOp : public TFMultiShow {
                                     Timeline* timeline) override;
 
   int64_t SearchRoot(std::vector<OpNode*> nodes,
-                     const std::vector<string>& regexes);
+                     const std::vector<std::string>& regexes);
 
   bool ShouldShowIfExtra(const ShowMultiNode* node, const Options& opts,
                          int depth) const override {
@@ -62,13 +62,14 @@ class TFOp : public TFMultiShow {
     return true;
   }
 
-  string FormatNode(OpNode* node, OpNode* root, const Options& opts) const;
-  string FormatMemoryNode(int64_t node_total_bytes, int64_t root_total_bytes,
-                          int64_t node_bytes) const;
+  std::string FormatNode(OpNode* node, OpNode* root, const Options& opts) const;
+  std::string FormatMemoryNode(int64_t node_total_bytes,
+                               int64_t root_total_bytes,
+                               int64_t node_bytes) const;
 
   std::unique_ptr<OpNode> root_;
-  std::map<string, std::unique_ptr<OpNode>> cnodes_map_;
-  std::map<string, std::unique_ptr<TFMultiGraphNode>> tfcnodes_map_;
+  std::map<std::string, std::unique_ptr<OpNode>> cnodes_map_;
+  std::map<std::string, std::unique_ptr<TFMultiGraphNode>> tfcnodes_map_;
 };
 
 }  // namespace tfprof
