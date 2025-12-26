@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 
 namespace pjrt {
 namespace {
