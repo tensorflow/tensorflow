@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
