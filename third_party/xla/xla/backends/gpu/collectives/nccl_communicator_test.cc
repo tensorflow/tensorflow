@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
