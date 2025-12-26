@@ -184,10 +184,16 @@ bool ReorderConvertReduceAdd::InstructionMatchesPattern(
   }
 
   // Check if the operand of the convert operation is a reduce-scatter or
-  // all-reduce
+  // all-reduce.
   HloInstruction* reduce_op_operand = convert_operand->mutable_operand(0);
   if (reduce_op_operand->opcode() != HloOpcode::kReduceScatter &&
       reduce_op_operand->opcode() != HloOpcode::kAllReduce) {
+    return false;
+  }
+  // Check if the convert is upcast.
+  if (ShapeUtil::ByteSizeOfPrimitiveType(
+          reduce_op_operand->shape().element_type()) <
+      ShapeUtil::ByteSizeOfPrimitiveType(instruction->shape().element_type())) {
     return false;
   }
   if (!MatchReductionComputation(reduce_op_operand->to_apply())) {
