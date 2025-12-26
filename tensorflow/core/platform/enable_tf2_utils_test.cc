@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(TF2EnabledTest, enabled_behavior) {
-  string tf2_env;
+  std::string tf2_env;
   TF_CHECK_OK(ReadStringFromEnvVar("TF2_BEHAVIOR", "0", &tf2_env));
   bool expected = (tf2_env != "0");
   EXPECT_EQ(tensorflow::tf2_execution_enabled(), expected);
