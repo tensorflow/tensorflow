@@ -22,7 +22,6 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_cuda_or_rocm",
     "if_google",
-    "tsl_gpu_library",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 load(
@@ -986,7 +985,7 @@ xla_cc_binary(
     ],
 )
 
-tsl_gpu_library(
+cc_library(
     name = "xla_compile_lib",
     srcs = ["xla_compile_lib.cc"],
     hdrs = ["xla_compile_lib.h"],
