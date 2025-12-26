@@ -30,14 +30,18 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Types.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/future.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/layout.h"
@@ -70,6 +74,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -347,6 +352,75 @@ absl::StatusOr<std::vector<xla::LayoutMode>> GetOutputLayoutModesFromHloModules(
                         output_dtypes.size());
 }
 
+// Returns a list of donatable input indices from the given MLIR module.
+absl::StatusOr<std::vector<int>> GetDonatableInputIndicesFromMlirModule(
+    mlir::ModuleOp module) {
+  mlir::func::FuncOp main_func =
+      module.lookupSymbol<mlir::func::FuncOp>("main");
+  if (!main_func) {
+    return absl::InvalidArgumentError("MLIR module must have a main function");
+  }
+  mlir::FunctionType func_type = main_func.getFunctionType();
+
+  std::optional<mlir::TypeRange> arg_types;
+  bool tupled_args = false;
+  if (func_type.getNumInputs() == 1) {
+    auto tuple_type = llvm::dyn_cast<mlir::TupleType>(func_type.getInput(0));
+    if (tuple_type) {
+      tupled_args = true;
+      arg_types = tuple_type.getTypes();
+    }
+  }
+  if (!arg_types.has_value()) {
+    arg_types = func_type.getInputs();
+  }
+
+  std::vector<int> donatable_input_indices;
+  for (const auto& [i, arg] : llvm::enumerate(*arg_types)) {
+    const int index = tupled_args ? 0 : i;
+    if (auto donor = main_func.getArgAttrOfType<mlir::BoolAttr>(
+            index, "jax.buffer_donor");
+        donor && donor.getValue()) {
+      donatable_input_indices.push_back(index);
+    } else if (main_func.getArgAttrOfType<mlir::IntegerAttr>(
+                   index, "tf.aliasing_output")) {
+      donatable_input_indices.push_back(index);
+    }
+  }
+  return donatable_input_indices;
+}
+
+// Returns a list of donatable input indices from the given HLO modules.
+// TODO(hyeontaek): Remove this function once serialization/deserialization
+// roundtrip preserves donatable input information.
+absl::StatusOr<std::vector<int>> GetDonatableInputIndicesFromHloModules(
+    const absl::StatusOr<std::vector<std::shared_ptr<xla::HloModule>>>&
+        hlo_modules) {
+  TF_RETURN_IF_ERROR(hlo_modules.status());
+  if (hlo_modules->empty()) {
+    return FailedPrecondition("No module found");
+  }
+  std::vector<int> donatable_input_indices;
+  hlo_modules->front()->input_output_alias_config().ForEachAlias(
+      [&](const xla::ShapeIndex& output_index,
+          const xla::HloInputOutputAliasConfig::Alias& alias) {
+        if (alias.parameter_index.empty()) {
+          donatable_input_indices.push_back(alias.parameter_number);
+        } else {
+          donatable_input_indices.push_back(alias.parameter_index.front());
+        }
+      });
+  for (const auto& buffer_donor :
+       hlo_modules->front()->buffer_donor_config().buffer_donor()) {
+    if (buffer_donor.param_index.empty()) {
+      donatable_input_indices.push_back(buffer_donor.param_number);
+    } else {
+      donatable_input_indices.push_back(buffer_donor.param_index.front());
+    }
+  }
+  return donatable_input_indices;
+}
+
 // Returns a list of result shapes from the given MLIR module.
 absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
     mlir::ModuleOp module) {
@@ -442,6 +516,8 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
     const xla::PjRtTopologyDescription& topology) {
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(std::vector<int> donatable_input_indices,
+                      GetDonatableInputIndicesFromMlirModule(module));
   TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
       ResultShapesOfModule(module));
@@ -471,19 +547,22 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
       GetLayouts(pjrt_executable->GetOutputLayouts(), output_layout_modes));
 
   return ExecutableRef(new PjRtExecutable(
-      std::move(pjrt_executable), std::move(output_dtypes),
-      std::move(output_shapes), std::move(output_hlo_shardings),
-      std::move(output_memory_kinds), std::move(output_layouts)));
+      std::move(pjrt_executable), std::move(donatable_input_indices),
+      std::move(output_dtypes), std::move(output_shapes),
+      std::move(output_hlo_shardings), std::move(output_memory_kinds),
+      std::move(output_layouts)));
 }
 
 PjRtExecutable::PjRtExecutable(
     std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
-    std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+    std::vector<int> donatable_input_indices, std::vector<DType> output_dtypes,
+    std::vector<Shape> output_shapes,
     std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
     std::vector<absl::string_view> output_memory_kinds,
     std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
         output_layouts)
     : pjrt_executable_(std::move(pjrt_executable)),
+      donatable_input_indices_(std::move(donatable_input_indices)),
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       output_hlo_shardings_(std::move(output_hlo_shardings)),
@@ -511,6 +590,18 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       executable_devices,
       AdjustExecutableDevicesForPmap(client, pjrt_loaded_executable.get(),
                                      std::move(executable_devices)));
+
+  const absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>& hlo_modules =
+      pjrt_loaded_executable->GetHloModules();
+
+  std::vector<int> donatable_input_indices;
+  // `donatable_input_indices` is not load bearing yet, and `GetHloModules()`
+  // may fail, so we keep this path gracefully fail upon any `GetHloModules()`
+  // failure.
+  if (hlo_modules.ok()) {
+    TF_ASSIGN_OR_RETURN(donatable_input_indices,
+                        GetDonatableInputIndicesFromHloModules(hlo_modules));
+  }
 
   TF_ASSIGN_OR_RETURN(
       std::vector<DType> output_dtypes,
@@ -555,8 +646,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
       output_layouts;
   absl::StatusOr<std::vector<xla::LayoutMode>> output_layout_modes =
-      GetOutputLayoutModesFromHloModules(
-          pjrt_loaded_executable->GetHloModules(), output_dtypes);
+      GetOutputLayoutModesFromHloModules(hlo_modules, output_dtypes);
   if (output_layout_modes.ok()) {
     TF_ASSIGN_OR_RETURN(output_layouts,
                         GetLayouts(pjrt_loaded_executable->GetOutputLayouts(),
@@ -565,9 +655,9 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 
   return LoadedExecutableRef(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(executable_devices),
-      std::move(loaded_host_callbacks), std::move(output_dtypes),
-      std::move(output_shapes), std::move(output_shardings),
-      std::move(output_layouts)));
+      std::move(loaded_host_callbacks), std::move(donatable_input_indices),
+      std::move(output_dtypes), std::move(output_shapes),
+      std::move(output_shardings), std::move(output_layouts)));
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
@@ -583,6 +673,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
+  TF_ASSIGN_OR_RETURN(std::vector<int> donatable_input_indices,
+                      GetDonatableInputIndicesFromMlirModule(module));
   TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
       ResultShapesOfModule(module));
@@ -622,9 +714,9 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 
   return LoadedExecutableRef(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(executable_devices),
-      std::move(loaded_host_callbacks), std::move(output_dtypes),
-      std::move(output_shapes), std::move(output_shardings),
-      std::move(output_layouts)));
+      std::move(loaded_host_callbacks), std::move(donatable_input_indices),
+      std::move(output_dtypes), std::move(output_shapes),
+      std::move(output_shardings), std::move(output_layouts)));
 }
 
 PjRtLoadedExecutable::PjRtLoadedExecutable(
@@ -632,8 +724,8 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     DeviceListRef devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
-    std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-    std::vector<ShardingRef> output_shardings,
+    std::vector<int> donatable_input_indices, std::vector<DType> output_dtypes,
+    std::vector<Shape> output_shapes, std::vector<ShardingRef> output_shardings,
     std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
         output_layouts)
     : client_(client),
@@ -645,6 +737,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
               std::move(all_loaded_host_callbacks))),
       host_send_recv_callbacks_(
           GatherHostSendAndRecvCallbacks(*all_loaded_host_callbacks_)),
+      donatable_input_indices_(std::move(donatable_input_indices)),
       output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       output_shardings_(std::move(output_shardings)),
