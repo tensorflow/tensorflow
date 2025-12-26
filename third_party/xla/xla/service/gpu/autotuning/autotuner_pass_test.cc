@@ -69,8 +69,9 @@ class AutotunerPassTest : public HloHardwareIndependentTestBase {
  protected:
   AutotunerPassTest()
       : stream_executor_(GpuExecutor()),
-        allocator_(std::make_unique<se::StreamExecutorMemoryAllocator>(
-            stream_executor_)) {}
+        allocator_(
+            std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+                stream_executor_)) {}
 
   se::StreamExecutor* stream_executor_;
   std::unique_ptr<se::DeviceAddressAllocator> allocator_;
