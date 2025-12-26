@@ -36,8 +36,9 @@ using tensorflow::TensorShape;
 
 class NgramKernelTest : public tensorflow::OpsTestBase {
  public:
-  void MakeOp(string separator, std::vector<int> ngram_width, string left_pad,
-              string right_pad, int pad_width, bool preserve) {
+  void MakeOp(std::string separator, std::vector<int> ngram_width,
+              std::string left_pad, std::string right_pad, int pad_width,
+              bool preserve) {
     TF_ASSERT_OK(NodeDefBuilder("tested_op", "StringNGrams")
                      .Attr("separator", separator)
                      .Attr("ngram_widths", ngram_width)

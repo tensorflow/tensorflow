@@ -33,10 +33,10 @@ using GPUDevice = Eigen::GpuDevice;
 absl::Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
                          random::PhiloxRandom::ResultType* out_counter) {
   // Grab the two seeds
-  uint64 seed0;
-  uint64 seed1;
+  uint64_t seed0;
+  uint64_t seed1;
   if (seed.dtype() == DT_INT32) {
-    const auto seed_vals = seed.flat<int32>();
+    const auto seed_vals = seed.flat<int32_t>();
     seed0 = internal::SubtleMustCopy(seed_vals(0));
     seed1 = internal::SubtleMustCopy(seed_vals(1));
   } else if (seed.dtype() == DT_INT64) {
@@ -52,10 +52,10 @@ absl::Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
   // part of the seed needs to be strong.
   (*out_key)[0] = 0x3ec8f720;
   (*out_key)[1] = 0x02461e29;
-  (*out_counter)[0] = static_cast<uint32>(seed0);
-  (*out_counter)[1] = static_cast<uint32>(seed0 >> 32);
-  (*out_counter)[2] = static_cast<uint32>(seed1);
-  (*out_counter)[3] = static_cast<uint32>(seed1 >> 32);
+  (*out_counter)[0] = static_cast<uint32_t>(seed0);
+  (*out_counter)[1] = static_cast<uint32_t>(seed0 >> 32);
+  (*out_counter)[2] = static_cast<uint32_t>(seed1);
+  (*out_counter)[3] = static_cast<uint32_t>(seed1 >> 32);
   const auto mix = random::PhiloxRandom(*out_counter, *out_key)();
   (*out_key)[0] = mix[0];
   (*out_key)[1] = mix[1];
