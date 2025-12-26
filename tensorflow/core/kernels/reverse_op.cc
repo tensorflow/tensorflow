@@ -90,11 +90,11 @@ void ReverseRows(OpKernelContext* context, const Tensor& input,
 template <typename T>
 struct data_type_can_memcpy {
   static constexpr bool value =
-      std::is_same<T, uint8>::value || std::is_same<T, int8>::value ||
-      std::is_same<T, bool>::value || std::is_same<T, uint16>::value ||
-      std::is_same<T, int16>::value || std::is_same<T, Eigen::half>::value ||
+      std::is_same<T, uint8_t>::value || std::is_same<T, int8_t>::value ||
+      std::is_same<T, bool>::value || std::is_same<T, uint16_t>::value ||
+      std::is_same<T, int16_t>::value || std::is_same<T, Eigen::half>::value ||
       std::is_same<T, Eigen::bfloat16>::value ||
-      std::is_same<T, int32>::value || std::is_same<T, float>::value ||
+      std::is_same<T, int32_t>::value || std::is_same<T, float>::value ||
       std::is_same<T, int64_t>::value || std::is_same<T, double>::value ||
       std::is_same<T, complex64>::value || std::is_same<T, complex128>::value;
 };
@@ -104,17 +104,17 @@ typename std::enable_if<data_type_can_memcpy<T>::value>::type
 DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
                     Tensor* result) {
   if (sizeof(T) == 1) {
-    static_assert(sizeof(uint8) == 1, "uint8 must be 1 byte.");
-    ReverseRows<uint8, NUM_CHANNELS>(context, input, result);
+    static_assert(sizeof(uint8_t) == 1, "uint8 must be 1 byte.");
+    ReverseRows<uint8_t, NUM_CHANNELS>(context, input, result);
   } else if (sizeof(T) == 2) {
-    static_assert(sizeof(uint16) == 2, "uint16 must be 2 bytes");
-    ReverseRows<uint16, NUM_CHANNELS>(context, input, result);
+    static_assert(sizeof(uint16_t) == 2, "uint16 must be 2 bytes");
+    ReverseRows<uint16_t, NUM_CHANNELS>(context, input, result);
   } else if (sizeof(T) == 4) {
-    static_assert(sizeof(uint32) == 4, "uint32 must be 4 bytes");
-    ReverseRows<uint32, NUM_CHANNELS>(context, input, result);
+    static_assert(sizeof(uint32_t) == 4, "uint32 must be 4 bytes");
+    ReverseRows<uint32_t, NUM_CHANNELS>(context, input, result);
   } else if (sizeof(T) == 8) {
-    static_assert(sizeof(uint64) == 8, "uint64 must be 8 bytes");
-    ReverseRows<uint64, NUM_CHANNELS>(context, input, result);
+    static_assert(sizeof(uint64_t) == 8, "uint64 must be 8 bytes");
+    ReverseRows<uint64_t, NUM_CHANNELS>(context, input, result);
   } else if (sizeof(T) == 16) {
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
@@ -388,27 +388,27 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Reverse")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("tensor")
                             .HostMemory("dims")
                             .HostMemory("output"),
-                        ReverseOp<CPUDevice, int32>);
+                        ReverseOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tidx")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tidx")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int32>);
+                        ReverseV2Op<CPUDevice, int32_t, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tidx")
                             .HostMemory("tensor")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ReverseV2Op<CPUDevice, int32, int64>);
+                        ReverseV2Op<CPUDevice, int32_t, int64_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
