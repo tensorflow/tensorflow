@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/saved_model/pywrap_saved_model_fingerprinting.h"
 
+#include <cstdint>
 #include <exception>
 #include <string>
 
