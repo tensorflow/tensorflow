@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
