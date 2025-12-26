@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_IDENTITY_N_OP_H_
 #define TENSORFLOW_CORE_KERNELS_IDENTITY_N_OP_H_
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
