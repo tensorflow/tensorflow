@@ -16,6 +16,7 @@ limitations under the License.
 // XLA TensorArray operators.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
