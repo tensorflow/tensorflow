@@ -1657,6 +1657,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

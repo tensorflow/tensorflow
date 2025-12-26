@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -82,6 +84,26 @@ TEST(TargetConfigTest, ProtoConstructorFillsAllFields) {
             stream_executor::GpuTargetConfigProto::descriptor()->field_count())
       << "Make sure all the fields in GpuTargetConfigProto are set and "
          "validated!";
+}
+
+TEST(TargetConfigTest, CompareEqualFromSameProto) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "platform"
+        dnn_version_info { major: 2 }
+        runtime_version { major: 12 }
+        gpu_device_info { threads_per_block_limit: 5 }
+        device_description_str: "foo"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(auto config1,
+                       Compiler::GpuTargetConfig::FromProto(config_proto));
+  ASSERT_OK_AND_ASSIGN(auto config2,
+                       Compiler::GpuTargetConfig::FromProto(config_proto));
+
+  EXPECT_THAT(config1, ::testing::Eq(config2));
 }
 
 }  // namespace
