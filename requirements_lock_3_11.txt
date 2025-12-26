@@ -229,9 +229,9 @@ idna==3.10 \
 jax==0.4.7 \
     --hash=sha256:5e7002d74db25f97c99b979d4ba1233b1ef26e1597e5fc468ad11d1c8a9dc4f8
     # via -r ci/official/requirements_updater/requirements.in
-keras-nightly==3.10.0.dev2025072304 \
-    --hash=sha256:05777407dbcb04869abfd130af20d1cce76664a0a11f178ab0f13aead3a3bbad \
-    --hash=sha256:b79bb0c142f8721a77277aa3657c688f6da8efc77c3bccdccab0ba9a5e64ff53
+keras-nightly==3.12.0.dev2025100703 \
+    --hash=sha256:6b9dfb3814d707abf5555f56268f072daec13f2540da3aeeb7531a819ebb4567 \
+    --hash=sha256:e29434e49bac3360f86af6e1548d94b0a2fda4e793685bc43b49867132ab16e5
     # via -r ci/official/requirements_updater/requirements.in
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
