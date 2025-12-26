@@ -1,16 +1,8 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_cuda_or_rocm_is_configured",
-)
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -187,7 +179,6 @@ cc_library(
         "compilation_pipeline_rocm.cc",
     ],
     hdrs = ["compilation_pipeline.h"],
-    tags = ["gpu"],
     deps = [
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
@@ -313,18 +304,15 @@ cc_library(
 )
 
 cc_library(
-    name = "xtile_compiler_impl",
+    name = "xtile_compiler",
     srcs =
         [
             "xtile_compiler.cc",
-            "xtile_compiler.h",
         ],
+    hdrs = ["xtile_compiler.h"],
     tags = [
-        "gpu",
-        "manual",
         "no-oneapi",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         ":collective_emitter",
         ":compilation_pipeline",
@@ -408,68 +396,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xtile_compiler_stub",
-    srcs = [
-        "xtile_compiler.h",
-        "xtile_compiler_stub.cc",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla:autotuning_proto_cc_impl",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler",
-    hdrs = [
-        "xtile_compiler.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = if_cuda_or_rocm_is_configured(
-        [":xtile_compiler_impl"],
-        [":xtile_compiler_stub"],
-    ) + if_cuda_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-    ]) + [
-        "//xla:autotuning_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
     name = "dot_algorithms",
     srcs = ["dot_algorithms.cc"],
     hdrs = ["dot_algorithms.h"],
@@ -498,52 +424,6 @@ cc_library(
         "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler_stub_for_testing",
-    srcs = [
-        "xtile_compiler_stub.cc",
-    ],
-    hdrs = [
-        "xtile_compiler.h",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla:autotuning_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@triton//:TritonDialects",
-    ],
-)
-
-xla_cc_test(
-    name = "xtile_compiler_stub_test",
-    srcs = ["xtile_compiler_stub_test.cc"],
-    deps = [
-        ":xtile_compiler_stub_for_testing",
-        "//xla:literal_util",
-        "//xla/codegen/tiling:tiled_hlo_instruction",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
     ],
 )
 
