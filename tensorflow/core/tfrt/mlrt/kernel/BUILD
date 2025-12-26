@@ -230,6 +230,7 @@ tf_cc_shared_test(
         ":context",
         ":ifrt_ops_kernel",
         ":kernel",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/framework:tensor",

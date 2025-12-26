@@ -89,7 +89,8 @@ struct AsyncState {
   const tensorflow::ProcessFunctionLibraryRuntime&
       process_function_library_runtime;
 
-  std::vector<tsl::Promise<tensorflow::Tensor>> results;
+  std::vector<tsl::Promise<tensorflow::Tensor>> host_tensor_results;
+  std::vector<tsl::Promise<DtypeAndShape>> dtype_and_shape_results;
 };
 
 // Returns a casted tensor if successful.
@@ -140,14 +141,19 @@ absl::StatusOr<tensorflow::Tensor> Cast(
 }
 
 void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
-                    AsyncState* async_state, RestoreVariableShard shard) {
+                    AsyncState* async_state, RestoreVariableShard shard,
+                    IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry) {
   // Keep input tensor alive in `shard`.
   auto* op_kernel_context_ptr = &async_state->context;
   runner.Run(op_kernel_context_ptr);
 
   auto& op_kernel_context = async_state->context;
   if (!op_kernel_context.status().ok()) {
-    for (auto& result : async_state->results) {
+    LOG(ERROR) << "failed to run restore op: " << op_kernel_context.status();
+    for (auto& result : async_state->host_tensor_results) {
+      std::move(result).Set(op_kernel_context.status());
+    }
+    for (auto& result : async_state->dtype_and_shape_results) {
       std::move(result).Set(op_kernel_context.status());
     }
     return;
@@ -161,7 +167,17 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
 
     if (op_kernel_context.mutable_output(i)->dtype() !=
         shard.restored_dtypes[i]) {
-      std::move(async_state->results[i])
+      LOG(ERROR) << "checkpoint_loader: dtype mismatch: "
+                 << shard.var_handles[i].tensor().DebugString() << ", "
+                 << op_kernel_context.mutable_output(i)->dtype() << " vs. "
+                 << shard.restored_dtypes[i];
+      std::move(async_state->host_tensor_results[i])
+          .Set(absl::InvalidArgumentError(
+              absl::StrCat("The restored tensor has a different dtype than the "
+                           "variable handle: ",
+                           op_kernel_context.mutable_output(i)->dtype(),
+                           " vs. ", shard.restored_dtypes[i])));
+      std::move(async_state->dtype_and_shape_results[i])
           .Set(absl::InvalidArgumentError(
               absl::StrCat("The restored tensor has a different dtype than the "
                            "variable handle: ",
@@ -172,9 +188,16 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
     const ResourceHandle& var_handle =
         shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
 
+    DtypeAndShape dtype_and_shape{
+        .dtype = op_kernel_context.mutable_output(i)->dtype(),
+        .shape = op_kernel_context.mutable_output(i)->shape(),
+    };
+
     if (shard.restored_dtypes[i] == var_handle.dtypes_and_shapes()[0].dtype) {
-      std::move(async_state->results[i])
+      std::move(async_state->host_tensor_results[i])
           .Set(*std::move(op_kernel_context.mutable_output(i)));
+      std::move(async_state->dtype_and_shape_results[i])
+          .Set(std::move(dtype_and_shape));
     } else {
       absl::StatusOr<tensorflow::Tensor> cast_output =
           Cast(*op_kernel_context.mutable_output(i), shard.restored_dtypes[i],
@@ -183,9 +206,17 @@ void RunShardHelper(const tfrt_stub::OpKernelRunner& runner,
                async_state->process_function_library_runtime,
                async_state->run_state.params);
       if (!cast_output.ok()) {
-        std::move(async_state->results[i]).Set(cast_output.status());
+        std::move(async_state->host_tensor_results[i])
+            .Set(cast_output.status());
+        std::move(async_state->dtype_and_shape_results[i])
+            .Set(cast_output.status());
+        return;
       } else {
-        std::move(async_state->results[i]).Set(*std::move(cast_output));
+        dtype_and_shape.dtype = cast_output->dtype();
+        std::move(async_state->host_tensor_results[i])
+            .Set(*std::move(cast_output));
+        std::move(async_state->dtype_and_shape_results[i])
+            .Set(std::move(dtype_and_shape));
       }
     }
   }
@@ -245,42 +276,53 @@ absl::Status RunShard(RestoreVariableShard shard,
       fallback_request_state.process_function_library_runtime());
 
   for (int i = 0; i < num_outputs; ++i) {
-    auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
+    auto [host_tensor_promise, host_tensor_future] =
+        tsl::Future<tensorflow::Tensor>::MakePromise();
+    auto [dtype_and_shape_promise, dtype_and_shape_future] =
+        tsl::Future<ifrt_serving::DtypeAndShape>::MakePromise();
     const ResourceHandle& var_handle =
         shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
 
-    TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
-                        ifrt_serving::GetDtypeAndShape(var_handle));
+    // TF_ASSIGN_OR_RETURN(ifrt_serving::DtypeAndShape dtype_and_shape,
+    //                     ifrt_serving::GetDtypeAndShape(var_handle));
 
     std::string runtime_name =
         ifrt_serving::GetRuntimeNameFromVarHandle(var_handle);
 
     ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-        restored_tensor_info = {false, std::move(dtype_and_shape),
-                                std::move(future)};
+        restored_tensor_info = {false, std::move(dtype_and_shape_future),
+                                std::move(host_tensor_future)};
     if (auto status = ifrt_restore_tensor_registry->TryRegister(
             runtime_name, restored_tensor_info);
         !status.ok()) {
       // Propagate errors so that if already-registered futures are being waited
       // on, they can be unblocked.
-      for (auto& result : async_state->results) {
+      for (auto& result : async_state->host_tensor_results) {
+        std::move(result).Set(status);
+      };
+      for (auto& result : async_state->dtype_and_shape_results) {
         std::move(result).Set(status);
       };
       return status;
     }
-    async_state->results.push_back(std::move(promise));
+    async_state->host_tensor_results.push_back(std::move(host_tensor_promise));
+    async_state->dtype_and_shape_results.push_back(
+        std::move(dtype_and_shape_promise));
   }
   // Run the shard synchronously.
   if (!use_async_restore) {
-    RunShardHelper(runner, async_state.get(), shard);
+    RunShardHelper(runner, async_state.get(), shard,
+                   ifrt_restore_tensor_registry);
   } else {
     tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
     // Use dedicated work queue for restore operation.
     checkpoint_loader_work_queue->AddTask(
         [runner = std::move(runner), async_state = std::move(async_state),
-         shard = std::move(shard), bg_context = std::move(bg_context)]() {
+         shard = std::move(shard), bg_context = std::move(bg_context),
+         ifrt_restore_tensor_registry = ifrt_restore_tensor_registry]() {
           tensorflow::WithContext wc(bg_context);
-          RunShardHelper(runner, async_state.get(), shard);
+          RunShardHelper(runner, async_state.get(), shard,
+                         ifrt_restore_tensor_registry);
         });
   }
 
