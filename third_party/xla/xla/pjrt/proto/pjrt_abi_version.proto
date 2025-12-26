@@ -1,0 +1,11 @@
+edition = "2023";
+
+package xla;
+
+option java_package = "org.tensorflow.xla";
+option java_multiple_files = true;
+option java_outer_classname = "PjrtAbiVersion";
+
+message PjRtAbiVersionProto {
+  bytes version = 1;
+}
