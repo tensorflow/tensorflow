@@ -62,8 +62,10 @@ std::unique_ptr<tsl::BFCAllocator> CreateAllocator(se::StreamExecutor* executor,
   std::unique_ptr<tsl::SubAllocator> device_mem_allocator;
   if (is_collective) {
     device_mem_allocator = std::make_unique<se::StreamExecutorAllocator>(
-        executor->CreateMemoryAllocator(se::MemoryType::kCollective).value(),
-        /*memory_type=*/stream_executor::MemoryType::kCollective,
+        executor
+            ->CreateMemoryAllocator(stream_executor::MemorySpace::kCollective)
+            .value(),
+        /*memory_type=*/stream_executor::MemorySpace::kCollective,
         device_ordinal);
   } else {
     device_mem_allocator = std::make_unique<se::DeviceMemAllocator>(
