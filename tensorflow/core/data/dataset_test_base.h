@@ -65,7 +65,7 @@ namespace tensorflow {
 namespace data {
 
 typedef std::vector<
-    std::pair<string, tensorflow::FunctionDefHelper::AttrValueWrapper>>
+    std::pair<std::string, tensorflow::FunctionDefHelper::AttrValueWrapper>>
     AttributeVector;
 
 constexpr int kDefaultCPUNum = 2;
@@ -103,7 +103,7 @@ std::vector<Tensor> CreateTensors(
 enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
 
 // Returns a string representation for the given compression type.
-string ToString(CompressionType compression_type);
+std::string ToString(CompressionType compression_type);
 
 // Gets the specified zlib compression options according to the compression
 // type. Note that `CompressionType::UNCOMPRESSED` is not supported because
@@ -116,20 +116,20 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
 // buffer size when ZLIB and GZIP compression is used.
 struct CompressionParams {
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
-  int32 input_buffer_size = 0;
-  int32 output_buffer_size = 0;
+  int32_t input_buffer_size = 0;
+  int32_t output_buffer_size = 0;
 };
 
 // Writes the input data into the file without compression.
-absl::Status WriteDataToFile(const string& filename, const char* data);
+absl::Status WriteDataToFile(const std::string& filename, const char* data);
 
 // Writes the input data into the file with the specified compression.
-absl::Status WriteDataToFile(const string& filename, const char* data,
+absl::Status WriteDataToFile(const std::string& filename, const char* data,
                              const CompressionParams& params);
 
 // Writes the input data into the TFRecord file with the specified compression.
 absl::Status WriteDataToTFRecordFile(
-    const string& filename, const std::vector<absl::string_view>& records,
+    const std::string& filename, const std::vector<absl::string_view>& records,
     const CompressionParams& params);
 
 // Provides the parameters for running the dataset op.
@@ -137,7 +137,7 @@ class DatasetParams {
  public:
   DatasetParams(DataTypeVector output_dtypes,
                 std::vector<PartialTensorShape> output_shapes,
-                string node_name);
+                std::string node_name);
 
   virtual ~DatasetParams() = default;
 
@@ -146,7 +146,7 @@ class DatasetParams {
 
   // Returns the dataset input names as a string vector.
   virtual absl::Status GetInputNames(
-      std::vector<string>* input_names) const = 0;
+      std::vector<std::string>* input_names) const = 0;
 
   // Returns the dataset attributes as a vector.
   virtual absl::Status GetAttributes(AttributeVector* attributes) const = 0;
@@ -154,7 +154,7 @@ class DatasetParams {
   // Checks if the tensor is a dataset variant tensor.
   static bool IsDatasetTensor(const Tensor& tensor);
 
-  string node_name() const { return node_name_; }
+  std::string node_name() const { return node_name_; }
 
   DataTypeVector output_dtypes() const { return output_dtypes_; }
 
@@ -162,7 +162,7 @@ class DatasetParams {
     return output_shapes_;
   }
 
-  string iterator_prefix() const { return iterator_prefix_; }
+  std::string iterator_prefix() const { return iterator_prefix_; }
 
   const std::vector<std::shared_ptr<DatasetParams>>& input_dataset_params()
       const {
@@ -175,12 +175,12 @@ class DatasetParams {
   // Returns the dataset type for the op represented by these parameters. This
   // type usually needs to match the constant called `kDatasetType` defined in
   // the dataset kernel.
-  virtual string dataset_type() const = 0;
+  virtual std::string dataset_type() const = 0;
 
   // Returns the dataset op name. By default, it returns the Op::kDatasetType
   // concatenated with "Dataset". For ops that do not have "Dataset" suffix,
   // this method can be overriden to return a different name.
-  virtual string op_name() const {
+  virtual std::string op_name() const {
     name_utils::OpNameParams params;
     params.op_version = op_version();
     return name_utils::OpName(dataset_type(), params);
@@ -192,8 +192,8 @@ class DatasetParams {
   std::vector<std::shared_ptr<DatasetParams>> input_dataset_params_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
-  string node_name_;
-  string iterator_prefix_ = "Iterator";
+  std::string node_name_;
+  std::string iterator_prefix_ = "Iterator";
   int op_version_ = 1;
 };
 
@@ -204,7 +204,7 @@ class RangeDatasetParams : public DatasetParams {
   RangeDatasetParams(int64_t start, int64_t stop, int64_t step,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
-                     string node_name);
+                     std::string node_name);
 
   RangeDatasetParams(int64_t start, int64_t stop, int64_t step);
 
@@ -213,11 +213,12 @@ class RangeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
  private:
   int64_t start_;
@@ -234,7 +235,7 @@ class BatchDatasetParams : public DatasetParams {
                      bool drop_remainder, bool parallel_copy,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
-                     string node_name)
+                     std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         batch_size_(batch_size),
@@ -249,11 +250,12 @@ class BatchDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
  private:
   int64_t batch_size_;
@@ -272,7 +274,7 @@ class MapDatasetParams : public DatasetParams {
                    DataTypeVector type_arguments, DataTypeVector output_dtypes,
                    std::vector<PartialTensorShape> output_shapes,
                    bool use_inter_op_parallelism, bool preserve_cardinality,
-                   string node_name)
+                   std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
@@ -289,11 +291,12 @@ class MapDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
   std::vector<FunctionDef> func_lib() const override;
 
@@ -310,16 +313,17 @@ class MapDatasetParams : public DatasetParams {
 // in testing.
 class TensorSliceDatasetParams : public DatasetParams {
  public:
-  TensorSliceDatasetParams(std::vector<Tensor> components, string node_name,
-                           bool is_files = false);
+  TensorSliceDatasetParams(std::vector<Tensor> components,
+                           std::string node_name, bool is_files = false);
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
   int64_t num_slices() const { return components_[0].dim_size(0); }
 
@@ -344,7 +348,7 @@ class TakeDatasetParams : public DatasetParams {
   TakeDatasetParams(T input_dataset_params, int count,
                     DataTypeVector output_dtypes,
                     std::vector<PartialTensorShape> output_shapes,
-                    string node_name)
+                    std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         count_(count) {
@@ -356,11 +360,12 @@ class TakeDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
  private:
   int64_t count_;
@@ -374,7 +379,7 @@ class ConcatenateDatasetParams : public DatasetParams {
   ConcatenateDatasetParams(T input_dataset_params_0, P input_dataset_params_1,
                            DataTypeVector output_dtypes,
                            std::vector<PartialTensorShape> output_shapes,
-                           string node_name)
+                           std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)) {
     input_dataset_params_.push_back(
@@ -388,11 +393,12 @@ class ConcatenateDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 };
 
 // `OptionsDatasetParams` is a common dataset parameter type that is used in
@@ -400,10 +406,11 @@ class ConcatenateDatasetParams : public DatasetParams {
 class OptionsDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  OptionsDatasetParams(T input_dataset_params, const string& serialized_options,
+  OptionsDatasetParams(T input_dataset_params,
+                       const std::string& serialized_options,
                        DataTypeVector output_dtypes,
                        std::vector<PartialTensorShape> output_shapes,
-                       string node_name)
+                       std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         serialized_options_(serialized_options) {
@@ -412,14 +419,15 @@ class OptionsDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override;
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override;
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override;
 
   absl::Status GetAttributes(AttributeVector* attr_vector) const override;
 
-  string dataset_type() const override;
+  std::string dataset_type() const override;
 
  private:
-  string serialized_options_;
+  std::string serialized_options_;
 };
 
 template <typename T>
@@ -458,13 +466,13 @@ struct SkipTestCase {
 template <typename T>
 struct DatasetNodeNameTestCase {
   T dataset_params;
-  string expected_node_name;
+  std::string expected_node_name;
 };
 
 template <typename T>
 struct DatasetTypeStringTestCase {
   T dataset_params;
-  string expected_dataset_type_string;
+  std::string expected_dataset_type_string;
 };
 
 template <typename T>
@@ -505,7 +513,7 @@ struct IteratorOutputShapesTestCase {
 template <typename T>
 struct IteratorPrefixTestCase {
   T dataset_params;
-  string expected_iterator_prefix;
+  std::string expected_iterator_prefix;
 };
 
 template <typename T>
@@ -657,10 +665,11 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::vector<Tensor>& expected_outputs);
 
   // Checks `DatasetBase::node_name()`.
-  absl::Status CheckDatasetNodeName(const string& expected_dataset_node_name);
+  absl::Status CheckDatasetNodeName(
+      const std::string& expected_dataset_node_name);
 
   // Checks `DatasetBase::type_string()`.
-  absl::Status CheckDatasetTypeString(const string& expected_type_str);
+  absl::Status CheckDatasetTypeString(const std::string& expected_type_str);
 
   // Checks `DatasetBase::output_dtypes()`.
   absl::Status CheckDatasetOutputDtypes(
@@ -685,7 +694,7 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::vector<PartialTensorShape>& expected_output_shapes);
 
   // Checks `IteratorBase::prefix()`.
-  absl::Status CheckIteratorPrefix(const string& expected_iterator_prefix);
+  absl::Status CheckIteratorPrefix(const std::string& expected_iterator_prefix);
 
   absl::Status CheckIteratorSaveAndRestore(
       DatasetBase* dataset, IteratorContext* iterator_ctx,
@@ -711,7 +720,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
     constexpr static const char kTypeName[] = "tensorflow::data::TestVariant";
 
-    string TypeName() const { return kTypeName; }
+    std::string TypeName() const { return kTypeName; }
 
     // Encodes the contents of this object into `data`.  This function signature
     // is required for objects to be stored in `tensorflow::Variant`s.  See the
@@ -733,8 +742,8 @@ class DatasetOpsTestBase : public ::testing::Test {
       return true;
     }
 
-    string DebugString() const {
-      string result = "TestVariant([";
+    std::string DebugString() const {
+      std::string result = "TestVariant([";
       for (const auto& tensor : tensors_) {
         if (&tensor != &tensors_[0]) result += ", ";
         result += tensor.DebugString();
@@ -790,7 +799,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   // the timeout issue or duplicated elements.
   absl::Status RestoreIterator(IteratorContext* ctx,
                                IteratorStateReader* reader,
-                               const string& output_prefix,
+                               const std::string& output_prefix,
                                const DatasetBase& dataset,
                                std::unique_ptr<IteratorBase>* iterator);
 
