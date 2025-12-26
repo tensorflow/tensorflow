@@ -257,7 +257,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableUntilTransferCompletes) {
           /*on_done_with_host_buffer=*/nullptr));
 
   // Once the `Array` has become ready, the host buffer is not accessed.
-  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  ASSERT_OK(array->GetReadyFuture().Await());
   data = nullptr;
   // There should be no use-after-free.
 }
@@ -283,7 +283,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferZeroCopy) {
   // the `Array` is destroyed, the host buffer is not accessed. This test would
   // pass trivially on the implementations that downgrade `kZeroCopy`, if
   // `MakeArrayFromHostBufferImmutableUntilTransferCompletes` already passes.
-  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  ASSERT_OK(array->GetReadyFuture().Await());
   array.reset();
   data = nullptr;
   // There should be no use-after-free.
@@ -308,7 +308,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
             SingleDeviceSharding::Create(device, memory->Kind()),
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
-    TF_ASSERT_OK(array->GetReadyFuture().Await());
+    ASSERT_OK(array->GetReadyFuture().Await());
 
     TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
     // `layout` should be either nullptr or a concrete default layout.
@@ -343,7 +343,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {
   auto future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(data));
 }
 
@@ -370,7 +370,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithByteStridesAndCopyToHostBuffer) {
   auto future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -395,13 +395,13 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithNonCompactByteStrides) {
                           data.data(), dtype, shape, byte_strides, sharding,
                           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                           /*on_done_with_host_buffer=*/nullptr));
-  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  ASSERT_OK(array->GetReadyFuture().Await());
 
   std::vector<int8_t> out_data(4);
   tsl::Future<> future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAre(0, 2, 1, 3));
 }
 
@@ -428,7 +428,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithByteStrides) {
   std::vector<float> expected_out_data = {0, 3, 1, 4, 2, 5};
   auto future = array->CopyToHostBuffer(out_data.data(), byte_strides,
                                         ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -455,7 +455,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
           /*on_done_with_host_buffer=*/nullptr));
 
   // Once the `Array` has become ready, the host buffer is not accessed.
-  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  ASSERT_OK(array->GetReadyFuture().Await());
   data = nullptr;
   // There should be no use-after-free.
 
@@ -472,7 +472,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
     auto future = single_device_arrays[i]->CopyToHostBuffer(
         out_data.data(),
         /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-    TF_ASSERT_OK(future.Await());
+    ASSERT_OK(future.Await());
     EXPECT_THAT(out_data, ElementsAre(0, 1, 2, 3, 4, 5));
   }
 }
@@ -535,8 +535,8 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   ASSERT_THAT(arrays, SizeIs(2));
 
   // Once the `Array` has become ready, the host buffer is not accessed.
-  TF_ASSERT_OK(arrays[0]->GetReadyFuture().Await());
-  TF_ASSERT_OK(arrays[1]->GetReadyFuture().Await());
+  ASSERT_OK(arrays[0]->GetReadyFuture().Await());
+  ASSERT_OK(arrays[1]->GetReadyFuture().Await());
   data0 = nullptr;
   data1 = nullptr;
   // There should be no use-after-free.
@@ -557,7 +557,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
       auto future = single_device_arrays[j]->CopyToHostBuffer(
           out_data.data(),
           /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
       if ((i + j) % 2 == 0) {
         EXPECT_THAT(out_data, ElementsAre(0, 1, 2));
       } else {
@@ -711,7 +711,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
     array = std::move(arrays.front());
   }
 
-  TF_ASSERT_OK(array->GetReadyFuture().Await());
+  ASSERT_OK(array->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
   ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
@@ -750,7 +750,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
   auto future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   for (int k = 0; k < shape.num_elements(); ++k) {
     EXPECT_EQ(out_data[k].Flatten(), absl::StrCat("string-", k))
         << "Unexpected data at element " << k;
@@ -857,7 +857,7 @@ TEST(ArrayImplTest,
       auto future = single_device_arrays[j]->CopyToHostBuffer(
           out_data.data(),
           /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
       if ((i + j) % 2 == 0) {
         for (int k = 0; k < shard_shape.num_elements(); ++k) {
           EXPECT_EQ(out_data[k].Flatten(), absl::StrCat("string-", k))
@@ -898,13 +898,13 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
     EXPECT_EQ(array->dtype(), dtype);
     EXPECT_EQ(array->shape(), shape);
     EXPECT_EQ(array->sharding(), *sharding);
-    TF_ASSERT_OK(array->GetReadyFuture().Await());
+    ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<float> new_data(6);
     tsl::Future<> future = array->CopyToHostBuffer(
         static_cast<void*>(new_data.data()), /*byte_strides=*/std::nullopt,
         ArrayCopySemantics::kAlwaysCopy);
-    TF_ASSERT_OK(future.Await());
+    ASSERT_OK(future.Await());
     EXPECT_THAT(new_data, ElementsAreArray(data));
   }
 }
@@ -934,13 +934,13 @@ TEST(ArrayImplTest, HostBufferInt4) {
             /*byte_strides=*/std::nullopt, sharding,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
-    TF_ASSERT_OK(array->GetReadyFuture().Await());
+    ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<int8_t> out_data(4);
     tsl::Future<> future =
         array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                                 ArrayCopySemantics::kAlwaysCopy);
-    TF_ASSERT_OK(future.Await());
+    ASSERT_OK(future.Await());
     EXPECT_THAT(out_data, ElementsAreArray(data));
   }
 }
@@ -1219,7 +1219,7 @@ TEST(ArrayImplTest, CopyToSameDevices) {
   auto future = new_arrays[0]->CopyToHostBuffer(
       out_data.data(),
       /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
-  TF_ASSERT_OK(future.Await());
+  ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(data));
 }
 
@@ -1357,7 +1357,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
       auto future = shard->CopyToHostBuffer(out_data.data(),
                                             /*byte_strides=*/std::nullopt,
                                             ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
       EXPECT_THAT(out_data, ElementsAreArray(data));
     }
   }
@@ -1449,7 +1449,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
               data.data(), dtype, shape, /*byte_strides=*/std::nullopt,
               sharding, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
               /*on_done_with_host_buffer=*/nullptr));
-      TF_ASSERT_OK(array->GetReadyFuture().Await());
+      ASSERT_OK(array->GetReadyFuture().Await());
 
       TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
       // `layout` should be either nullptr or a concrete default layout.
@@ -1502,7 +1502,7 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
             /*byte_strides=*/std::nullopt, sharding,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
-    TF_ASSERT_OK(array->GetReadyFuture().Await());
+    ASSERT_OK(array->GetReadyFuture().Await());
 
     for (Device* const device : client->addressable_devices()) {
       TF_ASSERT_OK_AND_ASSIGN(DeviceListRef single_device_list,
@@ -1512,12 +1512,12 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
           client->CopyArrays(absl::MakeSpan(&array, 1),
                              std::move(single_device_list), std::nullopt,
                              ArrayCopySemantics::kReuseInput));
-      TF_ASSERT_OK(copied[0]->GetReadyFuture().Await());
+      ASSERT_OK(copied[0]->GetReadyFuture().Await());
 
       tsl::Future<> future =
           copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
-      TF_ASSERT_OK(future.Await());
+      ASSERT_OK(future.Await());
     }
   }
 }
@@ -1568,7 +1568,7 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
         tsl::Future<void> future = new_array->CopyToHostBuffer(
             out_data.data(), /*byte_strides=*/std::nullopt,
             ArrayCopySemantics::kAlwaysCopy);
-        TF_ASSERT_OK(future.Await());
+        ASSERT_OK(future.Await());
         EXPECT_THAT(out_data, ElementsAreArray(data));
       }
     }
@@ -1621,7 +1621,7 @@ TEST(ArrayImplTest, CopyArraysSubByteDType) {
         auto future = new_array->CopyToHostBuffer(
             out_data.data(), /*byte_strides=*/std::nullopt,
             ArrayCopySemantics::kAlwaysCopy);
-        TF_ASSERT_OK(future.Await());
+        ASSERT_OK(future.Await());
         EXPECT_THAT(out_data, ElementsAreArray(data));
       }
     }
@@ -1688,7 +1688,7 @@ TEST(ArrayImplTest, GetReadyFuture) {
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding, semantics,
                       /*on_done_with_host_buffer=*/{}));
-  TF_EXPECT_OK(array->GetReadyFuture().Await());
+  EXPECT_OK(array->GetReadyFuture().Await());
 }
 
 TEST(ArrayImplTest, BatchedGetReadyFuture) {
@@ -1710,7 +1710,7 @@ TEST(ArrayImplTest, BatchedGetReadyFuture) {
                                 /*byte_strides=*/std::nullopt, sharding,
                                 semantics, /*on_done_with_host_buffer=*/{}));
   }
-  TF_EXPECT_OK(client->GetReadyFuture(values).Await());
+  EXPECT_OK(client->GetReadyFuture(values).Await());
 }
 
 TEST(ArrayImplTest, Delete) {
@@ -1729,7 +1729,7 @@ TEST(ArrayImplTest, Delete) {
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding, semantics,
                       /*on_done_with_host_buffer=*/{}));
-  TF_EXPECT_OK(array->Delete().Await());
+  EXPECT_OK(array->Delete().Await());
 }
 
 TEST(ArrayImplTest, DeleteIsIdempotent) {
@@ -1752,8 +1752,8 @@ TEST(ArrayImplTest, DeleteIsIdempotent) {
   auto future_1 = array->Delete();
   auto future_2 = array->Delete();
 
-  TF_EXPECT_OK(future_1.Await());
-  TF_EXPECT_OK(future_2.Await());
+  EXPECT_OK(future_1.Await());
+  EXPECT_OK(future_2.Await());
 }
 
 TEST(ArrayImplTest, IsDeleted) {
@@ -1775,7 +1775,7 @@ TEST(ArrayImplTest, IsDeleted) {
   EXPECT_FALSE(array->IsDeleted());
   auto future = array->Delete();
   EXPECT_TRUE(array->IsDeleted());
-  TF_EXPECT_OK(future.Await());
+  EXPECT_OK(future.Await());
 }
 
 }  // namespace

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -181,11 +182,11 @@ void AssertArrayContent(Client* client, Array* array,
     absl::c_iota(expected_data, base_values[i]);
 
     std::vector<ValueType> actual_data(shards[i]->shape().num_elements());
-    TF_ASSERT_OK(shards[i]
-                     ->CopyToHostBuffer(actual_data.data(),
-                                        /*byte_strides=*/std::nullopt,
-                                        ArrayCopySemantics::kAlwaysCopy)
-                     .Await());
+    ASSERT_OK(shards[i]
+                  ->CopyToHostBuffer(actual_data.data(),
+                                     /*byte_strides=*/std::nullopt,
+                                     ArrayCopySemantics::kAlwaysCopy)
+                  .Await());
     EXPECT_THAT(actual_data, ElementsAreArray(expected_data));
   }
 };
@@ -204,8 +205,8 @@ TEST(RemapImplTest, ExtractSingleShard) {
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{1, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -257,8 +258,8 @@ TEST(RemapImplTest, InterleaveArraysDonate) {
       RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -306,8 +307,8 @@ TEST(RemapImplTest, InterleaveArraysReuse) {
       RemapPlan::Mapping{/*in_array=*/1, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{1, 4, 2}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -349,8 +350,8 @@ TEST(RemapImplTest, DeinterleaveArrays) {
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/1,
                          /*from=*/{RemapPlan::Interval{1, 4, 2}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> arrays;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -424,8 +425,8 @@ TEST(RemapImplTest, BatchMappingIdentity) {
                          /*out_array=*/1,
                          /*from=*/{RemapPlan::Interval{0, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -510,8 +511,8 @@ TEST(RemapImplTest, BatchMappingDeinterleave) {
                          /*out_array=*/3,
                          /*from=*/{RemapPlan::Interval{1, 2, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   std::vector<ArrayRef> inputs;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -557,8 +558,8 @@ TEST(RemapImplTest, DetectBadInput) {
       RemapPlan::Mapping{/*in_array=*/0, /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  TF_ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
-  TF_ASSERT_OK(plan.Validate());
+  ASSERT_OK(plan.ComputeInputDevicesForOutputMap(client.get()));
+  ASSERT_OK(plan.Validate());
 
   {
     std::vector<ArrayRef> arrays;

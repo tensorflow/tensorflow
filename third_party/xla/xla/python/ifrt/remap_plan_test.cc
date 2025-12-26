@@ -133,8 +133,8 @@ TEST_P(RemapPlanTest, MixedDtype) {
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
 
-  TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
-  TF_EXPECT_OK(plan.Validate());
+  EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
+  EXPECT_OK(plan.Validate());
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDtype) {
@@ -535,9 +535,9 @@ TEST_P(RemapPlanTest, CheckOneInputToOneOutput) {
                                        /*from=*/{RemapPlan::Interval{0, 2, 1}},
                                        /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
-  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+  EXPECT_OK(plan.CheckArrayCopySemantics(
       xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
@@ -558,9 +558,9 @@ TEST_P(RemapPlanTest, CheckOneInputToMultipleOutputs) {
                                        /*from=*/{RemapPlan::Interval{0, 2, 1}},
                                        /*to=*/{RemapPlan::Interval{0, 2, 1}}}};
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       plan.CheckArrayCopySemantics(xla::ifrt::ArrayCopySemantics::kReuseInput));
-  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+  EXPECT_OK(plan.CheckArrayCopySemantics(
       xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
@@ -587,7 +587,7 @@ TEST_P(RemapPlanTest, CheckMultipleInputsToOneOutput) {
           absl::StatusCode::kInvalidArgument,
           HasSubstr("kDonateInput is required if multiple inputs are "
                     "mapped to one output")));
-  TF_EXPECT_OK(plan.CheckArrayCopySemantics(
+  EXPECT_OK(plan.CheckArrayCopySemantics(
       xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
@@ -638,8 +638,8 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
                              HasSubstr("does not reference that device")));
 
   plan.input_devices_for_output_map.clear();
-  TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
-  TF_EXPECT_OK(plan.Validate());
+  EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
+  EXPECT_OK(plan.Validate());
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
