@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
+#include "absl/log/log.h"
 #include "Eigen/Cholesky"  // from @eigen_archive
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
