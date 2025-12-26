@@ -18,8 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
