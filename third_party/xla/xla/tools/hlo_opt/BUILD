@@ -124,7 +124,6 @@ cc_library(
         "//xla/service/gpu/transforms:stream_attribute_annotator",
         "//xla/service/gpu/transforms:topk_specializer",
         "//xla/service/gpu/transforms:topk_splitter",
-        "//xla/service/gpu/transforms:transpose_dimension_grouper",
         "//xla/service/gpu/transforms:windowed_einsum_handler",
         "//xla/service/gpu/transforms/collectives:all_gather_optimizer",
         "//xla/service/llvm_ir:llvm_util",

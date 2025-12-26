@@ -1815,7 +1815,20 @@ TEST(ShapeUtilTest, GetNormalizedLogicalTransposeShape_NoTranspose) {
                            input_shape, output_shape, dimensions, permutation));
 
   EXPECT_THAT(normalized_shape, ElementsAre(8192));
-  EXPECT_THAT(permutation, IsEmpty());
+  EXPECT_THAT(permutation, ElementsAre(0));
+}
+
+TEST(ShapeUtilTest, GetNormalizedLogicalTransposeShape_IdentityWithMerges) {
+  Shape output_shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape input_shape = ShapeUtil::MakeShape(F32, {20, 10});
+  // Identity transpose that allows merging dimensions.
+  absl::InlinedVector<int64_t, 3> dimensions = {0, 1};
+  absl::InlinedVector<int64_t, 3> permutation;
+  ASSERT_OK_AND_ASSIGN(auto normalized_shape,
+                       ShapeUtil::GetNormalizedLogicalTransposeShape(
+                           input_shape, output_shape, dimensions, permutation));
+  EXPECT_THAT(normalized_shape, ElementsAre(200));
+  EXPECT_THAT(permutation, ElementsAre(0));
 }
 
 TEST(ShapeUtilTest, GetNormalizedLogicalTransposeShape_Simple2D) {
