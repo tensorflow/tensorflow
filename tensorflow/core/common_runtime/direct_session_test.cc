@@ -74,17 +74,17 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-CallableOptions MakeCallableOptions(absl::Span<const string> feeds,
-                                    absl::Span<const string> fetches,
-                                    absl::Span<const string> targets) {
+CallableOptions MakeCallableOptions(absl::Span<const std::string> feeds,
+                                    absl::Span<const std::string> fetches,
+                                    absl::Span<const std::string> targets) {
   CallableOptions ret;
-  for (const string& feed : feeds) {
+  for (const std::string& feed : feeds) {
     ret.add_feed(feed);
   }
-  for (const string& fetch : fetches) {
+  for (const std::string& fetch : fetches) {
     ret.add_fetch(fetch);
   }
-  for (const string& target : targets) {
+  for (const std::string& target : targets) {
     ret.add_target(target);
   }
   return ret;
@@ -133,11 +133,11 @@ class DirectSessionMinusAXTest : public ::testing::Test {
     graph.ToGraphDef(&def_);
   }
 
-  string a_;
-  string x_;
-  string y_;
-  string y_neg_;
-  string z_;
+  std::string a_;
+  std::string x_;
+  std::string y_;
+  std::string y_neg_;
+  std::string z_;
   GraphDef def_;
 };
 
@@ -146,11 +146,11 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
   absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
@@ -215,11 +215,11 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
 
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
   absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
@@ -246,11 +246,11 @@ TEST_F(DirectSessionMinusAXTest,
 
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
   absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
@@ -637,8 +637,8 @@ TEST_F(DirectSessionMinusAXTest, TestFeed) {
   Tensor t(DT_FLOAT, TensorShape({2, 1}));
   t.matrix<float>()(0, 0) = 5;
   t.matrix<float>()(1, 0) = 6;
-  std::vector<std::pair<string, Tensor>> inputs = {{x_, t}};
-  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<std::pair<std::string, Tensor>> inputs = {{x_, t}};
+  std::vector<std::string> output_names = {y_ + ":0"};
   std::vector<Tensor> outputs;
 
   // Run the graph
@@ -696,10 +696,10 @@ TEST_F(DirectSessionMinusAXTest, TestConcurrency) {
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
 
   // Run the graph 1000 times in 4 different threads concurrently.
-  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<std::string> output_names = {y_ + ":0"};
   auto fn = [&session, output_names]() {
     for (int i = 0; i < 1000; ++i) {
-      std::vector<std::pair<string, Tensor>> inputs;
+      std::vector<std::pair<std::string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph
       absl::Status s = session->Run(inputs, output_names, {}, &outputs);
@@ -766,10 +766,10 @@ TEST_F(DirectSessionMinusAXTest, TestPerSessionThreads) {
   thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
 
   // Run the graph 1000 times in 4 different threads concurrently.
-  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<std::string> output_names = {y_ + ":0"};
   auto fn = [&session, output_names]() {
     for (int i = 0; i < 1000; ++i) {
-      std::vector<std::pair<string, Tensor>> inputs;
+      std::vector<std::pair<std::string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph
       absl::Status s = session->Run(inputs, output_names, {}, &outputs);
@@ -802,7 +802,7 @@ TEST_F(DirectSessionMinusAXTest, ForgetToCreate) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   std::vector<Tensor> outputs;
   ASSERT_FALSE(session->Run(inputs, {y_ + ":0"}, {y_neg_}, &outputs).ok());
 }
@@ -847,11 +847,11 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
 
   // Prepares RunOptions and RunMetadata
@@ -913,11 +913,11 @@ TEST_F(DirectSessionMinusAXTest, UseRunHandlerPool) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
 
   // Prepares RunOptions and RunMetadata
@@ -960,7 +960,7 @@ TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def));
 
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
   // Initialize the variable
@@ -1183,7 +1183,7 @@ TEST(DirectSessionTest, TestTensorConnectionUseTwice) {
 TEST(DirectSessionTest, FetchMultipleTimes) {
   Graph g(OpRegistry::Global());
   Tensor seven_tensor(DT_INT32, TensorShape());
-  seven_tensor.flat<int32>()(0) = 7;
+  seven_tensor.flat<int32_t>()(0) = 7;
   Node* seven_node = test::graph::Constant(&g, seven_tensor);
 
   GraphDef def;
@@ -1193,7 +1193,7 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def));
 
-  const std::vector<std::pair<string, Tensor>> inputs;
+  const std::vector<std::pair<std::string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
   auto seven = seven_node->name();
@@ -1204,7 +1204,7 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   for (int i = 0; i < outputs.size(); ++i) {
     const Tensor& t = outputs[i];
     ASSERT_TRUE(t.IsInitialized()) << i;
-    EXPECT_EQ(7, t.flat<int32>()(0)) << i;
+    EXPECT_EQ(7, t.flat<int32_t>()(0)) << i;
   }
 }
 
@@ -1556,12 +1556,12 @@ class ExpensiveNoopOp : public OpKernel {
   using OpKernel::OpKernel;
   bool IsExpensive() override { return true; }
   void Compute(OpKernelContext* ctx) override {
-    const string& stack_trace = tensorflow::CurrentStackTrace();
-    const string process_method = "ExecutorState::Process()";
+    const std::string& stack_trace = tensorflow::CurrentStackTrace();
+    const std::string process_method = "ExecutorState::Process()";
     size_t pos = 0;
     int frame_count = 0;
     while ((pos = stack_trace.find("ExecutorState::Process()", pos)) !=
-           string::npos) {
+           std::string::npos) {
       ++frame_count;
       ++pos;
     }
@@ -1727,7 +1727,7 @@ TEST(DirectSessionTest, PartialRunTest) {
 
   std::vector<Tensor> outputs;
 
-  string handle;
+  std::string handle;
   absl::Status s = session->PRunSetup(
       {first_const->name(), second_const->name()},
       {first_identity->name() + ":0", second_identity->name() + ":0",
@@ -1783,7 +1783,7 @@ TEST(DirectSessionTest, PartialRunMissingFeed) {
 
   std::vector<Tensor> outputs;
 
-  string handle;
+  std::string handle;
   absl::Status s =
       session->PRunSetup({first_const->name(), second_const->name()},
                          {third_identity->name() + ":0"}, {}, &handle);
@@ -1817,7 +1817,7 @@ TEST(DirectSessionTest, PartialRunMultiOutputFeed) {
 
   std::vector<Tensor> outputs;
 
-  string handle;
+  std::string handle;
   absl::Status s =
       session->PRunSetup({switch_node->name() + ":1"},
                          {fourth_identity->name() + ":0"}, {}, &handle);
@@ -2149,7 +2149,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   }
   mutex sessions_mu;
 
-  std::atomic<int32> num_done(0);
+  std::atomic<int32_t> num_done(0);
   // Runs session to compute <node>:0 using inter_op thread pool <pool>.
   auto add_session_run_call =
       [use_global_pools, &def, &options, &sessions, &sessions_mu, &num_done](
@@ -2391,7 +2391,7 @@ TEST(DirectSessionTest, TestDirectSessionPRunClose) {
 
   std::vector<Tensor> outputs;
 
-  string handle;
+  std::string handle;
   absl::Status s = session->PRunSetup(
       {first_const->name(), second_const->name()},
       {first_identity->name() + ":0", second_identity->name() + ":0",
@@ -2480,11 +2480,11 @@ class FakeDevice : public Device {
 template <char FirstLetter>
 class FakeFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override {
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override {
     return absl::OkStatus();
   }
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override {
     std::string name = absl::StrFormat("%cPU", FirstLetter);
     DeviceAttributes attr;
@@ -2575,7 +2575,7 @@ bool IsCUDATensor(const Tensor& t) {
 #endif
 }
 
-string GPUDeviceName(Session* session) {
+std::string GPUDeviceName(Session* session) {
   std::vector<DeviceAttributes> devices;
   TF_CHECK_OK(session->ListDevices(&devices));
   for (const DeviceAttributes& d : devices) {
@@ -2588,7 +2588,7 @@ string GPUDeviceName(Session* session) {
 
 TEST(DirectSessionTest, FeedAndFetchTensorsInDeviceMemory) {
   std::unique_ptr<Session> session(NewSession(SessionOptions()));
-  const string gpu_device_name = GPUDeviceName(session.get());
+  const std::string gpu_device_name = GPUDeviceName(session.get());
   if (gpu_device_name.empty()) {
     LOG(INFO) << "Skipping test since no GPU is available";
     return;
@@ -2660,7 +2660,7 @@ GraphDef CreateIdentityGraphDef(DataType dtype) {
 void TestFeedAndFetchTensorsInDeviceMemory(
     const SessionOptions& session_options, DataType dtype) {
   std::unique_ptr<Session> session(NewSession(session_options));
-  const string gpu_device_name = GPUDeviceName(session.get());
+  const std::string gpu_device_name = GPUDeviceName(session.get());
   if (gpu_device_name.empty()) {
     LOG(INFO) << "Skipping test since no GPU is available";
     return;
@@ -2716,7 +2716,7 @@ void TestFeedAndFetchTensorsInDeviceMemory(
 void TestFeedAndFetchTensorsInDeviceMemoryFailsToMakeCallable(
     const SessionOptions& session_options, DataType dtype) {
   std::unique_ptr<Session> session(NewSession(session_options));
-  const string gpu_device_name = GPUDeviceName(session.get());
+  const std::string gpu_device_name = GPUDeviceName(session.get());
   if (gpu_device_name.empty()) {
     LOG(INFO) << "Skipping test since no GPU is available";
     return;
@@ -2830,9 +2830,9 @@ void FeedFetchBenchmarkHelper(::testing::benchmark::State& state, int num_feeds,
   Tensor value(DT_FLOAT, TensorShape());
   value.flat<float>()(0) = 37.0;
 
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   inputs.reserve(num_feeds);
-  std::vector<string> outputs;
+  std::vector<std::string> outputs;
 
   Graph g(OpRegistry::Global());
   for (int i = 0; i < num_feeds; ++i) {
@@ -2873,7 +2873,7 @@ void FeedFetchBenchmarkHelper(::testing::benchmark::State& state, int num_feeds,
       callable_options.add_feed(input.first);
       input_tensors.push_back(input.second);
     }
-    for (const string& output : outputs) {
+    for (const std::string& output : outputs) {
       callable_options.add_fetch(output);
     }
     TF_CHECK_OK(session->MakeCallable(callable_options, &handle));
@@ -2971,7 +2971,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
  private:
   // Creates a function with name `function_name` and a single CollectiveReduce
   // node with instance key set as `instance_key`.
-  FunctionDef CollectiveFunction(const string& function_name,
+  FunctionDef CollectiveFunction(const std::string& function_name,
                                  int instance_key) {
     return FunctionDefHelper::Define(
         // Function name
@@ -2990,7 +2990,7 @@ class DirectSessionCollectiveTest : public ::testing::Test {
             {{"group_size", 2},
              {"group_key", 1},
              {"instance_key", instance_key},
-             {"subdiv_offsets", absl::Span<const int32>({0})},
+             {"subdiv_offsets", absl::Span<const int32_t>({0})},
              {"merge_op", "Add"},
              {"final_op", "Div"},
              {"T", DT_FLOAT}},
@@ -3007,7 +3007,8 @@ class DirectSessionCollectiveTest : public ::testing::Test {
     return input;
   }
 
-  NodeDef CollectiveCall(const string& op, const string& input, int cpu_id) {
+  NodeDef CollectiveCall(const std::string& op, const std::string& input,
+                         int cpu_id) {
     NodeDef collective_call;
     collective_call.set_name(absl::StrCat("collective_call", cpu_id));
     collective_call.set_op(op);
@@ -3100,7 +3101,7 @@ TEST(DirectSessionTest, TestStatefulOutputRequiredOp) {
   // fetching different prefixes of the output of the op.
   for (int num_outputs_required = 1; num_outputs_required <= 5;
        ++num_outputs_required) {
-    std::vector<string> fetch_tensor_names;
+    std::vector<std::string> fetch_tensor_names;
     fetch_tensor_names.reserve(num_outputs_required);
     for (int output_idx = 0; output_idx < num_outputs_required; ++output_idx) {
       fetch_tensor_names.push_back(absl::StrCat("n:", output_idx));
