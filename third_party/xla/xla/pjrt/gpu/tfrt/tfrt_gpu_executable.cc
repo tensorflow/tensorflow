@@ -206,7 +206,7 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   }
   Executable* built_executable = executables_[0]->executable();
   Compiler* compiler = client_->xla_client()->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler->Export(built_executable));
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
