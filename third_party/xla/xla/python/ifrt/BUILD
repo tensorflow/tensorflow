@@ -1002,6 +1002,7 @@ cc_library(
         ":friends",
         ":internal",
         ":users",
+        "//xla/python/ifrt_proxy/client:__subpackages__",
     ]),
     deps = [
         ":ifrt",
