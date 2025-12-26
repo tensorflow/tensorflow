@@ -16,7 +16,6 @@ limitations under the License.
 #include <pybind11/stl.h>
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/types/span.h"
