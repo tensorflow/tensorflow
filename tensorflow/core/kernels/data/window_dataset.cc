@@ -55,7 +55,7 @@ class Window : public DatasetBase {
         output_shapes_(std::move(output_shapes)) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(kWindow, prefix)});
   }
@@ -86,7 +86,7 @@ class Window : public DatasetBase {
     return elements_.size();
   }
 
-  string DebugString() const override { return kWindow; }
+  std::string DebugString() const override { return kWindow; }
 
   absl::Status InputDatasets(
       std::vector<const DatasetBase*>* inputs) const override {

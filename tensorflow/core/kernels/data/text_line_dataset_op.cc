@@ -42,8 +42,8 @@ constexpr char kCurrentPos[] = "current_pos";
 
 class TextLineDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, std::vector<string> filenames,
-          const string& compression_type,
+  Dataset(OpKernelContext* ctx, std::vector<std::string> filenames,
+          const std::string& compression_type,
           const io::ZlibCompressionOptions& options)
       : DatasetBase(DatasetContext(ctx)),
         filenames_(std::move(filenames)),
@@ -52,7 +52,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         options_(options) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this,
         name_utils::IteratorPrefix(TextLineDatasetOp::kDatasetType, prefix)});
@@ -69,7 +69,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return *shapes;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -242,7 +242,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         TF_GUARDED_BY(mu_);  // must outlive input_stream_
   };
 
-  const std::vector<string> filenames_;
+  const std::vector<std::string> filenames_;
   const tstring compression_type_;
   const bool use_compression_;
   const io::ZlibCompressionOptions options_;
@@ -286,7 +286,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
     zlib_compression_options.input_buffer_size = buffer_size;
   }
 
-  std::vector<string> filenames;
+  std::vector<std::string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
