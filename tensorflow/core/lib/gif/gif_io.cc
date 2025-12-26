@@ -56,11 +56,12 @@ static const char* GifErrorStringNonNull(int error_code) {
   return error_string;
 }
 
-uint8* Decode(const void* srcdata, int datasize,
-              const std::function<uint8*(int, int, int, int)>& allocate_output,
-              string* error_string, bool expand_animations) {
+uint8_t* Decode(
+    const void* srcdata, int datasize,
+    const std::function<uint8_t*(int, int, int, int)>& allocate_output,
+    std::string* error_string, bool expand_animations) {
   int error_code = D_GIF_SUCCEEDED;
-  InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
+  InputBufferInfo info = {reinterpret_cast<const uint8_t*>(srcdata), datasize};
   /// NOTE: After this, gif file is mostly not initialized!
   GifFileType* gif_file =
       DGifOpen(static_cast<void*>(&info), &input_callback, &error_code);
@@ -111,11 +112,11 @@ uint8* Decode(const void* srcdata, int datasize,
   const int channel = 3;
   if (!expand_animations) target_num_frames = 1;
 
-  uint8* const dstdata =
+  uint8_t* const dstdata =
       allocate_output(target_num_frames, width, height, channel);
   if (!dstdata) return nullptr;
   for (int64_t k = 0; k < target_num_frames; k++) {
-    uint8* this_dst = dstdata + k * width * channel * height;
+    uint8_t* this_dst = dstdata + k * width * channel * height;
 
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
@@ -133,10 +134,10 @@ uint8* Decode(const void* srcdata, int datasize,
     int imgBottom = img_desc->Top + img_desc->Height;
 
     if (k > 0) {
-      uint8* last_dst = dstdata + (k - 1) * width * channel * height;
+      uint8_t* last_dst = dstdata + (k - 1) * width * channel * height;
       for (int64_t i = 0; i < height; ++i) {
-        uint8* p_dst = this_dst + i * width * channel;
-        uint8* l_dst = last_dst + i * width * channel;
+        uint8_t* p_dst = this_dst + i * width * channel;
+        uint8_t* l_dst = last_dst + i * width * channel;
         for (int64_t j = 0; j < width; ++j) {
           p_dst[j * channel + 0] = l_dst[j * channel + 0];
           p_dst[j * channel + 1] = l_dst[j * channel + 1];
@@ -151,7 +152,7 @@ uint8* Decode(const void* srcdata, int datasize,
       // unoccupied canvas with zeros (black).
       if (k == 0) {
         for (int64_t i = 0; i < height; ++i) {
-          uint8* p_dst = this_dst + i * width * channel;
+          uint8_t* p_dst = this_dst + i * width * channel;
           for (int64_t j = 0; j < width; ++j) {
             p_dst[j * channel + 0] = 0;
             p_dst[j * channel + 1] = 0;
@@ -175,7 +176,7 @@ uint8* Decode(const void* srcdata, int datasize,
     }
 
     for (int64_t i = imgTop; i < imgBottom; ++i) {
-      uint8* p_dst = this_dst + i * width * channel;
+      uint8_t* p_dst = this_dst + i * width * channel;
       for (int64_t j = imgLeft; j < imgRight; ++j) {
         GifByteType color_index =
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
