@@ -381,6 +381,7 @@ class HloModule {
   // the sort is potentially expensive, so this should be used only if a
   // consistent order is required.
   std::vector<HloComputation*> MakeComputationSorted() const {
+    // dummy change
     return MakeComputationSorted({});
   }
   // Same as above but only for specified `execution_threads`. Empty
