@@ -317,6 +317,10 @@ type SessionOptions struct {
 	// tensorflow.ConfigProto protocol message
 	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
 	Config []byte
+
+	// ConfigProto provides a structured alternative to Config.
+    // If set, it can be serialized into Config.
+    ConfigProto *ConfigProto
 }
 
 // c converts the SessionOptions to the C API's TF_SessionOptions. Callers must
