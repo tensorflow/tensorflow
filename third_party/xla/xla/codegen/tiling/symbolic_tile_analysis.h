@@ -218,13 +218,15 @@ class SymbolicTileAnalysis {
       const RootIndexing& root_indexing,
       TilingSpecification tiling_specification,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
-      mlir::MLIRContext* mlir_context)
+      mlir::MLIRContext* mlir_context,
+      std::vector<std::unique_ptr<HloInstruction>> synthetic_instructions = {})
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         root_indexing_(std::move(root_indexing)),
         tiling_specification_(std::move(tiling_specification)),
         emitter_specific_constraints_(std::move(emitter_specific_constraints)),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        synthetic_instructions_(std::move(synthetic_instructions)) {}
 
   // Computes indexing information for the roots of the computation.
   static absl::StatusOr<RootIndexing> GetRootIndexing(
@@ -265,6 +267,10 @@ class SymbolicTileAnalysis {
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints_;
 
   mlir::MLIRContext* mlir_context_;
+
+  // Instructions created during the analysis that are not part of the original
+  // computation (e.g. simplified transposes).
+  std::vector<std::unique_ptr<HloInstruction>> synthetic_instructions_;
 };
 
 namespace detail {
