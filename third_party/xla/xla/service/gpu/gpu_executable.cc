@@ -772,7 +772,7 @@ absl::StatusOr<se::DeviceAddressBase> GpuExecutable::BufferForAllocation(
       } else {
         return std::get<absl::Span<ExecutionInput>>(arguments)[param_no]
             .Buffer(allocation.param_shape_index())
-            .AsDeviceMemoryBase();
+            .AsDeviceAddress();
       }
     }();
     if (registered_buffer.is_null() && registered_buffer.size() > 0) {
