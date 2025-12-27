@@ -79,7 +79,7 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
   // TODO(ezhulenev): RunAndFetch defined in FusedConv2D and FusedMatMul tests.
   // Add a base class for all FusedABC kernels and remove code duplication.
   void RunAndFetch(const tensorflow::Scope& root,
-                   const std::vector<string>& fetch,
+                   const std::vector<std::string>& fetch,
                    std::vector<Tensor>* outputs, bool allow_gpu_device,
                    const std::vector<const NodeDef*> add_nodes = {}) {
     tensorflow::GraphDef graph;
@@ -124,7 +124,8 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
     // this case.
     const bool place_all_on_gpu = allow_gpu_device && has_gpu_device;
 
-    const string device = place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
+    const std::string device =
+        place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
     for (NodeDef& mutable_node : *graph.mutable_node()) {
       mutable_node.set_device(device);
     }
@@ -138,7 +139,8 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
                          const Tensor& offset_data, const Tensor& mean_data,
                          const Tensor& var_data, const Tensor& side_input_data,
                          const TensorFormat data_format, bool is_training,
-                         bool has_side_input, const string& activation_mode,
+                         bool has_side_input,
+                         const std::string& activation_mode,
                          FusedBatchNormOutputs* forward,
                          FusedBatchNormGradOutputs* backward,
                          float epsilon = 0.1f) {
@@ -220,16 +222,14 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
     backward->offset_backprop = out_tensors[8];
   }
 
-  void RunFusedBatchNormEx(const Tensor& y_backprop_data,
-                           const Tensor& input_data, const Tensor& scale_data,
-                           const Tensor& offset_data, const Tensor& mean_data,
-                           const Tensor& var_data,
-                           const Tensor& side_input_data,
-                           const TensorFormat data_format, bool is_training,
-                           bool has_side_input, const string& activation_mode,
-                           FusedBatchNormOutputs* forward,
-                           FusedBatchNormGradOutputs* backward,
-                           float epsilon = 0.1f) {
+  void RunFusedBatchNormEx(
+      const Tensor& y_backprop_data, const Tensor& input_data,
+      const Tensor& scale_data, const Tensor& offset_data,
+      const Tensor& mean_data, const Tensor& var_data,
+      const Tensor& side_input_data, const TensorFormat data_format,
+      bool is_training, bool has_side_input, const std::string& activation_mode,
+      FusedBatchNormOutputs* forward, FusedBatchNormGradOutputs* backward,
+      float epsilon = 0.1f) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     DataType t_dtype = DataTypeToEnum<T>::v();
@@ -448,7 +448,7 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
   void VerifyFusedBatchNormEx(int batch, int height, int width, int channels,
                               TensorFormat data_format, bool is_training,
                               bool has_side_input,
-                              const string& activation_mode) {
+                              const std::string& activation_mode) {
     const GraphRunner run_default =
         [&](const Tensor& y_backprop, const Tensor& input_data,
             const Tensor& scale_data, const Tensor& offset_data,
@@ -561,7 +561,7 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpInferenceTest,
 
 using fp16 = Eigen::half;
 using fp32 = float;
-using SideInputAndActivation = std::pair<bool, string>;
+using SideInputAndActivation = std::pair<bool, std::string>;
 
 SideInputAndActivation Identity() { return {false, "Identity"}; }
 SideInputAndActivation Relu() { return {false, "Relu"}; }
@@ -590,7 +590,7 @@ static Graph* FusedBatchNormEx(int n, int h, int w, int c,
 
   SideInputAndActivation side_input_and_activation = fn();
   bool has_side_input = side_input_and_activation.first;
-  string activation_mode = side_input_and_activation.second;
+  std::string activation_mode = side_input_and_activation.second;
 
   if (has_side_input) {
     num_side_inputs = 1;
