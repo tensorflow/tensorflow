@@ -311,7 +311,20 @@ def nvidia_gpu_build_with_compute_capability(
           **_DEFAULT_BAZEL_OPTIONS,
       },
       repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
-      extra_setup_commands=(["nvidia-smi"],),
+      override_repository=dict(
+          rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+      ),
+      extra_setup_commands=(
+          ["nvidia-smi"],
+          [
+              "git",
+              "clone",
+              "-b",
+              "layering_check_support",
+              "https://github.com/beckerhe/rules_ml_toolchain.git",
+              f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+          ],
+      ),
   )
 
 
@@ -330,6 +343,19 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 windows_x86_tag_filter = (
@@ -403,6 +429,19 @@ Build(
     startup_options={
         "output_user_root": "C:/x",
     },
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 Build(
@@ -413,6 +452,19 @@ Build(
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 cpu_arm_tag_filter = (
@@ -435,6 +487,19 @@ Build(
     },
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
+    override_repository=dict(
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+    ),
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 nvidia_gpu_build_with_compute_capability(
@@ -737,9 +802,20 @@ Build(
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     ),
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
+    extra_setup_commands=(
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 Build(
@@ -793,13 +869,24 @@ Build(
     ),
     override_repository=dict(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     ),
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "@local_config_cuda//cuda:override_include_cuda_libs": True,
     },
     repo_env={"HERMETIC_PYTHON_VERSION": "3.11"},
-    extra_setup_commands=(["nvidia-smi"],),
+    extra_setup_commands=(
+        ["nvidia-smi"],
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
+    ),
 )
 
 tensorflow_tag_filters = (
@@ -847,6 +934,7 @@ Build(
     ),
     override_repository=dict(
         local_xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
     extra_setup_commands=(
@@ -864,6 +952,14 @@ Build(
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             "-type", "f",
             "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
         ],
     ),
 )
@@ -885,6 +981,7 @@ Build(
     test_tag_filters=tensorflow_gpu_tag_filters,
     override_repository=dict(
         local_xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
+        rules_ml_toolchain=f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
     ),
     options=dict(
         verbose_failures=True,
@@ -911,6 +1008,14 @@ Build(
             "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
         ],
         ["nvidia-smi"],
+        [
+            "git",
+            "clone",
+            "-b",
+            "layering_check_support",
+            "https://github.com/beckerhe/rules_ml_toolchain.git",
+            f"{_GITHUB_WORKSPACE}/openxla/rules_ml_toolchain",
+        ],
     ),
 )
 
