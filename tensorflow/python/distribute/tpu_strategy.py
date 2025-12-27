@@ -984,19 +984,12 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     This will make sure that the input is placed on the corresponding host CPU
     device if the device assignment is set.
     """
-    self._device_input_worker_devices = collections.OrderedDict()
-    self._host_input_worker_devices = collections.OrderedDict()
+    self._device_input_worker_devices = []
+    self._host_input_worker_devices = []
     for tpu_device in self._tpu_devices[:, 0]:
-      host_device = device_util.get_host_for_device(
-          tpu_device,
-          device_index=tf_device.DeviceSpec.from_string(
-              tpu_device
-          ).device_index,
-      )
-      self._device_input_worker_devices.setdefault(host_device, [])
-      self._device_input_worker_devices[host_device].append(tpu_device)
-      self._host_input_worker_devices.setdefault(host_device, [])
-      self._host_input_worker_devices[host_device].append(host_device)
+      host_device = device_util.get_host_for_device(tpu_device)
+      self._device_input_worker_devices.append((host_device, [tpu_device]))
+      self._host_input_worker_devices.append((host_device, [host_device]))
 
   def _get_replica_order(self):
     """Get the replica order based on the tpu device order.
@@ -1046,8 +1039,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
-    input_workers = input_lib.InputWorkers(
-        tuple(self._device_input_worker_devices.items()))
+    input_workers = self._get_input_worker_for_device()
     return input_lib_v1.DatasetIterator(
         dataset,
         input_workers,
@@ -1059,8 +1051,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     input_contexts = []
-    input_workers = input_lib.InputWorkers(
-        tuple(self._device_input_worker_devices.items()))
+    input_workers = self._get_input_worker_for_device()
     num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(
@@ -1077,13 +1068,27 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
 
+  def _get_input_worker_for_device(self):
+    if isinstance(self._device_input_worker_devices, dict):
+      return input_lib.InputWorkers(
+          tuple(self._device_input_worker_devices.items())
+      )
+    else:
+      return input_lib.InputWorkers(tuple(self._device_input_worker_devices))
+
+  def _get_input_worker_for_host(self):
+    if isinstance(self._host_input_worker_devices, dict):
+      return input_lib.InputWorkers(
+          tuple(self._host_input_worker_devices.items())
+      )
+    else:
+      return input_lib.InputWorkers(tuple(self._host_input_worker_devices))
+
   def _get_input_workers(self, options):
     if not options or options.experimental_fetch_to_device:
-      return input_lib.InputWorkers(
-          tuple(self._device_input_worker_devices.items()))
+      return self._get_input_worker_for_device()
     else:
-      return input_lib.InputWorkers(
-          tuple(self._host_input_worker_devices.items()))
+      return self._get_input_worker_for_host()
 
   def _check_spec(self, element_spec):
     if isinstance(element_spec, values.PerReplicaSpec):
@@ -1539,7 +1544,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     def lookup_creator(next_creator, *args, **kwargs):
       host_to_table = collections.OrderedDict()
-      for host_device in self._device_input_worker_devices.keys():
+      if isinstance(self._device_input_worker_devices, list):
+        host_devices = [d for d, _ in self._device_input_worker_devices]
+      else:
+        host_devices = list(self._device_input_worker_devices.keys())
+      for host_device in host_devices:
         with ops.device(host_device):
           host_to_table[host_device] = next_creator(*args, **kwargs)
 
