@@ -174,6 +174,27 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
                           typename TTypes<Tindex>::ConstVec indices,
                           int64_t inner_dim, bool update_slots) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
+    // ===== ADD BELOW THIS LINE =====
+if (TF_PREDICT_FALSE(var.dimensions() != accum.dimensions())) {
+  return errors::InvalidArgument(
+      "var and accum must have the same shape. "
+      "var shape: ", var.dimensions(),
+      ", accum shape: ", accum.dimensions());
+}
+
+if (TF_PREDICT_FALSE(grad.dimension(0) != indices.dimension(0))) {
+  return errors::InvalidArgument(
+      "grad and indices must have the same first dimension. "
+      "grad dim 0: ", grad.dimension(0),
+      ", indices dim: ", indices.dimension(0));
+}
+
+if (TF_PREDICT_FALSE(grad.dimension(1) != inner_dim)) {
+  return errors::InvalidArgument(
+      "grad inner dimension does not match var inner dimension. "
+      "grad dim 1: ", grad.dimension(1),
+      ", expected: ", inner_dim);
+}
     if (N == 0) return absl::OkStatus();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
     const T lr_scalar = lr();
@@ -2057,6 +2078,12 @@ class SparseApplyAdagradV2Op : public OpKernel {
     const Tensor& indices = ctx->input(5);
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
+
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions: ",
+                    var.shape().DebugString(), " vs ",
+                    grad.shape().DebugString()));
 
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
