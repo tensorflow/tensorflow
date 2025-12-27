@@ -63,7 +63,7 @@ class NodeFileWriter {
   const std::string filename_;
   mutex mu_;
   // Hashes of the NodeDefs already written to the file
-  absl::flat_hash_set<uint64> written_hashes_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_set<uint64_t> written_hashes_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<WritableFile> node_def_file_ TF_PT_GUARDED_BY(mu_);
 };
