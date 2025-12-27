@@ -152,26 +152,29 @@ struct SkipWhitespace {
 
 // Split strings using any of the supplied delimiters. For example:
 // Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
-inline std::vector<string> Split(absl::string_view text,
-                                 absl::string_view delims) {
-  return text.empty() ? std::vector<string>()
+inline std::vector<std::string> Split(absl::string_view text,
+                                      absl::string_view delims) {
+  return text.empty() ? std::vector<std::string>()
                       : absl::StrSplit(text, absl::ByAnyChar(delims));
 }
 
 template <typename Predicate>
-std::vector<string> Split(absl::string_view text, absl::string_view delims,
-                          Predicate p) {
-  return text.empty() ? std::vector<string>()
+std::vector<std::string> Split(absl::string_view text, absl::string_view delims,
+                               Predicate p) {
+  return text.empty() ? std::vector<std::string>()
                       : absl::StrSplit(text, absl::ByAnyChar(delims), p);
 }
 
-inline std::vector<string> Split(absl::string_view text, char delim) {
-  return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim);
+inline std::vector<std::string> Split(absl::string_view text, char delim) {
+  return text.empty() ? std::vector<std::string>()
+                      : absl::StrSplit(text, delim);
 }
 
 template <typename Predicate>
-std::vector<string> Split(absl::string_view text, char delim, Predicate p) {
-  return text.empty() ? std::vector<string>() : absl::StrSplit(text, delim, p);
+std::vector<std::string> Split(absl::string_view text, char delim,
+                               Predicate p) {
+  return text.empty() ? std::vector<std::string>()
+                      : absl::StrSplit(text, delim, p);
 }
 
 // StartsWith()

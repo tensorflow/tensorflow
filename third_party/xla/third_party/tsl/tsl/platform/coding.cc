@@ -23,7 +23,7 @@ limitations under the License.
 namespace tsl {
 namespace core {
 
-void EncodeFixed16(char* buf, uint16 value) {
+void EncodeFixed16(char* buf, uint16_t value) {
   if (port::kLittleEndian) {
     memcpy(buf, &value, sizeof(value));
   } else {
@@ -32,7 +32,7 @@ void EncodeFixed16(char* buf, uint16 value) {
   }
 }
 
-void EncodeFixed32(char* buf, uint32 value) {
+void EncodeFixed32(char* buf, uint32_t value) {
   if (port::kLittleEndian) {
     memcpy(buf, &value, sizeof(value));
   } else {
@@ -43,7 +43,7 @@ void EncodeFixed32(char* buf, uint32 value) {
   }
 }
 
-void EncodeFixed64(char* buf, uint64 value) {
+void EncodeFixed64(char* buf, uint64_t value) {
   if (port::kLittleEndian) {
     memcpy(buf, &value, sizeof(value));
   } else {
@@ -58,25 +58,25 @@ void EncodeFixed64(char* buf, uint64 value) {
   }
 }
 
-void PutFixed16(string* dst, uint16 value) {
+void PutFixed16(std::string* dst, uint16_t value) {
   char buf[sizeof(value)];
   EncodeFixed16(buf, value);
   dst->append(buf, sizeof(buf));
 }
 
-void PutFixed32(string* dst, uint32 value) {
+void PutFixed32(std::string* dst, uint32_t value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
   dst->append(buf, sizeof(buf));
 }
 
-void PutFixed64(string* dst, uint64 value) {
+void PutFixed64(std::string* dst, uint64_t value) {
   char buf[sizeof(value)];
   EncodeFixed64(buf, value);
   dst->append(buf, sizeof(buf));
 }
 
-char* EncodeVarint32(char* dst, uint32 v) {
+char* EncodeVarint32(char* dst, uint32_t v) {
   // Operate on characters as unsigneds
   unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
   static const int B = 128;
@@ -104,19 +104,19 @@ char* EncodeVarint32(char* dst, uint32 v) {
   return reinterpret_cast<char*>(ptr);
 }
 
-void PutVarint32(string* dst, uint32 v) {
+void PutVarint32(std::string* dst, uint32_t v) {
   char buf[5];
   char* ptr = EncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
 }
 
-void PutVarint32(tstring* dst, uint32 v) {
+void PutVarint32(tstring* dst, uint32_t v) {
   char buf[5];
   char* ptr = EncodeVarint32(buf, v);
   dst->append(buf, ptr - buf);
 }
 
-char* EncodeVarint64(char* dst, uint64 v) {
+char* EncodeVarint64(char* dst, uint64_t v) {
   static const int B = 128;
   unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
   while (v >= B) {
@@ -127,13 +127,13 @@ char* EncodeVarint64(char* dst, uint64 v) {
   return reinterpret_cast<char*>(ptr);
 }
 
-void PutVarint64(string* dst, uint64 v) {
+void PutVarint64(std::string* dst, uint64_t v) {
   char buf[10];
   char* ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);
 }
 
-void PutVarint64(tstring* dst, uint64 v) {
+void PutVarint64(tstring* dst, uint64_t v) {
   char buf[10];
   char* ptr = EncodeVarint64(buf, v);
   dst->append(buf, ptr - buf);
@@ -148,9 +148,9 @@ int VarintLength(uint64_t v) {
   return len;
 }
 
-const char* GetVarint32Ptr(const char* p, const char* limit, uint32* value) {
+const char* GetVarint32Ptr(const char* p, const char* limit, uint32_t* value) {
   if (p < limit) {
-    uint32 result = *(reinterpret_cast<const unsigned char*>(p));
+    uint32_t result = *(reinterpret_cast<const unsigned char*>(p));
     if ((result & 128) == 0) {
       *value = result;
       return p + 1;
@@ -160,10 +160,10 @@ const char* GetVarint32Ptr(const char* p, const char* limit, uint32* value) {
 }
 
 const char* GetVarint32PtrFallback(const char* p, const char* limit,
-                                   uint32* value) {
-  uint32 result = 0;
-  for (uint32 shift = 0; shift <= 28 && p < limit; shift += 7) {
-    uint32 byte = *(reinterpret_cast<const unsigned char*>(p));
+                                   uint32_t* value) {
+  uint32_t result = 0;
+  for (uint32_t shift = 0; shift <= 28 && p < limit; shift += 7) {
+    uint32_t byte = *(reinterpret_cast<const unsigned char*>(p));
     p++;
     if (byte & 128) {
       // More bytes are present
@@ -177,7 +177,7 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
   return nullptr;
 }
 
-bool GetVarint32(absl::string_view* input, uint32* value) {
+bool GetVarint32(absl::string_view* input, uint32_t* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint32Ptr(p, limit, value);
@@ -189,10 +189,10 @@ bool GetVarint32(absl::string_view* input, uint32* value) {
   }
 }
 
-const char* GetVarint64Ptr(const char* p, const char* limit, uint64* value) {
-  uint64 result = 0;
-  for (uint32 shift = 0; shift <= 63 && p < limit; shift += 7) {
-    uint64 byte = *(reinterpret_cast<const unsigned char*>(p));
+const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* value) {
+  uint64_t result = 0;
+  for (uint32_t shift = 0; shift <= 63 && p < limit; shift += 7) {
+    uint64_t byte = *(reinterpret_cast<const unsigned char*>(p));
     p++;
     if (byte & 128) {
       // More bytes are present
@@ -206,7 +206,7 @@ const char* GetVarint64Ptr(const char* p, const char* limit, uint64* value) {
   return nullptr;
 }
 
-bool GetVarint64(absl::string_view* input, uint64* value) {
+bool GetVarint64(absl::string_view* input, uint64_t* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint64Ptr(p, limit, value);

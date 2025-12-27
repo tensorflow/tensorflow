@@ -37,11 +37,11 @@ struct IOStatistics {
 };
 
 // Return the hostname of the machine on which this process is running.
-string Hostname();
+std::string Hostname();
 
 // Return the job name as a string if it exists, otherwise return an empty
 // string.
-string JobName();
+std::string JobName();
 
 // Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
 int64_t JobUid();
