@@ -572,9 +572,33 @@ class MklConvCustomBackpropInputOp
                                const Tensor& input_tensor) {
     TensorShape input_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
-    // Conv[2D|3D]BackpropInputV2 supports both DT_INT32 and DT_INT64
-    // output_shape tensor::MakeShape is able to handle both DT_INT32 and
-    // DT_INT64 for input_tensor.
+
+    // FIX START: Handle dynamic batch size (-1)
+    if (input_tensor.NumElements() > 0 && input_tensor.flat<int32>()(0) == -1) {
+        // 1. Get the gradient tensor (diff_dst) which holds the real data
+        const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
+        
+        // 2. Create a temporary vector to hold the fixed shape
+        std::vector<int64_t> explicit_shape;
+        int32 dims = input_tensor.NumElements();
+        auto shape_vec = input_tensor.flat<int32>();
+        
+        for (int i = 0; i < dims; i++) {
+            int32 val = shape_vec(i);
+            if (val == -1) {
+                // If we see -1, use the Batch Size from the gradient tensor
+                // usually batch size is at index 0
+                explicit_shape.push_back(diff_dst_tensor.dim_size(0)); 
+            } else {
+                explicit_shape.push_back(val);
+            }
+        }
+        // 3. Create the shape from our fixed vector
+        return TensorShape(explicit_shape);
+    }
+    
+    
+    // Fallback to original strict check if no -1 is found
     TF_CHECK_OK(tensor::MakeShape(input_tensor, &input_tf_shape));
     return input_tf_shape;
   }
