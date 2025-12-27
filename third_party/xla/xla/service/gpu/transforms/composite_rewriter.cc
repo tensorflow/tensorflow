@@ -156,7 +156,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
       auto scale_type = scale->shape().element_type();
       if ((op_type == F8E4M3FN || op_type == F8E5M2) &&
           scale_type == F8E8M0FNU) {
-        if (contracting_dim >= scale->shape().dimensions_size()) {
+        if (contracting_dim >= scale->shape().dimensions().size()) {
           return false;
         }
         int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
@@ -169,8 +169,8 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
         return scale_factor % 32 == 0;
       }
       if (op_type == BF16 && scale_type == BF16) {
-        if (scale->shape().dimensions_size() !=
-            operand->shape().dimensions_size()) {
+        if (scale->shape().dimensions().size() !=
+            operand->shape().dimensions().size()) {
           return false;
         }
         for (int64_t dim : scale->shape().dimensions()) {
