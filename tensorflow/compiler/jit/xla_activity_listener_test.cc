@@ -28,6 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+using ::testing::EqualsProto;
 
 class TestListener : public XlaActivityListener {
  public:

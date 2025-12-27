@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla {
 
@@ -148,16 +149,25 @@ Compiler::GetPlatformCompilers() {
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
-    const se::Platform* platform) {
+    se::Platform::Id platform_id) {
+  LOG(ERROR) << "eusebiodm: Compiler::GetForPlatform StackTrace: "
+             << tsl::CurrentStackTrace();
   absl::MutexLock lock(platform_compiler_mutex_);
 
   auto* factories = GetPlatformCompilerFactories();
-  auto it = factories->find(platform->id());
+  LOG(ERROR) << "eusebiodm: platform_id: " << platform_id;
+  LOG(ERROR) << "eusebiodm: Available compiler factories: ("
+             << factories->size() << ")";
+  for (const auto& pair : *factories) {
+    LOG(ERROR) << "  Platform ID: " << pair.first;
+  }
+
+  auto it = factories->find(platform_id);
   if (it == factories->end()) {
     return NotFound(
-        "could not find registered compiler for platform %s -- was support for "
-        "that platform linked in?",
-        platform->Name());
+        "could not find registered compiler for the platform -- was support "
+        "for that platform linked in? StackTrace: %s",
+        tsl::CurrentStackTrace());
   }
   return it->second();
 }

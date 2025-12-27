@@ -156,8 +156,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
   se::StreamExecutor* stream_exec = config.GetExecutor();
   se::DeviceAddressAllocator* allocator = config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(stream_exec->GetPlatform()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Compiler> compiler,
+      Compiler::GetForPlatform(stream_exec->GetPlatform()->id()));
   return AutotunerCompileUtil(std::move(compiler), *stream_exec, *stream,
                               *allocator, opts);
 }
