@@ -49,7 +49,7 @@ void NcclReducer::Run(StatusCallback done) {
         break;
       case DT_INT32:
         group_size_val =
-            Tensor(static_cast<int32>(col_params_->group.group_size));
+            Tensor(static_cast<int32_t>(col_params_->group.group_size));
         break;
       case DT_INT64:
         group_size_val =
@@ -104,11 +104,12 @@ void NcclReducer::Run(StatusCallback done) {
   // TODO(b/80529858): make this entirely non-blocking by getting rid of the
   // waits below and calling final op from the nccl kernel's DoneCallback.
   {
-    profiler::TraceMe activity("Nccl", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("Nccl", tsl::profiler::TraceMeLevel::kInfo);
     nccl_done->WaitForNotification();
   }
   {
-    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("GroupSizeCopy",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     group_size_ready->WaitForNotification();
   }
   Status final_status =
