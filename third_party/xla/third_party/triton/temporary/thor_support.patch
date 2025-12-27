@@ -1,0 +1,22 @@
+diff --git a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+index 3b14c6f6b..028608fd1 100644
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -39,7 +39,7 @@ static int getMMAVersionSafe(int computeCapability, DotOp op) {
+     versionsSupported = {2};
+   } else if (computeCapability < 100) {
+     versionsSupported = {3, 2};
+-  } else if (computeCapability < 110) {
++  } else if (computeCapability < 120) {
+     versionsSupported = {5, 2};
+   } else if (computeCapability < 130) {
+     versionsSupported = {2};
+@@ -804,7 +804,7 @@ public:
+     auto retShapePerCTA = getShapePerCTA(oldRetType);
+     int numWarps = lookupNumWarps(dotOp);
+     auto CTALayout = getCTALayout(oldRetType.getEncoding());
+-    if ((computeCapability) / 10 != 10)
++    if ((computeCapability) / 10 < 10 || (computeCapability) / 10 > 11)
+       return failure();
+     if (numWarps != 4 && numWarps != 8)
+       return failure();
