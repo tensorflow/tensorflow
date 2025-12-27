@@ -40,7 +40,7 @@ bool UpdateDeviceFromInputs(
   if (!AssignedOrRequestedDevice(*node).empty() || !node_filter(*node)) {
     return false;
   }
-  string proposed_device = "";
+  std::string proposed_device = "";
   Node* proposed_src = nullptr;
   // Scan the input edges, propagate device assignment from its inputs to this
   // node iff all input nodes has the same device assignment and the device is
@@ -52,7 +52,7 @@ bool UpdateDeviceFromInputs(
       continue;
     }
     Node* src = e->src();
-    const string& src_device = AssignedOrRequestedDevice(*src);
+    const std::string& src_device = AssignedOrRequestedDevice(*src);
 
     // Ignore LoopCond -> Switch and Enter -> Merge. In other words, the device
     // placement of a Switch op is determined by all its non-LoopCond inputs and
