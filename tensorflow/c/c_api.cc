@@ -299,7 +299,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     mutex_lock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
-    const string& mutation_warning = session->graph->sessions[session];
+    const std::string& mutation_warning = session->graph->sessions[session];
     if (!mutation_warning.empty()) {
       // TODO(b/74949947): turn this back into an error status
       LOG(WARNING) << mutation_warning;

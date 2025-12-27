@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace {
 
 TEST(CAPI_EXPERIMENTAL, GetServerDefTest) {
-  const string expected_text_proto(R"(cluster {
+  const std::string expected_text_proto(R"(cluster {
   job {
     name: "worker"
     tasks {
@@ -56,11 +56,11 @@ protocol: "grpc"
 
   ServerDef actual;
   ASSERT_TRUE(actual.ParseFromArray(result->data, result->length));
-  string actual_text_proto;
+  std::string actual_text_proto;
   tensorflow::protobuf::TextFormat::PrintToString(actual, &actual_text_proto);
   EXPECT_EQ(expected_text_proto, actual_text_proto);
 
-  const string malformed_text_proto(R"(cluster {
+  const std::string malformed_text_proto(R"(cluster {
   job {
     name: "worker")");
   TF_Buffer* null_result =
@@ -339,8 +339,8 @@ TEST_F(CApiExperimentalFunctionTest, GraphRemoveFunction) {
 TEST_F(CApiExperimentalFunctionTest, EmptyGraphRemoveNonExistentFunction) {
   TF_GraphRemoveFunction(func_graph_, "wrong_name", s_);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
-  EXPECT_EQ(string("Tried to remove non-existent function 'wrong_name'."),
-            string(TF_Message(s_)));
+  EXPECT_EQ(std::string("Tried to remove non-existent function 'wrong_name'."),
+            std::string(TF_Message(s_)));
 }
 
 TEST_F(CApiExperimentalFunctionTest, GraphRemoveNonExistentFunction) {
@@ -356,8 +356,8 @@ TEST_F(CApiExperimentalFunctionTest, GraphRemoveNonExistentFunction) {
 
   TF_GraphRemoveFunction(func_graph_, "wrong_name", s_);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
-  EXPECT_EQ(string("Tried to remove non-existent function 'wrong_name'."),
-            string(TF_Message(s_)));
+  EXPECT_EQ(std::string("Tried to remove non-existent function 'wrong_name'."),
+            std::string(TF_Message(s_)));
   TF_DeleteFunction(funcs[0]);
 }
 
