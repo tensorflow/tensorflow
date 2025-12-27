@@ -31,10 +31,13 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace tsl {
 
 using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::Not;
 
 // Inline executor that counts the number of tasks executed.
@@ -152,6 +155,33 @@ TEST(FutureTest, MoveAssignedFuture) {
   EXPECT_FALSE(move_assigned.IsReady());
   promise.Set(std::make_unique<int32_t>(42));
   EXPECT_TRUE(move_assigned.IsReady());
+}
+
+TEST(FutureTest, StatusImplicitConversion) {
+  Future<> future = absl::OkStatus();
+  EXPECT_OK(future.Await());
+
+  future = absl::InternalError("test");
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInternal, "test"));
+}
+
+TEST(FutureTest, ValueImplicitConversion) {
+  Future<int> future = 42;
+  EXPECT_THAT(future.Await(), IsOkAndHolds(42));
+
+  future = absl::InternalError("test");
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInternal, "test"));
+}
+
+TEST(FutureTest, StatusMacro) {
+  auto f = [&](absl::StatusOr<int> value) -> tsl::Future<int> {
+    ASSIGN_OR_RETURN(const int x, value);
+    return x;
+  };
+
+  EXPECT_THAT(f(42).Await(), IsOkAndHolds(42));
+  EXPECT_THAT(f(absl::InternalError("test")).Await(),
+              StatusIs(absl::StatusCode::kInternal, "test"));
 }
 
 TEST(FutureTest, AwaitMoveOnlyFuture) {
