@@ -15,12 +15,20 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_service.h"
 
 #include <chrono>  // NOLINT
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "grpcpp/support/byte_buffer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/coding.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
 namespace tensorflow {
