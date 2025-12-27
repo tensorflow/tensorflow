@@ -723,6 +723,16 @@ class BufferAssigner {
   using PrivateStacks = absl::flat_hash_map<BufferValue::Color,
                                             std::vector<const HloComputation*>>;
 
+  // Algorithms that can be used for buffer assignment.
+  enum Algorithm : uint8_t {
+    kDefault,
+    kBestOfSpatialTemporal,
+    kSpatial,
+    kTemporal,
+    kFastMerge,
+    kFastSplit,
+  };
+
   // Options for BufferAssigner::Run.
   struct Options {
     // If true, allocate buffers for constant instructions.
@@ -745,6 +755,8 @@ class BufferAssigner {
         heap_buffer_interval_compare;
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
+
+    Algorithm buffer_assignment_algorithm = Algorithm::kDefault;
   };
 
   static Colorer DefaultColorer() {
@@ -827,6 +839,7 @@ class BufferAssigner {
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+      BufferAssigner::Algorithm buffer_assignment_algorithm,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
