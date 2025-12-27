@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/fake_clock_env.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
