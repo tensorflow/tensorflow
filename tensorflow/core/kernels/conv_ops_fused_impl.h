@@ -531,7 +531,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         .set_layout(compute_data_layout);
 
     Tensor transformed_filter;
-    const auto transform_filter = [&](FilterTensorFormat dst_format) -> Status {
+    const auto transform_filter =
+        [&](FilterTensorFormat dst_format) -> absl::Status {
       VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
               << " to " << ToString(dst_format);
 
@@ -549,7 +550,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           To32Bit(filter.tensor<T, 4>()),
           To32Bit(transformed_filter.tensor<T, 4>()));
 
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     if (compute_in_nhwc) {
@@ -626,7 +627,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     auto autotune_entry = std::move(entry_or).value();
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
-    Status cudnn_launch_status;
+    absl::Status cudnn_launch_status;
     if (!autotune_entry.is_algorithm_config()) {
       auto& runners = autotune_entry.GetOpRunners();
       se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
@@ -662,7 +663,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       auto& runner =
           *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
       cudnn_launch_status = runner(
-          stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
+          stream, nullptr,
+          std::get<stream_executor::DeviceAddressBase>(runner_and_scratch),
           input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
     } else {
       auto dnn = stream->parent()->AsDnn();
@@ -693,7 +695,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 };
 
 template <>
-struct LaunchFusedConv2DOp<GPUDevice, int8>;
+struct LaunchFusedConv2DOp<GPUDevice, int8_t>;
 
 template <>
 struct LaunchFusedConv2DOp<GPUDevice, qint8>;

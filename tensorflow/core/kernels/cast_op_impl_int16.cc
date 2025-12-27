@@ -26,9 +26,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 CastFunctorType GetCpuCastFromInt16(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, CPUDevice, int16);
-  CAST_CASE(CPUDevice, int16, int4);
-  CAST_CASE(CPUDevice, int16, uint4);
+  CURRY_TYPES3(CAST_CASE, CPUDevice, int16_t);
+  CAST_CASE(CPUDevice, int16_t, int4);
+  CAST_CASE(CPUDevice, int16_t, uint4);
   return nullptr;
 }
 
@@ -36,12 +36,12 @@ CastFunctorType GetCpuCastFromInt16(DataType dst_dtype) {
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromInt16(DataType dst_dtype) {
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-  CAST_CASE(GPUDevice, int16, bfloat16);
+  CAST_CASE(GPUDevice, int16_t, bfloat16);
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, int16);
 #endif
-  CAST_CASE(GPUDevice, int16, int4);
-  CAST_CASE(GPUDevice, int16, uint4);
+  CAST_CASE(GPUDevice, int16_t, int4);
+  CAST_CASE(GPUDevice, int16_t, uint4);
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

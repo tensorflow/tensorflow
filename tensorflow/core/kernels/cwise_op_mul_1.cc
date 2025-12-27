@@ -45,8 +45,8 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::mul<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::mul<int32_t>>);
 #endif
 REGISTER_KERNEL_BUILDER(Name("Mul")
                             .Device(DEVICE_DEFAULT)

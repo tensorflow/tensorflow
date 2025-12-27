@@ -109,7 +109,7 @@ class Conv2DBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -177,7 +177,7 @@ class Conv2DBackpropFilterOp : public OpKernel {
             filter_sizes.dims()));
     TensorShape filter_shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                filter_sizes.vec<int32>(), &filter_shape));
+                                filter_sizes.vec<int32_t>(), &filter_shape));
 
     Tensor* filter_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -214,8 +214,8 @@ class Conv2DBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   bool use_cudnn_;
@@ -233,7 +233,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -287,7 +287,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
             filter_sizes.dims()));
     TensorShape filter_shape;
     OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                filter_sizes.vec<int32>(), &filter_shape));
+                                filter_sizes.vec<int32_t>(), &filter_shape));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(
@@ -447,8 +447,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
