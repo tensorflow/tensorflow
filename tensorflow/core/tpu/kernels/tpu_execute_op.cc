@@ -198,7 +198,7 @@ struct InputBuffers {
                                     device_ordinal);
     shaped_buffer.set_buffers(buffers.Map<se::DeviceMemoryBase>(
         [](const xla::MaybeOwningDeviceMemory& buffer) {
-          return buffer.AsDeviceMemoryBase();
+          return buffer.AsDeviceAddress();
         }));
     return shaped_buffer;
   }
