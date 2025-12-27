@@ -11,8 +11,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
-#include <string>
+#include <cstdint>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
