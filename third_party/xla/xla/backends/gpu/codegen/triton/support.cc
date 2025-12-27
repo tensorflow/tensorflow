@@ -484,10 +484,14 @@ CodegenDecision IsTritonSupportedDot(
   PrimitiveType lhs_type = lhs_shape.element_type();
   PrimitiveType rhs_type = rhs_shape.element_type();
 
-  if (dot.operand(0)->opcode() != HloOpcode::kFusion ||
-      dot.operand(1)->opcode() != HloOpcode::kFusion) {
+  bool both_operands_are_nested =
+      dot.operand(0)->opcode() == HloOpcode::kFusion &&
+      dot.operand(1)->opcode() == HloOpcode::kFusion;
+  bool contraction_tile_size_is_set = dot.backend_config<Tile>().ok();
+  if (!contraction_tile_size_is_set && !both_operands_are_nested) {
     return CodegenDecision::Forbid(
-        "Only operands that are fusions are supported.");
+        "Only operands that are fusions are supported if the dot does not have "
+        "a contraction tile size set.");
   }
 
   auto types_are = [&](PrimitiveType compare1, PrimitiveType compare2) {

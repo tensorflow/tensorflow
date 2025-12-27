@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_CONVERT_TRITON_GEMM_CONFIG_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_CONVERT_TRITON_GEMM_CONFIG_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -44,13 +44,16 @@ namespace xla::gpu {
 //
 // The operands of the dot (including their prologues) are fused into two new
 // nested fusions, each with their own BlockLevelFusionConfig.
-class NestGemmFusion : public HloModulePass {
+class ConvertTritonGemmConfig : public HloModulePass {
  public:
-  explicit NestGemmFusion(const se::DeviceDescription& device_description,
-                          mlir::MLIRContext* mlir_context)
+  explicit ConvertTritonGemmConfig(
+      const se::DeviceDescription& device_description,
+      mlir::MLIRContext* mlir_context)
       : device_description_(device_description), mlir_context_(mlir_context) {}
 
-  absl::string_view name() const override { return "nest_gemm_fusion"; }
+  absl::string_view name() const override {
+    return "convert_triton_gemm_config";
+  }
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -60,11 +63,17 @@ class NestGemmFusion : public HloModulePass {
  private:
   const se::DeviceDescription device_description_;
   mlir::MLIRContext* mlir_context_;
-  absl::StatusOr<bool> RunOnModule(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
+
+// Returns block level parameters based on tile sizes for the root of the
+// analysis that satisfy the requirements of the `dot`. That is, the tile sizes
+// need to satisfy the constraints of the analysis and map to the given `config`
+// of the dot.
+absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
+    HloInstruction* dot, const TritonGemmConfig& config,
+    mlir::MLIRContext* mlir_context,
+    const se::DeviceDescription& device_description);
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_CONVERT_TRITON_GEMM_CONFIG_H_

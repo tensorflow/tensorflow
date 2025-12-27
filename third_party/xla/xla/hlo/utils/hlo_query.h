@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -94,6 +95,11 @@ bool IsEffectiveParameter(const HloInstruction&);
 // Returns first HLO of the computation with the opcode, otherwise nullptr.
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
+
+// Returns first HLO of the computation with one of the opcodes, otherwise
+// nullptr.
+HloInstruction* GetFirstInstructionWithOpcode(
+    const HloComputation& computation, absl::Span<const HloOpcode> opcodes);
 
 // Applies `fn` to a collection of instruction with `opcode` for a given
 // `computation`.
