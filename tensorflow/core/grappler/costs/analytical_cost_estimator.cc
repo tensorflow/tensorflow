@@ -40,9 +40,9 @@ namespace {
 absl::Status AddCostNode(
     ReadyNodeManager* node_manager, const OpContext& op_context, int node_id,
     const Costs& node_costs,
-    gtl::FlatMap<string, CostGraphDef::Node*>* name_to_cost_node,
-    gtl::FlatMap<string, int>* name_to_id, CostGraphDef* cost_graph) {
-  const string& op_name = op_context.name;
+    gtl::FlatMap<std::string, CostGraphDef::Node*>* name_to_cost_node,
+    gtl::FlatMap<std::string, int>* name_to_id, CostGraphDef* cost_graph) {
+  const std::string& op_name = op_context.name;
   auto it = name_to_cost_node->find(op_name);
   CostGraphDef::Node* node;
   if (it != name_to_cost_node->end()) {
@@ -66,9 +66,9 @@ absl::Status AddCostNode(
   node->set_persistent_memory_size(node_costs.persistent_memory);
   node->set_inaccurate(node_costs.inaccurate);
 
-  for (const string& input : node_manager->GetCurrNode()->input()) {
+  for (const std::string& input : node_manager->GetCurrNode()->input()) {
     int input_port;
-    string input_name = ParseNodeName(input, &input_port);
+    std::string input_name = ParseNodeName(input, &input_port);
 
     // All inputs should have been seen already unless this is a Merge node.
     if (name_to_id->find(input_name) == name_to_id->end()) {
@@ -178,7 +178,7 @@ absl::Status AnalyticalCostEstimator::PredictCosts(
     return status;
   }
 
-  gtl::FlatMap<string, CostGraphDef::Node*> name_to_cost_node;
+  gtl::FlatMap<std::string, CostGraphDef::Node*> name_to_cost_node;
   CostGraphDef* cost_graph = nullptr;
   if (run_metadata) {
     cost_graph = run_metadata->mutable_cost_graph();
@@ -189,10 +189,10 @@ absl::Status AnalyticalCostEstimator::PredictCosts(
       name_to_cost_node[node.name()] = &node;
     }
   }
-  std::vector<string> inaccurate_nodes;
+  std::vector<std::string> inaccurate_nodes;
   int nodes_executed = 0;
   int node_id = 0;
-  gtl::FlatMap<string, int> name_to_id;
+  gtl::FlatMap<std::string, int> name_to_id;
 
   Costs node_costs;
   do {
