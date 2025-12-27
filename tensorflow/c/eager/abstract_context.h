@@ -58,7 +58,7 @@ class AbstractContext {
   virtual absl::Status RegisterFunction(AbstractFunction*) = 0;
   // Remove a function. 'func' argument is the name of a previously added
   // FunctionDef. The name is in fdef.signature.name.
-  virtual absl::Status RemoveFunction(const string& func) = 0;
+  virtual absl::Status RemoveFunction(const std::string& func) = 0;
 
  private:
   const AbstractContextKind kind_;
