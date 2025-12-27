@@ -1011,7 +1011,7 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
   layout.set_memory_space(options_.alternate_memory_space);
   *buffer_shape.mutable_layout() = layout;
   // Sync flag shape
-  Shape sflag_shape = ShapeUtil::MakeShape(S32, {});
+  Shape sflag_shape = ShapeUtil::MakeShape(S32, {2});
   // Output shape of the WindowPrefetch op.
   Shape output_shape = ShapeUtil::MakeTupleShape({buffer_shape, sflag_shape});
 
@@ -1025,6 +1025,13 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
       HloInstruction::CreateGetTupleElement(sflag_shape, custom_call, 1));
   use_instruction->AppendOperand(get_buffer);
   use_instruction->AppendOperand(get_sflag);
+
+  // Add backend config for the WindowPrefetch op.
+  int64_t parameter_index =
+      use_instruction->operand_index(producing_instruction);
+  int64_t buffer_index = use_instruction->operand_index(get_buffer);
+  custom_call->set_raw_backend_config_string(absl::StrCat(
+      "parameter_index=", parameter_index, " buffer_index=", buffer_index));
 
   // The buffer's defining position is the get_tuple_element instruction.
   prefetch_instruction_ = get_buffer;
