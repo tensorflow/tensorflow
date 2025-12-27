@@ -105,7 +105,7 @@ class GpuCompiler : public LLVMCompiler {
 
   int64_t GetPointerSize() const { return pointer_size_; }
 
-  static absl::StatusOr<Compiler::GpuTargetConfig> GetTargetConfig(
+  static absl::StatusOr<GpuTargetConfig> GetTargetConfig(
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
@@ -173,8 +173,7 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config) {
+      se::StreamExecutor* stream_exec, const GpuTargetConfig* target_config) {
     return absl::OkStatus();
   }
 
@@ -193,7 +192,7 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const Compiler::GpuTargetConfig* target_config,
+      const GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
     return absl::OkStatus();
   }

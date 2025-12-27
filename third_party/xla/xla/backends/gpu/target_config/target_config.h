@@ -19,7 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla::gpu {
 
@@ -35,6 +38,28 @@ enum class GpuModel {
   MI200,
   P100,
   V100,
+};
+
+// Description of a target device for compilation.
+struct GpuTargetConfig {
+  explicit GpuTargetConfig(stream_executor::StreamExecutor* s);
+
+  static absl::StatusOr<GpuTargetConfig> FromProto(
+      const stream_executor::GpuTargetConfigProto& proto);
+
+  stream_executor::GpuTargetConfigProto ToProto() const;
+
+  bool operator==(const GpuTargetConfig& other) const;
+
+  std::string ToString() { return ToProto().DebugString(); }
+
+  stream_executor::DeviceDescription device_description;
+  std::string platform_name;
+  stream_executor::dnn::VersionInfo dnn_version_info;
+  std::string device_description_str;
+
+ private:
+  GpuTargetConfig() = default;
 };
 
 // Returns the GpuTargetConfigProto for the given GPU model.
