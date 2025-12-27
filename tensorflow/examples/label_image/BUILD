@@ -49,6 +49,7 @@ tf_cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
