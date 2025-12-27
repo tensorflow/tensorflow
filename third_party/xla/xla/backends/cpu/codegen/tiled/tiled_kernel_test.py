@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from typing import Optional
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import numpy as np
 
 from xla.backends.cpu import testlib as cpu_testlib
@@ -505,6 +506,88 @@ class XtileLoweringTest(absltest.TestCase):
         (2, 3),
         np.bool,
         lambda input: input,
+    )
+
+
+class OpsWithUnsignedIntegersTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="add",
+          stablehlo_op="stablehlo.add",
+          expected_output=lambda a, b: a + b,
+      ),
+      dict(
+          testcase_name="multiply",
+          stablehlo_op="stablehlo.multiply",
+          expected_output=lambda a, b: a * b,
+      ),
+      dict(
+          testcase_name="divide",
+          stablehlo_op="stablehlo.divide",
+          expected_output=lambda a, b: np.where(
+              b != 0, a / b, np.iinfo(a.dtype).max
+          ),
+      ),
+      dict(
+          testcase_name="remainder",
+          stablehlo_op="stablehlo.remainder",
+          expected_output=lambda a, b: a % b,
+      ),
+      dict(
+          testcase_name="maximum",
+          stablehlo_op="stablehlo.maximum",
+          expected_output=np.maximum,
+      ),
+      dict(
+          testcase_name="minimum",
+          stablehlo_op="stablehlo.minimum",
+          expected_output=np.minimum,
+      ),
+      dict(
+          testcase_name="xor",
+          stablehlo_op="stablehlo.xor",
+          expected_output=np.bitwise_xor,
+      ),
+      dict(
+          testcase_name="or",
+          stablehlo_op="stablehlo.or",
+          expected_output=np.bitwise_or,
+      ),
+      dict(
+          testcase_name="and",
+          stablehlo_op="stablehlo.and",
+          expected_output=np.bitwise_and,
+      ),
+  )
+  def test_unsigned_binary_op(
+      self,
+      stablehlo_op: str,
+      expected_output: Callable[[np.ndarray, ...], np.ndarray],
+  ):
+    ir = f"""
+      #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 16), domain: pid_0 in [0, 9]">
+      module {{
+        xtile.entry_func @unsigned_integer_test(%arg0: memref<150xui32>, %arg1: memref<150xui32>, %arg2: memref<150xui32>, %arg3: index) attributes {{xtile.tiling_info = #xtile.tiling_info<tile_count:10, tiles_per_workgroup:10>}} {{
+          %0 = xla.apply_indexing #indexing_map(%arg3)
+          %1 = xtile.extract %arg0[%0] [16] [1] : memref<150xui32> -> tensor<16xui32>
+          %2 = xtile.extract %arg1[%0] [16] [1] : memref<150xui32> -> tensor<16xui32>
+          %3 = {stablehlo_op} %1, %2 : tensor<16xui32>
+          %4 = xla.apply_indexing #indexing_map(%arg3)
+          xtile.insert %3 into %arg2[%4] [16] [1] : tensor<16xui32> -> memref<150xui32>
+          xtile.return
+        }}
+      }}
+    """
+
+    compare_kernel(
+        ir,
+        "unsigned_integer_test",
+        1,
+        [InputSpec((150)), InputSpec((150))],
+        (150),
+        np.uint32,
+        expected_output,
     )
 
 

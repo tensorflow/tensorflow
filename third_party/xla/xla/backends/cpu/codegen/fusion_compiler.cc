@@ -288,6 +288,8 @@ static void AddScalarLoweringPasses(mlir::OpPassManager& pm,
 static void AddBufferizationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
+  pm.addPass(xtile::createLegalizeUnsignedIntegersAsSignlessPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::bufferization::createOneShotBufferizePass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
