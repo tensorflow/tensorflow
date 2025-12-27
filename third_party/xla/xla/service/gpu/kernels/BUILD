@@ -89,6 +89,7 @@ cc_library(
 xla_cc_test(
     name = "custom_kernel_test",
     srcs = ["custom_kernel_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":custom_kernel",
         ":custom_kernel_proto_cc",
@@ -148,7 +149,11 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_custom_kernel",

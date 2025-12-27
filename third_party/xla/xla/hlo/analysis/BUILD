@@ -36,6 +36,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_dfs_reachability_test",
     srcs = ["hlo_dfs_reachability_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_dfs_reachability",
         "//xla:literal_util",
@@ -73,6 +74,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_reachability",
         "//xla:literal_util",
@@ -120,6 +122,7 @@ xla_cc_test(
     name = "hlo_ordering_test",
     size = "small",
     srcs = ["hlo_ordering_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":hlo_dataflow_analysis",
@@ -172,6 +175,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_analysis_test",
     srcs = ["while_loop_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":while_loop_analysis",
         "//xla:comparison_util",
@@ -247,6 +251,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":hlo_dataflow_analysis",
@@ -302,6 +307,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_value_semantics_analysis_test",
     srcs = ["hlo_value_semantics_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_value_semantics_analysis",
         "//xla/hlo/ir:hlo",
@@ -342,6 +348,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_dimension_analysis_test",
     srcs = ["hlo_dimension_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_dimension_analysis",
         "//xla:shape_tree",
@@ -380,6 +387,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_replication_analysis_test",
     srcs = ["hlo_replication_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_replication_analysis",
         "//xla:shape_util",
@@ -421,6 +429,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_liveness_analysis_test",
     srcs = ["hlo_liveness_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_liveness_analysis",
         "//xla:literal",
@@ -473,6 +482,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":alias_info",
         ":hlo_alias_analysis",
@@ -549,6 +559,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_points_to_analysis_test",
     srcs = ["tuple_points_to_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tuple_points_to_analysis",
         "//xla:literal_util",
@@ -584,6 +595,7 @@ cc_library(
 xla_cc_test(
     name = "interval_test",
     srcs = ["interval_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":interval",
         "@com_google_googletest//:gtest_main",
@@ -635,6 +647,7 @@ cc_library(
 xla_cc_test(
     name = "indexing_map_test",
     srcs = ["indexing_map_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
@@ -653,6 +666,7 @@ xla_cc_test(
 xla_cc_test(
     name = "indexing_map_serialization_test",
     srcs = ["indexing_map_serialization_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
@@ -696,6 +710,7 @@ cc_library(
 xla_cc_test(
     name = "indexing_analysis_test",
     srcs = ["indexing_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
@@ -732,6 +747,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_map_test",
     srcs = ["symbolic_map_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_expr",
         ":symbolic_map",
@@ -763,6 +779,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_expr_test",
     srcs = ["symbolic_expr_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":indexing_test_utils",
         ":symbolic_expr",
@@ -790,6 +807,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_map_converter_test",
     srcs = ["symbolic_map_converter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_expr",
         ":symbolic_map",

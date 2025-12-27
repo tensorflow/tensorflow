@@ -87,6 +87,7 @@ cc_library(
 xla_cc_test(
     name = "semaphore_test",
     srcs = ["semaphore_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":semaphore",
         "//xla/hlo/testlib:test",
@@ -180,6 +181,7 @@ cc_library(
 xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_client",
         ":pjrt_common",
@@ -274,6 +276,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_api_test",
     srcs = ["pjrt_api_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_api",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
@@ -391,6 +394,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_device_dimensions_test",
     srcs = ["pjrt_device_dimensions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_device_dimensions",
         "//xla/pjrt/proto:pjrt_device_dimensions_proto_cc",
@@ -443,6 +447,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_executable",
         "//xla:shape_util",
@@ -503,6 +508,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_client",
         ":pjrt_compiler",
@@ -536,6 +542,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_common_test",
     srcs = ["pjrt_common_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_common",
         "//xla/pjrt/proto:pjrt_value_type_proto_cc",
@@ -759,6 +766,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_stream_executor_client_test",
     srcs = ["pjrt_stream_executor_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":local_device_state",
         ":pjrt_client",
@@ -844,6 +852,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_to_hlo_test",
     srcs = ["mlir_to_hlo_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mlir_to_hlo",
         "//xla/hlo/testlib:test",
@@ -928,6 +937,7 @@ cc_library(
 xla_cc_test(
     name = "lru_cache_test",
     srcs = ["lru_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":lru_cache",
         "//xla/hlo/testlib:test",
@@ -972,6 +982,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":transpose",
         "//xla:array",
@@ -1037,6 +1048,7 @@ cc_library(
 xla_cc_test(
     name = "tf_pjrt_client_test",
     srcs = ["tf_pjrt_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tf_pjrt_client",
         "//xla:literal_util",
@@ -1075,6 +1087,7 @@ cc_library(
 xla_cc_test(
     name = "host_callback_test",
     srcs = ["host_callback_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":host_callback",
         ":pjrt_client",
@@ -1228,6 +1241,7 @@ cc_library(
 xla_cc_test(
     name = "raw_buffer_test",
     srcs = ["raw_buffer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":raw_buffer",
         "//xla/tsl/concurrency:ref_count",
@@ -1327,6 +1341,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_phase_compiler_test",
     srcs = ["pjrt_phase_compiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_compiler",
         ":pjrt_executable",
@@ -1353,6 +1368,7 @@ xla_cc_test(
 xla_cc_test(
     name = "pjrt_phase_compile_extension_test",
     srcs = ["pjrt_phase_compile_extension_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_api",
         ":pjrt_compiler",
@@ -1418,6 +1434,7 @@ cc_library(
 xla_cc_test(
     name = "errors_test",
     srcs = ["errors_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":errors",
         "@com_google_absl//absl/status",

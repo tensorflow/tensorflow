@@ -6,6 +6,7 @@ xla_cc_test(
     name = "stablehlo_compile_test",
     srcs = ["stablehlo_compile_test.cc"],
     data = ["stablehlo_axpy.mlir"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:error_spec",
         "//xla:literal",

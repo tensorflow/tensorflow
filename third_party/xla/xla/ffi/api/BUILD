@@ -79,6 +79,7 @@ cc_library(
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":c_api",
         ":ffi",

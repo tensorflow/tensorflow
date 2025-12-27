@@ -144,6 +144,7 @@ cc_library(
 xla_cc_test(
     name = "stablehlo_import_test",
     srcs = ["stablehlo_import_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stablehlo_import",
         "//xla:shape_util",

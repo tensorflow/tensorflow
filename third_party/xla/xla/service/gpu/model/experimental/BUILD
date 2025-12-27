@@ -48,6 +48,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tile_test",
     srcs = ["symbolic_tile_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile",
         "//xla/hlo/analysis:indexing_test_utils",
@@ -83,6 +84,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tile_propagation_test",
     srcs = ["symbolic_tile_propagation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile",
         ":symbolic_tile_propagation",
@@ -102,6 +104,7 @@ xla_cc_test(
 xla_cc_test(
     name = "tiling_space_test",
     srcs = ["tiling_space_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile",
         "//xla/hlo/analysis:indexing_test_utils",
@@ -131,6 +134,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tiled_hlo_test",
     srcs = ["symbolic_tiled_hlo_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tile",
         ":symbolic_tile_propagation",
@@ -195,6 +199,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_tiled_hlo_computation_test",
     srcs = ["symbolic_tiled_hlo_computation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbolic_tiled_hlo_computation",
         ":test_utils",

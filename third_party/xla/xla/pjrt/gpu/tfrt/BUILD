@@ -252,6 +252,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_event_test",
     srcs = ["gpu_event_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_event",
         "//xla/tsl/concurrency:async_value",
@@ -295,6 +296,7 @@ xla_cc_test(
         "no_oss",
         "noasan",
         "nomsan",
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia:2",
     ],
     deps = [
@@ -334,6 +336,7 @@ xla_cc_test(
         "no_oss",
         "noasan",
         "nomsan",
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia:2",
     ],
     deps = [

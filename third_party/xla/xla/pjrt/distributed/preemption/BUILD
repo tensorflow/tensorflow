@@ -34,6 +34,7 @@ xla_cc_test(
     name = "preemption_notifier_test",
     size = "small",
     srcs = ["preemption_notifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":preemption_notifier",
         "//xla/tsl/platform:env",
@@ -77,6 +78,7 @@ xla_cc_test(
     name = "preemption_sync_manager_test",
     size = "small",
     srcs = ["preemption_sync_manager_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":preemption_notifier",
         ":preemption_sync_manager",

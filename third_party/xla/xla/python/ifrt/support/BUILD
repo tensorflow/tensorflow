@@ -58,6 +58,7 @@ cc_library(
 xla_cc_test(
     name = "sharding_conversions_test",
     srcs = ["sharding_conversions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sharding_conversions",
         "//xla:shape_util",

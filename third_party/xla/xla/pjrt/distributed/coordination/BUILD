@@ -28,6 +28,7 @@ cc_library(
 xla_cc_test(
     name = "coordination_service_error_util_test",
     srcs = ["coordination_service_error_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":coordination_service_error_util",
         "//xla/tsl/platform:test",
@@ -94,7 +95,7 @@ xla_cc_test(
     tags = if_oss([
         "manual",
         "no_oss",
-    ]),  # b/169705709, no protobuf matchers in OSS.
+    ]) + ["pjrt_migration_candidate"],  # b/169705709, no protobuf matchers in OSS.
     deps = [
         ":coordination_client",
         ":coordination_service",
@@ -156,6 +157,7 @@ cc_library(
 xla_cc_test(
     name = "coordination_service_agent_test",
     srcs = ["coordination_service_agent_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":coordination_client",
         ":coordination_service_agent",
@@ -228,7 +230,7 @@ xla_cc_test(
     tags = if_oss([
         "manual",
         "no_oss",
-    ]),  # no status matchers in OSS.
+    ]) + ["pjrt_migration_candidate"],  # no status matchers in OSS.
     deps = [
         ":key_value_store",
         "//xla/tsl/platform:test",
@@ -245,7 +247,7 @@ xla_cc_test(
     size = "medium",
     srcs = ["client_server_test.cc"],
     shard_count = 4,
-    tags = if_oss(["not_run:arm"]),
+    tags = if_oss(["not_run:arm"]) + ["pjrt_migration_candidate"],
     deps = [
         ":coordination_client",
         ":coordination_service",

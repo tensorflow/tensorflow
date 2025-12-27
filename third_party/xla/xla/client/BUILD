@@ -82,6 +82,7 @@ cc_library(
 xla_cc_test(
     name = "executable_build_options_test",
     srcs = ["executable_build_options_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":executable_build_options",
         "//xla:shape_util",

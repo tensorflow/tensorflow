@@ -455,6 +455,7 @@ xla_test(
 xla_cc_test(
     name = "cpu_compiler_internals_test",
     srcs = ["cpu_compiler_internals_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_compiler_pure",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
@@ -480,6 +481,8 @@ xla_test(
     backends = [
         "cpu",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":cpu_aot_compilation_result",
         ":test_header_helper",
@@ -638,6 +641,7 @@ cc_library(
 xla_cc_test(
     name = "ir_emitter_test",
     srcs = ["ir_emitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_compiler",
         ":cpu_executable",
@@ -1040,7 +1044,10 @@ cc_library(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
-    tags = ["not_run:arm"],
+    tags = [
+        "not_run:arm",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":cpu_instruction_fusion",
         ":cpu_options",
@@ -1099,6 +1106,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_wrapper_test",
     srcs = ["fusion_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_wrapper",
         "//xla/hlo/ir:hlo",
@@ -1129,6 +1137,7 @@ cc_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_stub",
@@ -1163,6 +1172,7 @@ xla_cc_test(
     name = "cpu_layout_assignment_test",
     size = "small",
     srcs = ["cpu_layout_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_layout_assignment",
         ":target_machine_features_stub",
@@ -1210,6 +1220,7 @@ cc_library(
 xla_cc_test(
     name = "conv_canonicalization_test",
     srcs = ["conv_canonicalization_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conv_canonicalization",
         ":target_machine_features_stub",
@@ -1253,6 +1264,7 @@ cc_library(
 xla_cc_test(
     name = "parallel_task_assignment_test",
     srcs = ["parallel_task_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_config_proto_cc",
         ":cpu_executable",
@@ -1286,6 +1298,7 @@ xla_cc_test(
     name = "cpu_eigen_tensor_alignment_test",
     size = "small",
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_stub",
@@ -1299,7 +1312,10 @@ xla_cc_test(
     name = "vectorized_reduce_with_no_vector_registers_test",
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
-    tags = ["not_run:arm"],
+    tags = [
+        "not_run:arm",
+        "pjrt_migration_candidate",
+    ],
     target_compatible_with = ["@platforms//cpu:x86_64"],
     deps = [
         ":cpu_compiler",
@@ -1328,6 +1344,7 @@ xla_cc_test(
 xla_cc_test(
     name = "scoped_ir_builder_test",
     srcs = ["scoped_ir_builder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_executable",
         ":ir_emitter",
@@ -1611,6 +1628,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_float_support_test",
     srcs = ["cpu_float_support_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_float_support",
         "//xla:shape_util",
@@ -1772,6 +1790,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_multi_output_fusion_test",
     srcs = ["cpu_multi_output_fusion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_multi_output_fusion",
         "//xla/hlo/analysis:alias_info",
@@ -1787,6 +1806,7 @@ xla_cc_test(
 xla_cc_test(
     name = "small_while_loop_hoisting_pass_test",
     srcs = ["small_while_loop_hoisting_pass_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":backend_config_proto_cc",
         ":small_while_loop_hoisting_pass",
@@ -1806,6 +1826,7 @@ xla_cc_test(
     tags = [
         # Streamz recording doesn't work in OSS.
         "no_oss",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":metrics",

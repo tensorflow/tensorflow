@@ -51,6 +51,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_pass_fix_test",
     srcs = ["hlo_pass_fix_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_pass",
         "//xla:literal_util",
@@ -131,6 +132,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_pass_pipeline_test",
     srcs = ["hlo_pass_pipeline_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_pass",
         ":hlo_pass_pipeline",

@@ -31,6 +31,7 @@ cc_library(
 xla_cc_test(
     name = "buffer_use_test",
     srcs = ["buffer_use_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_use",
         "//xla:shape_util",
@@ -58,6 +59,7 @@ cc_library(
 xla_cc_test(
     name = "resource_use_test",
     srcs = ["resource_use_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":resource_use",
         "//xla/tsl/platform:test",
@@ -89,6 +91,7 @@ cc_library(
 xla_cc_test(
     name = "execution_graph_test",
     srcs = ["execution_graph_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":buffer_use",
         ":execution_graph",
@@ -119,6 +122,7 @@ cc_library(
 xla_cc_test(
     name = "object_pool_test",
     srcs = ["object_pool_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":object_pool",
         "//xla/tsl/platform:env",

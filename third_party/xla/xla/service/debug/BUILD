@@ -31,6 +31,7 @@ cc_library(
 xla_cc_test(
     name = "unstable_reduction_finder_test",
     srcs = ["unstable_reduction_finder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":unstable_reduction_finder",
         "//xla:shape_util",
@@ -66,6 +67,7 @@ cc_library(
 xla_cc_test(
     name = "unstable_reduction_detector_test",
     srcs = ["unstable_reduction_detector_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":unstable_reduction_detector",
         "//xla:xla_proto_cc",
@@ -94,6 +96,8 @@ xla_test(
         "h100",
         "b200",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",

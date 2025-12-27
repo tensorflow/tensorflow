@@ -241,6 +241,7 @@ tf_proto_library(
 xla_cc_test(
     name = "ifrt_ir_program_test",
     srcs = ["ifrt_ir_program_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ifrt_ir_compile_options_proto_cc",
         ":ifrt_ir_program",
@@ -290,6 +291,7 @@ cc_library(
 xla_cc_test(
     name = "ifrt_ir_program_serdes_test",
     srcs = ["ifrt_ir_program_serdes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ifrt_ir_program",
         ":ifrt_ir_program_serdes",

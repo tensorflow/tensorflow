@@ -25,6 +25,7 @@ cc_library(
 xla_cc_test(
     name = "myplugin_cpp_pjrt_test",
     srcs = ["myplugin_cpp_pjrt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":myplugin_cpp_pjrt",
         "//xla/tests:xla_internal_test_main",
@@ -81,6 +82,7 @@ cc_library(
 xla_cc_test(
     name = "myplugin_c_pjrt_test",
     srcs = ["myplugin_c_pjrt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":myplugin_c_pjrt",
         "//xla/pjrt/c:pjrt_c_api_hdrs",

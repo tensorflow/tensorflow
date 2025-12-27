@@ -60,6 +60,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_bisect_state_test",
     srcs = ["hlo_bisect_state_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_bisect_state",
         "//xla:literal",

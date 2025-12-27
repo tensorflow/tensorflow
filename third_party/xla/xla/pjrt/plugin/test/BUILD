@@ -12,7 +12,10 @@ package(
 xla_cc_test(
     name = "plugin_registration_test_tpu",
     srcs = ["plugin_registration_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":plugin_test_fixture",
         "//xla/pjrt:pjrt_client",
@@ -71,6 +74,7 @@ cc_library(
 xla_cc_test(
     name = "plugin_registration_test_cpu",
     srcs = ["plugin_registration_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":plugin_test_fixture",
         "//xla/pjrt:pjrt_client",
@@ -88,7 +92,10 @@ xla_cc_test(
 xla_cc_test(
     name = "plugin_compile_only_test",
     srcs = ["plugin_compile_only_test.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":plugin_test_fixture",
         "//xla/pjrt:mlir_to_hlo",

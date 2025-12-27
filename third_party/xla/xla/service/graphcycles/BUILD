@@ -37,6 +37,7 @@ cc_library(
 xla_cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":graphcycles",
         "//xla/tsl/platform:test_main",
@@ -51,6 +52,7 @@ xla_cc_test(
 xla_cc_test(
     name = "ordered_set_test",
     srcs = ["ordered_set_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ordered_set",
         "@com_google_googletest//:gtest_main",

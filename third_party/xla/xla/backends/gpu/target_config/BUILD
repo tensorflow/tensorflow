@@ -44,6 +44,7 @@ cc_library(
 xla_cc_test(
     name = "target_config_test",
     srcs = ["target_config_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":target_config",
         "//xla/stream_executor:device_description_proto_cc",

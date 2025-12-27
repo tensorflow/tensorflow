@@ -34,6 +34,7 @@ cc_library(
 xla_cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dump",
         "//xla:shape_util",
@@ -77,6 +78,7 @@ xla_cc_test(
     name = "mlir_test",
     srcs = ["mlir_test.cc"],
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mlir",
         "//xla/mlir_hlo",

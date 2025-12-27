@@ -23,6 +23,7 @@ cc_library(
 xla_cc_test(
     name = "xla_cpu_pjrt_client_test",
     srcs = ["xla_cpu_pjrt_client_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xla_cpu_pjrt_client",
         "//xla/pjrt:pjrt_client",
@@ -115,6 +116,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_topology_description_test",
     srcs = ["cpu_topology_description_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_topology",
         ":cpu_topology_description",
@@ -129,6 +131,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_topology_test",
     srcs = ["cpu_topology_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_topology",
         ":cpu_topology_proto_cc",

@@ -141,6 +141,7 @@ xla_cc_binary(
 xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_extractor",
         "//xla:shape_util",
@@ -253,6 +254,7 @@ xla_cc_test(
     ],
     tags = [
         "nomsan",  # No msan for precompiled Nvidia binaries.
+        "pjrt_migration_candidate",
     ],
     deps = [
         "//xla/tsl/platform:subprocess",
@@ -266,6 +268,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_slicer_test",
     srcs = ["hlo_slicer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_slicer",
         "//xla/hlo/ir:hlo",
@@ -361,6 +364,7 @@ xla_cc_test(
         "data/add.hlo",
         ":interactive_graphviz",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/strings",
@@ -406,6 +410,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_module_loader",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -438,6 +443,7 @@ cc_library(
 xla_cc_test(
     name = "prepare_reference_module_test",
     srcs = ["prepare_reference_module_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":prepare_reference_module",
         "//xla/hlo/ir:hlo",
@@ -521,6 +527,7 @@ cc_library(
 xla_cc_test(
     name = "run_hlo_module_test",
     srcs = ["run_hlo_module_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":run_hlo_module_lib",
         ":run_hlo_module_proto_cc",
@@ -584,6 +591,7 @@ xla_cc_test(
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
@@ -633,6 +641,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_control_flow_flattening",
         "//xla:shape_util",
@@ -709,6 +718,8 @@ xla_test(
     srcs = ["matmul_perf_table_gen_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
@@ -840,6 +851,7 @@ cc_library(
 xla_cc_test(
     name = "compute_xspace_stats_test",
     srcs = ["compute_xspace_stats_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":compute_xspace_stats",
         "//xla/tsl/platform:statusor",
@@ -868,6 +880,8 @@ xla_test(
     srcs = ["collective_perf_table_gen_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":collective_perf_table_gen",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
@@ -1060,6 +1074,8 @@ xla_test(
     data = [
         ":data/add.hlo",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":xla_compile_lib",
         "//xla:util",
@@ -1106,6 +1122,8 @@ xla_test(
         "//xla/backends/gpu/target_config:all_gpu_specs",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":xla_compile_lib",
         "//xla:util",

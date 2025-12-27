@@ -85,6 +85,7 @@ cc_library(
 xla_cc_test(
     name = "device_address_test",
     srcs = ["device_address_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":device_address",
         "@com_google_googletest//:gtest_main",
@@ -105,6 +106,7 @@ cc_library(
 xla_cc_test(
     name = "device_address_handle_test",
     srcs = ["device_address_handle_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":device_address",
         ":device_address_handle",
@@ -330,6 +332,7 @@ tf_proto_library(
 xla_cc_test(
     name = "launch_dim_test",
     srcs = ["launch_dim_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":launch_dim",
         ":launch_dim_proto_cc",
@@ -625,6 +628,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_symbol_registry_test",
     srcs = ["kernel_symbol_registry_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_symbol_registry",
         "//xla/stream_executor/cuda:cuda_platform_id",
@@ -663,6 +667,7 @@ tf_proto_library(
 xla_cc_test(
     name = "kernel_spec_test",
     srcs = ["kernel_spec_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_argument_packing_spec",
         ":kernel_spec",
@@ -686,6 +691,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_metadata_test",
     srcs = ["kernel_metadata_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_metadata",
         "@com_google_googletest//:gtest_main",
@@ -718,6 +724,7 @@ tf_proto_library(
 xla_cc_test(
     name = "kernel_argument_packing_spec_test",
     srcs = ["kernel_argument_packing_spec_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":device_address",
         ":kernel_args_packed_vector",
@@ -775,6 +782,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_args_packed_vector_test",
     srcs = ["kernel_args_packed_vector_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_args_packed_vector",
         "@com_google_absl//absl/base",
@@ -969,6 +977,7 @@ cc_library(
 xla_cc_test(
     name = "generic_memory_allocation_test",
     srcs = ["generic_memory_allocation_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":generic_memory_allocation",
         "@com_google_googletest//:gtest",
@@ -979,6 +988,7 @@ xla_cc_test(
 xla_cc_test(
     name = "generic_memory_allocator_test",
     srcs = ["generic_memory_allocator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":generic_memory_allocation",
         ":generic_memory_allocator",
@@ -995,6 +1005,7 @@ xla_cc_test(
 xla_cc_test(
     name = "semantic_version_test",
     srcs = ["semantic_version_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":semantic_version",
         "@com_google_absl//absl/hash:hash_testing",
@@ -1036,6 +1047,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_args_test",
     srcs = ["kernel_args_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":device_address",
         ":kernel_args",
@@ -1052,6 +1064,7 @@ xla_cc_test(
 xla_cc_test(
     name = "stream_executor_test",
     srcs = ["stream_executor_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":platform",
         ":platform_manager",
@@ -1068,6 +1081,7 @@ xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":platform",
         ":platform_manager",
@@ -1085,6 +1099,7 @@ xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dnn",
         "@com_google_googletest//:gtest_main",
@@ -1095,6 +1110,7 @@ xla_cc_test(
 xla_cc_test(
     name = "scoped_module_handle_test",
     srcs = ["scoped_module_handle_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mock_stream_executor",
         ":module_spec",
@@ -1107,6 +1123,7 @@ xla_cc_test(
 xla_cc_test(
     name = "device_description_test",
     srcs = ["device_description_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":device_description",
         ":semantic_version",
@@ -1120,6 +1137,7 @@ xla_cc_test(
 xla_cc_test(
     name = "executor_cache_test",
     srcs = ["executor_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":executor_cache",
         ":mock_stream_executor",
@@ -1134,6 +1152,7 @@ xla_cc_test(
 xla_cc_test(
     name = "stream_finder_test",
     srcs = ["stream_finder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":mock_platform",
         ":mock_stream",
@@ -1150,6 +1169,7 @@ xla_cc_test(
 xla_cc_test(
     name = "bit_pattern_test",
     srcs = ["bit_pattern_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bit_pattern",
         "@com_google_googletest//:gtest_main",

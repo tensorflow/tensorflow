@@ -601,6 +601,7 @@ xla_test(
 xla_cc_test(
     name = "pjrt_c_api_helpers_test",
     srcs = ["pjrt_c_api_helpers_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -622,6 +623,7 @@ xla_cc_test(
 xla_cc_test(
     name = "pjrt_c_api_cpu_test",
     srcs = ["pjrt_c_api_cpu_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_c_api_cpu",
         ":pjrt_c_api_hdrs",

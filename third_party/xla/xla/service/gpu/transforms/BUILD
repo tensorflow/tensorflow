@@ -81,6 +81,7 @@ cc_library(
 xla_cc_test(
     name = "algebraic_simplifier_test",
     srcs = ["algebraic_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":algebraic_simplifier",
         "//xla/hlo/ir:hlo",
@@ -140,6 +141,7 @@ xla_cc_test(
     srcs = ["alias_passthrough_params_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":alias_passthrough_params",
@@ -171,6 +173,7 @@ cc_library(
 xla_cc_test(
     name = "async_wrapper_test",
     srcs = ["async_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":async_wrapper",
         "//xla:literal",
@@ -223,6 +226,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_block_level_rewriter_test",
     srcs = ["fusion_block_level_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_block_level_rewriter",
         "//xla:xla_proto_cc",
@@ -280,6 +284,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_dynamic_memcpy_rewriter_test",
     srcs = ["fusion_dynamic_memcpy_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_dynamic_memcpy_rewriter",
         "//xla/hlo/ir:hlo",
@@ -327,6 +332,7 @@ cc_library(
 xla_cc_test(
     name = "block_scaling_rewriter_test",
     srcs = ["block_scaling_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":block_scaling_rewriter",
         "//xla:error_spec",
@@ -386,6 +392,7 @@ cc_library(
 xla_cc_test(
     name = "conv_padding_legalization_test",
     srcs = ["conv_padding_legalization_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conv_padding_legalization",
         "//xla:shape_util",
@@ -432,6 +439,7 @@ cc_library(
 xla_cc_test(
     name = "conv_rewriter_test",
     srcs = ["conv_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conv_rewriter",
         "//xla:array4d",
@@ -486,6 +494,7 @@ cc_library(
 xla_cc_test(
     name = "copy_fusion_test",
     srcs = ["copy_fusion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_fusion",
         "//xla:literal_util",
@@ -535,6 +544,7 @@ xla_cc_test(
     srcs = ["cublas_pad_for_gemms_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":cublas_pad_for_gemms",
@@ -570,6 +580,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_custom_call_converter_test",
     srcs = ["cudnn_custom_call_converter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cudnn_custom_call_converter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -631,6 +642,8 @@ xla_test(
         "amdgpu_any",
     ] + if_oss(["nvgpu_any"]),
     shard_count = 10,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":conv_rewriter",
         ":cudnn_fused_conv_rewriter",
@@ -761,6 +774,8 @@ xla_test(
     srcs = ["cudnn_norm_rewriter_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":cudnn_norm_rewriter",
         "//xla:error_spec",
@@ -808,6 +823,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cudnn_pad_for_convolutions",
         "//xla:xla_data_proto_cc",
@@ -849,6 +865,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_simplify_padding_test",
     srcs = ["cudnn_simplify_padding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cudnn_simplify_padding",
         "//xla:literal",
@@ -946,7 +963,10 @@ cc_library(
 xla_cc_test(
     name = "custom_kernel_fusion_rewriter_test",
     srcs = ["custom_kernel_fusion_rewriter_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":custom_kernel_fusion_rewriter",
         "//xla/hlo/ir:hlo",
@@ -986,6 +1006,8 @@ xla_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":dot_dimension_sorter",
         "//xla:error_spec",
@@ -1016,6 +1038,7 @@ cc_library(
 xla_cc_test(
     name = "dot_normalizer_test",
     srcs = ["dot_normalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dot_normalizer",
         "//xla:xla_data_proto_cc",
@@ -1056,6 +1079,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = if_gpu_is_configured(
         [
             ":dot_operand_converter",
@@ -1104,6 +1129,7 @@ cc_library(
 xla_cc_test(
     name = "dot_strength_reduction_test",
     srcs = ["dot_strength_reduction_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":dot_strength_reduction",
         "//xla/hlo/testlib:filecheck",
@@ -1148,6 +1174,7 @@ cc_library(
 xla_cc_test(
     name = "double_buffer_loop_unrolling_test",
     srcs = ["double_buffer_loop_unrolling_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":double_buffer_loop_unrolling",
         "//xla:xla_data_proto_cc",
@@ -1210,6 +1237,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":dynamic_slice_fusion_rewriter",
@@ -1260,6 +1288,7 @@ cc_library(
 xla_cc_test(
     name = "explicit_collectives_group_async_wrapper_test",
     srcs = ["explicit_collectives_group_async_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":explicit_collectives_group_async_wrapper",
         "//xla/hlo/testlib:filecheck",
@@ -1296,6 +1325,7 @@ cc_library(
 xla_cc_test(
     name = "explicit_stream_annotation_async_wrapper_test",
     srcs = ["explicit_stream_annotation_async_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":explicit_stream_annotation_async_wrapper",
         "//xla:side_effect_util",
@@ -1327,6 +1357,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_wrapper_test",
     srcs = ["fusion_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fusion_wrapper",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1363,6 +1394,8 @@ xla_test(
     name = "gemm_broadcast_folding_rewriter_test",
     srcs = ["gemm_broadcast_folding_rewriter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
@@ -1404,6 +1437,8 @@ xla_test(
     name = "gemm_workspace_rewriter_test",
     srcs = ["gemm_workspace_rewriter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gemm_workspace_rewriter",
         "//xla/hlo/ir:hlo",
@@ -1474,6 +1509,7 @@ cc_library(
 xla_cc_test(
     name = "gemm_fusion_swap_operands_test",
     srcs = ["gemm_fusion_swap_operands_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gemm_fusion_swap_operands",
         "//xla/hlo/testlib:filecheck",
@@ -1485,6 +1521,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gemm_fusion_test",
     srcs = ["gemm_fusion_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gemm_fusion",
         "//xla:autotuning_proto_cc",
@@ -1575,6 +1612,8 @@ xla_test(
     name = "gemm_rewriter_test",
     srcs = ["gemm_rewriter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1607,6 +1646,8 @@ xla_test(
     name = "cublas_gemm_rewriter_test",
     srcs = ["cublas_gemm_rewriter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1636,6 +1677,8 @@ xla_test(
     srcs = ["gemm_rewriter_fp8_test.cc"],
     backends = ["gpu"],
     shard_count = 5,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1686,6 +1729,7 @@ cc_library(
 xla_cc_test(
     name = "gemv_rewriter_test",
     srcs = ["gemv_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gemv_rewriter",
         "//xla/hlo/ir:hlo",
@@ -1737,6 +1781,7 @@ cc_library(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":layout_assignment",
         "//xla:shape_layout",
@@ -1806,6 +1851,7 @@ cc_library(
 xla_cc_test(
     name = "move_copy_to_users_test",
     srcs = ["move_copy_to_users_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":move_copy_to_users",
         "//xla/hlo/ir:hlo",
@@ -1854,6 +1900,7 @@ xla_cc_test(
     srcs = ["multi_output_fusion_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":multi_output_fusion",
@@ -1911,6 +1958,7 @@ xla_cc_test(
     srcs = ["hoist_fused_bitcasts_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":hoist_fused_bitcasts",
@@ -1982,6 +2030,7 @@ xla_cc_test(
     srcs = ["nest_gemm_fusion_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":nest_gemm_fusion",
@@ -2063,6 +2112,7 @@ xla_cc_test(
     name = "priority_fusion_test",
     srcs = ["priority_fusion_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":priority_fusion",
         "//xla:xla_proto_cc",
@@ -2103,6 +2153,7 @@ cc_library(
 xla_cc_test(
     name = "add_tracking_suffix_to_instruction_names_test",
     srcs = ["add_tracking_suffix_to_instruction_names_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":add_tracking_suffix_to_instruction_names",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -2135,6 +2186,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_creator_test",
     srcs = ["reduce_scatter_creator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":algebraic_simplifier",
         ":reduce_scatter_creator",
@@ -2178,6 +2230,7 @@ xla_cc_test(
     srcs = [
         "reduction_degenerate_dim_remover_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduction_degenerate_dim_remover",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -2211,6 +2264,7 @@ xla_cc_test(
     srcs = [
         "reduction_dimension_grouper_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduction_dimension_grouper",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -2284,6 +2338,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_splitter_test",
     srcs = ["reduction_splitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":reduction_splitter",
         "//xla:shape_util",
@@ -2321,6 +2376,7 @@ cc_library(
 xla_cc_test(
     name = "rename_fusions_test",
     srcs = ["rename_fusions_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":rename_fusions",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -2347,6 +2403,7 @@ cc_library(
 xla_cc_test(
     name = "sanitize_constant_names_test",
     srcs = ["sanitize_constant_names_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sanitize_constant_names",
         "//xla:literal_util",
@@ -2420,6 +2477,7 @@ cc_library(
 xla_cc_test(
     name = "composite_rewriter_test",
     srcs = ["composite_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":composite_rewriter",
         "//xla/hlo/ir:hlo",
@@ -2435,6 +2493,7 @@ xla_cc_test(
 xla_cc_test(
     name = "scalar_constant_sinker_test",
     srcs = ["scalar_constant_sinker_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scalar_constant_sinker",
         "//xla/hlo/ir:hlo",
@@ -2484,6 +2543,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_slice_simplifier_test",
     srcs = ["scatter_slice_simplifier_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scatter_slice_simplifier",
         "//xla:shape_util",
@@ -2513,6 +2573,7 @@ cc_library(
 xla_cc_test(
     name = "scheduling_instruction_annotator_test",
     srcs = ["scheduling_instruction_annotator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scheduling_instruction_annotator",
         "//xla/hlo/ir:hlo",
@@ -2573,6 +2634,7 @@ cc_library(
 xla_cc_test(
     name = "softmax_rewriter_triton_test",
     srcs = ["softmax_rewriter_triton_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":softmax_rewriter_triton",
         "//xla:xla_data_proto_cc",
@@ -2620,6 +2682,7 @@ xla_cc_test(
     srcs = [
         "sort_iota_fusion_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sort_iota_fusion",
         "//xla/hlo/ir:hlo",
@@ -2759,6 +2822,7 @@ cc_library(
 xla_cc_test(
     name = "stream_attribute_annotator_test",
     srcs = ["stream_attribute_annotator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stream_attribute_annotator",
         "//xla/hlo/ir:hlo",
@@ -2798,6 +2862,7 @@ cc_library(
 xla_cc_test(
     name = "stream_attribute_async_wrapper_test",
     srcs = ["stream_attribute_async_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":stream_attribute_async_wrapper",
         "//xla/hlo/ir:hlo",
@@ -2838,6 +2903,8 @@ xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
@@ -2880,6 +2947,7 @@ cc_library(
 xla_cc_test(
     name = "topk_splitter_test",
     srcs = ["topk_splitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":topk_splitter",
         "//xla/hlo/ir:hlo",
@@ -2921,6 +2989,7 @@ xla_cc_test(
     srcs = [
         "transpose_dimension_grouper_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":transpose_dimension_grouper",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -2965,6 +3034,7 @@ xla_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tree_reduction_rewriter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -3000,6 +3070,7 @@ xla_cc_test(
     srcs = [
         "triangular_solve_rewriter_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triangular_solve_rewriter",
         "//xla/hlo/ir:hlo",
@@ -3115,6 +3186,7 @@ xla_cc_test(
     srcs = ["variadic_op_splitter_test.cc"],
     tags = [
         "nomsan",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":variadic_op_splitter",
@@ -3168,6 +3240,7 @@ cc_library(
 xla_cc_test(
     name = "windowed_einsum_handler_test",
     srcs = ["windowed_einsum_handler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":windowed_einsum_handler",
         "//xla/hlo/ir:hlo",
@@ -3200,6 +3273,7 @@ cc_library(
 xla_cc_test(
     name = "pgle_accuracy_checker_test",
     srcs = ["pgle_accuracy_checker_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pgle_accuracy_checker",
         "//xla:xla_proto_cc",
@@ -3249,6 +3323,7 @@ cc_library(
 xla_cc_test(
     name = "ragged_all_to_all_decomposer_test",
     srcs = ["ragged_all_to_all_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ragged_all_to_all_decomposer",
         "//xla/hlo/ir:hlo",
@@ -3294,6 +3369,7 @@ cc_library(
 xla_cc_test(
     name = "ragged_all_to_all_multi_host_decomposer_test",
     srcs = ["ragged_all_to_all_multi_host_decomposer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ragged_all_to_all_multi_host_decomposer",
         "//xla/hlo/testlib:filecheck",
@@ -3329,6 +3405,7 @@ cc_library(
 xla_cc_test(
     name = "ragged_all_to_all_canonicalizer_test",
     srcs = ["ragged_all_to_all_canonicalizer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ragged_all_to_all_canonicalizer",
         "//xla:xla_data_proto_cc",
@@ -3371,6 +3448,7 @@ cc_library(
 xla_cc_test(
     name = "splitk_rewriter_test",
     srcs = ["splitk_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":splitk_rewriter",
         "//xla/hlo/ir:hlo",
@@ -3388,6 +3466,7 @@ xla_cc_test(
 xla_cc_test(
     name = "scaled_dot_rewriter_test",
     srcs = ["scaled_dot_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scaled_dot_rewriter",
         "//xla:error_spec",

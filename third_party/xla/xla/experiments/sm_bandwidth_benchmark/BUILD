@@ -33,6 +33,7 @@ xla_cc_test(
     tags = [
         "cuda-only",
         "gpu",
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = [

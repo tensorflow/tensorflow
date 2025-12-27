@@ -32,6 +32,7 @@ cc_library(
 xla_cc_test(
     name = "aot_benchmark_helper_test",
     srcs = ["aot_benchmark_helper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":aot_benchmark_helper",
         "//xla/service:compiler",
@@ -88,6 +89,7 @@ cc_library(
 xla_cc_test(
     name = "aliasing_benchmark_test",
     srcs = ["aliasing_benchmark_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -106,6 +108,7 @@ xla_cc_test(
     srcs = ["dag_execution_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -127,6 +130,7 @@ xla_cc_test(
     srcs = ["dot_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -151,6 +155,7 @@ xla_cc_test(
     srcs = ["dynamic_update_slice_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -172,6 +177,7 @@ xla_cc_test(
     srcs = ["elementwise_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -193,6 +199,7 @@ xla_cc_test(
     srcs = ["exp_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -215,6 +222,7 @@ xla_cc_test(
     srcs = ["log_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -236,6 +244,7 @@ xla_cc_test(
     srcs = ["fusion_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -272,6 +281,7 @@ xla_cc_test(
     srcs = ["optimizer_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -293,6 +303,7 @@ xla_cc_test(
     srcs = ["reduction_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -314,6 +325,7 @@ xla_cc_test(
     srcs = ["convolution_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -333,6 +345,7 @@ xla_cc_test(
     srcs = ["custom_call_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -357,6 +370,7 @@ xla_cc_test(
     srcs = ["gather_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -379,6 +393,7 @@ xla_cc_test(
     srcs = ["gemv_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -400,6 +415,7 @@ xla_cc_test(
     srcs = ["select_and_scatter_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -421,6 +437,7 @@ xla_cc_test(
     srcs = ["concatenate_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -442,6 +459,7 @@ xla_cc_test(
     srcs = ["topk_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -461,6 +479,7 @@ xla_cc_test(
     srcs = ["pad_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -506,6 +525,7 @@ xla_cc_test(
     srcs = ["tanh_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -526,6 +546,7 @@ xla_cc_test(
     srcs = ["scatter_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -551,6 +572,7 @@ xla_cc_test(
     srcs = ["transposed_copy_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -572,6 +594,7 @@ xla_cc_test(
     srcs = ["transposed_dot_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -593,6 +616,7 @@ xla_cc_test(
     srcs = ["ynn_fusion_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",
@@ -612,6 +636,7 @@ xla_cc_test(
 xla_cc_test(
     name = "snapshot_loading_test",
     srcs = ["snapshot_loading_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_benchmark_runner",
         "//xla:literal",

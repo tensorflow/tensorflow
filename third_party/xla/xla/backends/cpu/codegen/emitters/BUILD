@@ -96,6 +96,7 @@ cc_library(
 xla_cc_test(
     name = "cpu_fusion_emitter_test",
     srcs = ["cpu_fusion_emitter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_fusion_emitters",
         "//xla/backends/cpu/codegen:fusion_compiler",

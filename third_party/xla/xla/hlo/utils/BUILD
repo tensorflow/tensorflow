@@ -73,6 +73,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_live_range_test",
     srcs = ["hlo_live_range_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_live_range",
         "//xla:comparison_util",
@@ -110,6 +111,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_matchers_test",
     srcs = ["hlo_matchers_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_matchers",
         "//xla:literal_util",
@@ -123,6 +125,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_longest_prefix_test",
     srcs = ["hlo_longest_prefix_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_longest_prefix",
         "//xla/hlo/ir:hlo",
@@ -179,6 +182,7 @@ xla_cc_test(
     srcs = [
         "hlo_sharding_util_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_sharding_util",
         "//xla:array",
@@ -220,6 +224,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_stack_trace_test",
     srcs = ["hlo_stack_trace_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_stack_trace",
         "//xla:shape_util",
@@ -253,6 +258,7 @@ xla_cc_test(
     srcs = [
         "hlo_query_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_query",
         "//xla:util",
@@ -293,6 +299,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_traversal_test",
     srcs = ["hlo_traversal_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_traversal",
         "//xla/hlo/ir:hlo",

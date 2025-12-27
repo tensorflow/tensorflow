@@ -31,6 +31,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_call_graph_matcher_test",
     srcs = ["hlo_call_graph_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_call_graph_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -61,6 +62,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_computation_graph_matcher_test",
     srcs = ["hlo_computation_graph_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_computation_graph_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -97,6 +99,7 @@ cc_library(
 xla_cc_test(
     name = "exact_subgraph_matcher_test",
     srcs = ["exact_subgraph_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":exact_subgraph_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -157,6 +160,7 @@ cc_library(
 xla_cc_test(
     name = "bottom_up_matcher_test",
     srcs = ["bottom_up_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bottom_up_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -189,6 +193,7 @@ cc_library(
 xla_cc_test(
     name = "top_down_matcher_test",
     srcs = ["top_down_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":top_down_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -219,6 +224,7 @@ cc_library(
 xla_cc_test(
     name = "manual_matcher_test",
     srcs = ["manual_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":manual_matcher",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -234,6 +240,7 @@ xla_cc_test(
 xla_cc_test(
     name = "similarity_test",
     srcs = ["similarity_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":similarity",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -266,6 +273,7 @@ cc_library(
 xla_cc_test(
     name = "bipartite_matching_test",
     srcs = ["bipartite_matching_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bipartite_matching",
         "//xla/hlo/ir:hlo",

@@ -98,6 +98,7 @@ cc_library(
 xla_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bit_cast",
         "//xla/hlo/testlib:test",
@@ -137,6 +138,7 @@ cc_library(
 xla_cc_test(
     name = "comparison_util_test",
     srcs = ["comparison_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":comparison_util",
         ":types",
@@ -168,6 +170,7 @@ cc_library(
 xla_cc_test(
     name = "ef57_test",
     srcs = ["ef57_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ef57",
         "//xla/hlo/testlib:test",
@@ -225,6 +228,7 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     visibility = ["//visibility:private"],
     deps = [
         ":types",
@@ -259,6 +263,7 @@ xla_cc_test(
     name = "status_macros_test",
     size = "small",
     srcs = ["status_macros_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":status_macros",
         "//xla/hlo/testlib:test",
@@ -289,6 +294,7 @@ cc_library(
 xla_cc_test(
     name = "fp_util_test",
     srcs = ["fp_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":bit_cast",
         ":fp_util",
@@ -354,6 +360,7 @@ cc_library(
 xla_cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":types",
         ":util",
@@ -389,6 +396,7 @@ cc_library(
 xla_cc_test(
     name = "permutation_util_test",
     srcs = ["permutation_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":permutation_util",
         "//xla/hlo/testlib:test",
@@ -420,6 +428,7 @@ cc_library(
 xla_cc_test(
     name = "iterator_util_test",
     srcs = ["iterator_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":util",
         "//xla/hlo/testlib:test",
@@ -507,6 +516,7 @@ cc_library(
 xla_cc_test(
     name = "shape_pool_test",
     srcs = ["shape_pool_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_pool",
         ":shape_util",
@@ -539,6 +549,7 @@ cc_library(
 xla_cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":xla_data_proto_cc",
@@ -557,6 +568,7 @@ xla_cc_test(
 xla_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":util",
@@ -580,6 +592,7 @@ xla_cc_test(
 xla_cc_test(
     name = "shape_partition_test",
     srcs = ["shape_partition_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":util",
@@ -595,6 +608,7 @@ xla_cc_test(
 xla_cc_test(
     name = "primitive_util_test",
     srcs = ["primitive_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":xla_data_proto_cc",
@@ -609,6 +623,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":xla_data_proto_cc",
@@ -624,6 +639,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_test",
     srcs = ["layout_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":xla_data_proto_cc",
@@ -637,6 +653,7 @@ xla_cc_test(
 xla_cc_test(
     name = "index_util_test",
     srcs = ["index_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":xla_data_proto_cc",
@@ -693,6 +710,7 @@ cc_library(
 xla_cc_test(
     name = "literal_test",
     srcs = ["literal_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array",
         ":array2d",
@@ -744,6 +762,7 @@ cc_library(
 xla_cc_test(
     name = "literal_pool_test",
     srcs = ["literal_pool_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":literal_pool",
         ":literal_util",
@@ -792,6 +811,7 @@ cc_library(
 xla_cc_test(
     name = "literal_comparison_test",
     srcs = ["literal_comparison_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":error_spec",
         ":literal_comparison",
@@ -863,6 +883,7 @@ cc_library(
 xla_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array",
         "//xla/hlo/testlib:test",
@@ -888,6 +909,7 @@ cc_library(
 xla_cc_test(
     name = "array2d_test",
     srcs = ["array2d_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array2d",
         "//xla/hlo/testlib:test",
@@ -910,6 +932,7 @@ cc_library(
 xla_cc_test(
     name = "array3d_test",
     srcs = ["array3d_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array3d",
         ":types",
@@ -935,6 +958,7 @@ cc_library(
 xla_cc_test(
     name = "array4d_test",
     srcs = ["array4d_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array2d",
         ":array4d",
@@ -1007,6 +1031,7 @@ cc_library(
 xla_cc_test(
     name = "text_literal_reader_test",
     srcs = ["text_literal_reader_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":literal",
         ":shape_util",
@@ -1043,6 +1068,7 @@ cc_library(
 xla_cc_test(
     name = "text_literal_writer_test",
     srcs = ["text_literal_writer_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":literal_util",
         ":text_literal_writer",
@@ -1077,6 +1103,7 @@ cc_library(
 xla_cc_test(
     name = "shape_tree_test",
     srcs = ["shape_tree_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_tree",
         ":shape_util",
@@ -1124,6 +1151,7 @@ cc_library(
 xla_cc_test(
     name = "window_util_test",
     srcs = ["window_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":window_util",
         ":xla_data_proto_cc",
@@ -1166,6 +1194,7 @@ cc_library(
 xla_cc_test(
     name = "reference_util_test",
     srcs = ["reference_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":array2d",
         ":array3d",
@@ -1205,6 +1234,7 @@ cc_library(
 xla_cc_test(
     name = "parse_flags_from_env_test",
     srcs = ["parse_flags_from_env_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps =
         [
             ":parse_flags_from_env",
@@ -1264,6 +1294,7 @@ cc_library(
 xla_cc_test(
     name = "debug_options_flags_test",
     srcs = ["debug_options_flags_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xla_proto_cc",
         "//xla/tsl/platform:test_main",
@@ -1281,6 +1312,7 @@ xla_cc_test(
         "debug_options_parsers.h",
         "debug_options_parsers_test.cc",
     ],
+    tags = ["pjrt_migration_candidate"],
     deps =
         [
             ":debug_options_flags",
@@ -1370,6 +1402,7 @@ cc_library(
 xla_cc_test(
     name = "autotune_result_wrapper_test",
     srcs = ["autotune_result_wrapper_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":autotune_result_wrapper",
         ":autotune_results_proto_cc",
@@ -1436,6 +1469,7 @@ cc_library(
 xla_cc_test(
     name = "sort_json_test",
     srcs = ["sort_json_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":sort_json",
         "//xla/tsl/platform:test",
@@ -1457,6 +1491,7 @@ cc_library(
 xla_cc_test(
     name = "online_topsort_test",
     srcs = ["online_topsort_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":online_topsort",
         "//xla/tsl/platform:test",
@@ -1491,6 +1526,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_tree_test",
     srcs = ["tuple_tree_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":shape_util",
         ":tuple_tree",

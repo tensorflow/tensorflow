@@ -41,6 +41,7 @@ cc_library(
 xla_cc_test(
     name = "intrinsic_test",
     srcs = ["intrinsic_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type",
         "//xla:xla_data_proto_cc",
@@ -76,6 +77,7 @@ cc_library(
 xla_cc_test(
     name = "fptrunc_test",
     srcs = ["fptrunc_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":fptrunc",
         ":intrinsic",
@@ -107,6 +109,7 @@ cc_library(
 xla_cc_test(
     name = "ldexp_test",
     srcs = ["ldexp_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic",
         ":ldexp",
@@ -163,6 +166,7 @@ cc_library(
 xla_cc_test(
     name = "simple_jit_runner_test",
     srcs = ["simple_jit_runner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":simple_jit_runner",
         "@com_google_googletest//:gtest_main",
@@ -199,6 +203,7 @@ cc_library(
 xla_cc_test(
     name = "vec_name_mangler_test",
     srcs = ["vec_name_mangler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":vec_name_mangler",
         "@com_google_googletest//:gtest_main",
@@ -233,6 +238,7 @@ cc_library(
 xla_cc_test(
     name = "intrinsic_compiler_lib_test",
     srcs = ["intrinsic_compiler_lib_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic_compiler_lib",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -288,6 +294,7 @@ cc_library(
 xla_cc_test(
     name = "log1p_test",
     srcs = ["log1p_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic",
         ":log1p",
@@ -303,6 +310,7 @@ xla_cc_test(
 xla_cc_test(
     name = "exp_test",
     srcs = ["exp_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":exp",
         ":intrinsic",
@@ -353,6 +361,7 @@ cc_library(
 xla_cc_test(
     name = "erf_test",
     srcs = ["erf_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":erf",
         ":intrinsic",
@@ -368,6 +377,7 @@ xla_cc_test(
 xla_cc_test(
     name = "rsqrt_test",
     srcs = ["rsqrt_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic",
         ":rsqrt",
@@ -390,6 +400,7 @@ xla_cc_test(
     srcs = ["rsqrt_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic",
         ":rsqrt",
@@ -423,6 +434,7 @@ cc_library(
 xla_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":intrinsic",
         ":simple_jit_runner",
@@ -459,6 +471,7 @@ cc_library(
 xla_cc_test(
     name = "type_test",
     srcs = ["type_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":type",
         "//xla:xla_data_proto_cc",

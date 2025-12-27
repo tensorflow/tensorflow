@@ -197,6 +197,7 @@ cc_library(
 xla_cc_test(
     name = "debug_test",
     srcs = ["debug_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":debug",
         "//xla/python/ifrt/support:module_parsing",

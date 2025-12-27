@@ -38,6 +38,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_codegen_backend_test",
     srcs = ["gpu_codegen_backend_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_codegen_backend",
         "//xla:xla_proto_cc",
@@ -803,6 +804,7 @@ cc_library(
 xla_cc_test(
     name = "legacy_cache_test",
     srcs = ["legacy_cache_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":legacy_cache",
         "//xla:autotuning_proto_cc",

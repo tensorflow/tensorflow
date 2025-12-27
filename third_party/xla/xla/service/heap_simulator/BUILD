@@ -73,6 +73,7 @@ cc_library(
 xla_cc_test(
     name = "heap_simulator_test",
     srcs = ["heap_simulator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":allocation_block",
         ":heap_simulator",

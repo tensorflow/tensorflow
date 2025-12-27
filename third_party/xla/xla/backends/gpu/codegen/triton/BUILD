@@ -75,7 +75,10 @@ cc_library(
 xla_cc_test(
     name = "fusion_test",
     srcs = ["fusion_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":fusion",
         "//xla/backends/gpu/codegen:fusion_emitter",
@@ -164,6 +167,7 @@ cc_library(
 xla_cc_test(
     name = "lowering_util_test",
     srcs = ["lowering_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":lowering_util",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -232,7 +236,10 @@ cc_library(
 xla_cc_test(
     name = "compilation_pipeline_test",
     srcs = ["compilation_pipeline_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":compilation_pipeline",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -535,6 +542,7 @@ cc_library(
 xla_cc_test(
     name = "xtile_compiler_stub_test",
     srcs = ["xtile_compiler_stub_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xtile_compiler_stub_for_testing",
         "//xla:literal_util",
@@ -550,7 +558,10 @@ xla_cc_test(
 xla_cc_test(
     name = "fusion_emitter_deviceless_test",
     srcs = ["fusion_emitter_deviceless_test.cc"],
-    tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
     deps = [
         ":xtile_compiler",
         "//xla:xla_proto_cc",
@@ -587,7 +598,9 @@ xla_test(
     ],
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":test_utils",
         ":xtile_compiler",
@@ -643,7 +656,9 @@ xla_test(
     tags = [
         "large",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
@@ -686,7 +701,9 @@ xla_test(
     shard_count = 30,
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":test_utils",
         "//xla:autotuning_proto_cc",
@@ -739,7 +756,9 @@ xla_test(
     shard_count = 10,
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":support",
         ":test_utils",
@@ -848,9 +867,11 @@ xla_test(
         "no_mac",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
         "nozapfhahn",  # Times out under coverage
+        "pjrt_migration_candidate",
     ] + if_google([
         "requires-mem:16g",
     ]),
+    use_legacy_stream_executor_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
@@ -872,7 +893,11 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["no_mac"],
+    tags = [
+        "no_mac",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":support",
         ":test_utils",
@@ -900,6 +925,7 @@ xla_cc_test(
     tags = [
         "gpu",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":test_utils",
@@ -955,7 +981,10 @@ xla_cc_test(
     shard_count = 25,
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":fusion_emitter",
         ":support",
@@ -992,7 +1021,11 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["no_mac"],
+    tags = [
+        "no_mac",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_stream_executor_runtime = True,
     deps = [
         ":fusion_emitter",
         ":support",
@@ -1078,7 +1111,10 @@ cc_library(
 xla_cc_test(
     name = "collective_emitter_test",
     srcs = ["collective_emitter_test.cc"],
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":collective_emitter",
         ":fusion",
@@ -1113,6 +1149,7 @@ xla_cc_test(
 xla_cc_test(
     name = "tma_utils_test",
     srcs = ["tma_utils_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tma_utils",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
@@ -1157,6 +1194,7 @@ cc_library(
 xla_cc_test(
     name = "tiled_emitter_constraints_test",
     srcs = ["tiled_emitter_constraints_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":tiled_emitter_constraints",
         "//xla/codegen/tiling:symbolic_tile_analysis",

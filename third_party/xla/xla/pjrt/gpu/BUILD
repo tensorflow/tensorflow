@@ -642,6 +642,7 @@ cc_library(
 xla_cc_test(
     name = "se_gpu_topology_description_test",
     srcs = ["se_gpu_topology_description_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":se_gpu_topology_description",
         "//xla/pjrt:pjrt_common",

@@ -109,6 +109,7 @@ cc_library(
 xla_cc_test(
     name = "xla_sharding_serdes_test",
     srcs = ["xla_sharding_serdes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":xla_ifrt",
         ":xla_sharding_serdes",
@@ -222,6 +223,7 @@ xla_cc_test(
     name = "xla_sharding_test",
     size = "small",
     srcs = ["xla_sharding_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_ifrt",
@@ -437,6 +439,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_attribute_map_util_test",
     srcs = ["pjrt_attribute_map_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_attribute_map_util",
         "//xla/pjrt:pjrt_common",
@@ -484,6 +487,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_layout_test",
     srcs = ["pjrt_layout_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_layout",
         "//xla:shape_util",
@@ -530,6 +534,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_layout_serdes_test",
     srcs = ["pjrt_layout_serdes_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_layout",
         ":pjrt_layout_serdes",
@@ -575,6 +580,7 @@ cc_library(
 xla_cc_test(
     name = "basic_string_array_test",
     srcs = ["basic_string_array_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":basic_string_array",
         ":pjrt_cpu_client_multi_process_test_lib",
@@ -605,6 +611,7 @@ xla_cc_test(
     name = "pjrt_array_impl_test_cpu",
     size = "small",
     srcs = ["pjrt_array_impl_test_cpu.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -618,6 +625,7 @@ xla_cc_test(
     name = "pjrt_client_impl_test_cpu",
     size = "small",
     srcs = [],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:client_impl_test_lib",
@@ -629,6 +637,7 @@ xla_cc_test(
     name = "pjrt_executable_impl_test_cpu",
     size = "small",
     srcs = ["pjrt_executable_impl_test_cpu.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_executable_impl_test_lib",
@@ -642,6 +651,7 @@ xla_cc_test(
     name = "pjrt_tuple_impl_test_cpu",
     size = "small",
     srcs = [],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:tuple_impl_test_lib",
@@ -653,6 +663,7 @@ xla_cc_test(
     name = "pjrt_remap_impl_test_cpu",
     size = "small",
     srcs = [],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:remap_impl_test_lib",

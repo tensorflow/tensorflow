@@ -138,6 +138,7 @@ cc_library(
 xla_cc_test(
     name = "ir_compiler_test",
     srcs = ["ir_compiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_compiler",
         ":kernel_api_ir_builder",
@@ -316,6 +317,7 @@ cc_library(
 xla_cc_test(
     name = "jit_compiler_test",
     srcs = ["jit_compiler_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":ir_compiler",
         ":jit_compiler",
@@ -416,6 +418,7 @@ cc_library(
 xla_cc_test(
     name = "target_machine_features_test",
     srcs = ["target_machine_features_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":target_machine_features",
         ":target_machine_test_base",
@@ -476,6 +479,7 @@ cc_library(
 xla_cc_test(
     name = "kernel_api_ir_builder_test",
     srcs = ["kernel_api_ir_builder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":kernel_api_ir_builder",
         "//xla:shape_util",
@@ -524,6 +528,7 @@ cc_library(
 xla_cc_test(
     name = "aot_compiled_function_library_test",
     srcs = ["aot_compiled_function_library_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":aot_compiled_function_library",
         "//xla/backends/cpu/runtime:function_library",
@@ -648,6 +653,7 @@ py_strict_test(
 xla_cc_test(
     name = "object_loader_test",
     srcs = ["object_loader_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":execution_engine",
         ":ir_compiler",
@@ -738,6 +744,7 @@ cc_library(
 xla_cc_test(
     name = "symbol_name_util_test",
     srcs = ["symbol_name_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":symbol_name_util",
         "//xla/tsl/platform:statusor",
