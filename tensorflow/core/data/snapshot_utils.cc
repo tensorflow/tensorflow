@@ -783,7 +783,7 @@ absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
 
 absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
-  if (!proto.ParseFromArray(record.data(), record.size())) {
+  if (!proto.ParseFromString(absl::string_view(record.data(), record.size()))) {
     return errors::DataLoss(
         "Unable to parse tensor from stored proto in file: ", filename_,
         ", record ", offset_, ". Serialized proto: ", record);
@@ -876,7 +876,8 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   experimental::SnapshotTensorMetadata metadata;
   tstring metadata_str;
   TF_RETURN_IF_ERROR(ReadRecord(&metadata_str));
-  if (!metadata.ParseFromArray(metadata_str.data(), metadata_str.size())) {
+  if (!metadata.ParseFromString(
+          absl::string_view(metadata_str.data(), metadata_str.size()))) {
     return errors::DataLoss("Could not parse SnapshotTensorMetadata");
   }
   read_tensors->reserve(metadata.tensor_metadata_size());
@@ -898,7 +899,8 @@ absl::Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
       auto tensor_proto_str = std::move(tensor_proto_strs[complex_index].first);
       size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
       TensorProto tp;
-      if (!tp.ParseFromArray(tensor_proto_str.get(), tensor_proto_size)) {
+      if (!tp.ParseFromString(
+              absl::string_view(tensor_proto_str.get(), tensor_proto_size))) {
         return errors::Internal("Could not parse TensorProto");
       }
       Tensor t;
