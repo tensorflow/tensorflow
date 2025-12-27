@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -142,6 +143,73 @@ ENTRY entry {
   // Verify that MakeInstructionPostOrder() is idempotent.
   auto post_order_2 = module->entry_computation()->MakeInstructionPostOrder();
   EXPECT_EQ(post_order, post_order_2);
+}
+
+TEST_F(HLOComputationTest, VerifyPostOrderIsStable) {
+  // Verify that the post order is stable for two HLO modules that are the same
+  // except for the order of the instructions.
+  // Note that all instructions are different except for the last one which is
+  // the root and after-all instructions are in the opposite order in the two
+  // modules and are disconnected, thus test expects that they are in exactly
+  // the same order in both canonical post orders.
+  absl::string_view hlo_string0 = R"(
+HloModule module
+
+ENTRY entry {
+  after-all.0 = token[] after-all()
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  after-all.1 = token[] after-all()
+  add0 = f32[100] add(p0, p1)
+  mul0 = f32[100] multiply(p0, add0)
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module0,
+                          ParseAndReturnVerifiedModule(hlo_string0));
+
+  absl::string_view hlo_string1 = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  after-all.1 = token[] after-all()
+  add0 = f32[100] add(p1, p0)
+  mul0 = f32[100] multiply(p1, add0)
+  after-all.0 = token[] after-all()
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnVerifiedModule(hlo_string1));
+
+  const auto entry0 = module0->entry_computation();
+  const auto entry1 = module1->entry_computation();
+  std::vector<HloInstruction*> instructions0 = std::vector<HloInstruction*>(
+      entry0->instructions().begin(), entry0->instructions().end());
+  std::vector<HloInstruction*> instructions1 = std::vector<HloInstruction*>(
+      entry1->instructions().begin(), entry1->instructions().end());
+
+  // Verify that the instructions() are NOT the same (except for the last one
+  // which is the root).
+  EXPECT_EQ(instructions0.size(), instructions1.size());
+  for (int i = 0; i < instructions0.size() - 1; ++i) {
+    EXPECT_NE(instructions0[i]->name(), instructions1[i]->name());
+  }
+
+  // Verify that the two post orders are the same.
+  std::vector<HloInstruction*> post_order0 =
+      module0->entry_computation()
+          ->MakeInstructionCanonicalPostOrder()
+          .instructions;
+  std::vector<HloInstruction*> post_order1 =
+      module1->entry_computation()
+          ->MakeInstructionCanonicalPostOrder()
+          .instructions;
+  EXPECT_EQ(post_order0.size(), post_order1.size());
+  for (int i = 0; i < post_order0.size(); ++i) {
+    EXPECT_EQ(post_order0[i]->name(), post_order1[i]->name());
+  }
 }
 
 // Test AddCallee
