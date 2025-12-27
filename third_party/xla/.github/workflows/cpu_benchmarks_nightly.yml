@@ -29,7 +29,7 @@ jobs:
         job_info: [
            {
             pool: "linux-arm64-t2a-48",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build-arm64:846436444",
             pretty_name: "XLA Linux ARM64 CPU 48 vcpu Presubmit",
             bazel_arch_dir: "aarch64-opt",
             platform: "CPU",
