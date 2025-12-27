@@ -13,44 +13,42 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/codegen/intrinsic/cpp/tanh_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_ll.h"
 
-namespace xla {
-namespace codegen {
-using ::testing::ContainsRegex;
+int main(int argc, char** argv) {
+  // 1. Get the bitcode data from the generated header
+  const std::string& bitcode_view = llvm_ir::kEigenUnaryLlIr;
 
-namespace {
+  // 2. Wrap it in a MemoryBuffer
+  std::unique_ptr<llvm::MemoryBuffer> buffer = llvm::MemoryBuffer::getMemBuffer(
+      llvm::StringRef(bitcode_view.data(), bitcode_view.size()),
+      "embedded_bitcode",
+      /*RequiresNullTerminator=*/false);
 
-TEST(TanhTest, FloatTanhVectorized) {
+  // 3. Parse bitcode into a Module
   llvm::LLVMContext context;
   llvm::SMDiagnostic diagnostic;
-  const std::string& bitcode = llvm_ir::kTanhLlIr;
-  std::unique_ptr<llvm::MemoryBuffer> buffer = llvm::MemoryBuffer::getMemBuffer(
-      llvm::StringRef(bitcode.data(), bitcode.size()), "embedded_module",
-      /*RequiresNullTerminator=*/false);
   std::unique_ptr<llvm::Module> module =
       llvm::parseIR(buffer->getMemBufferRef(), diagnostic, context);
-  ASSERT_TRUE(module) << diagnostic.getMessage().str();
 
-  std::string ir;
-  llvm::raw_string_ostream stream(ir);
-  module->print(stream, nullptr);
+  if (!module) {
+    std::cerr << "Error parsing embedded bitcode: "
+              << diagnostic.getMessage().str() << std::endl;
+    return 1;
+  }
 
-  EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(
-      ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
+  // 4. Print the module as textual IR to stdout
+  module->print(llvm::outs(), nullptr);
+
+  return 0;
 }
-}  // namespace
-}  // namespace codegen
-}  // namespace xla
