@@ -44,7 +44,7 @@ Output Operation::output(int32_t i) const {
   return Output(node_, i);
 }
 
-uint64 Operation::hash(int32_t index) const {
+uint64_t Operation::hash(int32_t index) const {
   return ::tensorflow::Hash64(reinterpret_cast<const char*>(&node_),
                               sizeof(Node*), index);
 }
