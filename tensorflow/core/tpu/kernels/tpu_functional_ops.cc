@@ -1263,7 +1263,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
     bool enable_spmd_xla_partitioning = false;
     TPUMetadata tpu_metadata;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       // We are not using OP_REQUIRES_OK_ASYNC here as we are inside the
       // call_once. It will be checked later whether `ordinal_selector_` is
       // initialized.
@@ -1301,7 +1301,7 @@ void TPUPartitionedCallOp::ComputeAsync(OpKernelContext* ctx,
                         &device_ordinal),
       done);
   uint64_t cache_hash = Hash64Combine(input_hash, device_ordinal);
-  absl::ReleasableMutexLock lock(&mu_);
+  absl::ReleasableMutexLock lock(mu_);
 
   const std::vector<DeviceAndFHandle>* functions;
 
