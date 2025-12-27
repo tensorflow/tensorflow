@@ -24,6 +24,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/PassManager.h"
+#include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/stablehlo.h"
