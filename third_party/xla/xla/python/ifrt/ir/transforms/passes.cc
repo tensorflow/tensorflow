@@ -120,7 +120,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
   }
   pm.addPass(createIfrtVerifyDeviceTypeConsistencyPass(
       {/*platform_names=*/llvm::to_vector(options.platform_names)}));
-  if (!options.propagate_shardings) {
+  if (!options.propagate_shardings && compiler->SupportsMpmdReshard()) {
     pm.addPass(createIfrtLowerMpmdReshardToCallPass());
   }
   pm.addPass(createIfrtPrecompileAtomProgramPreprocessingPass(
@@ -132,13 +132,15 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
         atom_executable_map));
     pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeReshardsPass());
     pm.addPass(createIfrtReshardToCopyArraysPass());
-    pm.addPass(createIfrtLowerMpmdReshardToCallPass());
-    // Run again the compilation pass so that reshards that were converted to
-    // programs are compiled as well. The pass will be a no-op for the other
-    // atom programs because they have already dispatched for compilation.
-    pm.addPass(createIfrtCompileAndPropagateShardingsPass(
-        std::move(compiler), compile_options->compile_options_overrides,
-        std::move(atom_executable_map)));
+    if (compiler->SupportsMpmdReshard()) {
+      pm.addPass(createIfrtLowerMpmdReshardToCallPass());
+      // Run again the compilation pass so that reshards that were converted to
+      // programs are compiled as well. The pass will be a no-op for the other
+      // atom programs because they have already dispatched for compilation.
+      pm.addPass(createIfrtCompileAndPropagateShardingsPass(
+          std::move(compiler), compile_options->compile_options_overrides,
+          std::move(atom_executable_map)));
+    }
   } else {
     pm.addPass(createIfrtCompileAtomProgramPass(
         std::move(compiler), compile_options->compile_options_overrides,

@@ -49,6 +49,9 @@ class AtomProgramCompiler {
   virtual absl::StatusOr<AtomProgramCompileResult> CompileXla(
       std::unique_ptr<HloProgram> computation, xla::CompileOptions options) = 0;
 
+  // Returns true if the compiler supports MPMD reshard programs.
+  virtual bool SupportsMpmdReshard() const = 0;
+
   // Delegates the compilation of an MPMD reshard program.
   virtual absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
