@@ -38,10 +38,10 @@ namespace tensorflow {
 // op_reg_offsets contains the location of the ops' REGISTER_OP() calls
 // in the file. If specified, returned string will contain a metadata comment
 // which contains indexing information for Kythe.
-string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const OpRegOffsets& op_reg_offsets,
-                    absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list);
+std::string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                         const OpRegOffsets& op_reg_offsets,
+                         absl::Span<const std::string> hidden_ops,
+                         absl::Span<const std::string> source_file_list);
 
 // Prints the output of GetPrintOps to stdout.
 // hidden_ops should be a list of Op names that should get a leading _
@@ -50,21 +50,21 @@ string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 // where the ops' REGISTER_OP() calls reside.
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const OpRegOffsets& op_reg_offsets,
-                    absl::Span<const string> hidden_ops,
-                    absl::Span<const string> source_file_list);
+                    absl::Span<const std::string> hidden_ops,
+                    absl::Span<const std::string> source_file_list);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing
 // the binary encoded OpList proto, and `op_list_len` should be the
 // length of that buffer.
-string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
+std::string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
 
 // Get the type annotation for an arg
 // `arg` should be an input or output of an op
 // `type_annotations` should contain attr names mapped to TypeVar names
-string GetArgAnnotation(
+std::string GetArgAnnotation(
     const OpDef::ArgDef& arg,
-    const std::unordered_map<string, string>& type_annotations);
+    const std::unordered_map<std::string, std::string>& type_annotations);
 
 }  // namespace tensorflow
 
