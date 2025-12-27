@@ -81,13 +81,16 @@ bool IsLogSupportedType(const TfLiteType type) {
 inline void SetAbsOutputMultiplier(const float input_scale,
                                    const float output_scale,
                                    int32_t* multiplier, int32_t* shift) {
-  QuantizeMultiplier(input_scale / output_scale, multiplier, shift);
+  QuantizeMultiplier(
+      static_cast<double>(input_scale) / static_cast<double>(output_scale),
+      multiplier, shift);
 }
 
 inline void SetRsqrtOutputMultiplier(const float input_scale,
                                      const float output_scale,
                                      int32_t* multiplier, int32_t* shift) {
-  const double scale = 1. / (std::sqrt(input_scale) * output_scale);
+  const double scale = 1.0 / (std::sqrt(static_cast<double>(input_scale)) *
+                              static_cast<double>(output_scale));
   QuantizeMultiplier(scale, multiplier, shift);
 }
 
