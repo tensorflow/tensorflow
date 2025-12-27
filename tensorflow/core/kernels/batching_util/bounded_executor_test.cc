@@ -33,7 +33,8 @@ class TaskTracker {
  public:
   // Creates a functor that invokes Run() with the given arguments.
   std::function<void()> MakeTask(int task_id, absl::Duration sleep_duration) {
-    return absl::bind_front(&TaskTracker::Run, this, task_id, sleep_duration);
+    return absl::bind_front(::util::functional::FromCallback(this), task_id,
+                            sleep_duration);
   }
 
   // Updates run counts, sleeps for a short time and then returns.
