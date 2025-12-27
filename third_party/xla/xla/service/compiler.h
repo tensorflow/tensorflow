@@ -111,12 +111,7 @@ class Compiler {
 
     se::GpuTargetConfigProto ToProto() const;
 
-    bool operator==(const GpuTargetConfig& other) const {
-      // TODO(cheshire): More efficient comparator, this is currently just for
-      // tests.
-      return ToProto().SerializeAsString() ==
-             other.ToProto().SerializeAsString();
-    }
+    bool operator==(const GpuTargetConfig& other) const;
 
     std::string ToString() { return ToProto().DebugString(); }
 

@@ -106,6 +106,11 @@ struct DeviceInterconnectInfo {
   std::string cluster_uuid;
   // ID of the fabric clique to which this GPU belongs.
   std::string clique_id;
+
+  bool operator==(const DeviceInterconnectInfo& other) const {
+    return active_links == other.active_links &&
+           cluster_uuid == other.cluster_uuid && clique_id == other.clique_id;
+  }
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -312,6 +317,11 @@ class DeviceDescription {
 
   static absl::StatusOr<DeviceDescription> FromProto(
       const GpuDeviceInfoProto& proto);
+
+  bool operator==(const DeviceDescription& other) const;
+  bool operator!=(const DeviceDescription& other) const {
+    return !(*this == other);
+  }
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.

@@ -30,48 +30,40 @@ namespace xla::gpu {
 namespace {
 
 absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
-    const std::string& gpu_model) {
-  if (gpu_model == "a100_pcie_80") {
-    return get_a100_pcie_80();
+    GpuModel gpu_model) {
+  switch (gpu_model) {
+    case GpuModel::A100_PCIE_80:
+      return get_a100_pcie_80();
+    case GpuModel::A100_SXM_40:
+      return get_a100_sxm_40();
+    case GpuModel::A100_SXM_80:
+      return get_a100_sxm_80();
+    case GpuModel::A6000:
+      return get_a6000();
+    case GpuModel::B200:
+      return get_b200();
+    case GpuModel::B300:
+      return get_b300();
+    case GpuModel::H100_PCIE:
+      return get_h100_pcie();
+    case GpuModel::H100_SXM:
+      return get_h100_sxm();
+    case GpuModel::MI200:
+      return get_mi200();
+    case GpuModel::P100:
+      return get_p100();
+    case GpuModel::V100:
+      return get_v100();
+    default:
+      return absl::NotFoundError(
+          absl::StrCat("Embedded file not found: ", gpu_model, ".txtpb"));
   }
-  if (gpu_model == "a100_sxm_40") {
-    return get_a100_sxm_40();
-  }
-  if (gpu_model == "a100_sxm_80") {
-    return get_a100_sxm_80();
-  }
-  if (gpu_model == "a6000") {
-    return get_a6000();
-  }
-  if (gpu_model == "b200") {
-    return get_b200();
-  }
-  if (gpu_model == "b300") {
-    return get_b300();
-  }
-  if (gpu_model == "h100_pcie") {
-    return get_h100_pcie();
-  }
-  if (gpu_model == "h100_sxm") {
-    return get_h100_sxm();
-  }
-  if (gpu_model == "mi200") {
-    return get_mi200();
-  }
-  if (gpu_model == "p100") {
-    return get_p100();
-  }
-  if (gpu_model == "v100") {
-    return get_v100();
-  }
-  return absl::NotFoundError(
-      absl::StrCat("Embedded file not found: ", gpu_model, ".txtpb"));
 }
 
 }  // namespace
 
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
-    const std::string& gpu_model) {
+    GpuModel gpu_model) {
   TF_ASSIGN_OR_RETURN(absl::string_view gpu_spec,
                       GetEmbeddedGpuTargetConfigData(gpu_model));
 

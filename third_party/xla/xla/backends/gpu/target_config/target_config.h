@@ -23,9 +23,23 @@ limitations under the License.
 
 namespace xla::gpu {
 
+enum class GpuModel {
+  A100_PCIE_80,
+  A100_SXM_40,
+  A100_SXM_80,
+  A6000,
+  B200,
+  B300,
+  H100_PCIE,
+  H100_SXM,
+  MI200,
+  P100,
+  V100,
+};
+
 // Returns the GpuTargetConfigProto for the given GPU model.
 absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
-    const std::string& gpu_model);
+    GpuModel gpu_model);
 
 }  // namespace xla::gpu
 

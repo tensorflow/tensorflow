@@ -90,6 +90,13 @@ se::GpuTargetConfigProto Compiler::GpuTargetConfig::ToProto() const {
   return proto;
 }
 
+bool Compiler::GpuTargetConfig::operator==(const GpuTargetConfig& other) const {
+  return platform_name == other.platform_name &&
+         dnn_version_info == other.dnn_version_info &&
+         device_description_str == other.device_description_str &&
+         device_description == other.device_description;
+}
+
 std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {
