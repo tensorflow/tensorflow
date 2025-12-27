@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/test.h"
