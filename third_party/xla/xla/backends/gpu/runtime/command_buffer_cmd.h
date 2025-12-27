@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
