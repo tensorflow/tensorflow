@@ -2246,11 +2246,17 @@ bool HloComputation::IsEntryComputation() const {
   return parent()->entry_computation() == this;
 }
 
-bool HloComputation::CanExpandIntoSingleInstruction() const {
+bool HloComputation::InstructionsAreRootOrParameters() const {
   return absl::c_all_of(
       instructions(), [root = root_instruction()](const HloInstruction* instr) {
         return root == instr || instr->opcode() == HloOpcode::kParameter;
       });
+}
+
+bool HloComputation::CanExpandIntoSingleInstruction() const {
+  return InstructionsAreRootOrParameters() &&
+         (!DynCast<HloCallableInstruction>(root_instruction()) ||
+          root_instruction()->output_operand_aliasing().empty());
 }
 
 HloInstruction* HloComputation::GetInstructionWithLocalId(int32_t local_id) {

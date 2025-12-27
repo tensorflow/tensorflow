@@ -1505,6 +1505,26 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 
 )"
 },
+// Async ops with buffers.
+{
+"AsyncOpsWithBuffers",
+R"(HloModule AsyncOpsWithBuffers, entry_computation_layout={(f32[10]{0})->f32[10]{0}}
+
+%wrapped_async (p0: b(f32[10])) -> b(f32[10]) {
+  %p0 = b(f32[10]{0}) parameter(0)
+  ROOT %b0 = b(f32[10]{0}) custom-call(b(f32[10]{0}) %p0), custom_call_target="foo", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_STATUS_RETURNING
+}
+
+ENTRY %Entry (p1: f32[10]) -> f32[10] {
+  %p1 = f32[10]{0} parameter(0)
+  %b1 = b(f32[10]{0}) custom-call(f32[10]{0} %p1), custom_call_target="Pin", output_to_operand_aliasing={{}: (0, {})}
+  %async-start = ((b(f32[10]{0})), b(f32[10]{0})) async-start(b(f32[10]{0}) %b1), calls=%wrapped_async
+  %async-done = b(f32[10]{0}) async-done(((b(f32[10]{0})), b(f32[10]{0})) %async-start)
+  ROOT %v = f32[10]{0} custom-call(b(f32[10]{0}) %async-done), custom_call_target="Unpin", output_to_operand_aliasing={{}: (0, {})}
+}
+
+)"
+},
 // HloComputation with thread name as attribute.
 {
 "HloComputationWithParallelThreadName",
