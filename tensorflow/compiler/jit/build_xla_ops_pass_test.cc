@@ -262,7 +262,7 @@ TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
 }
 
 #ifdef GOOGLE_CUDA
-FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const string& name) {
+FunctionDefLibrary CreateFunctionDefLibWithInt32Input(const std::string& name) {
   FunctionDefLibrary fdef_lib;
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/name, /*in_def=*/{"in: int32"},

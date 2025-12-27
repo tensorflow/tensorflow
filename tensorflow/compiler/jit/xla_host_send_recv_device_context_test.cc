@@ -34,7 +34,7 @@ namespace {
 
 class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
  public:
-  absl::Status SetDevice(const string& device_type) {
+  absl::Status SetDevice(const std::string& device_type) {
     auto device_factory = DeviceFactory::GetFactory(device_type);
     if (device_factory == nullptr) {
       return absl::NotFoundError(
@@ -42,7 +42,7 @@ class XlaHostSendRecvDeviceContextTest : public ::testing::Test {
     }
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;
-    Status s = device_factory->CreateDevices(
+    absl::Status s = device_factory->CreateDevices(
         options, "/job:worker/replica:0/task:0", &devices);
     device_ = std::move(devices[0]);
 
@@ -75,7 +75,8 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
       platform->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
+  stream_executor::DeviceAddressBase gpu_dst{device_tensor.data(),
+                                             4 * sizeof(float)};
   xla::Shape shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
@@ -110,7 +111,8 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
       platform->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
+  stream_executor::DeviceAddressBase gpu_dst{device_tensor.data(),
+                                             4 * sizeof(float)};
   xla::Shape shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
@@ -144,7 +146,8 @@ TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
       platform->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-  se::DeviceMemoryBase gpu_dst{device_tensor.data(), 4 * sizeof(float)};
+  stream_executor::DeviceAddressBase gpu_dst{device_tensor.data(),
+                                             4 * sizeof(float)};
   xla::Shape shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
