@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis_utils.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
