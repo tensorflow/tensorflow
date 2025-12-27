@@ -117,6 +117,7 @@ xla_test(
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
         "//xla/service/cost_modelling:op_cost",
         "//xla/service/heap_simulator",
