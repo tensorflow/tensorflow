@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tsl/platform/base64.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
