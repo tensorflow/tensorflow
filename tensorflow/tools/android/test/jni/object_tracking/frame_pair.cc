@@ -187,15 +187,22 @@ int FramePair::FillScales(const Point2f& old_center,
   return num_good;
 }
 
-struct WeightedDelta {
-  float weight;
-  float delta;
-};
-
-// Sort by delta, not by weight.
+/**
+ * @brief Comparison function for sorting WeightedDelta structs by delta value.
+ *
+ * Returns 1 if a < b, -1 if a > b, and 0 if equal.
+ * This is suitable for use with qsort and ensures stable ordering when deltas are equal.
+ *
+ * @param a Pointer to first WeightedDelta.
+ * @param b Pointer to second WeightedDelta.
+ * @return int Comparison result.
+ */
 inline int WeightedDeltaCompare(const void* const a, const void* const b) {
-  return (reinterpret_cast<const WeightedDelta*>(a)->delta -
-          reinterpret_cast<const WeightedDelta*>(b)->delta) <= 0 ? 1 : -1;
+    float delta_a = reinterpret_cast<const WeightedDelta*>(a)->delta;
+    float delta_b = reinterpret_cast<const WeightedDelta*>(b)->delta;
+    if (delta_a < delta_b) return 1;
+    if (delta_a > delta_b) return -1;
+    return 0;
 }
 
 // Returns the median delta from a sorted set of weighted deltas.

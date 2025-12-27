@@ -27,6 +27,8 @@ limitations under the License.
 
 namespace tf_tracking {
 
+int KeypointCompare(const void*, const void*);
+
 struct Keypoint;
 
 class KeypointDetector {
