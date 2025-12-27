@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
