@@ -64,7 +64,7 @@ bool is_cloud_tpu_gcs_fs() {
 
 class TFRecordDatasetOp::Dataset : public DatasetBase {
  public:
-  explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
+  explicit Dataset(OpKernelContext* ctx, std::vector<std::string> filenames,
                    const string& compression_type, int64_t buffer_size,
                    std::vector<int64_t> byte_offsets, int op_version)
       : DatasetBase(DatasetContext(ctx)),
