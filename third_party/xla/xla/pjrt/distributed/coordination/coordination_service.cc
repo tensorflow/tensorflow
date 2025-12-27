@@ -740,7 +740,7 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
 
   // Disconnect task.
   task_state->Disconnect(
-      /*grace_period_duration_us=*/absl::ToInt64Milliseconds(
+      /*grace_period_duration_us=*/absl::ToInt64Microseconds(
           config_.heartbeat_timeout));
   LeaveOngoingBarriers(task, "task disconnected");
   RefreshAliveness();
