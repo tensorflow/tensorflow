@@ -115,3 +115,33 @@ if __name__ == "__main__":
                                           use_static_shape))
 
   test_lib.main()
+
+# =================================================================================
+import tensorflow as tf
+class NormGradientStabilityTest(tf.test.TestCase):
+
+    def test_gradient_at_zero(self):
+        x = tf.constant([0.0], dtype=tf.float32)
+
+        with tf.GradientTape() as tape:
+            tape.watch(x)
+            y = tf.norm(x)
+
+        grad = tape.gradient(y, x)
+
+        # Gradient should not be NaN or Inf
+        self.assertTrue(
+            tf.reduce_all(tf.math.is_finite(grad)) or grad.numpy()[0] == 0.0
+        )
+
+    def test_gradient_at_small_value(self):
+        x = tf.constant([1e-8], dtype=tf.float32)
+
+        with tf.GradientTape() as tape:
+            tape.watch(x)
+            y = tf.norm(x)
+
+        grad = tape.gradient(y, x)
+
+        # Gradient should be finite
+        self.assertTrue(tf.reduce_all(tf.math.is_finite(grad)))
