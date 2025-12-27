@@ -29,6 +29,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
