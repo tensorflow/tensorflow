@@ -30,30 +30,30 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-const string kTestContent = "random original scratch content";
+const std::string kTestContent = "random original scratch content";
 
 class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() const override { return now_; }
-  uint64 now_ = 10000;
+  uint64_t NowSeconds() const override { return now_; }
+  uint64_t now_ = 10000;
 };
 
 // A fake proxy that pretends to be libcurl.
 class FakeLibCurl : public LibCurl {
  public:
-  FakeLibCurl(const std::string& response_content, uint64 response_code)
+  FakeLibCurl(const std::string& response_content, uint64_t response_code)
       : response_content_(response_content), response_code_(response_code) {}
-  FakeLibCurl(const string& response_content, uint64 response_code,
-              std::vector<std::tuple<uint64, curl_off_t>> progress_ticks,
+  FakeLibCurl(const std::string& response_content, uint64_t response_code,
+              std::vector<std::tuple<uint64_t, curl_off_t>> progress_ticks,
               FakeEnv* env)
       : response_content_(response_content),
         response_code_(response_code),
         progress_ticks_(std::move(progress_ticks)),
         env_(env) {}
-  FakeLibCurl(const string& response_content, uint64 response_code,
-              const std::vector<string>& response_headers)
+  FakeLibCurl(const std::string& response_content, uint64_t response_code,
+              const std::vector<std::string>& response_headers)
       : response_content_(response_content),
         response_code_(response_code),
         response_headers_(response_headers) {}
@@ -63,7 +63,7 @@ class FakeLibCurl : public LibCurl {
     return reinterpret_cast<CURL*>(this);
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64 param) override {
+                            uint64_t param) override {
     switch (option) {
       case CURLOPT_POST:
         is_post_ = param;
@@ -94,7 +94,7 @@ class FakeLibCurl : public LibCurl {
         custom_request_ = reinterpret_cast<char*>(param);
         break;
       case CURLOPT_HTTPHEADER:
-        headers_ = reinterpret_cast<std::vector<string>*>(param);
+        headers_ = reinterpret_cast<std::vector<std::string>*>(param);
         break;
       case CURLOPT_ERRORBUFFER:
         error_buffer_ = reinterpret_cast<char*>(param);
@@ -182,7 +182,7 @@ class FakeLibCurl : public LibCurl {
     return curl_easy_perform_result_;
   }
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64* value) override {
+                             uint64_t* value) override {
     switch (info) {
       case CURLINFO_RESPONSE_CODE:
         *value = response_code_;
@@ -205,18 +205,19 @@ class FakeLibCurl : public LibCurl {
   }
   void curl_easy_cleanup(CURL* curl) override { is_cleaned_up_ = true; }
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
-    std::vector<string>* v = list ? reinterpret_cast<std::vector<string>*>(list)
-                                  : new std::vector<string>();
+    std::vector<std::string>* v =
+        list ? reinterpret_cast<std::vector<std::string>*>(list)
+             : new std::vector<std::string>();
     v->push_back(str);
     return reinterpret_cast<curl_slist*>(v);
   }
   char* curl_easy_escape(CURL* curl, const char* str, int length) override {
     // This function just does a simple replacing of "/" with "%2F" instead of
     // full url encoding.
-    const string victim = "/";
-    const string encoded = "%2F";
+    const std::string victim = "/";
+    const std::string encoded = "%2F";
 
-    string temp_str = str;
+    std::string temp_str = str;
     std::string::size_type n = 0;
     while ((n = temp_str.find(victim, n)) != std::string::npos) {
       temp_str.replace(n, victim.size(), encoded);
@@ -229,24 +230,24 @@ class FakeLibCurl : public LibCurl {
     return out_char_str;
   }
   void curl_slist_free_all(curl_slist* list) override {
-    delete reinterpret_cast<std::vector<string>*>(list);
+    delete reinterpret_cast<std::vector<std::string>*>(list);
   }
   void curl_free(void* p) override { port::Free(p); }
 
   // Variables defining the behavior of this fake.
-  string response_content_;
-  uint64 response_code_;
-  std::vector<string> response_headers_;
+  std::string response_content_;
+  uint64_t response_code_;
+  std::vector<std::string> response_headers_;
 
   // Internal variables to store the libcurl state.
-  string url_;
-  string range_;
-  string custom_request_;
-  string ca_info_;
+  std::string url_;
+  std::string range_;
+  std::string custom_request_;
+  std::string ca_info_;
   char* error_buffer_ = nullptr;
   bool is_initialized_ = false;
   bool is_cleaned_up_ = false;
-  std::vector<string>* headers_ = nullptr;
+  std::vector<std::string>* headers_ = nullptr;
   bool is_post_ = false;
   bool is_put_ = false;
   void* write_data_ = nullptr;
@@ -262,12 +263,12 @@ class FakeLibCurl : public LibCurl {
                             curl_off_t ultotal, curl_off_t ulnow) = nullptr;
   void* progress_data_ = nullptr;
   // Outcome of performing the request.
-  string posted_content_;
+  std::string posted_content_;
   CURLcode curl_easy_perform_result_ = CURLE_OK;
-  string curl_easy_perform_error_message_;
+  std::string curl_easy_perform_error_message_;
   // A vector of <timestamp, progress in bytes> pairs that represent the
   // progress of a transmission.
-  std::vector<std::tuple<uint64, curl_off_t>> progress_ticks_;
+  std::vector<std::tuple<uint64_t, curl_off_t>> progress_ticks_;
   FakeEnv* env_ = nullptr;
 };
 
@@ -285,7 +286,7 @@ TEST(CurlHttpRequestTest, GetRequest) {
   http_request.SetResultBuffer(&scratch);
   TF_EXPECT_OK(http_request.Send());
 
-  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+  EXPECT_EQ("get response", std::string(scratch.begin(), scratch.end()));
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -311,13 +312,13 @@ TEST(CurlHttpRequestTest, GetRequest_Direct) {
   http_request.SetResultBufferDirect(scratch.data(), scratch.capacity());
   TF_EXPECT_OK(http_request.Send());
 
-  string expected_response = "get response";
+  std::string expected_response = "get response";
   size_t response_bytes_transferred =
       http_request.GetResultBufferDirectBytesTransferred();
   EXPECT_EQ(expected_response.size(), response_bytes_transferred);
-  EXPECT_EQ(
-      "get response",
-      string(scratch.begin(), scratch.begin() + response_bytes_transferred));
+  EXPECT_EQ("get response",
+            std::string(scratch.begin(),
+                        scratch.begin() + response_bytes_transferred));
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -347,7 +348,7 @@ TEST(CurlHttpRequestTest, GetRequest_CustomCaInfoFlag) {
   http_request.SetResultBuffer(&scratch);
   TF_EXPECT_OK(http_request.Send());
 
-  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+  EXPECT_EQ("get response", std::string(scratch.begin(), scratch.end()));
 
   // Check interactions with libcurl.
   EXPECT_TRUE(libcurl.is_initialized_);
@@ -379,14 +380,14 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_ResponseTooLarge) {
 
   // As long as the request clearly fails, ok to leave truncated response here.
   EXPECT_EQ(5, http_request.GetResultBufferDirectBytesTransferred());
-  EXPECT_EQ("get r", string(scratch.begin(), scratch.begin() + 5));
+  EXPECT_EQ("get r", std::string(scratch.begin(), scratch.begin() + 5));
 }
 
 TEST(CurlHttpRequestTest, GetRequest_Direct_RangeOutOfBound) {
   FakeLibCurl libcurl("get response", 416);
   CurlHttpRequest http_request(&libcurl);
 
-  const string initialScratch = "abcde";
+  const std::string initialScratch = "abcde";
   std::vector<char> scratch;
   scratch.insert(scratch.end(), initialScratch.begin(), initialScratch.end());
 
@@ -400,7 +401,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_RangeOutOfBound) {
   // 416 Range Not Satisfiable response. We should pretend it's not there when
   // reporting bytes transferred, but it's ok if it writes to scratch.
   EXPECT_EQ(0, http_request.GetResultBufferDirectBytesTransferred());
-  EXPECT_EQ("get r", string(scratch.begin(), scratch.end()));
+  EXPECT_EQ("get r", std::string(scratch.begin(), scratch.end()));
 }
 
 TEST(CurlHttpRequestTest, GetRequest_Empty) {
@@ -612,7 +613,7 @@ TEST(CurlHttpRequestTest, PostRequest_WithBody_FromMemory) {
   FakeLibCurl libcurl("", 200);
   CurlHttpRequest http_request(&libcurl);
 
-  string content = "post body content";
+  std::string content = "post body content";
 
   http_request.SetUri("http://www.testuri.com");
   http_request.AddAuthBearerHeader("fake-bearer");
@@ -701,7 +702,7 @@ TEST(CurlHttpRequestTest, WrongSequenceOfCalls_SettingMethodTwice) {
 TEST(CurlHttpRequestTest, EscapeString) {
   FakeLibCurl libcurl("get response", 200);
   CurlHttpRequest http_request(&libcurl);
-  const string test_string = "a/b/c";
+  const std::string test_string = "a/b/c";
   EXPECT_EQ("a%2Fb%2Fc", http_request.EscapeString(test_string));
 }
 
@@ -719,7 +720,7 @@ TEST(CurlHttpRequestTest, ErrorReturnsNoResponse) {
   http_request.SetResultBuffer(&scratch);
   EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
 
-  EXPECT_EQ("", string(scratch.begin(), scratch.end()));
+  EXPECT_EQ("", std::string(scratch.begin(), scratch.end()));
 }
 
 TEST(CurlHttpRequestTest, ProgressIsOk) {
@@ -763,7 +764,7 @@ class TestStats : public HttpRequest::RequestStats {
  public:
   ~TestStats() override = default;
 
-  void RecordRequest(const HttpRequest* request, const string& uri,
+  void RecordRequest(const HttpRequest* request, const std::string& uri,
                      HttpRequest::RequestMethod method) override {
     has_recorded_request_ = true;
     record_request_request_ = request;
@@ -771,7 +772,7 @@ class TestStats : public HttpRequest::RequestStats {
     record_request_method_ = method;
   }
 
-  void RecordResponse(const HttpRequest* request, const string& uri,
+  void RecordResponse(const HttpRequest* request, const std::string& uri,
                       HttpRequest::RequestMethod method,
                       const absl::Status& result) override {
     has_recorded_response_ = true;
@@ -782,12 +783,12 @@ class TestStats : public HttpRequest::RequestStats {
   }
 
   const HttpRequest* record_request_request_ = nullptr;
-  string record_request_uri_ = "http://www.testuri.com";
+  std::string record_request_uri_ = "http://www.testuri.com";
   HttpRequest::RequestMethod record_request_method_ =
       HttpRequest::RequestMethod::kGet;
 
   const HttpRequest* record_response_request_ = nullptr;
-  string record_response_uri_ = "http://www.testuri.com";
+  std::string record_response_uri_ = "http://www.testuri.com";
   HttpRequest::RequestMethod record_response_method_ =
       HttpRequest::RequestMethod::kGet;
   absl::Status record_response_result_;
@@ -798,8 +799,8 @@ class TestStats : public HttpRequest::RequestStats {
 
 class StatsTestFakeLibCurl : public FakeLibCurl {
  public:
-  StatsTestFakeLibCurl(TestStats* stats, const string& response_content,
-                       uint64 response_code)
+  StatsTestFakeLibCurl(TestStats* stats, const std::string& response_content,
+                       uint64_t response_code)
       : FakeLibCurl(response_content, response_code), stats_(stats) {}
   CURLcode curl_easy_perform(CURL* curl) override {
     CHECK(!performed_request_);
@@ -832,7 +833,7 @@ TEST(CurlHttpRequestTest, StatsGetSuccessful) {
   http_request.SetResultBuffer(&scratch);
   TF_EXPECT_OK(http_request.Send());
 
-  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+  EXPECT_EQ("get response", std::string(scratch.begin(), scratch.end()));
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);
@@ -896,7 +897,7 @@ TEST(CurlHttpRequestTest, StatsPost) {
 
   http_request.SetRequestStats(&stats);
 
-  string content = "post body content";
+  std::string content = "post body content";
 
   http_request.SetUri("http://www.testuri.com");
   http_request.SetPostFromBuffer(content.c_str(), content.size());
