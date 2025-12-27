@@ -335,6 +335,10 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix = "");
 
+void DumpIrIfEnabled(DebugOptions debug_options, absl::string_view module_name,
+                     int unique_id, const llvm::Module& llvm_module,
+                     bool optimized, absl::string_view filename_suffix = "");
+
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,

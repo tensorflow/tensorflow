@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
 
@@ -38,12 +40,18 @@ namespace xla::cpu {
 class FusionCompiler {
  public:
   struct CompilationHooks {
+    static CompilationHooks FromConfig(int unique_id,
+                                       absl::string_view module_name,
+                                       const DebugOptions& debug_options);
+
     absl::AnyInvocable<void(mlir::ModuleOp) const> pre_optimization;
     absl::AnyInvocable<void(mlir::ModuleOp) const> post_optimization;
     absl::AnyInvocable<void(mlir::ModuleOp) const> post_lowering;
   };
 
   struct Options {
+    static Options FromConfig(const HloModuleConfig& config);
+
     int32_t vector_width;
     int32_t verification_level;
     bool fast_min_max;
