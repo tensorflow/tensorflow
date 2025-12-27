@@ -60,7 +60,7 @@ class UniqueNodes {
   // some cases. This happens if the node has large attribute tensor values that
   // have different proto encoding but identical tensor value.
   NodeDef* FindOrAddRepresentative(NodeDef* node) {
-    uint64 sig = ComputeSignature(*node);
+    uint64_t sig = ComputeSignature(*node);
     std::vector<NodeDef*>& candidates = rep_[sig];
     for (auto& candidate : candidates) {
       if ((candidate == node) || SameNode(*candidate, *node)) {
@@ -87,29 +87,29 @@ class UniqueNodes {
   }
 
  private:
-  uint64 ComputeSignature(const NodeDef& node);
+  uint64_t ComputeSignature(const NodeDef& node);
   bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
 
-  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
-  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
+  absl::flat_hash_map<uint64_t, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<const NodeDef*, uint64_t> memoized_signatures_;
 };
 
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
+uint64_t UniqueNodes::ComputeSignature(const NodeDef& node) {
   auto it = memoized_signatures_.find(&node);
   if (it != memoized_signatures_.end()) return it->second;
 
-  uint64 h = Hash64(node.op());
+  uint64_t h = Hash64(node.op());
   h = Hash64Combine(Hash64(node.device()), h);
 
   for (const auto& input : node.input()) {
     const TensorId input_tensor = ParseTensorName(input);
-    uint64 input_hash = Hash64Combine(
+    uint64_t input_hash = Hash64Combine(
         Hash64(input_tensor.node().data(), input_tensor.node().size()),
         std::hash<int>()(input_tensor.index()));
     h = Hash64CombineUnordered(input_hash, h);
   }
   for (const auto& attr : node.attr()) {
-    uint64 attr_hash =
+    uint64_t attr_hash =
         Hash64Combine(Hash64(attr.first), FastAttrValueHash(attr.second));
     h = Hash64CombineUnordered(attr_hash, h);
   }
@@ -161,7 +161,7 @@ bool CommonSubgraphElimination::CanDedup(const NodeDef& node) const {
   if (IsEnter(node) || IsExit(node)) {
     return false;
   }
-  if (node.device().find("SPU") != string::npos) {
+  if (node.device().find("SPU") != std::string::npos) {
     return false;
   }
   // Workaround for Assert and Print mistakenly being labeled as stateful.
@@ -230,7 +230,7 @@ absl::Status CommonSubgraphElimination::DedupComputations(
         // Update consumers of node.
         bool updated_fanout = false;
         for (int i = 0; i < fanout->input_size(); ++i) {
-          string* fanout_input = fanout->mutable_input(i);
+          std::string* fanout_input = fanout->mutable_input(i);
 
           const int position =
               NodePositionIfSameNode(*fanout_input, node->name());
@@ -245,11 +245,11 @@ absl::Status CommonSubgraphElimination::DedupComputations(
             }
             updated_fanout = true;
             if (position > 0) {
-              *fanout_input = StrCat(rep->name(), ":", position);
+              *fanout_input = absl::StrCat(rep->name(), ":", position);
             } else if (position == 0) {
               *fanout_input = rep->name();
             } else {
-              *fanout_input = StrCat("^", rep->name());
+              *fanout_input = absl::StrCat("^", rep->name());
             }
           }
         }

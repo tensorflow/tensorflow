@@ -43,7 +43,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   ~ArithmeticOptimizer() override {}
 
-  string name() const override { return "arithmetic_optimizer"; };
+  std::string name() const override { return "arithmetic_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -126,18 +126,18 @@ class ArithmeticOptimizer : public GraphOptimizer {
   // TODO(jingyue): This interface is not suitable for optimizing nodes with
   // multiple output tensors. We should pass in a tensor name instead of a
   // NodeDef.
-  string TrySimplifyAndReplaceUses(const NodeDef* node,
-                                   SetVector<NodeDef*>* nodes_to_simplify);
+  std::string TrySimplifyAndReplaceUses(const NodeDef* node,
+                                        SetVector<NodeDef*>* nodes_to_simplify);
 
   RewriterConfig::Toggle opt_level_;
   ArithmeticOptimizerOptions options_;
 
   bool fetch_nodes_known_ = false;
-  std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<std::string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
   GraphDef* optimized_graph_ = nullptr;  // Not owned.
-  gtl::FlatSet<string> feed_nodes_;
+  gtl::FlatSet<std::string> feed_nodes_;
 };
 
 }  // end namespace grappler
