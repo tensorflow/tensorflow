@@ -38,7 +38,7 @@ absl::Status BroadcastOptimizationRemark(
 // this should match all of the values in the XlaOptimizationRemark proto.
 absl::Status BroadcastOptimizationRemark(
     XlaOptimizationRemark::Warning optimization_warning,
-    string debug_information);
+    std::string debug_information);
 
 // LINT.ThenChange(//tensorflow/compiler/jit/xla_activity.proto)
 
