@@ -21,11 +21,9 @@ limitations under the License.
 //
 #include <dirent.h>
 
-#include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
-#include <iostream>
-#include <sstream>
 #include <string>
 
 #include "tensorflow/lite/testing/parse_testdata.h"
