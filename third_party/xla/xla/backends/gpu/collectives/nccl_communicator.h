@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
