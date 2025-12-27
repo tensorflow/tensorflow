@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"

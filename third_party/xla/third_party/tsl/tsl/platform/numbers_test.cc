@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tsl/platform/numbers.h"
 
+#include <cfloat>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <string>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
