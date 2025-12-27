@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <utility>
-
 #include "tensorflow/core/util/equal_graph_def.h"
+
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
