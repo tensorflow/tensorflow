@@ -124,7 +124,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+                          result_buffers[0]->ToLiteral().Await());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
@@ -189,7 +189,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+                          result_buffers[0]->ToLiteral().Await());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
@@ -230,7 +230,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+                          result_buffers[0]->ToLiteral().Await());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
