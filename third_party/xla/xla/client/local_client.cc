@@ -324,7 +324,7 @@ static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
   auto it = tree.begin();
   auto out_it = result.buffers().begin();
   for (; it != tree.end(); ++it, ++out_it) {
-    out_it->second = it->second.AsDeviceMemoryBase();
+    out_it->second = it->second.AsDeviceAddress();
   }
   return result;
 }

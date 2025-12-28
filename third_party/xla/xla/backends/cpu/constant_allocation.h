@@ -31,7 +31,10 @@ namespace xla::cpu {
 
 // A storage (or an alias) for constant allocations data.
 struct ConstantAllocation {
-  se::DeviceAddressBase AsDeviceMemoryBase() const;
+  se::DeviceAddressBase AsDeviceAddress() const;
+
+  ABSL_DEPRECATE_AND_INLINE()
+  se::DeviceAddressBase AsDeviceMemoryBase() const { return AsDeviceAddress(); }
 
   BufferAllocation::Index index = -1;
   std::variant<std::monostate, std::unique_ptr<Literal>,

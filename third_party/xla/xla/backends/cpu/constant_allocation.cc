@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-se::DeviceAddressBase ConstantAllocation::AsDeviceMemoryBase() const {
+se::DeviceAddressBase ConstantAllocation::AsDeviceAddress() const {
   if (auto* _ = std::get_if<std::monostate>(&data)) {
     return se::DeviceAddressBase();
   }
