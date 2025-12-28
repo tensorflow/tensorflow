@@ -1,9 +1,9 @@
-// RUN: tf-tosa-opt --tosa-convert-tfl-uint8 --verify-diagnostics --verify-each %s | FileCheck %s
+// RUN: tf-tosa-opt --tosa-convert-tfl-uint-to-int --verify-diagnostics --verify-each %s | FileCheck %s
 
 
-// Operations for testing --tosa-convert-tfl-uint8
+// Operations for testing --tosa-convert-tfl-uint-to-int
 
-// ----
+// -----
 
 // CHECK-LABEL: test_add_u8
 // CHECK: tosa.rescale
@@ -15,12 +15,12 @@ func.func @test_add_u8(%arg0: tensor<14x19x!quant.uniform<u8:f32, 0.015603500418
   func.return %0 : tensor<14x19x!quant.uniform<u8:f32, 0.028094837442040443:127>>
 }
 
-// ----
+// -----
 
 // CHECK-LABEL: test_cast_ui8
 // CHECK-DAG: %[[multiplier:.+]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
 // CHECK-DAG: %[[shift:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}> : () -> tensor<1xi8>
-// CHECK-DAG: %[[input_zp:.+]] = "tosa.const"() <{values = dense<-128> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK-DAG: %[[input_zp:.+]] = "tosa.const"() <{values = dense<128> : tensor<1xui8>}> : () -> tensor<1xui8>
 // CHECK-DAG: %[[output_zp:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}> : () -> tensor<1xi8>
 // CHECK-DAG: tosa.rescale %arg0, %[[multiplier]], %[[shift]], %[[input_zp]], %[[output_zp]] {input_unsigned = true, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
 // CHECK: tfl.cast
@@ -29,7 +29,7 @@ func.func @test_cast_ui8(%arg0: tensor<1x256x256x3x!quant.uniform<u8:f32, 0.0156
   func.return %0 : tensor<1x256x256x3xf32>
 }
 
-// ----
+// -----
 
 // CHECK-LABEL: test_error_tosa_ops
 func.func @test_error_tosa_ops(%arg0: tensor<5x10xi8>) -> (tensor<5x10xi8>, none) {
@@ -37,9 +37,9 @@ func.func @test_error_tosa_ops(%arg0: tensor<5x10xi8>) -> (tensor<5x10xi8>, none
   // Dummy use to TFL dialect to load TFL dialect in MLIR context
   %0 = "tfl.no_value"() <{value}> : () -> none
 
-  // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl}}
+  // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint-to-int before tosa-legalize-tfl}}
   %cst1 = "tosa.const"() <{values = dense<1> : tensor<5x10xi8>}> : () -> tensor<5x10xi8>
-  // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl}}
+  // expected-error @+1 {{tosa operations are not expected in this pass. Run tosa-convert-tfl-uint-to-int before tosa-legalize-tfl}}
   %1 = "tosa.add"(%arg0, %cst1) : (tensor<5x10xi8>, tensor<5x10xi8>) -> tensor<5x10xi8>
 
 
