@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
 
@@ -71,6 +72,23 @@ INSTANTIATE_TEST_SUITE_P(
     }),
     [](const ::testing::TestParamInfo<GetGpuTargetConfigTest::ParamType>&
            info) { return info.param.test_name; });
+
+TEST(TargetConfigTest, CompareEqualFromSameProto) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "platform"
+        dnn_version_info { major: 2 }
+        runtime_version { major: 12 }
+        gpu_device_info { threads_per_block_limit: 5 }
+        device_description_str: "foo"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(auto config1, GpuTargetConfig::FromProto(config_proto));
+  ASSERT_OK_AND_ASSIGN(auto config2, GpuTargetConfig::FromProto(config_proto));
+  EXPECT_THAT(config1, ::testing::Eq(config2));
+}
 
 }  // namespace
 }  // namespace xla::gpu
