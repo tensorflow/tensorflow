@@ -120,7 +120,7 @@ bool GraphView::AddUniqueNodeInternal(const NodeDef* node) {
 absl::Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
   bool has_observed_control = false;
   const NodeDef* node = node_view->node();
-  const string& node_name = node->name();
+  const std::string& node_name = node->name();
   const int node_index = node_view->node_index_;
   node_view->fanins_set_.reserve(node->input_size());
   for (const string& input : node->input()) {

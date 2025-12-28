@@ -149,7 +149,7 @@ TEST_F(TopologicalSortTest, Idempotent) {
   });
 
   TF_EXPECT_OK(TopologicalSort(&graph));
-  std::vector<string> order = {"1", "2", "3", "4", "5"};
+  std::vector<std::string> order = {"1", "2", "3", "4", "5"};
   for (int i = 0; i < order.size(); i++) {
     EXPECT_EQ(graph.node(i).name(), order[i]);
   }

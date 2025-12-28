@@ -27,7 +27,7 @@ namespace utils {
 const bool IsCommutativeOp(const string& op) {
   // TODO(intel-tf): Add more ops to this list if needed.
   std::vector<string> op_list = str_util::Split(op, '|');
-  static const auto* commutative_ops = new absl::flat_hash_set<string>(
+  static const auto* commutative_ops = new absl::flat_hash_set<std::string>(
       {"Add", "AddV2", "Mul", "Maximum", "SquaredDifference"});
   for (const string& op_ : op_list) {
     if (commutative_ops->contains(op_)) return true;

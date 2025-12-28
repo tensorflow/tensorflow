@@ -61,7 +61,7 @@ absl::Status ComputeTransitiveFanin(
     fanin_nodes->push_back(node);
     if (name_to_fanin_node) {
       name_to_fanin_node->insert(
-          std::pair<string, const NodeDef*>(node->name(), node));
+          std::pair<std::string, const NodeDef*>(node->name(), node));
     }
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];

@@ -183,7 +183,7 @@ class SubGraphMatcher {
   // If a given pattern is matched, this function returns true as well as the
   // matched node and remove node info is populated.
   bool GetMatchedNodes(const OpTypePattern& pattern,
-                       const std::unordered_set<string>& nodes_to_preserve,
+                       const std::unordered_set<std::string>& nodes_to_preserve,
                        MutableNodeView* node_view,
                        std::map<string, int>* matched_nodes_map,
                        std::set<int>* remove_node_indices);
