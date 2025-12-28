@@ -1,5 +1,26 @@
 # TensorFlow Security Advisories
 
+## Overview
+
+This document lists TensorFlow Security Advisories (TFSA), which describe
+security vulnerabilities identified in TensorFlow releases. Each advisory
+includes details about the affected versions, the type of issue, and
+acknowledgments to reporters.
+
+This page is intended for:
+- TensorFlow users tracking security fixes
+- Security researchers and auditors
+- Contributors reviewing historical vulnerabilities
+
+## How to Read the Advisory Table
+
+- **Advisory Number**: Unique identifier for the security issue.
+- **Type**: Short description of the vulnerability.
+- **Versions affected**: TensorFlow versions impacted before the fix.
+- **Reported by**: Individual or organization that reported the issue.
+- **Additional Information**: Links to issues or further details (if available).
+
+
 C++ fuzzing: [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 
 Python fuzzing: [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
