@@ -15,16 +15,24 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_decomposer.h"
 
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
