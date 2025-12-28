@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -213,6 +214,15 @@ HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
   auto instructions = computation.instructions();
   auto it = absl::c_find_if(instructions, [&](HloInstruction* instr) {
     return instr->opcode() == opcode;
+  });
+  return it == instructions.end() ? nullptr : *it;
+}
+
+HloInstruction* GetFirstInstructionWithOpcode(
+    const HloComputation& computation, absl::Span<const HloOpcode> opcodes) {
+  auto instructions = computation.instructions();
+  auto it = absl::c_find_if(instructions, [&](HloInstruction* instr) {
+    return absl::c_linear_search(opcodes, instr->opcode());
   });
   return it == instructions.end() ? nullptr : *it;
 }
