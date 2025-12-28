@@ -37,7 +37,7 @@ using random::PhiloxRandom;
 
 template <typename Distribution>
 __global__ void FillKernel(
-    Distribution dist, int64 state_size, int64 output_size,
+    Distribution dist, int64_t state_size, int64_t output_size,
     StateElementType* __restrict__ state_data,
     typename Distribution::ResultElementType* __restrict__ output_data) {
   // Threads in this block share `philox`. Thread 0 is responsible for
@@ -65,8 +65,8 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
     OpKernelContext* ctx, const GPUDevice& d, Distribution dist,
     UpdateVariableAndFill_Philox_Arg* arg,
     typename Distribution::ResultElementType* output_data) {
-  int64 output_size = arg->output_size;
-  int64 alg_tag_skip = arg->alg_tag_skip;
+  int64_t output_size = arg->output_size;
+  int64_t alg_tag_skip = arg->alg_tag_skip;
   Tensor* state_tensor = arg->state_tensor;
   OP_REQUIRES(ctx, state_tensor != 0,
               errors::InvalidArgument("Null state tensor"));
@@ -100,15 +100,15 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 
 // Precondition: there is only 1 block and 1 thread.
 __global__ void SkipKernel(const StateElementType* __restrict__ in_data,
-                           uint64 delta,
+                           uint64_t delta,
                            StateElementType* __restrict__ out_data) {
-  auto counter = GetCounterFromMem(reinterpret_cast<const uint64*>(in_data));
+  auto counter = GetCounterFromMem(reinterpret_cast<const uint64_t*>(in_data));
   UpdateCounterMemWithPhiloxRandom(counter, delta, out_data);
 }
 
 void RngSkip_Philox<GPUDevice>::operator()(const GPUDevice& d,
                                            const StateElementType* in_data,
-                                           uint64 delta,
+                                           uint64_t delta,
                                            StateElementType* out_data) {
   TF_CHECK_OK(GpuLaunchKernel(SkipKernel, 1, 1, 0, d.stream(), in_data, delta,
                               out_data));

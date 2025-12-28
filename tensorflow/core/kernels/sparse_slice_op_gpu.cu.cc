@@ -186,8 +186,8 @@ struct SparseSliceFunctor<GPUDevice, T> {
     OP_REQUIRES_OK_ASYNC(
         context,
         stream->Memcpy(output_nnz_host.mutable_data(),
-                       se::DeviceMemoryBase(output_nnz_ptr,
-                                            sizeof(*output_nnz_host.data())),
+                       stream_executor::DeviceAddressBase(
+                           output_nnz_ptr, sizeof(*output_nnz_host.data())),
                        sizeof(*output_nnz_host.data())),
         done);
 
