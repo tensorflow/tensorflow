@@ -18,22 +18,28 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
 
 namespace xla {
 
 class GpuTopology {
  public:
-  explicit GpuTopology(absl::string_view platform_version,
-                       int32_t num_partitions, int32_t num_hosts_per_partition,
-                       int32_t num_devices_per_host)
+  explicit GpuTopology(
+      absl::string_view platform_version, int32_t num_partitions,
+      int32_t num_hosts_per_partition, int32_t num_devices_per_host,
+      std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt)
       : platform_version_(platform_version),
         num_partitions_(num_partitions),
         num_hosts_per_partition_(num_hosts_per_partition),
-        num_devices_per_host_(num_devices_per_host) {}
+        num_devices_per_host_(num_devices_per_host),
+        gpu_target_config_(std::move(gpu_target_config)) {}
 
   bool operator==(const GpuTopology& other) const {
     return platform_version_ == other.platform_version_ &&
@@ -64,17 +70,27 @@ class GpuTopology {
     return num_hosts_per_partition() * num_devices_per_host();
   }
 
+  bool has_gpu_target_config() const { return gpu_target_config_.has_value(); }
+  const gpu::GpuTargetConfig& gpu_target_config() const {
+    return *gpu_target_config_;
+  }
+
  private:
   const std::string platform_version_;
   const int32_t num_partitions_;
   const int32_t num_hosts_per_partition_;
   const int32_t num_devices_per_host_;
+  const std::optional<gpu::GpuTargetConfig> gpu_target_config_;
 
   bool is_topology_symmetric() const {
     return num_partitions_ != -1 && num_hosts_per_partition_ != -1 &&
            num_devices_per_host_ != -1;
   }
 };
+
+absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
+    absl::string_view platform_version, int32_t num_partitions,
+    int32_t num_hosts_per_partition, int32_t num_devices_per_host);
 
 }  // namespace xla
 
