@@ -40,7 +40,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   }
 
   ~TpuCompilationCacheEntryUnloader() override {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     for (int64_t uid : cache_entry_uids_) {
       absl::Status s = cache_->MarkEntryForEviction(uid);
       if (!s.ok()) {
@@ -55,7 +55,7 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
 
   // Add cache entry uid to be unloaded in destructor.
   void AddCacheEntryUid(int64_t uid) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     cache_entry_uids_.insert(uid);
   }
 
