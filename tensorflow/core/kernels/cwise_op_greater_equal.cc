@@ -37,8 +37,8 @@ REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::greater_equal<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::greater_equal<int32_t>>);
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
