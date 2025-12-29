@@ -42,6 +42,7 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     protodeps = ["@local_tsl//tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],

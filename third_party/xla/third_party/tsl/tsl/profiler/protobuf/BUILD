@@ -16,6 +16,7 @@ package_group(
 tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = internal_visibility([":friends"]),
 )
@@ -33,6 +34,7 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )

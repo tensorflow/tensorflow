@@ -174,6 +174,7 @@ cc_library(
 tf_proto_library(
     name = "error_codes_proto",
     srcs = ["error_codes.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     protodeps = [
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl",

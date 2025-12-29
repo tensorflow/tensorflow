@@ -172,6 +172,7 @@ package_group(
 tf_proto_library(
     name = "protos_all",
     srcs = [],
+    compatible_with = ["//buildenv/target:non_prod"],
     create_go_proto = False,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],

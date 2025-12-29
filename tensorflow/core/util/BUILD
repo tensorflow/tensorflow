@@ -952,6 +952,7 @@ tf_cc_test_mkl(
 tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
@@ -969,6 +970,7 @@ tf_proto_library(
 tf_proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -983,6 +985,7 @@ tf_proto_library(
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -998,12 +1001,14 @@ tf_proto_library(
 tf_proto_library(
     name = "memmapped_file_system_proto",
     srcs = ["memmapped_file_system.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "protos_all",
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
