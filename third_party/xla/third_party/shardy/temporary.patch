@@ -1,0 +1,1954 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index f82404c..7972fe3 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,152 +1,1794 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
+---- a/clang/lib/Serialization/ASTReaderDecl.cpp
+-+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
+-@@ -2107,8 +2107,9 @@
+-     auto *Def = DD.Definition;
+-     DD = std::move(MergeDD);
+-     DD.Definition = Def;
+--    for (auto *D : Def->redecls())
+--      cast<CXXRecordDecl>(D)->DefinitionData = &DD;
+-+    for (auto *R = Reader.getMostRecentExistingDecl(Def); R;
+-+         R = R->getPreviousDecl())
+-+      cast<CXXRecordDecl>(R)->DefinitionData = &DD;
+-     return;
+-   }
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h b/mlir/include/mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h
++--- a/mlir/include/mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h
+++++ b/mlir/include/mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h
++@@ -1,122 +0,0 @@
++-//===- ACCSpecializePatterns.h - Common ACC Specialization Patterns ------===//
++-//
++-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++-// See https://llvm.org/LICENSE.txt for license information.
++-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++-//
++-//===----------------------------------------------------------------------===//
++-//
++-// This file contains common rewrite pattern templates used by both
++-// ACCSpecializeForHost and ACCSpecializeForDevice passes.
++-//
++-// The patterns provide the following transformations:
++-//
++-// - ACCOpReplaceWithVarConversion<OpTy>: Replaces a data entry operation
++-//   with its var operand. Used for ops like acc.copyin, acc.create, etc.
++-//
++-// - ACCOpEraseConversion<OpTy>: Simply erases an operation. Used for
++-//   data exit ops like acc.copyout, acc.delete, and runtime ops.
++-//
++-// - ACCRegionUnwrapConversion<OpTy>: Inlines the region of an operation
++-//   and erases the wrapper. Used for structured data constructs
++-//   (acc.data, acc.host_data) and compute constructs (acc.parallel, etc.)
++-//
++-// - ACCDeclareEnterOpConversion: Erases acc.declare_enter and its
++-//   associated acc.declare_exit operation.
++-//
++-//===----------------------------------------------------------------------===//
++-
++-#ifndef MLIR_DIALECT_OPENACC_TRANSFORMS_ACCSPECIALIZEPATTERNS_H
++-#define MLIR_DIALECT_OPENACC_TRANSFORMS_ACCSPECIALIZEPATTERNS_H
++-
++-#include "mlir/Dialect/OpenACC/OpenACC.h"
++-#include "mlir/IR/PatternMatch.h"
++-
++-namespace mlir {
++-namespace acc {
++-
++-//===----------------------------------------------------------------------===//
++-// Generic pattern templates for ACC specialization
++-//===----------------------------------------------------------------------===//
++-
++-/// Pattern to replace an ACC op with its var operand.
++-/// Used for data entry ops like acc.copyin, acc.create, acc.attach, etc.
++-template <typename OpTy>
++-class ACCOpReplaceWithVarConversion : public OpRewritePattern<OpTy> {
++-  using OpRewritePattern<OpTy>::OpRewritePattern;
++-
++-public:
++-  LogicalResult matchAndRewrite(OpTy op,
++-                                PatternRewriter &rewriter) const override {
++-    // Replace this op with its var operand; it's possible the op has no uses
++-    // if the op that had previously used it was already converted.
++-    if (op->use_empty())
++-      rewriter.eraseOp(op);
++-    else
++-      rewriter.replaceOp(op, op.getVar());
++-    return success();
++-  }
++-};
++-
++-/// Pattern to simply erase an ACC op (for ops with no results).
++-/// Used for data exit ops like acc.copyout, acc.delete, acc.detach, etc.
++-template <typename OpTy>
++-class ACCOpEraseConversion : public OpRewritePattern<OpTy> {
++-  using OpRewritePattern<OpTy>::OpRewritePattern;
++-
++-public:
++-  LogicalResult matchAndRewrite(OpTy op,
++-                                PatternRewriter &rewriter) const override {
++-    assert(op->getNumResults() == 0 && "expected op with no results");
++-    rewriter.eraseOp(op);
++-    return success();
++-  }
++-};
++-
++-/// Pattern to unwrap a region from an ACC op and erase the wrapper.
++-/// Moves the region's contents to the parent block and removes the wrapper op.
++-/// Used for structured data constructs (acc.data, acc.host_data,
++-/// acc.kernel_environment, acc.declare) and compute constructs (acc.parallel,
++-/// acc.serial, acc.kernels).
++-template <typename OpTy>
++-class ACCRegionUnwrapConversion : public OpRewritePattern<OpTy> {
++-  using OpRewritePattern<OpTy>::OpRewritePattern;
++-
++-public:
++-  LogicalResult matchAndRewrite(OpTy op,
++-                                PatternRewriter &rewriter) const override {
++-    assert(op.getRegion().hasOneBlock() && "expected one block");
++-    Block *block = &op.getRegion().front();
++-    // Erase the terminator (acc.yield or acc.terminator) before unwrapping
++-    rewriter.eraseOp(block->getTerminator());
++-    rewriter.inlineBlockBefore(block, op);
++-    rewriter.eraseOp(op);
++-    return success();
++-  }
++-};
++-
++-/// Pattern to erase acc.declare_enter and its associated acc.declare_exit.
++-/// The declare_enter produces a token that is consumed by declare_exit.
++-class ACCDeclareEnterOpConversion
++-    : public OpRewritePattern<acc::DeclareEnterOp> {
++-  using OpRewritePattern<acc::DeclareEnterOp>::OpRewritePattern;
++-
++-public:
++-  LogicalResult matchAndRewrite(acc::DeclareEnterOp op,
++-                                PatternRewriter &rewriter) const override {
++-    // If the enter token is used by an exit, erase exit first.
++-    if (!op->use_empty()) {
++-      assert(op->hasOneUse() && "expected one use");
++-      auto exitOp = dyn_cast<acc::DeclareExitOp>(*op->getUsers().begin());
++-      assert(exitOp && "expected declare exit op");
++-      rewriter.eraseOp(exitOp);
++-    }
++-    rewriter.eraseOp(op);
++-    return success();
++-  }
++-};
++-
++-} // namespace acc
++-} // namespace mlir
++-
++-#endif // MLIR_DIALECT_OPENACC_TRANSFORMS_ACCSPECIALIZEPATTERNS_H
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.h b/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.h
++--- a/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.h
+++++ b/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.h
++@@ -12,7 +12,6 @@
++ #include "mlir/Dialect/Arith/IR/Arith.h"
++ #include "mlir/Dialect/MemRef/IR/MemRef.h"
++ #include "mlir/Dialect/OpenACC/OpenACC.h"
++-#include "mlir/Dialect/SCF/IR/SCF.h"
++ #include "mlir/Pass/Pass.h"
+  
+-diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+---- a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+-+++ b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
+-@@ -61,14 +61,14 @@
+- LIBC_INLINE static void write_mxcsr(uint32_t w) { _mm_setcsr(w); }
++ namespace mlir {
++@@ -23,40 +22,9 @@
+  
+- LIBC_INLINE static void clear_except(uint16_t excepts) {
+--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
+-+  uint32_t mxcsr = get_mxcsr();
+-   mxcsr &= ~static_cast<uint32_t>(excepts);
+--  _MM_SET_EXCEPTION_STATE(mxcsr);
+-+  write_mxcsr(mxcsr);
+- }
++ namespace acc {
+  
+- LIBC_INLINE static uint16_t test_except(uint16_t excepts) {
+-   uint32_t mxcsr = get_mxcsr();
+--  return static_cast<uint16_t>(excepts & mxcsr);
+-+  return static_cast<uint16_t>(excepts & ExceptionFlags::ALL_F & mxcsr);
+- }
++-class OpenACCSupport;
++-
++ #define GEN_PASS_DECL
++ #include "mlir/Dialect/OpenACC/Transforms/Passes.h.inc"
+  
+- LIBC_INLINE static uint16_t get_except() {
+-@@ -83,9 +83,9 @@
++-//===----------------------------------------------------------------------===//
++-// ACCSpecializeForDevice patterns
++-//===----------------------------------------------------------------------===//
++-
++-/// Populates all patterns for device specialization.
++-/// In specialized device code (such as specialized acc routine), many ACC
++-/// operations do not make sense because they are host-side constructs. This
++-/// function adds patterns to remove or transform them.
++-void populateACCSpecializeForDevicePatterns(RewritePatternSet &patterns);
++-
++-//===----------------------------------------------------------------------===//
++-// ACCSpecializeForHost patterns
++-//===----------------------------------------------------------------------===//
++-
++-/// Populates patterns for converting orphan ACC operations to host.
++-/// All patterns check that the operation is NOT inside or associated with a
++-/// compute region before converting.
++-/// @param enableLoopConversion Whether to convert orphan acc.loop operations.
++-void populateACCOrphanToHostPatterns(RewritePatternSet &patterns,
++-                                     OpenACCSupport &accSupport,
++-                                     bool enableLoopConversion = true);
++-
++-/// Populates all patterns for host fallback path (when `if` clause evaluates
++-/// to false). In this mode, ALL ACC operations should be converted or removed.
++-/// @param enableLoopConversion Whether to convert orphan acc.loop operations.
++-void populateACCHostFallbackPatterns(RewritePatternSet &patterns,
++-                                     OpenACCSupport &accSupport,
++-                                     bool enableLoopConversion = true);
++-
++ /// Generate the code for registering conversion passes.
++ #define GEN_PASS_REGISTRATION
++ #include "mlir/Dialect/OpenACC/Transforms/Passes.h.inc"
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.td b/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.td
++--- a/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.td
+++++ b/mlir/include/mlir/Dialect/OpenACC/Transforms/Passes.td
++@@ -194,62 +194,4 @@
++   ];
+  }
+  
+- LIBC_INLINE static void raise_except(uint16_t excepts) {
+--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
+--  mxcsr |= excepts;
+--  _MM_SET_EXCEPTION_STATE(mxcsr);
+-+  uint32_t mxcsr = get_mxcsr();
+-+  mxcsr |= excepts & ExceptionFlags::ALL_F;
+-+  write_mxcsr(mxcsr);
+- #ifdef LIBC_TRAP_ON_RAISE_FP_EXCEPT
+-   // We will try to trigger the SIGFPE if floating point exceptions are not
+-   // masked.  Since we already set all the floating point exception flags, we
+-diff -ruN --strip-trailing-cr a/libcxx/include/__flat_map/flat_map.h b/libcxx/include/__flat_map/flat_map.h
+---- a/libcxx/include/__flat_map/flat_map.h
+-+++ b/libcxx/include/__flat_map/flat_map.h
+-@@ -465,13 +465,13 @@
+-   }
++-def ACCSpecializeForDevice : Pass<"acc-specialize-for-device", "mlir::func::FuncOp"> {
++-  let summary = "Strip OpenACC constructs inside device code";
++-  let description = [{
++-    In a specialized acc routine or compute construct, many OpenACC operations
++-    do not make sense because they are host-side constructs. This pass removes
++-    or transforms these operations appropriately.
++-
++-    The following operations are handled:
++-    - Data entry ops (replaced with var): acc.attach, acc.copyin, acc.create,
++-      acc.declare_device_resident, acc.declare_link, acc.deviceptr,
++-      acc.get_deviceptr, acc.nocreate, acc.present, acc.update_device,
++-      acc.use_device
++-    - Data exit ops (erased): acc.copyout, acc.delete, acc.detach,
++-      acc.update_host
++-    - Structured data (inline region): acc.data, acc.host_data,
++-      acc.kernel_environment
++-    - Unstructured data (erased): acc.enter_data, acc.exit_data, acc.update,
++-      acc.declare_enter, acc.declare_exit
++-    - Compute constructs (inline region): acc.parallel, acc.serial, acc.kernels
++-    - Runtime ops (erased): acc.init, acc.shutdown, acc.set, acc.wait
++-  }];
++-  let dependentDialects = ["mlir::acc::OpenACCDialect"];
++-}
++-
++-def ACCSpecializeForHost : Pass<"acc-specialize-for-host", "mlir::func::FuncOp"> {
++-  let summary = "Convert OpenACC operations for host execution";
++-  let description = [{
++-    This pass converts OpenACC operations to host-compatible representations.
++-    It serves as a conversion pass that transforms ACC constructs to enable
++-    execution on the host rather than on accelerator devices.
++-
++-    There are two modes of operation:
++-
++-    1. Default mode (orphan operations only): Only orphan operations that are
++-       not allowed outside compute regions are converted. Structured/unstructured
++-       data constructs, compute constructs, and their associated data operations
++-       are NOT removed.
++-
++-    2. Host fallback mode (enableHostFallback=true): ALL ACC operations within
++-       the region are converted to host equivalents. This is used when the `if`
++-       clause evaluates to false at runtime.
++-
++-    The following operations are handled:
++-    - Atomic ops: converted to load/store operations
++-    - Loop ops: converted to scf.for or scf.execute_region
++-    - Data entry ops (orphan): replaced with var operand
++-    - In host fallback mode: all data, compute, and runtime ops are removed
++-  }];
++-  let dependentDialects = ["mlir::acc::OpenACCDialect",
++-      "mlir::scf::SCFDialect"];
++-  let options = [
++-    Option<"enableHostFallback", "enable-host-fallback", "bool", "false",
++-           "Enable host fallback mode which converts ALL ACC operations, "
++-           "not just orphan operations. Use this when the `if` clause "
++-           "evaluates to false.">
++-  ];
++-}
++-
++ #endif // MLIR_DIALECT_OPENACC_TRANSFORMS_PASSES
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForDevice.cpp b/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForDevice.cpp
++--- a/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForDevice.cpp
+++++ b/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForDevice.cpp
++@@ -1,172 +0,0 @@
++-//===- ACCSpecializeForDevice.cpp -----------------------------------------===//
++-//
++-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++-// See https://llvm.org/LICENSE.txt for license information.
++-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++-//
++-//===----------------------------------------------------------------------===//
++-//
++-// This pass strips OpenACC constructs that are invalid or unnecessary inside
++-// device code (specialized acc routines or compute construct regions).
++-//
++-// Overview:
++-// ---------
++-// In a specialized acc routine or compute construct, many OpenACC operations
++-// do not make sense because they are host-side constructs. This pass removes
++-// or transforms these operations appropriately:
++-//
++-// - Data operations that manage device memory from host perspective
++-// - Compute constructs that launch kernels (we're already on device)
++-// - Runtime operations like init/shutdown/set/wait
++-//
++-// Transformations:
++-// ----------------
++-// The pass applies the following transformations:
++-//
++-// 1. Data Entry Ops (replaced with var operand):
++-//    acc.attach, acc.copyin, acc.create, acc.declare_device_resident,
++-//    acc.declare_link, acc.deviceptr, acc.get_deviceptr, acc.nocreate,
++-//    acc.present, acc.update_device, acc.use_device
++-//
++-// 2. Data Exit Ops (erased):
++-//    acc.copyout, acc.delete, acc.detach, acc.update_host
++-//
++-// 3. Structured Data/Compute Constructs (region inlined):
++-//    acc.data, acc.host_data, acc.kernel_environment, acc.parallel,
++-//    acc.serial, acc.kernels
++-//
++-// 4. Unstructured Data Ops (erased):
++-//    acc.enter_data, acc.exit_data, acc.update, acc.declare_enter,
++-//    acc.declare_exit
++-//
++-// 5. Runtime Ops (erased):
++-//    acc.init, acc.shutdown, acc.set, acc.wait
++-//
++-// Scope of Application:
++-// ---------------------
++-// - For functions with `acc.specialized_routine` attribute: patterns are
++-//   applied to the entire function body.
++-// - For non-specialized functions: patterns are applied only to ACC
++-//   operations INSIDE compute constructs (parallel, serial, kernels),
++-//   not to the compute constructs themselves or their data operands.
++-//
++-// Note: acc.cache, acc.private, acc.reduction, acc.firstprivate are NOT
++-// transformed by this pass as they are valid in device code.
++-//
++-//===----------------------------------------------------------------------===//
++-
++-#include "mlir/Dialect/OpenACC/Transforms/Passes.h"
++-
++-#include "mlir/Dialect/Func/IR/FuncOps.h"
++-#include "mlir/Dialect/OpenACC/OpenACC.h"
++-#include "mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h"
++-#include "mlir/IR/PatternMatch.h"
++-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++-
++-namespace mlir {
++-namespace acc {
++-#define GEN_PASS_DEF_ACCSPECIALIZEFORDEVICE
++-#include "mlir/Dialect/OpenACC/Transforms/Passes.h.inc"
++-} // namespace acc
++-} // namespace mlir
++-
++-using namespace mlir;
++-using namespace mlir::acc;
++-
++-namespace {
++-
++-class ACCSpecializeForDevice
++-    : public acc::impl::ACCSpecializeForDeviceBase<ACCSpecializeForDevice> {
++-public:
++-  using ACCSpecializeForDeviceBase<
++-      ACCSpecializeForDevice>::ACCSpecializeForDeviceBase;
++-
++-  void runOnOperation() override {
++-    func::FuncOp func = getOperation();
++-
++-    RewritePatternSet patterns(&getContext());
++-    acc::populateACCSpecializeForDevicePatterns(patterns);
++-    GreedyRewriteConfig config;
++-    config.setUseTopDownTraversal(true);
++-
++-    if (acc::isSpecializedAccRoutine(func)) {
++-      // For specialized acc routines, apply patterns to the entire function
++-      (void)applyPatternsGreedily(func, std::move(patterns), config);
++-    } else {
++-      // For non-specialized functions, apply patterns only to ACC operations
++-      // inside compute constructs (not to the compute constructs themselves).
++-      SmallVector<Operation *> opsToTransform;
++-      func.walk([&](Operation *op) {
++-        if (isa<ACC_COMPUTE_CONSTRUCT_OPS>(op)) {
++-          // Walk inside the compute construct and collect ACC ops
++-          op->walk([&](Operation *innerOp) {
++-            // Skip the compute construct itself
++-            if (innerOp == op)
++-              return;
++-            if (isa<acc::OpenACCDialect>(innerOp->getDialect()))
++-              opsToTransform.push_back(innerOp);
++-          });
++-        }
++-      });
++-      if (!opsToTransform.empty())
++-        (void)applyOpPatternsGreedily(opsToTransform, std::move(patterns),
++-                                      config);
++-    }
++-  }
++-};
++-
++-} // namespace
++-
++-//===----------------------------------------------------------------------===//
++-// Pattern population functions
++-//===----------------------------------------------------------------------===//
++-
++-void mlir::acc::populateACCSpecializeForDevicePatterns(
++-    RewritePatternSet &patterns) {
++-  MLIRContext *context = patterns.getContext();
++-
++-  // Declare patterns - erase declare_enter and its associated declare_exit
++-  patterns.insert<ACCDeclareEnterOpConversion>(context);
++-
++-  // Data entry ops - replaced with their var operand
++-  // Note: acc.cache, acc.private, acc.reduction, acc.firstprivate are NOT
++-  // included here - they are valid in device code
++-  patterns.insert<ACCOpReplaceWithVarConversion<acc::AttachOp>,
++-                  ACCOpReplaceWithVarConversion<acc::CopyinOp>,
++-                  ACCOpReplaceWithVarConversion<acc::CreateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DeclareDeviceResidentOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DeclareLinkOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DevicePtrOp>,
++-                  ACCOpReplaceWithVarConversion<acc::GetDevicePtrOp>,
++-                  ACCOpReplaceWithVarConversion<acc::NoCreateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::PresentOp>,
++-                  ACCOpReplaceWithVarConversion<acc::UpdateDeviceOp>,
++-                  ACCOpReplaceWithVarConversion<acc::UseDeviceOp>>(context);
++-
++-  // Data exit ops - simply erased (no results)
++-  patterns.insert<ACCOpEraseConversion<acc::CopyoutOp>,
++-                  ACCOpEraseConversion<acc::DeleteOp>,
++-                  ACCOpEraseConversion<acc::DetachOp>,
++-                  ACCOpEraseConversion<acc::UpdateHostOp>>(context);
++-
++-  // Structured data constructs - unwrap their regions
++-  patterns.insert<ACCRegionUnwrapConversion<acc::DataOp>,
++-                  ACCRegionUnwrapConversion<acc::HostDataOp>,
++-                  ACCRegionUnwrapConversion<acc::KernelEnvironmentOp>>(context);
++-
++-  // Compute constructs - unwrap their regions
++-  patterns.insert<ACCRegionUnwrapConversion<acc::ParallelOp>,
++-                  ACCRegionUnwrapConversion<acc::SerialOp>,
++-                  ACCRegionUnwrapConversion<acc::KernelsOp>>(context);
++-
++-  // Unstructured data operations - erase them
++-  patterns.insert<ACCOpEraseConversion<acc::EnterDataOp>,
++-                  ACCOpEraseConversion<acc::ExitDataOp>,
++-                  ACCOpEraseConversion<acc::UpdateOp>>(context);
++-
++-  // Runtime operations - erase them
++-  patterns.insert<
++-      ACCOpEraseConversion<acc::InitOp>, ACCOpEraseConversion<acc::ShutdownOp>,
++-      ACCOpEraseConversion<acc::SetOp>, ACCOpEraseConversion<acc::WaitOp>>(
++-      context);
++-}
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForHost.cpp b/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForHost.cpp
++--- a/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForHost.cpp
+++++ b/mlir/lib/Dialect/OpenACC/Transforms/ACCSpecializeForHost.cpp
++@@ -1,471 +0,0 @@
++-//===- ACCSpecializeForHost.cpp -------------------------------------------===//
++-//
++-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++-// See https://llvm.org/LICENSE.txt for license information.
++-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++-//
++-//===----------------------------------------------------------------------===//
++-//
++-// This pass converts OpenACC operations to host-compatible representations,
++-// enabling execution on the host rather than on accelerator devices.
++-//
++-// Overview:
++-// ---------
++-// The pass operates in two modes depending on the `enableHostFallback` option:
++-//
++-// 1. Default Mode (Orphan Operations Only):
++-//    Only converts "orphan" ACC operations that are not inside or attached to
++-//    compute regions. This is used for host routines (acc routine marked for
++-//    host) where structured/unstructured data constructs, compute constructs,
++-//    and their associated data operations should be preserved.
++-//
++-// 2. Host Fallback Mode (enableHostFallback=true):
++-//    Converts ALL ACC operations within the region to host equivalents. This
++-//    is used when the `if` clause evaluates to false at runtime and the
++-//    entire ACC region needs to fall back to host execution.
++-//
++-// Transformations (Orphan Mode):
++-// ------------------------------
++-// The following orphan operations are converted:
++-//
++-// 1. Atomic Ops (converted to load/store):
++-//    acc.atomic.update -> load + compute + store
++-//    acc.atomic.read -> load + store (copy)
++-//    acc.atomic.write -> store
++-//    acc.atomic.capture -> inline region contents
++-//
++-// 2. Loop Ops (converted to SCF):
++-//    acc.loop (structured) -> scf.for
++-//    acc.loop (unstructured) -> scf.execute_region
++-//
++-// 3. Orphan Data Entry Ops (replaced with var operand):
++-//    acc.cache, acc.private, acc.firstprivate, acc.reduction
++-//    (only if NOT connected to compute constructs or loop)
++-//
++-// Transformations (Host Fallback Mode):
++-// -------------------------------------
++-// In addition to orphan transformations, ALL of the following are converted:
++-//
++-// 1. Data Entry Ops (replaced with var operand):
++-//    acc.copyin, acc.create, acc.attach, acc.present, acc.deviceptr,
++-//    acc.get_deviceptr, acc.nocreate, acc.declare_device_resident,
++-//    acc.declare_link, acc.use_device, acc.update_device
++-//
++-// 2. Data Exit Ops (erased):
++-//    acc.copyout, acc.delete, acc.detach, acc.update_host
++-//
++-// 3. Structured Data/Compute Constructs (region inlined):
++-//    acc.data, acc.host_data, acc.kernel_environment, acc.declare,
++-//    acc.parallel, acc.serial, acc.kernels
++-//
++-// 4. Unstructured Data Ops (erased):
++-//    acc.enter_data, acc.exit_data, acc.update
++-//
++-// 5. Declare Ops (erased):
++-//    acc.declare_enter, acc.declare_exit
++-//
++-// 6. Runtime Ops (erased):
++-//    acc.init, acc.shutdown, acc.set, acc.wait, acc.terminator
++-//
++-// Requirements:
++-// -------------
++-// For atomic operation conversion, variables must implement the
++-// `acc::PointerLikeType` interface to enable generating load/store operations.
++-//
++-// The pass uses `OpenACCSupport::emitNYI()` to report unsupported cases.
++-//
++-//===----------------------------------------------------------------------===//
++-
++-#include "mlir/Dialect/OpenACC/Transforms/Passes.h"
++-
++-#include "mlir/Dialect/Func/IR/FuncOps.h"
++-#include "mlir/Dialect/OpenACC/Analysis/OpenACCSupport.h"
++-#include "mlir/Dialect/OpenACC/OpenACC.h"
++-#include "mlir/Dialect/OpenACC/OpenACCUtilsLoop.h"
++-#include "mlir/Dialect/OpenACC/Transforms/ACCSpecializePatterns.h"
++-#include "mlir/IR/BuiltinAttributes.h"
++-#include "mlir/IR/BuiltinOps.h"
++-#include "mlir/IR/BuiltinTypes.h"
++-#include "mlir/IR/Operation.h"
++-#include "mlir/IR/PatternMatch.h"
++-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++-
++-namespace mlir {
++-namespace acc {
++-#define GEN_PASS_DEF_ACCSPECIALIZEFORHOST
++-#include "mlir/Dialect/OpenACC/Transforms/Passes.h.inc"
++-} // namespace acc
++-} // namespace mlir
++-
++-#define DEBUG_TYPE "acc-specialize-for-host"
++-
++-using namespace mlir;
++-using namespace mlir::acc;
++-
++-/// Check if an operation is inside an ACC compute construct.
++-static bool isInsideACCComputeConstruct(Operation *op) {
++-  while ((op = op->getParentOp()))
++-    if (isa<ACC_COMPUTE_CONSTRUCT_OPS>(op))
++-      return true;
++-  return false;
++-}
++-
++-namespace {
++-
++-// Lower orphan acc.atomic.update by: load from addr, clone region expr with
++-// the loaded value, then store the computed result back to addr.
++-// Only matches if NOT inside a compute region.
++-class ACCOrphanAtomicUpdateOpConversion
++-    : public OpRewritePattern<acc::AtomicUpdateOp> {
++-public:
++-  ACCOrphanAtomicUpdateOpConversion(MLIRContext *ctx, OpenACCSupport &support)
++-      : OpRewritePattern<acc::AtomicUpdateOp>(ctx), accSupport(support) {}
++-
++-  LogicalResult matchAndRewrite(acc::AtomicUpdateOp atomicUpdateOp,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not inside an ACC compute construct
++-    if (isInsideACCComputeConstruct(atomicUpdateOp))
++-      return failure();
++-
++-    Value x = atomicUpdateOp.getX();
++-    Type type = x.getType();
++-    auto ptrLikeType = dyn_cast<acc::PointerLikeType>(type);
++-    if (ptrLikeType) {
++-      auto xTyped = cast<TypedValue<acc::PointerLikeType>>(x);
++-      rewriter.setInsertionPointAfter(atomicUpdateOp);
++-      Value loadOp =
++-          ptrLikeType.genLoad(rewriter, atomicUpdateOp.getLoc(), xTyped, {});
++-      if (!loadOp) {
++-        accSupport.emitNYI(atomicUpdateOp.getLoc(),
++-                           "failed to generate load for atomic update");
++-        return failure();
++-      }
++-      IRMapping mapping;
++-      mapping.map(atomicUpdateOp.getRegion().front().getArgument(0), loadOp);
++-      Operation *expr = rewriter.clone(*atomicUpdateOp.getFirstOp(), mapping);
++-      if (!ptrLikeType.genStore(rewriter, atomicUpdateOp.getLoc(),
++-                                expr->getResult(0), xTyped)) {
++-        accSupport.emitNYI(atomicUpdateOp.getLoc(),
++-                           "failed to generate store for atomic update");
++-        return failure();
++-      }
++-      rewriter.eraseOp(atomicUpdateOp);
++-    } else {
++-      accSupport.emitNYI(atomicUpdateOp.getLoc(),
++-                         "unsupported type for atomic update");
++-      return failure();
++-    }
++-    return success();
++-  }
++-
++-private:
++-  OpenACCSupport &accSupport;
++-};
++-
++-// Lower orphan acc.atomic.read by: load from src, then store into dst.
++-// Only matches if NOT inside an ACC compute construct.
++-class ACCOrphanAtomicReadOpConversion
++-    : public OpRewritePattern<acc::AtomicReadOp> {
++-public:
++-  ACCOrphanAtomicReadOpConversion(MLIRContext *ctx, OpenACCSupport &support)
++-      : OpRewritePattern<acc::AtomicReadOp>(ctx), accSupport(support) {}
++-
++-  LogicalResult matchAndRewrite(acc::AtomicReadOp readOp,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not inside an ACC compute construct
++-    if (isInsideACCComputeConstruct(readOp))
++-      return failure();
++-
++-    Value x = readOp.getX();
++-    Value v = readOp.getV();
++-    auto xPtrType = dyn_cast<acc::PointerLikeType>(x.getType());
++-    auto vPtrType = dyn_cast<acc::PointerLikeType>(v.getType());
++-    if (xPtrType && vPtrType) {
++-      auto xTyped = cast<TypedValue<acc::PointerLikeType>>(x);
++-      auto vTyped = cast<TypedValue<acc::PointerLikeType>>(v);
++-      rewriter.setInsertionPointAfter(readOp);
++-
++-      // Use genCopy which does load + store
++-      if (!xPtrType.genCopy(rewriter, readOp.getLoc(), vTyped, xTyped, {})) {
++-        accSupport.emitNYI(readOp.getLoc(),
++-                           "failed to generate copy for atomic read");
++-        return failure();
++-      }
++-      rewriter.eraseOp(readOp);
++-    } else {
++-      accSupport.emitNYI(readOp.getLoc(), "unsupported type for atomic read");
++-      return failure();
++-    }
++-    return success();
++-  }
++-
++-private:
++-  OpenACCSupport &accSupport;
++-};
++-
++-// Lower orphan acc.atomic.write by: store value into addr.
++-// Only matches if NOT inside an ACC compute construct.
++-class ACCOrphanAtomicWriteOpConversion
++-    : public OpRewritePattern<acc::AtomicWriteOp> {
++-public:
++-  ACCOrphanAtomicWriteOpConversion(MLIRContext *ctx, OpenACCSupport &support)
++-      : OpRewritePattern<acc::AtomicWriteOp>(ctx), accSupport(support) {}
++-
++-  LogicalResult matchAndRewrite(acc::AtomicWriteOp writeOp,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not inside an ACC compute construct
++-    if (isInsideACCComputeConstruct(writeOp))
++-      return failure();
++-
++-    Value x = writeOp.getX();
++-    Value expr = writeOp.getExpr();
++-    auto ptrLikeType = dyn_cast<acc::PointerLikeType>(x.getType());
++-    if (ptrLikeType) {
++-      auto xTyped = cast<TypedValue<acc::PointerLikeType>>(x);
++-      rewriter.setInsertionPointAfter(writeOp);
++-      if (!ptrLikeType.genStore(rewriter, writeOp.getLoc(), expr, xTyped)) {
++-        accSupport.emitNYI(writeOp.getLoc(),
++-                           "failed to generate store for atomic write");
++-        return failure();
++-      }
++-      rewriter.eraseOp(writeOp);
++-    } else {
++-      accSupport.emitNYI(writeOp.getLoc(), "unsupported type for atomic write");
++-      return failure();
++-    }
++-    return success();
++-  }
++-
++-private:
++-  OpenACCSupport &accSupport;
++-};
++-
++-// Lower orphan acc.atomic.capture by: unwrap the capture region and erase the
++-// wrapper; inner ops are lowered in-order (e.g., read+update becomes load/store
++-// to dst then load/compute/store to addr).
++-// Only matches if NOT inside an ACC compute construct.
++-class ACCOrphanAtomicCaptureOpConversion
++-    : public OpRewritePattern<acc::AtomicCaptureOp> {
++-  using OpRewritePattern<acc::AtomicCaptureOp>::OpRewritePattern;
++-
++-  LogicalResult matchAndRewrite(acc::AtomicCaptureOp captureOp,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not inside an ACC compute construct
++-    if (isInsideACCComputeConstruct(captureOp))
++-      return failure();
++-
++-    assert(captureOp.getRegion().hasOneBlock() && "expected one block");
++-    Block *block = &captureOp.getRegion().front();
++-    // Remove the terminator before inlining
++-    rewriter.eraseOp(block->getTerminator());
++-    rewriter.inlineBlockBefore(block, captureOp);
++-    rewriter.eraseOp(captureOp);
++-    return success();
++-  }
++-};
++-
++-// Convert orphan acc.loop to scf.for or scf.execute_region.
++-// Only matches if NOT inside an ACC compute construct.
++-class ACCOrphanLoopOpConversion : public OpRewritePattern<acc::LoopOp> {
++-  using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
++-
++-  LogicalResult matchAndRewrite(acc::LoopOp loopOp,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not inside an ACC compute construct
++-    if (isInsideACCComputeConstruct(loopOp))
++-      return failure();
++-
++-    if (loopOp.getUnstructured()) {
++-      auto executeRegion =
++-          acc::convertUnstructuredACCLoopToSCFExecuteRegion(loopOp, rewriter);
++-      if (!executeRegion)
++-        return failure();
++-      rewriter.replaceOp(loopOp, executeRegion);
++-    } else {
++-      auto forOp =
++-          acc::convertACCLoopToSCFFor(loopOp, /*enableCollapse=*/false);
++-      if (!forOp)
++-        return failure();
++-      rewriter.replaceOp(loopOp, forOp);
++-    }
++-    return success();
++-  }
++-};
++-
++-/// Check if an operation is used by a compute construct or loop op
++-static bool isUsedByComputeOrLoop(Operation *op) {
++-  for (auto *user : op->getUsers())
++-    if (isa<acc::ParallelOp, acc::SerialOp, acc::KernelsOp, acc::LoopOp>(user))
++-      return true;
++-  return false;
++-}
++-
++-/// Orphan data entry ops - only match if NOT connected to compute/loop and
++-/// NOT inside a compute region. Used for acc.cache, acc.private,
++-/// acc.firstprivate, acc.reduction.
++-template <typename OpTy>
++-class ACCOrphanDataEntryConversion : public OpRewritePattern<OpTy> {
++-  using OpRewritePattern<OpTy>::OpRewritePattern;
++-
++-  LogicalResult matchAndRewrite(OpTy op,
++-                                PatternRewriter &rewriter) const override {
++-    // Only convert if this op is not used by a compute construct or loop,
++-    // and not inside an ACC compute construct.
++-    if (isUsedByComputeOrLoop(op) || isInsideACCComputeConstruct(op))
++-      return failure();
++-
++-    if (op->use_empty())
++-      rewriter.eraseOp(op);
++-    else
++-      rewriter.replaceOp(op, op.getVar());
++-    return success();
++-  }
++-};
++-
++-class ACCSpecializeForHost
++-    : public acc::impl::ACCSpecializeForHostBase<ACCSpecializeForHost> {
++-public:
++-  using ACCSpecializeForHostBase<
++-      ACCSpecializeForHost>::ACCSpecializeForHostBase;
++-
++-  void runOnOperation() override {
++-    LLVM_DEBUG(llvm::dbgs() << "Enter ACCSpecializeForHost()\n");
++-
++-    func::FuncOp funcOp = getOperation();
++-    if (!acc::isSpecializedAccRoutine(funcOp)) {
++-      // Convert orphan operations to host, or all ACC operations if
++-      // host fallback patterns are enabled.
++-      auto *context = &getContext();
++-      RewritePatternSet patterns(context);
++-      OpenACCSupport &accSupport = getAnalysis<OpenACCSupport>();
++-      if (enableHostFallback)
++-        populateACCHostFallbackPatterns(patterns, accSupport);
++-      else
++-        populateACCOrphanToHostPatterns(patterns, accSupport);
++-      GreedyRewriteConfig config;
++-      config.setUseTopDownTraversal(true);
++-      if (failed(applyPatternsGreedily(funcOp, std::move(patterns), config)))
++-        signalPassFailure();
++-    }
++-
++-    LLVM_DEBUG(llvm::dbgs() << "Exit ACCSpecializeForHost()\n");
++-  }
++-};
++-} // namespace
++-
++-//===----------------------------------------------------------------------===//
++-// Pattern population functions
++-//===----------------------------------------------------------------------===//
++-
++-void mlir::acc::populateACCOrphanToHostPatterns(RewritePatternSet &patterns,
++-                                                OpenACCSupport &accSupport,
++-                                                bool enableLoopConversion) {
++-  MLIRContext *context = patterns.getContext();
++-
++-  // For host routines (acc routine marked for host), we only convert orphan
++-  // operations that are not allowed outside compute regions. All patterns
++-  // here check that the operation is NOT inside a compute region before
++-  // converting:
++-  // - acc.atomic.* -> load/store operations
++-  // - acc.loop -> scf.for or scf.execute_region
++-  // - acc.cache -> replaced with var
++-  // - acc.private, acc.reduction, acc.firstprivate -> replaced with var
++-  //   (only if NOT connected to compute constructs or loop)
++-  //
++-  // We do NOT remove structured/unstructured data constructs, compute
++-  // constructs, or their associated data operations - those are valid
++-  // in host routines and will be processed by other passes.
++-
++-  // Loop conversion (orphan only)
++-  if (enableLoopConversion)
++-    patterns.insert<ACCOrphanLoopOpConversion>(context);
++-
++-  // Atomic operations - convert to non-atomic load/store (orphan only)
++-  patterns.insert<ACCOrphanAtomicUpdateOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicReadOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicWriteOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicCaptureOpConversion>(context);
++-
++-  // Orphan data entry ops - only convert if NOT connected to compute/loop
++-  // and NOT inside a compute region
++-  patterns.insert<ACCOrphanDataEntryConversion<acc::CacheOp>,
++-                  ACCOrphanDataEntryConversion<acc::PrivateOp>,
++-                  ACCOrphanDataEntryConversion<acc::FirstprivateOp>,
++-                  ACCOrphanDataEntryConversion<acc::ReductionOp>>(context);
++-}
++-
++-void mlir::acc::populateACCHostFallbackPatterns(RewritePatternSet &patterns,
++-                                                OpenACCSupport &accSupport,
++-                                                bool enableLoopConversion) {
++-  MLIRContext *context = patterns.getContext();
++-
++-  // For host fallback path (when `if` clause evaluates to false), ALL ACC
++-  // operations within the region should be converted to host equivalents.
++-  // This includes structured/unstructured data, compute constructs, and
++-  // their associated data operations.
++-
++-  // Loop conversion - OK to use the orphan loop conversion pattern here
++-  // because the parent compute constructs will also be converted.
++-  if (enableLoopConversion)
++-    patterns.insert<ACCOrphanLoopOpConversion>(context);
++-
++-  // Atomic operations - convert to non-atomic load/store. OK to use the orphan
++-  // atomic conversion patterns here because the parent compute constructs will
++-  // also be converted.
++-  patterns.insert<ACCOrphanAtomicUpdateOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicReadOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicWriteOpConversion>(context, accSupport);
++-  patterns.insert<ACCOrphanAtomicCaptureOpConversion>(context);
++-
++-  // acc.cache - convert ALL cache ops (including those inside compute regions)
++-  patterns.insert<ACCOpReplaceWithVarConversion<acc::CacheOp>>(context);
++-
++-  // Privatization ops - convert ALL (including those attached to compute/loop)
++-  patterns.insert<ACCOpReplaceWithVarConversion<acc::PrivateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::FirstprivateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::ReductionOp>>(context);
++-
++-  // Data entry ops - replaced with their var operand
++-  patterns.insert<ACCOpReplaceWithVarConversion<acc::CopyinOp>,
++-                  ACCOpReplaceWithVarConversion<acc::CreateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::AttachOp>,
++-                  ACCOpReplaceWithVarConversion<acc::PresentOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DevicePtrOp>,
++-                  ACCOpReplaceWithVarConversion<acc::GetDevicePtrOp>,
++-                  ACCOpReplaceWithVarConversion<acc::NoCreateOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DeclareDeviceResidentOp>,
++-                  ACCOpReplaceWithVarConversion<acc::DeclareLinkOp>,
++-                  ACCOpReplaceWithVarConversion<acc::UseDeviceOp>,
++-                  ACCOpReplaceWithVarConversion<acc::UpdateDeviceOp>>(context);
++-
++-  // Data exit ops - simply erased (no results)
++-  patterns.insert<ACCOpEraseConversion<acc::CopyoutOp>,
++-                  ACCOpEraseConversion<acc::DeleteOp>,
++-                  ACCOpEraseConversion<acc::DetachOp>,
++-                  ACCOpEraseConversion<acc::UpdateHostOp>>(context);
++-
++-  // Structured data constructs - unwrap their regions
++-  patterns.insert<ACCRegionUnwrapConversion<acc::DataOp>,
++-                  ACCRegionUnwrapConversion<acc::HostDataOp>,
++-                  ACCRegionUnwrapConversion<acc::KernelEnvironmentOp>>(context);
++-
++-  // Declare ops
++-  patterns.insert<ACCDeclareEnterOpConversion,
++-                  ACCRegionUnwrapConversion<acc::DeclareOp>>(context);
++-
++-  // Unstructured data operations - erase them
++-  patterns.insert<ACCOpEraseConversion<acc::EnterDataOp>,
++-                  ACCOpEraseConversion<acc::ExitDataOp>,
++-                  ACCOpEraseConversion<acc::UpdateOp>>(context);
++-
++-  // Runtime operations - erase them
++-  patterns.insert<
++-      ACCOpEraseConversion<acc::InitOp>, ACCOpEraseConversion<acc::ShutdownOp>,
++-      ACCOpEraseConversion<acc::SetOp>, ACCOpEraseConversion<acc::WaitOp>,
++-      ACCOpEraseConversion<acc::TerminatorOp>>(context);
++-
++-  // Compute constructs - unwrap their regions
++-  patterns.insert<ACCRegionUnwrapConversion<acc::ParallelOp>,
++-                  ACCRegionUnwrapConversion<acc::SerialOp>,
++-                  ACCRegionUnwrapConversion<acc::KernelsOp>>(context);
++-}
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/OpenACC/Transforms/CMakeLists.txt b/mlir/lib/Dialect/OpenACC/Transforms/CMakeLists.txt
++--- a/mlir/lib/Dialect/OpenACC/Transforms/CMakeLists.txt
+++++ b/mlir/lib/Dialect/OpenACC/Transforms/CMakeLists.txt
++@@ -4,8 +4,6 @@
++   ACCImplicitDeclare.cpp
++   ACCImplicitRoutine.cpp
++   ACCLegalizeSerial.cpp
++-  ACCSpecializeForDevice.cpp
++-  ACCSpecializeForHost.cpp
++   LegalizeDataValues.cpp
+  
+-   // [flat.map.access], element access
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
+-     requires is_constructible_v<mapped_type>
+-   {
+-     return try_emplace(__x).first->second;
++   ADDITIONAL_HEADER_DIRS
++@@ -28,7 +26,6 @@
++   MLIRFuncDialect
++   MLIRIR
++   MLIRPass
++-  MLIRSCFDialect
++   MLIRSupport
++   MLIRTransforms
++ )
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.cpp b/mlir/lib/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.cpp
++--- a/mlir/lib/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.cpp
+++++ b/mlir/lib/Dialect/Tensor/IR/ValueBoundsOpInterfaceImpl.cpp
++@@ -31,27 +31,6 @@
+    }
++ };
+  
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
+-     requires is_constructible_v<mapped_type>
+-   {
+-     return try_emplace(std::move(__x)).first->second;
+-@@ -480,7 +480,7 @@
+-   template <class _Kp>
+-     requires(__is_compare_transparent && is_constructible_v<key_type, _Kp> && is_constructible_v<mapped_type> &&
+-              !is_convertible_v<_Kp &&, const_iterator> && !is_convertible_v<_Kp &&, iterator>)
+--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
+-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
+-     return try_emplace(std::forward<_Kp>(__x)).first->second;
++-struct CollapseShapeOpInterface
++-    : public ValueBoundsOpInterface::ExternalModel<CollapseShapeOpInterface,
++-                                                   CollapseShapeOp> {
++-  void populateBoundsForShapedValueDim(Operation *op, Value value, int64_t dim,
++-                                       ValueBoundsConstraintSet &cstr) const {
++-    auto collapseOp = cast<CollapseShapeOp>(op);
++-    assert(value == collapseOp.getResult() && "invalid value");
++-
++-    // Multiply the expressions for the dimensions in the reassociation group.
++-    const ReassociationIndices &reassocIndices =
++-        collapseOp.getReassociationIndices()[dim];
++-    AffineExpr productExpr =
++-        cstr.getExpr(collapseOp.getSrc(), reassocIndices[0]);
++-    for (size_t i = 1; i < reassocIndices.size(); ++i) {
++-      productExpr =
++-          productExpr * cstr.getExpr(collapseOp.getSrc(), reassocIndices[i]);
++-    }
++-    cstr.bound(value)[dim] == productExpr;
++-  }
++-};
++-
++ struct DimOpInterface
++     : public ValueBoundsOpInterface::ExternalModel<DimOpInterface, DimOp> {
++   void populateBoundsForIndexValue(Operation *op, Value value,
++@@ -78,17 +57,6 @@
+    }
++ };
+  
+-diff -ruN --strip-trailing-cr a/libcxx/include/map b/libcxx/include/map
+---- a/libcxx/include/map
+-+++ b/libcxx/include/map
+-@@ -1092,9 +1092,9 @@
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type size() const _NOEXCEPT { return __tree_.size(); }
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type max_size() const _NOEXCEPT { return __tree_.max_size(); }
+- 
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+- #  ifndef _LIBCPP_CXX03_LANG
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+- #  endif
+- 
+-   template <class _Arg,
+-diff -ruN --strip-trailing-cr a/libcxx/include/unordered_map b/libcxx/include/unordered_map
+---- a/libcxx/include/unordered_map
+-+++ b/libcxx/include/unordered_map
+-@@ -1262,9 +1262,9 @@
+-   }
+- #  endif // _LIBCPP_STD_VER >= 20
+- 
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
+- #  ifndef _LIBCPP_CXX03_LANG
+--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
+- #  endif
+- 
+-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& at(const key_type& __k);
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
+-@@ -66,9 +66,9 @@
+-   TransparentKey<int> tkey;
+- 
+-   std::flat_map<int, int> nfm;
+--  nfm[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  fm[std::move(key)];  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  fm[std::move(tkey)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  nfm[key];            // no-warning
+-+  fm[std::move(key)];  // no-warning
+-+  fm[std::move(tkey)]; // no-warning
+- 
+-   fm.at(key);   // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-   cfm.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
+-@@ -55,8 +55,8 @@
+- 
+-   int key = 0;
+- 
+--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  m[key];            // no-warning
+-+  m[std::move(key)]; // no-warning
+- 
+- #if TEST_STD_VER >= 14
+-   std::map<std::string, int, std::less<>> strMap;
+-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+---- a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+-+++ b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
+-@@ -81,8 +81,8 @@
+-   ctm.equal_range(tkey); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+- #endif
+- 
+--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-+  m[key];            // no-warning
+-+  m[std::move(key)]; // no-warning
+- 
+-   m.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+-   cm.at(key); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
++-struct ExpandShapeOpInterface
++-    : public ValueBoundsOpInterface::ExternalModel<ExpandShapeOpInterface,
++-                                                   ExpandShapeOp> {
++-  void populateBoundsForShapedValueDim(Operation *op, Value value, int64_t dim,
++-                                       ValueBoundsConstraintSet &cstr) const {
++-    auto expandOp = cast<ExpandShapeOp>(op);
++-    assert(value == expandOp.getResult() && "invalid value");
++-    cstr.bound(value)[dim] == expandOp.getMixedOutputShape()[dim];
++-  }
++-};
++-
++ struct ExtractSliceOpInterface
++     : public ValueBoundsOpInterface::ExternalModel<ExtractSliceOpInterface,
++                                                    ExtractSliceOp> {
++@@ -149,12 +117,8 @@
++     DialectRegistry &registry) {
++   registry.addExtension(+[](MLIRContext *ctx, tensor::TensorDialect *dialect) {
++     tensor::CastOp::attachInterface<tensor::CastOpInterface>(*ctx);
++-    tensor::CollapseShapeOp::attachInterface<tensor::CollapseShapeOpInterface>(
++-        *ctx);
++     tensor::DimOp::attachInterface<tensor::DimOpInterface>(*ctx);
++     tensor::EmptyOp::attachInterface<tensor::EmptyOpInterface>(*ctx);
++-    tensor::ExpandShapeOp::attachInterface<tensor::ExpandShapeOpInterface>(
++-        *ctx);
++     tensor::ExtractSliceOp::attachInterface<tensor::ExtractSliceOpInterface>(
++         *ctx);
++     tensor::PadOp::attachInterface<tensor::PadOpInterface>(*ctx);
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/OpenACC/acc-specialize-for-device.mlir b/mlir/test/Dialect/OpenACC/acc-specialize-for-device.mlir
++--- a/mlir/test/Dialect/OpenACC/acc-specialize-for-device.mlir
+++++ b/mlir/test/Dialect/OpenACC/acc-specialize-for-device.mlir
++@@ -1,204 +0,0 @@
++-// RUN: mlir-opt %s -acc-specialize-for-device | FileCheck %s
++-
++-//===----------------------------------------------------------------------===//
++-// Data entry ops in specialized routines
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_0 func(@attach) seq
++-// CHECK-LABEL: func.func @attach
++-// CHECK-NOT:   acc.attach
++-func.func @attach(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_0, <seq>, "attach">} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.attach varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_1 func(@copyin) seq
++-// CHECK-LABEL: func.func @copyin
++-// CHECK-NOT:   acc.copyin
++-func.func @copyin(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_1, <seq>, "copyin">} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_2 func(@create) seq
++-// CHECK-LABEL: func.func @create
++-// CHECK-NOT:   acc.create
++-func.func @create(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_2, <seq>, "create">} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_3 func(@present) seq
++-// CHECK-LABEL: func.func @present
++-// CHECK-NOT:   acc.present
++-func.func @present(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_3, <seq>, "present">} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.present varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Data entry ops INSIDE compute constructs (non-specialized functions)
++-//===----------------------------------------------------------------------===//
++-
++-// CHECK-LABEL: func.func @copyin_inside_parallel
++-// CHECK:       acc.parallel
++-// CHECK-NOT:   acc.copyin
++-// CHECK:       acc.yield
++-func.func @copyin_inside_parallel(%arg0 : memref<i32>) {
++-  %c0 = arith.constant 0 : i32
++-  acc.parallel {
++-    %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-    memref.store %c0, %0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Data entry ops OUTSIDE compute constructs should NOT be removed
++-//===----------------------------------------------------------------------===//
++-
++-// CHECK-LABEL: func.func @copyin_outside_parallel
++-// CHECK:       acc.copyin
++-// CHECK:       acc.parallel
++-func.func @copyin_outside_parallel(%arg0 : memref<i32>) {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.parallel dataOperands(%0 : memref<i32>) {
++-    memref.store %c0, %0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Data exit ops in specialized routines
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_copyout func(@copyout) worker
++-// CHECK-LABEL: func.func @copyout
++-// CHECK-NOT:   acc.copyout
++-func.func @copyout(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_copyout, <worker>, "copyout">} {
++-  %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.copyout accPtr(%0 : memref<i32>) to varPtr(%arg0 : memref<i32>)
++-  return
++-}
++-
++-acc.routine @acc_routine_delete func(@delete) worker
++-// CHECK-LABEL: func.func @delete
++-// CHECK-NOT:   acc.delete
++-func.func @delete(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_delete, <worker>, "delete">} {
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.delete accPtr(%0 : memref<i32>)
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Erase ops (unstructured data and runtime ops)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_enter_data func(@enter_data) worker
++-// CHECK-LABEL: func.func @enter_data
++-// CHECK-NOT:   acc.enter_data
++-func.func @enter_data(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_enter_data, <worker>, "enter_data">} {
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.enter_data dataOperands(%0 : memref<i32>)
++-  return
++-}
++-
++-acc.routine @acc_routine_init func(@init_op) worker
++-// CHECK-LABEL: func.func @init_op
++-// CHECK-NOT:   acc.init
++-func.func @init_op() attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_init, <worker>, "init_op">} {
++-  acc.init
++-  return
++-}
++-
++-acc.routine @acc_routine_wait func(@wait_op) worker
++-// CHECK-LABEL: func.func @wait_op
++-// CHECK-NOT:   acc.wait
++-func.func @wait_op() attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_wait, <worker>, "wait_op">} {
++-  acc.wait
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Region unwrap (structured data and compute constructs)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_data func(@data_construct) worker
++-// CHECK-LABEL: func.func @data_construct
++-// CHECK-NOT:   acc.data
++-// CHECK:       arith.constant 42
++-func.func @data_construct(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_data, <worker>, "data_construct">} {
++-  %d = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.data dataOperands(%d : memref<i32>) {
++-    %c42 = arith.constant 42 : i32
++-    memref.store %c42, %arg0[] : memref<i32>
++-    acc.terminator
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_parallel func(@parallel_construct) worker
++-// CHECK-LABEL: func.func @parallel_construct
++-// CHECK-NOT:   acc.parallel
++-// CHECK:       arith.constant 44
++-func.func @parallel_construct(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_parallel, <worker>, "parallel_construct">} {
++-  acc.parallel {
++-    %c44 = arith.constant 44 : i32
++-    memref.store %c44, %arg0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_serial func(@serial_construct) worker
++-// CHECK-LABEL: func.func @serial_construct
++-// CHECK-NOT:   acc.serial
++-// CHECK:       arith.constant 45
++-func.func @serial_construct(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_serial, <worker>, "serial_construct">} {
++-  acc.serial {
++-    %c45 = arith.constant 45 : i32
++-    memref.store %c45, %arg0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_kernels func(@kernels_construct) worker
++-// CHECK-LABEL: func.func @kernels_construct
++-// CHECK-NOT:   acc.kernels
++-// CHECK:       arith.constant 46
++-func.func @kernels_construct(%arg0 : memref<i32>) attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_kernels, <worker>, "kernels_construct">} {
++-  acc.kernels {
++-    %c46 = arith.constant 46 : i32
++-    memref.store %c46, %arg0[] : memref<i32>
++-    acc.terminator
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Declare enter/exit strip in device routines
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_declare func(@dev_routine_declare) worker
++-// CHECK-LABEL: func.func @dev_routine_declare
++-// CHECK-NOT: acc.declare_enter
++-// CHECK-NOT: acc.declare_exit
++-func.func @dev_routine_declare() attributes {acc.specialized_routine = #acc.specialized_routine<@acc_routine_declare, <worker>, "dev_routine_declare">} {
++-  %var = memref.alloca() : memref<f32>
++-  %c = acc.create varPtr(%var : memref<f32>) -> memref<f32>
++-  %t = acc.declare_enter dataOperands(%c : memref<f32>)
++-  acc.declare_exit token(%t) dataOperands(%c : memref<f32>)
++-  return
++-}
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/OpenACC/acc-specialize-for-host-fallback.mlir b/mlir/test/Dialect/OpenACC/acc-specialize-for-host-fallback.mlir
++--- a/mlir/test/Dialect/OpenACC/acc-specialize-for-host-fallback.mlir
+++++ b/mlir/test/Dialect/OpenACC/acc-specialize-for-host-fallback.mlir
++@@ -1,157 +0,0 @@
++-// RUN: mlir-opt %s --pass-pipeline='builtin.module(func.func(acc-specialize-for-host{enable-host-fallback=true}))' | FileCheck %s
++-
++-//===----------------------------------------------------------------------===//
++-// Data entry ops - replaced with var (host fallback)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_create func(@create) seq
++-// CHECK-LABEL: func.func @create
++-// CHECK-NOT:   acc.create
++-func.func @create(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_create]>} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_copyin func(@copyin) seq
++-// CHECK-LABEL: func.func @copyin
++-// CHECK-NOT:   acc.copyin
++-func.func @copyin(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_copyin]>} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_present func(@present) seq
++-// CHECK-LABEL: func.func @present
++-// CHECK-NOT:   acc.present
++-func.func @present(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_present]>} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.present varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Data exit ops - erased (host fallback)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_copyout func(@copyout) seq
++-// CHECK-LABEL: func.func @copyout
++-// CHECK-NOT:   acc.copyout
++-func.func @copyout(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_copyout]>} {
++-  %0 = acc.copyin varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.copyout accPtr(%0 : memref<i32>) to varPtr(%arg0 : memref<i32>)
++-  return
++-}
++-
++-acc.routine @acc_routine_delete func(@delete) seq
++-// CHECK-LABEL: func.func @delete
++-// CHECK-NOT:   acc.delete
++-func.func @delete(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_delete]>} {
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.delete accPtr(%0 : memref<i32>)
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Runtime operations - erased (host fallback)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_init func(@init_op) seq
++-// CHECK-LABEL: func.func @init_op
++-// CHECK-NOT:   acc.init
++-func.func @init_op() attributes {acc.routine_info = #acc.routine_info<[@acc_routine_init]>} {
++-  acc.init
++-  return
++-}
++-
++-acc.routine @acc_routine_shutdown func(@shutdown_op) seq
++-// CHECK-LABEL: func.func @shutdown_op
++-// CHECK-NOT:   acc.shutdown
++-func.func @shutdown_op() attributes {acc.routine_info = #acc.routine_info<[@acc_routine_shutdown]>} {
++-  acc.shutdown
++-  return
++-}
++-
++-acc.routine @acc_routine_wait func(@wait_op) seq
++-// CHECK-LABEL: func.func @wait_op
++-// CHECK-NOT:   acc.wait
++-func.func @wait_op() attributes {acc.routine_info = #acc.routine_info<[@acc_routine_wait]>} {
++-  acc.wait
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Structured data and compute constructs - unwrap regions (host fallback)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_data func(@data_construct) seq
++-// CHECK-LABEL: func.func @data_construct
++-// CHECK-NOT:   acc.data
++-// CHECK:       arith.constant 42
++-func.func @data_construct(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_data]>} {
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  acc.data dataOperands(%0 : memref<i32>) {
++-    %c42 = arith.constant 42 : i32
++-    memref.store %c42, %arg0[] : memref<i32>
++-    acc.terminator
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_parallel func(@parallel_construct) seq
++-// CHECK-LABEL: func.func @parallel_construct
++-// CHECK-NOT:   acc.parallel
++-// CHECK:       arith.constant 44
++-func.func @parallel_construct(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_parallel]>} {
++-  acc.parallel {
++-    %c44 = arith.constant 44 : i32
++-    memref.store %c44, %arg0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_serial func(@serial_construct) seq
++-// CHECK-LABEL: func.func @serial_construct
++-// CHECK-NOT:   acc.serial
++-// CHECK:       arith.constant 45
++-func.func @serial_construct(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_serial]>} {
++-  acc.serial {
++-    %c45 = arith.constant 45 : i32
++-    memref.store %c45, %arg0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_kernels func(@kernels_construct) seq
++-// CHECK-LABEL: func.func @kernels_construct
++-// CHECK-NOT:   acc.kernels
++-// CHECK:       arith.constant 46
++-func.func @kernels_construct(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_kernels]>} {
++-  acc.kernels {
++-    %c46 = arith.constant 46 : i32
++-    memref.store %c46, %arg0[] : memref<i32>
++-    acc.terminator
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Declare enter/exit - erased (host fallback)
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_declare func(@declare_enter_exit) seq
++-// CHECK-LABEL: func.func @declare_enter_exit
++-// CHECK-NOT:   acc.declare_enter
++-// CHECK-NOT:   acc.declare_exit
++-func.func @declare_enter_exit(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_declare]>} {
++-  %0 = acc.create varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  %token = acc.declare_enter dataOperands(%0 : memref<i32>)
++-  acc.declare_exit token(%token) dataOperands(%0 : memref<i32>)
++-  return
++-}
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/OpenACC/acc-specialize-for-host.mlir b/mlir/test/Dialect/OpenACC/acc-specialize-for-host.mlir
++--- a/mlir/test/Dialect/OpenACC/acc-specialize-for-host.mlir
+++++ b/mlir/test/Dialect/OpenACC/acc-specialize-for-host.mlir
++@@ -1,404 +0,0 @@
++-// RUN: mlir-opt %s -acc-specialize-for-host | FileCheck %s
++-
++-// Recipe definitions
++-acc.private.recipe @privatization_memref_i32 : memref<i32> init {
++-^bb0(%arg0: memref<i32>):
++-  %0 = memref.alloca() : memref<i32>
++-  acc.yield %0 : memref<i32>
++-}
++-
++-acc.firstprivate.recipe @firstprivatization_memref_i32 : memref<i32> init {
++-^bb0(%arg0: memref<i32>):
++-  %0 = memref.alloca() : memref<i32>
++-  acc.yield %0 : memref<i32>
++-} copy {
++-^bb0(%arg0: memref<i32>, %arg1: memref<i32>):
++-  %0 = memref.load %arg0[] : memref<i32>
++-  memref.store %0, %arg1[] : memref<i32>
++-  acc.terminator
++-}
++-
++-acc.reduction.recipe @reduction_add_memref_i32 : memref<i32> reduction_operator <add> init {
++-^bb0(%arg0: memref<i32>):
++-  %c0_i32 = arith.constant 0 : i32
++-  %0 = memref.alloca() : memref<i32>
++-  memref.store %c0_i32, %0[] : memref<i32>
++-  acc.yield %0 : memref<i32>
++-} combiner {
++-^bb0(%arg0: memref<i32>, %arg1: memref<i32>):
++-  %0 = memref.load %arg0[] : memref<i32>
++-  %1 = memref.load %arg1[] : memref<i32>
++-  %2 = arith.addi %0, %1 : i32
++-  memref.store %2, %arg0[] : memref<i32>
++-  acc.yield %arg0 : memref<i32>
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan data entry ops - replaced with var
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_private func(@private) seq
++-// CHECK-LABEL: func.func @private
++-// CHECK-NOT:   acc.private
++-func.func @private(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_private]>} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.private varPtr(%arg0 : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-acc.routine @acc_routine_cache func(@cache) seq
++-// CHECK-LABEL: func.func @cache
++-// CHECK-NOT:   acc.cache
++-func.func @cache(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_cache]>} {
++-  %c0 = arith.constant 0 : i32
++-  %0 = acc.cache varPtr(%arg0 : memref<i32>) -> memref<i32>
++-  memref.store %c0, %0[] : memref<i32>
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan atomic operations - converted to load/store
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_atomic func(@orphan_atomic_update) seq
++-// CHECK-LABEL: func.func @orphan_atomic_update
++-// CHECK-NOT:   acc.atomic.update
++-// CHECK:       memref.load
++-// CHECK:       arith.addi
++-// CHECK:       memref.store
++-func.func @orphan_atomic_update(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_atomic]>} {
++-  acc.atomic.update %arg0 : memref<i32> {
++-  ^bb0(%arg1: i32):
++-    %c1 = arith.constant 1 : i32
++-    %1 = arith.addi %arg1, %c1 : i32
++-    acc.yield %1 : i32
++-  }
++-  return
++-}
++-
++-acc.routine @acc_routine_atomic_read func(@orphan_atomic_read) seq
++-// CHECK-LABEL: func.func @orphan_atomic_read
++-// CHECK-NOT:   acc.atomic.read
++-// CHECK:       memref.copy %arg0, %arg1
++-func.func @orphan_atomic_read(%arg0 : memref<i32>, %arg1 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_atomic_read]>} {
++-  acc.atomic.read %arg1 = %arg0 : memref<i32>, memref<i32>, i32
++-  return
++-}
++-
++-acc.routine @acc_routine_atomic_write func(@orphan_atomic_write) seq
++-// CHECK-LABEL: func.func @orphan_atomic_write
++-// CHECK-NOT:   acc.atomic.write
++-// CHECK:       memref.store %arg1, %arg0[]
++-func.func @orphan_atomic_write(%arg0 : memref<i32>, %arg1 : i32) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_atomic_write]>} {
++-  acc.atomic.write %arg0 = %arg1 : memref<i32>, i32
++-  return
++-}
++-
++-acc.routine @acc_routine_atomic_capture func(@orphan_atomic_capture) seq
++-// CHECK-LABEL: func.func @orphan_atomic_capture
++-// CHECK-NOT:   acc.atomic.capture
++-// CHECK:       memref.copy %arg0, %arg1
++-// CHECK:       [[LOAD:%.*]] = memref.load %arg0[]
++-// CHECK:       [[INC:%.*]] = arith.addi [[LOAD]]
++-// CHECK:       memref.store [[INC]], %arg0[]
++-func.func @orphan_atomic_capture(%arg0 : memref<i32>, %arg1 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_atomic_capture]>} {
++-  %c1_i32 = arith.constant 1 : i32
++-  acc.atomic.capture {
++-    acc.atomic.read %arg1 = %arg0 : memref<i32>, memref<i32>, i32
++-    acc.atomic.update %arg0 : memref<i32> {
++-    ^bb0(%v: i32):
++-      %r = arith.addi %v, %c1_i32 : i32
++-      acc.yield %r : i32
++-    }
++-    acc.terminator
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Negative tests - ops that should NOT be converted
++-//===----------------------------------------------------------------------===//
++-
++-// acc.private attached to acc.parallel should NOT be removed
++-acc.routine @acc_routine_private_parallel func(@private_attached_to_parallel) seq
++-// CHECK-LABEL: func.func @private_attached_to_parallel
++-// CHECK:       acc.private
++-// CHECK:       acc.parallel
++-func.func @private_attached_to_parallel(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_private_parallel]>} {
++-  %0 = acc.private varPtr(%arg0 : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  acc.parallel private(%0 : memref<i32>) {
++-    %c1 = arith.constant 1 : i32
++-    memref.store %c1, %0[] : memref<i32>
++-    acc.yield
++-  }
++-  return
++-}
++-
++-// acc.atomic.update inside acc.parallel should NOT be converted
++-acc.routine @acc_routine_atomic_parallel func(@atomic_inside_parallel) seq
++-// CHECK-LABEL: func.func @atomic_inside_parallel
++-// CHECK:       acc.parallel
++-// CHECK:       acc.atomic.update
++-func.func @atomic_inside_parallel(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_atomic_parallel]>} {
++-  acc.parallel {
++-    acc.atomic.update %arg0 : memref<i32> {
++-    ^bb0(%arg1: i32):
++-      %c1 = arith.constant 1 : i32
++-      %1 = arith.addi %arg1, %c1 : i32
++-      acc.yield %1 : i32
++-    }
++-    acc.yield
++-  }
++-  return
++-}
++-
++-// acc.loop inside acc.parallel should NOT be converted
++-acc.routine @acc_routine_loop_parallel func(@loop_inside_parallel) seq
++-// CHECK-LABEL: func.func @loop_inside_parallel
++-// CHECK:       acc.parallel
++-// CHECK:       acc.loop
++-func.func @loop_inside_parallel(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_loop_parallel]>} {
++-  %c0 = arith.constant 0 : index
++-  %c10 = arith.constant 10 : index
++-  %c1 = arith.constant 1 : index
++-  acc.parallel {
++-    acc.loop control(%iv : index) = (%c0 : index) to (%c10 : index) step (%c1 : index) {
++-      %c5 = arith.constant 5 : i32
++-      memref.store %c5, %arg0[] : memref<i32>
++-      acc.yield
++-    } attributes {inclusiveUpperbound = array<i1: true>, seq = [#acc.device_type<none>]}
++-    acc.yield
++-  }
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Positive tests - orphan ops attached to orphan loop (both should convert)
++-//===----------------------------------------------------------------------===//
++-
++-// acc.private attached to orphan acc.loop - BOTH should be removed
++-acc.routine @acc_routine_private_loop func(@private_attached_to_loop) seq
++-// CHECK-LABEL: func.func @private_attached_to_loop
++-// CHECK-NOT:   acc.private
++-// CHECK-NOT:   acc.loop
++-// CHECK:       scf.for
++-func.func @private_attached_to_loop(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_private_loop]>} {
++-  %c0 = arith.constant 0 : i32
++-  %c10 = arith.constant 10 : i32
++-  %c1 = arith.constant 1 : i32
++-  %0 = acc.private varPtr(%arg0 : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  acc.loop private(%0 : memref<i32>) control(%iv : i32) = (%c0 : i32) to (%c10 : i32) step (%c1 : i32) {
++-    %c1_i32 = arith.constant 1 : i32
++-    memref.store %c1_i32, %0[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true>, seq = [#acc.device_type<none>]}
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan loop conversion tests
++-//===----------------------------------------------------------------------===//
++-
++-// Orphan acc.loop should be converted to scf.for
++-acc.routine @acc_routine_loop func(@orphan_loop) seq
++-// CHECK-LABEL: func.func @orphan_loop
++-// CHECK-NOT:   acc.loop
++-// CHECK:       scf.for
++-func.func @orphan_loop(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_loop]>} {
++-  %c0 = arith.constant 0 : i32
++-  %c10 = arith.constant 10 : i32
++-  %c1 = arith.constant 1 : i32
++-  acc.loop control(%iv : i32) = (%c0 : i32) to (%c10 : i32) step (%c1 : i32) {
++-    memref.store %iv, %arg0[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true>, seq = [#acc.device_type<none>]}
++-  return
++-}
++-
++-// Nested orphan acc.loop should be converted to nested scf.for
++-acc.routine @acc_routine_nested_loop func(@nested_orphan_loop) seq
++-// CHECK-LABEL: func.func @nested_orphan_loop
++-// CHECK-NOT:   acc.loop
++-// CHECK:       scf.for
++-// CHECK:       scf.for
++-func.func @nested_orphan_loop(%arg0 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_nested_loop]>} {
++-  %c0 = arith.constant 0 : i32
++-  %c10 = arith.constant 10 : i32
++-  %c1 = arith.constant 1 : i32
++-  acc.loop control(%iv0 : i32, %iv1 : i32) = (%c0, %c0 : i32, i32) to (%c10, %c10 : i32, i32) step (%c1, %c1 : i32, i32) {
++-    %sum = arith.addi %iv0, %iv1 : i32
++-    memref.store %sum, %arg0[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true, true>, seq = [#acc.device_type<none>]}
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Unstructured orphan loop - converted to scf.execute_region
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_unstructured func(@orphan_unstructured_loop) seq
++-// CHECK-LABEL: func.func @orphan_unstructured_loop
++-// CHECK-NOT:   acc.loop
++-// CHECK-NOT:   acc.private
++-// CHECK:       scf.execute_region
++-// CHECK:       ^bb{{[0-9]+}}:
++-// CHECK:       cf.cond_br
++-// CHECK:       scf.yield
++-func.func @orphan_unstructured_loop(%arg0 : memref<32xi32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_unstructured]>} {
++-  %c32_i32 = arith.constant 32 : i32
++-  %c2_i32 = arith.constant 2 : i32
++-  %c0_i32 = arith.constant 0 : i32
++-  %c1_i32 = arith.constant 1 : i32
++-  %iter_var = memref.alloca() : memref<i32>
++-  %priv = acc.private varPtr(%iter_var : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  acc.loop private(%priv : memref<i32>) {
++-    %limit = memref.alloca() : memref<i32>
++-    memref.store %c32_i32, %limit[] : memref<i32>
++-    memref.store %c1_i32, %priv[] : memref<i32>
++-    cf.br ^bb1
++-  ^bb1:
++-    %count = memref.load %limit[] : memref<i32>
++-    %cond = arith.cmpi sgt, %count, %c0_i32 : i32
++-    cf.cond_br %cond, ^bb2, ^bb3
++-  ^bb2:
++-    %idx = memref.load %priv[] : memref<i32>
++-    %idx_idx = arith.index_cast %idx : i32 to index
++-    %val = memref.load %arg0[%idx_idx] : memref<32xi32>
++-    %new_val = arith.divsi %val, %c2_i32 : i32
++-    memref.store %new_val, %arg0[%idx_idx] : memref<32xi32>
++-    %new_count = arith.subi %count, %c1_i32 : i32
++-    memref.store %new_count, %limit[] : memref<i32>
++-    %new_idx = arith.addi %idx, %c1_i32 : i32
++-    memref.store %new_idx, %priv[] : memref<i32>
++-    cf.br ^bb1
++-  ^bb3:
++-    acc.yield
++-  } attributes {independent = [#acc.device_type<none>], unstructured}
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan loop with reduction - both converted
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_loop_reduction func(@orphan_loop_with_reduction) seq
++-// CHECK-LABEL: func.func @orphan_loop_with_reduction
++-// CHECK-NOT:   acc.loop
++-// CHECK-NOT:   acc.reduction
++-// CHECK-NOT:   acc.private
++-// CHECK:       scf.for
++-func.func @orphan_loop_with_reduction(%arg0 : memref<i32>, %arg1 : memref<100xi32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_loop_reduction]>} {
++-  %c100_i32 = arith.constant 100 : i32
++-  %c1_i32 = arith.constant 1 : i32
++-  %iter_var = memref.alloca() : memref<i32>
++-  %red = acc.reduction varPtr(%arg0 : memref<i32>) recipe(@reduction_add_memref_i32) -> memref<i32>
++-  %priv = acc.private varPtr(%iter_var : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  acc.loop vector private(%priv : memref<i32>) reduction(%red : memref<i32>) control(%arg2 : i32) = (%c1_i32 : i32) to (%c100_i32 : i32) step (%c1_i32 : i32) {
++-    memref.store %arg2, %priv[] : memref<i32>
++-    %idx = memref.load %priv[] : memref<i32>
++-    %idx_cast = arith.index_cast %idx : i32 to index
++-    %elem = memref.load %arg1[%idx_cast] : memref<100xi32>
++-    %r_val = memref.load %arg0[] : memref<i32>
++-    %new_r = arith.addi %r_val, %elem : i32
++-    memref.store %new_r, %arg0[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true>, independent = [#acc.device_type<none>]}
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan loop with variable bounds
++-//===----------------------------------------------------------------------===//
++-
++-acc.routine @acc_routine_var_bounds func(@orphan_loop_variable_bounds) seq
++-// CHECK-LABEL: func.func @orphan_loop_variable_bounds
++-// CHECK-NOT:   acc.loop
++-// CHECK:       [[LB:%.*]] = memref.load %arg0[]
++-// CHECK:       [[UB:%.*]] = memref.load %arg1[]
++-// CHECK:       scf.for
++-func.func @orphan_loop_variable_bounds(%arg0 : memref<i32>, %arg1 : memref<i32>, %arg2 : memref<i32>) attributes {acc.routine_info = #acc.routine_info<[@acc_routine_var_bounds]>} {
++-  %c1 = arith.constant 1 : i32
++-  %lb = memref.load %arg0[] : memref<i32>
++-  %ub = memref.load %arg1[] : memref<i32>
++-  acc.loop vector control(%iv : i32) = (%lb : i32) to (%ub : i32) step (%c1 : i32) {
++-    memref.store %iv, %arg2[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true>, independent = [#acc.device_type<none>]}
++-  return
++-}
++-
++-//===----------------------------------------------------------------------===//
++-// Orphan loop between compute regions - only orphan converted
++-//===----------------------------------------------------------------------===//
++-
++-acc.reduction.recipe @reduction_mul_memref_i32 : memref<i32> reduction_operator <mul> init {
++-^bb0(%arg0: memref<i32>):
++-  %c1_i32 = arith.constant 1 : i32
++-  %0 = memref.alloca() : memref<i32>
++-  memref.store %c1_i32, %0[] : memref<i32>
++-  acc.yield %0 : memref<i32>
++-} combiner {
++-^bb0(%arg0: memref<i32>, %arg1: memref<i32>):
++-  %0 = memref.load %arg0[] : memref<i32>
++-  %1 = memref.load %arg1[] : memref<i32>
++-  %2 = arith.muli %0, %1 : i32
++-  memref.store %2, %arg0[] : memref<i32>
++-  acc.yield %arg0 : memref<i32>
++-}
++-
++-// Orphan loop sandwiched between compute regions - only orphan should convert
++-// CHECK-LABEL: func.func @orphan_between_compute_regions
++-// CHECK:       acc.parallel
++-// CHECK:       acc.yield
++-// CHECK-NOT:   acc.private varPtr
++-// CHECK-NOT:   acc.reduction varPtr
++-// CHECK:       scf.for
++-// CHECK:       acc.parallel
++-func.func @orphan_between_compute_regions(%arg0 : memref<i32>, %arg1 : memref<8xi32>, %arg2 : memref<i32>) {
++-  %c2_i32 = arith.constant 2 : i32
++-  %c8_i32 = arith.constant 8 : i32
++-  %c1_i32 = arith.constant 1 : i32
++-  %iter_var = memref.alloca() : memref<i32>
++-
++-  // First compute region - should NOT be converted
++-  acc.parallel combined(loop) {
++-    %priv1 = acc.private varPtr(%iter_var : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-    acc.loop combined(parallel) private(%priv1 : memref<i32>) control(%iv : i32) = (%c1_i32 : i32) to (%c8_i32 : i32) step (%c1_i32 : i32) {
++-      memref.store %iv, %priv1[] : memref<i32>
++-      %idx = arith.index_cast %iv : i32 to index
++-      memref.store %c1_i32, %arg1[%idx] : memref<8xi32>
++-      acc.yield
++-    } attributes {inclusiveUpperbound = array<i1: true>, independent = [#acc.device_type<none>]}
++-    acc.yield
++-  }
++-
++-  // Orphan loop - SHOULD be converted
++-  %priv_orphan = acc.private varPtr(%arg2 : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  %red_orphan = acc.reduction varPtr(%arg0 : memref<i32>) recipe(@reduction_mul_memref_i32) -> memref<i32>
++-  %priv_iv = acc.private varPtr(%iter_var : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-  acc.loop private(%priv_orphan, %priv_iv : memref<i32>, memref<i32>) reduction(%red_orphan : memref<i32>) control(%iv : i32) = (%c1_i32 : i32) to (%c8_i32 : i32) step (%c1_i32 : i32) {
++-    memref.store %iv, %priv_iv[] : memref<i32>
++-    %idx = arith.index_cast %iv : i32 to index
++-    %elem = memref.load %arg1[%idx] : memref<8xi32>
++-    memref.store %elem, %priv_orphan[] : memref<i32>
++-    %t = memref.load %priv_orphan[] : memref<i32>
++-    %mul = arith.muli %t, %c2_i32 : i32
++-    memref.store %mul, %arg0[] : memref<i32>
++-    acc.yield
++-  } attributes {inclusiveUpperbound = array<i1: true>, independent = [#acc.device_type<none>]}
++-
++-  // Second compute region - should NOT be converted
++-  acc.parallel combined(loop) {
++-    %priv2 = acc.private varPtr(%iter_var : memref<i32>) recipe(@privatization_memref_i32) -> memref<i32>
++-    acc.loop combined(parallel) private(%priv2 : memref<i32>) control(%iv : i32) = (%c1_i32 : i32) to (%c8_i32 : i32) step (%c1_i32 : i32) {
++-      memref.store %iv, %priv2[] : memref<i32>
++-      %idx = arith.index_cast %iv : i32 to index
++-      memref.store %iv, %arg1[%idx] : memref<8xi32>
++-      acc.yield
++-    } attributes {inclusiveUpperbound = array<i1: true>, independent = [#acc.device_type<none>]}
++-    acc.yield
++-  }
++-  return
++-}
++diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Tensor/value-bounds-op-interface-impl.mlir b/mlir/test/Dialect/Tensor/value-bounds-op-interface-impl.mlir
++--- a/mlir/test/Dialect/Tensor/value-bounds-op-interface-impl.mlir
+++++ b/mlir/test/Dialect/Tensor/value-bounds-op-interface-impl.mlir
++@@ -230,35 +230,3 @@
++   %1 = "test.reify_bound"(%padded) {dim = 1, constant} : (tensor<1x?x64xf32>) -> (index)
++   return
++ }
++-
++-// -----
++-
++-//       CHECK: #[[$MAP:.+]] = affine_map<()[s0] -> (s0 * 2)>
++-// CHECK-LABEL: func @tensor_collapse(
++-//  CHECK-SAME:     %[[sz0:.*]]: index
++-//   CHECK-DAG:   %[[c2:.*]] = arith.constant 2 : index
++-//   CHECK-DAG:   %[[c12:.*]] = arith.constant 12 : index
++-//       CHECK:   %[[dim:.*]] = tensor.dim %{{.*}}, %[[c2]] : tensor<3x4x?x2xf32>
++-//       CHECK:   %[[mul:.*]] = affine.apply #[[$MAP]]()[%[[dim]]]
++-//       CHECK:   return %[[c12]], %[[mul]]
++-func.func @tensor_collapse(%sz0: index) -> (index, index) {
++-  %0 = tensor.empty(%sz0) : tensor<3x4x?x2xf32>
++-  %1 = tensor.collapse_shape %0 [[0, 1], [2, 3]] : tensor<3x4x?x2xf32> into tensor<12x?xf32>
++-  %2 = "test.reify_bound"(%1) {dim = 0} : (tensor<12x?xf32>) -> (index)
++-  %3 = "test.reify_bound"(%1) {dim = 1} : (tensor<12x?xf32>) -> (index)
++-  return %2, %3 : index, index
++-}
++-
++-// -----
++-
++-// CHECK-LABEL: func @tensor_expand(
++-//  CHECK-SAME:     %[[t:[a-zA-Z0-9]+]]: tensor<?xf32>
++-//  CHECK-SAME:     %[[sz:[a-zA-Z0-9]+]]: index
++-//       CHECK:   %[[c4:.*]] = arith.constant 4 : index
++-//       CHECK:   return %[[c4]], %[[sz]]
++-func.func @tensor_expand(%t: tensor<?xf32>, %sz: index) -> (index, index) {
++-  %0 = tensor.expand_shape %t [[0, 1]] output_shape [4, %sz] : tensor<?xf32> into tensor<4x?xf32>
++-  %1 = "test.reify_bound"(%0) {dim = 0} : (tensor<4x?xf32>) -> (index)
++-  %2 = "test.reify_bound"(%0) {dim = 1} : (tensor<4x?xf32>) -> (index)
++-  return %1, %2 : index, index
++-}
+diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
+index 29af0ff..55a1ce3 100644
+--- a/third_party/llvm/workspace.bzl
++++ b/third_party/llvm/workspace.bzl
+@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+ 
+ def repo(name):
+     """Imports LLVM."""
+-    LLVM_COMMIT = "7d381f2a5634d1e41b61299839d652cc4a021898"
+-    LLVM_SHA256 = "f1641918fd3f5e1667d39afb9c261da39ed9f74e30f1c2f98031d6d609a8de15"
++    LLVM_COMMIT = "0812f41cd68d63d10a4c3a02271b0ea8276dbe57"
++    LLVM_SHA256 = "c5bbfd7e6accbb4bfbeeb990666aa64654a667c6569366e90aa1f8d8b28dbf8c"
+ 
+     tf_http_archive(
+         name = name,
