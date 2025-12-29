@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_set.h"
 
+#include <algorithm>
 #include <set>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
