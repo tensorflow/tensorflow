@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/log/log.h"
