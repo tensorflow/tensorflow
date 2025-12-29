@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
-#include "xla/service/spmd/shardy/constants.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -332,23 +330,6 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
                       !instruction->has_backend_config() &&
                       !instruction->parent()->IsAsyncComputation();
   if (!prerequisite) {
-    return false;
-  }
-  if (instruction->GetModule()->config().use_shardy_partitioner() &&
-      (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
-       absl::StrContains(instruction->to_apply()->name(),
-                         sdy::kManualComputationFuncName.str()))) {
-    // TODO(b/436603025). Remove this special handling by marking the
-    // instruction as uninlineable with the frontend attribute.
-    //
-    // Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR
-    // when using Shardy (github.com/openxla/shardy).
-    //
-    // - shmap_body: We do not want to inline the bodies of JAX shard maps to
-    //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
-    //   round-trip pipeline
-    // - kManualComputationFuncName: Same as shmap_body except for the SDY
-    //   round-trip pipeline.
     return false;
   }
   return InlineComposites(instruction, composites_to_preserve_);
