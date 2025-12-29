@@ -76,13 +76,12 @@ bool isValidTOSAZeroPoint(int32_t zp, unsigned bitWidth, bool isUnsigned) {
 }
 
 // Adjust zero points according to TOSA requirements
-int32_t adjustZeroPointForTOSA(int32_t zp, unsigned bitWidth,
-                                 bool isUnsigned) {
+int32_t adjustZeroPointForTOSA(int32_t zp, unsigned bitWidth, bool isUnsigned) {
   if (bitWidth == 16 && isUnsigned) {
     // uint16 must have zp of 0 or 32768
     if (zp != 0 && zp != 32768) {
-      // This is an unsupported case - TOSA doesn't support other zero points for
-      // uint16. Instead of erroring out, round to nearest valid value
+      // This is an unsupported case - TOSA doesn't support other zero points
+      // for uint16. Instead of erroring out, round to nearest valid value
       return (zp < 16384) ? 0 : 32768;
     }
     return zp;
@@ -153,7 +152,8 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
     auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
         output_type.getElementType());
     if (!output_element_type)
-      return builder.notifyMatchFailure(op, "not per-tensor quantized tfl.qconst op");
+      return builder.notifyMatchFailure(
+          op, "not per-tensor quantized tfl.qconst op");
 
     // Skip if output is already signed.
     if (output_element_type.isSigned()) {
@@ -171,8 +171,8 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
 
     int32_t unsigned_zp = output_element_type.getZeroPoint();
     if (!isValidTOSAZeroPoint(unsigned_zp, bitWidth, /*isUnsigned=*/true)) {
-      return builder.notifyMatchFailure(
-          op, "Zeropoint is not supported by TOSA.");
+      return builder.notifyMatchFailure(op,
+                                        "Zeropoint is not supported by TOSA.");
     }
 
     // Calculate the zero-point offset for this bitwidth
@@ -187,7 +187,6 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
     mlir::DenseElementsAttr src_dense_attr =
         mlir::cast<DenseElementsAttr>(tfl_qconst_op.getValue());
 
-    
     int64_t valueOffset = unsigned_zp - signed_zp;
     auto dst_dense_attr = src_dense_attr.mapValues(
         dst_dense_element_type,
@@ -208,9 +207,8 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
 // integer. If it is, then return the rescaled type, input_zp, and output_zp to
 // use to rescale type to signed type with adjusted zero point.
 bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
-                                   Type& rescaled_type, int32_t& unsigned_zp,
-                                   int32_t& output_zp,
-                                   unsigned& bitWidth) {
+                          Type& rescaled_type, int32_t& unsigned_zp,
+                          int32_t& output_zp, unsigned& bitWidth) {
   auto shaped_type = dyn_cast<mlir::ShapedType>(type);
   if (!shaped_type) return false;
 
@@ -234,14 +232,14 @@ bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
     rescaled_type = shaped_type.clone(signed_quant_type);
     return true;
   }
-  
+
   // Check for plain unsigned integer types
   if (element_type.isUnsignedInteger()) {
     bitWidth = element_type.getIntOrFloatBitWidth();
     if (isUnsupportedBitWidth(bitWidth)) {
       return false;
     }
-    
+
     int64_t zpOffset = 1LL << (bitWidth - 1);
     unsigned_zp = 0;
     output_zp = adjustZeroPointForTOSA(unsigned_zp - zpOffset, bitWidth,
@@ -256,13 +254,12 @@ bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
         /* zeroPoint = */ output_zp,
         /* storageTypeMin = */ signedMin,
         /* storageTypeMax = */ signedMax));
-    
+
     return true;
   }
-  
+
   return false;
 }
-
 
 LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
                                             mlir::func::FuncOp& function) {
@@ -337,12 +334,10 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       auto rescale_input_zp = createZeroPointTensor(builder, loc, arg.getType(),
                                                     rescale_input_zp_val);
       auto rescale_output_zp = createZeroPointTensor(
-          builder, loc, rescaled_type,
-          rescale_output_zp_val);
+          builder, loc, rescaled_type, rescale_output_zp_val);
 
       if (!rescale_input_zp || !rescale_output_zp) {
-        (void)emitError(loc,
-                        "Failed to create input zero point tensors.");
+        (void)emitError(loc, "Failed to create input zero point tensors.");
       }
 
       const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
@@ -390,8 +385,7 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
         unsigned bitWidth;
 
         if (IsShapedUnsignedType(builder, output_val.getType(), new_type,
-                                 unused_input_zp, unused_output_zp,
-                                 bitWidth)) {
+                                 unused_input_zp, unused_output_zp, bitWidth)) {
           output_val.setType(new_type);
         }
       }
@@ -431,7 +425,8 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       auto quantized_type = dyn_cast<mlir::quant::UniformQuantizedType>(
           terminator_operand_type.getElementType());
       if (quantized_type) {
-        operand_zp_val = adjustZeroPointForTOSA(quantized_type.getZeroPoint(), bitWidth, /*isUnsigned=*/ true);
+        operand_zp_val = adjustZeroPointForTOSA(quantized_type.getZeroPoint(),
+                                                bitWidth, /*isUnsigned=*/true);
       }
 
       // Keep original input_val use with tmp_val.
@@ -448,12 +443,10 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       // Create zero point constants with appropriate bitwidth
       // input_zp must match input bitwidth (signed), output_zp must match
       // output bitwidth (unsigned)
-      auto rescale_input_zp = createZeroPointTensor(
-          builder, loc, tmp_const_type,
-          operand_zp_val);
+      auto rescale_input_zp =
+          createZeroPointTensor(builder, loc, tmp_const_type, operand_zp_val);
       auto rescale_output_zp = createZeroPointTensor(
-          builder, loc, unsigned_output_type,
-          unsigned_zp_val);
+          builder, loc, unsigned_output_type, unsigned_zp_val);
 
       if (!rescale_input_zp || !rescale_output_zp) {
         (void)emitError(loc, "Failed to create input zero point tensors.");
