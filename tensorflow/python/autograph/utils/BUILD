@@ -16,7 +16,7 @@ py_strict_library(
 py_strict_library(
     name = "tensor_list",
     srcs = ["tensor_list.py"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/ops:list_ops",
@@ -37,7 +37,7 @@ py_strict_library(
 py_strict_library(
     name = "context_managers",
     srcs = ["context_managers.py"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:tensor_array_ops",
