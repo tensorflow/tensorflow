@@ -45,3 +45,26 @@ func.func @test_error_tosa_ops(%arg0: tensor<5x10xi8>) -> (tensor<5x10xi8>, none
 
   func.return %1, %0 : tensor<5x10xi8>, none
 }
+
+// -----
+// CHECK-LABEL: test_cast_ui32_with_zp
+// expected-error @+1 {{Input argument has unsigned quantized type with zero point 128 which is not supported by TOSA for bitwidth 32.}}
+func.func @test_cast_ui32_with_zp(%arg0: tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002:128>>) -> tensor<1x256x256x3xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002:128>>) -> tensor<1x256x256x3xf32>
+  func.return %0 : tensor<1x256x256x3xf32>
+}
+
+// -----
+// CHECK-LABEL:   func.func @test_cast_ui32(
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002>>) -> tensor<1x256x256x3xf32> {
+// CHECK:           %[[VAL_0:.*]] = "tosa.const"() <{values = dense<1073741824> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK:           %[[VAL_1:.*]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}> : () -> tensor<1xi8>
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xui32>}> : () -> tensor<1xui32>
+// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK:           %[[RESCALE_0:.*]] = tosa.rescale %[[ARG0]], %[[VAL_0]], %[[VAL_1]], %[[VAL_2]], %[[VAL_3]] {input_unsigned = true, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} : (tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002>>, tensor<1xi32>, tensor<1xi8>, tensor<1xui32>, tensor<1xi32>) -> tensor<1x256x256x3x!quant.uniform<i32:f32, 0.015603500418365002>>
+// CHECK:           %[[VAL_4:.*]] = "tfl.cast"(%[[RESCALE_0]]) : (tensor<1x256x256x3x!quant.uniform<i32:f32, 0.015603500418365002>>) -> tensor<1x256x256x3xf32>
+// CHECK:           return %[[VAL_4]]
+func.func @test_cast_ui32(%arg0: tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002:0>>) -> tensor<1x256x256x3xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<1x256x256x3x!quant.uniform<u32:f32, 0.015603500418365002:0>>) -> tensor<1x256x256x3xf32>
+  func.return %0 : tensor<1x256x256x3xf32>
+}
