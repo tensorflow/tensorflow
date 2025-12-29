@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -77,7 +78,7 @@ class GpuCodegenBackend : public CodegenBackend {
         allow_register_spills_);
 
     Compiler::CompileOptions options;
-    options.gpu_target_config = target_config_;
+    options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
     options.embed_hlo_module = false;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
