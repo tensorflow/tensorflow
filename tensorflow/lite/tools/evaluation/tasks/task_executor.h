@@ -28,7 +28,7 @@ namespace evaluation {
 // function.
 class TaskExecutor {
  public:
-  virtual ~TaskExecutor() {}
+  virtual ~TaskExecutor() = default;
 
   // If the run is successful, the latest metrics will be returned.
   std::optional<EvaluationStageMetrics> Run(int* argc, char* argv[]);
