@@ -28,15 +28,15 @@ namespace {
 
 // Replaces NcclReduce node with _NcclReduceRecv reusing one input of same
 // device, adds one _NcclReduceSend for each other input.
-Status ReplaceReduce(Graph* graph, Node* node) {
-  string reduction;
+absl::Status ReplaceReduce(Graph* graph, Node* node) {
+  std::string reduction;
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "reduction", &reduction));
   DataType dtype;
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
   int num_devices = node->num_inputs();
-  string shared_name = node->name();
-  auto make_builder = [&](StringPiece op_name, StringPiece suffix) {
-    return NodeBuilder(strings::StrCat(shared_name, suffix), op_name)
+  std::string shared_name = node->name();
+  auto make_builder = [&](absl::string_view op_name, absl::string_view suffix) {
+    return NodeBuilder(absl::StrCat(shared_name, suffix), op_name)
         .Attr("reduction", reduction)
         .Attr("num_devices", num_devices)
         .Attr("shared_name", shared_name)
@@ -68,10 +68,10 @@ Status ReplaceReduce(Graph* graph, Node* node) {
       recv_input_set = true;
       continue;
     }
-    auto send_builder = make_builder("_NcclReduceSend",
-                                     strings::StrCat("Send_", ++send_counter))
-                            .Input(src_node)
-                            .ControlInputs(control_inputs);
+    auto send_builder =
+        make_builder("_NcclReduceSend", absl::StrCat("Send_", ++send_counter))
+            .Input(src_node)
+            .ControlInputs(control_inputs);
     Node* send_node = nullptr;
     TF_RETURN_IF_ERROR(send_builder.Finalize(graph, &send_node));
     send_node->set_assigned_device_name_index(send_dev);
@@ -98,7 +98,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
       graph->AddEdge(recv_node, 0, out_node.node, out_node.index);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TensorProto TensorFromShape(const TensorShapeProto& shape) {
@@ -114,7 +114,7 @@ TensorProto TensorFromShape(const TensorShapeProto& shape) {
 // Replaces NcclBroadcast node with _NcclBroadcastSend, connects the input to
 // all outputs of same device, adds one _NcclBroadcastRecv for each other output
 // device.
-Status ReplaceBroadcast(Graph* graph, Node* node) {
+absl::Status ReplaceBroadcast(Graph* graph, Node* node) {
   DataType dtype;
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
   int send_dev = node->assigned_device_name_index();
@@ -155,12 +155,12 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  string shared_name = node->name();
-  auto make_builder = [&](StringPiece op_name, StringPiece suffix) {
-    return NodeBuilder(strings::StrCat(shared_name, suffix), op_name)
+  std::string shared_name = node->name();
+  auto make_builder = [&](absl::string_view op_name, absl::string_view suffix) {
+    return NodeBuilder(absl::StrCat(shared_name, suffix), op_name)
         .Attr("num_devices", num_devices)
         .Attr("shared_name", shared_name)
         .Attr("T", dtype);
@@ -202,7 +202,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
 
   TensorProto tensor_proto = TensorFromShape(shape_proto);
   bool is_fully_defined = TensorShape(shape_proto).IsFullyDefined();
-  string shape_name = strings::StrCat(in_node.node->name(), "/Shape");
+  std::string shape_name = absl::StrCat(in_node.node->name(), "/Shape");
   Node* shape_node = nullptr;
   if (!is_fully_defined) {
     NodeBuilder shape_builder(shape_name, "Shape");
@@ -219,15 +219,14 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
     int recv_index = recv_index_map[recv_dev];
     if (is_fully_defined) {
       // If the shape is fully defined, define one const node per device.
-      NodeBuilder shape_builder(strings::StrCat(shape_name, recv_index),
-                                "Const");
+      NodeBuilder shape_builder(absl::StrCat(shape_name, recv_index), "Const");
       shape_builder.Attr("value", tensor_proto).Attr("dtype", DT_INT32);
       TF_RETURN_IF_ERROR(shape_builder.Finalize(graph, &shape_node));
       shape_node->set_assigned_device_name_index(recv_dev);
     }
     Node* recv_node;
     TF_RETURN_IF_ERROR(
-        make_builder("_NcclBroadcastRecv", strings::StrCat("Recv_", recv_index))
+        make_builder("_NcclBroadcastRecv", absl::StrCat("Recv_", recv_index))
             .Input(shape_node)
             .Finalize(graph, &recv_node));
     recv_node->set_assigned_device_name_index(recv_dev);
@@ -236,16 +235,16 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replaces occurrences of Nccl{Reduce, Broadcast}Input/Output with their
 // _Nccl...Send/Recv counterparts and removes data dependencies between them.
 class NcclReplacePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override {
+  absl::Status Run(const GraphOptimizationPassOptions& options) override {
     if (options.graph == nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     Graph* graph = options.graph->get();
     if (graph == nullptr) {
@@ -255,7 +254,7 @@ class NcclReplacePass : public GraphOptimizationPass {
     }
     // Find reduction and broadcast ops and replace them with Send/Recv ops.
     for (Node* node : graph->op_nodes()) {
-      StringPiece type = node->type_string();
+      absl::string_view type = node->type_string();
       if (!absl::StartsWith(type, "Nccl")) {
         continue;
       }
@@ -266,7 +265,7 @@ class NcclReplacePass : public GraphOptimizationPass {
         TF_RETURN_IF_ERROR(ReplaceBroadcast(graph, node));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PLACEMENT, 0,
