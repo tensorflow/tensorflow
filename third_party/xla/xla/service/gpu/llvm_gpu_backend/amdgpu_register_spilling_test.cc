@@ -50,8 +50,10 @@ class AMDGPURegisterSpillingTest
   // Helper to load IR module from test data
   std::unique_ptr<llvm::Module> LoadTestModule(llvm::LLVMContext* context,
                                                const std::string& filename) {
+    auto path = tsl::testing::XlaSrcRoot();
+    path = path.erase(path.length() - 4);                                            
     return LoadIRModule(
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+        tsl::io::JoinPath(path, "external/local_xla/xla", "service", "gpu",
                           "llvm_gpu_backend", "tests_data", filename),
         context);
   }
