@@ -219,9 +219,12 @@ class BaseDenseAttention(Layer):
 class Attention(BaseDenseAttention):
   """Dot-product attention layer, a.k.a. Luong-style attention.
 
-  Inputs are `query` tensor of shape `[batch_size, Tq, dim]`, `value` tensor of
-  shape `[batch_size, Tv, dim]` and `key` tensor of shape
-  `[batch_size, Tv, dim]`. The calculation follows the steps:
+  Inputs are a `query` tensor of shape `[batch_size, Tq, dim]`,
+  a `value` tensor of shape `[batch_size, Tv, dim]`, and an optional
+  `key` tensor of shape `[batch_size, Tv, dim]`.
+  
+  If `key` is not provided, `value` is used as the key (the most
+  common case).
 
   1. Calculate scores with shape `[batch_size, Tq, Tv]` as a `query`-`key` dot
      product: `scores = tf.matmul(query, key, transpose_b=True)`.
@@ -245,9 +248,9 @@ class Attention(BaseDenseAttention):
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
       * value: Value `Tensor` of shape `[batch_size, Tv, dim]`.
-      * key: Optional key `Tensor` of shape `[batch_size, Tv, dim]`. If not
-        given, will use `value` for both `key` and `value`, which is the
-        most common case.
+      * key: Optional key `Tensor` of shape `[batch_size, Tv, dim]`.
+      If not provided, `value` is used as the key.
+
     mask: List of the following tensors:
       * query_mask: A boolean mask `Tensor` of shape `[batch_size, Tq]`.
         If given, the output will be zero at the positions where
