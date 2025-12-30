@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
@@ -179,7 +180,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
 
   AotCompilationOptions aot_options(gpu_compiler->PlatformId());
-  aot_options.set_gpu_target_config(*options.gpu_target_config);
+  GpuTopology xla_gpu_topology = GetSingleDeviceGpuTopology(
+      /*platform_version=*/"", *options.gpu_target_config);
+  aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
 
