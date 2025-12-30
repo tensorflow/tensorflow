@@ -710,6 +710,14 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
+    local_defines = if_cuda_is_configured([
+        'GPU_SPEC_FILE_NAMES=(std::string[]){\\"a100_pcie_80\\", \\"a100_sxm_40\\", \
+         \\"a100_sxm_80\\", \\"a6000\\", \\"h100_pcie\\", \\"h100_sxm\\", \\"p100\\", \\"v100\\"}',
+         'PLATFORM_NAME=\\"CUDA\\"'
+    ]) + if_rocm_is_configured([
+        'GPU_SPEC_FILE_NAMES=(std::string[]){\\"mi200\\"}',
+        'PLATFORM_NAME=\\"ROCM\\"'
+    ]),
 )
 
 tf_proto_library(
