@@ -887,15 +887,15 @@ template <int ElemBytes>
 struct TransposeElemType;
 template <>
 struct TransposeElemType<1> {
-  using type = uint8;
+  using type = uint8_t;
 };
 template <>
 struct TransposeElemType<2> {
-  using type = uint16;
+  using type = uint16_t;
 };
 template <>
 struct TransposeElemType<4> {
-  using type = uint32;
+  using type = uint32_t;
 };
 template <>
 struct TransposeElemType<8> {

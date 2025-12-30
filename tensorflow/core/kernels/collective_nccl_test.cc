@@ -45,7 +45,7 @@ namespace tensorflow {
 static constexpr int kStepId = 10;
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node, DeviceBase* device) {
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> k = CreateOpKernel(
       DEVICE_GPU, device, device->GetAllocator(AllocatorAttributes()), node,
       TF_GRAPH_DEF_VERSION, &status);
@@ -77,7 +77,8 @@ class NcclTestBase : public ::testing::Test {
  protected:
   class DeviceInstance;
 
-  NcclTestBase(CollectiveType collective_type, const string& collective_name)
+  NcclTestBase(CollectiveType collective_type,
+               const std::string& collective_name)
       : collective_type_(collective_type), collective_name_(collective_name) {}
 
   void Init(const int num_ranks) {
@@ -139,7 +140,7 @@ class NcclTestBase : public ::testing::Test {
       std::vector<float> expected;
       InitExpected(&expected, input_length, rank, num_ranks);
       if (VLOG_IS_ON(3)) {
-        string str_buf;
+        std::string str_buf;
         for (const auto& x : expected) {
           absl::StrAppend(&str_buf, " ", x);
         }
@@ -159,13 +160,13 @@ class NcclTestBase : public ::testing::Test {
 
   class DeviceInstance {
    public:
-    DeviceInstance(int rank, const string& collective_name,
+    DeviceInstance(int rank, const std::string& collective_name,
                    CollectiveType collective_type, CollectiveTestEnv* test_env)
         : test_env_(test_env) {  // TODO(tmorris): tensor_?
       col_params_ =
           CreateCollectiveParams(*test_env_, rank, collective_name,
                                  collective_type, DT_FLOAT, TensorShape());
-      string device_name = col_params_->group.members[rank].device.name();
+      std::string device_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(device_name, &device_))
           << "Could not find device " << device_name << " existing devices "
           << test_env_->device_mgr->DebugString();
@@ -233,14 +234,14 @@ class NcclTestBase : public ::testing::Test {
     core::RefCountPtr<CollectiveParams> col_params_;
     std::unique_ptr<OpKernel> merge_op_;
     std::unique_ptr<OpKernel> final_op_;
-    Status status_;
+    absl::Status status_;
   };
 
   CollectiveType collective_type_;
-  const string collective_name_;
+  const std::string collective_name_;
   std::vector<std::unique_ptr<DeviceInstance>> instances_;
   mutex mu_;
-  int32 op_counter_ TF_GUARDED_BY(mu_) = 0;
+  int32_t op_counter_ TF_GUARDED_BY(mu_) = 0;
   std::unique_ptr<CollectiveTestEnv> test_env_;
 };
 
