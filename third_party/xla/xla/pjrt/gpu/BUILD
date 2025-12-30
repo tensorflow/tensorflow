@@ -450,7 +450,6 @@ cc_library(
         "//xla/pjrt:utils",
         "//xla/service:compiler",
         "//xla/service:dump",
-        "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/service:hlo_proto_cc",

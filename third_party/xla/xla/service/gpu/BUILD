@@ -2341,7 +2341,6 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:gpu_plugin",
-        "//xla/service:gpu_topology",
         "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
