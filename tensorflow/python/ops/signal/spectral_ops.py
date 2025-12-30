@@ -47,6 +47,8 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     frame_step: An integer scalar `Tensor`. The number of samples to step.
     fft_length: An integer scalar `Tensor`. The size of the FFT to apply.
       If not provided, uses the smallest power of 2 enclosing `frame_length`.
+      If `fft_length` is greater than `frame_length`, the input frame is
+      zero-padded to `fft_length` before computing the FFT.
     window_fn: A callable that takes a window length and a `dtype` keyword
       argument and returns a `[window_length]` `Tensor` of samples in the
       provided datatype. If set to `None`, no windowing is used.
