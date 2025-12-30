@@ -362,6 +362,22 @@ def argmin_v2(input, axis=None, output_type=dtypes.int64, name=None):
 
   Returns the smallest index in case of ties.
 
+  For example:
+  
+  >>> x = tf.constant([[4, 2, 9],
+  ...                  [1, 6, 3]])
+  
+  # Reduce across rows
+  >>> tf.math.argmin(x, axis=0)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([1, 0, 1])>
+  
+  # Reduce across columns
+  >>> tf.math.argmin(x, axis=1)
+  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 0])>
+  
+  If multiple minimum values occur, the first index is returned.
+
+
   Args:
     input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
       `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`,
