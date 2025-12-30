@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -512,8 +513,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
           new_window));
 
   auto ar = collective_ops_creator.create_cross_partition_all_reduce(
-      b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module), {},
-      (*lhs.state().next_channel_id)++);
+      b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
+      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)
@@ -739,8 +740,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
           new_window));
   auto ar =
       lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-          b, conv, MakeBinaryAdd(output_base_shape.element_type(), module), {},
-          (*lhs.state().next_channel_id)++);
+          b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
+          CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)
