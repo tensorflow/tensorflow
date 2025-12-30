@@ -61,7 +61,6 @@ tf_cuda_cc_test(
         "multi_gpu",
         "no_oss",
         "notap",
-        "cuda-only", # flaky on CI as of 2022-05-30
     ],
     deps = [
         "//tensorflow/core:test",

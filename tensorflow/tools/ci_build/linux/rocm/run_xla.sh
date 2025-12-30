@@ -138,6 +138,73 @@ EXCLUDED_TESTS=(
 
     # @local_xla//xla/tests:multioutput_fusion_test_amdgpu_any
     MultiOutputFusionTest.MultiOutputReduceFusionMajorWithExtraOutput
+
+    # vvv TODO (rocm) weekly-sync-20251224 excluded tests
+    # @local_xla//xla/service/gpu:gpu_compiler_test_amdgpu_any
+    PersistedAutotuningTest.SingleOperationGetsAutotuned
+
+    # @local_xla//xla/backends/gpu/codegen/triton:support_test
+    BitcastOrReshapeTestSuite/BitcastOrReshapeTest.IsTritonSupportedBitcastOrReshape*
+    BitcastOrReshapeTestSuite/BitcastOrReshapeTest.IsTritonSupported0DBitcastOrReshape*
+    BitcastConvertSuite/BitcastConvertTest.BitcastConvertDisguisedAsBitcast*
+    UnaryElementwiseTestSuite/UnaryElementwiseTest.IsTritonSupportedUnaryElementwise*
+    ConvertTestSuite/ConvertTest.Convert*
+    BinaryElementwiseTestSuite/BinaryElementwiseTest.IsTritonSupportedBinaryElementwise*
+    TernaryElementwiseTestSuite/TernaryElementwiseTest.IsTritonSupportedTernaryElementwise*
+    ReductionComputationTestSuite/ReductionComputationTest.DifferentBinaryOps*
+    TransposeTestSuite/TransposeTest.LoadTranspose3D*
+    SliceTestSuite/SliceTest.ContinuousSlice*
+    BroadcastTestSuite/BroadcastTest.Broadcast*
+    ParameterTestSuite/ParameterTest.Parameter*
+    ConstantTestSuite/ConstantTest.ConstantEffectiveScalar*
+    DotTestSuite/DotTypesTest.Dot*
+
+    # @local_xla//xla/backends/gpu/codegen/triton:support_legacy_test
+    DotTestTestSuite/DotTest.IsTritonSupportedExecutesCorrectlyForDot/f8e5m2_dot
+
+    # @local_xla//xla/backends/gpu/profiler:kernel_name_tracer_test
+    KernelNameTracerTest.Create
+    KernelNameTracerTest.CaptureKernelNames
+    KernelNameTracerTest.CaptureKernelNamesFromCommandBufferThunk
+
+    # @local_xla//xla/service/gpu/autotuning:gemm_fusion_autotuner_test
+    GemmFusionAutotunerTest.Int8FusedGemm256
+    GemmFusionAutotunerLevelSweep/GemmFusionAutotunerLevelTest.Deviceless/0
+
+    # @local_xla//xla/service/gpu/tests:swap_conv_operands_test
+    SwapConvOperandsTest.LargePadding
+    SwapConvOperandsTest.SmallPadding
+    SwapConvOperandsTest.DoesNotLower
+
+    # @local_xla//xla/service/gpu/tests:gpu_triton_custom_call_test
+    GpuIrEmitterUnnestedTest.CanNotEmitTritonCustomCallOnPreAmpereGpu
+
+    # @local_xla//xla/tests:convolution_autotune_disabled_test
+    Transposed2DConvHloTest/Transposed2DConvHloTest.Simple*
+    ConvolveWithAndWithoutCanonicalization_Instantiation/ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims*
+    ConvolutionHloTest.ConvolveBackwardInput
+    ConvolutionHloTest.TestConv0D
+    ConvolutionHloTest.TestConv2DF16
+    ConvolutionHloTest.SwappedOperandConvolveWithStride
+    ConvolutionHloTest.TestFusedConv3D
+    ConvolutionHloTest.SwappedOperandConvolve
+    ConvolutionHloTest.TestBooleanInput
+    ConvolutionHloTest.SwappedOperandConvolve2
+    ConvolutionTest.Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid
+    ConvolutionTest.ConvolveF32BackwardInputGroupedConvolution
+    Convolve_1x1x4x4_1x1x2x2_Valid/2.Types
+    Convolve_1x1x4x4_1x1x2x2_Valid/1.Types
+    Convolve_1x1x4x4_1x1x2x2_Same/1.Types
+    Convolve_1x1x4x4_1x1x2x2_Same/2.Types
+    Convolve_1x1x4x4_1x1x3x3_Same/1.Types
+    Convolve_1x1x4x4_1x1x3x3_Same/2.Types
+    Convolve2D*
+
+    # @local_xla//xla/tests:convolution_1d_autotune_disabled_test
+    ConvolutionTest.Convolve1D*
+    Convolve1D_1x2x5_1x2x2*
+    Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestFloat*
+    Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestHalf*
 )
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \

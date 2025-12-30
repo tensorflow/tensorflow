@@ -956,8 +956,7 @@ xla_cc_test(
     shard_count = 25,
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
-    tags = ["gpu"] +
-           ["cuda-only"], # TODO(rocm) 240729
+    tags = ["gpu"],
     deps = [
         ":fusion_emitter",
         ":support",
@@ -994,8 +993,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["no_mac",
-            "cuda-only"], # TODO(rocm) 240729
+    tags = ["no_mac",],
     deps = [
         ":fusion_emitter",
         ":support",

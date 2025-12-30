@@ -1208,7 +1208,6 @@ xla_cc_test(
     name = "dynamic_slice_fusion_rewriter_test",
     srcs = ["dynamic_slice_fusion_rewriter_test.cc"],
     tags = [
-        "cuda-only",
         "gpu",
     ],
     deps = [

@@ -2928,9 +2928,6 @@ xla_cc_test(
 xla_test(
     name = "float_support_test",
     srcs = ["float_support_test.cc"],
-    backend_tags = {"gpu": [
-        "cuda-only"
-    ]},
     backends = [
         "a100",
         "h100",

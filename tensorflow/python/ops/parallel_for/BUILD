@@ -127,7 +127,6 @@ cuda_py_strict_test(
     shard_count = 16,
     tags = [
         "no_oss",
-        "cuda-only",
     ],
     deps = [
         ":control_flow_ops",

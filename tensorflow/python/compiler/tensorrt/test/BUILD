@@ -74,7 +74,6 @@ filegroup(
 
 base_tags = [
     "no_cuda_on_cpu_tap",
-    "cuda-only",
     "no_windows",
     "nomac",
     # TODO(b/303453873): Re-enable tests once TensorRT has been updated

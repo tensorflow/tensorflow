@@ -267,7 +267,6 @@ xla_test(
         "swap_conv_operands_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["cuda-only"],
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -398,7 +397,6 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",

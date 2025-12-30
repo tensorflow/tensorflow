@@ -242,9 +242,9 @@ xla_test(
         "a100",
         "h100",
         "b200",
+        "amdgpu_any"
     ],
     tags = [
-        "cuda-only",
         "no_mac",
     ],
     deps = [
@@ -627,7 +627,6 @@ xla_test(
         "amdgpu_any",
     ],
     tags = [
-        "cuda-only",
         "noasan",
         "nomsan",
     ],

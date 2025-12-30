@@ -1502,7 +1502,6 @@ cuda_py_strict_test(
     srcs = ["config_test.py"],
     tags = [
         "no_pip",  # test_ops are not available in pip
-        "cuda-only",
     ],
     deps = [
         ":config",

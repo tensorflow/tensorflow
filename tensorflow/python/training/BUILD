@@ -1185,7 +1185,6 @@ cuda_py_strict_test(
     name = "basic_loops_test",
     size = "medium",
     srcs = ["basic_loops_test.py"],
-    tags = ["cuda-only"], #TODO(ROCm) Re-enable after issue is fixed.
     deps = [
         ":basic_loops",
         ":supervisor",

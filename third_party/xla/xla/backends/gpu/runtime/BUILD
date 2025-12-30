@@ -3600,7 +3600,6 @@ xla_test(
     },
     backends = ["gpu"],
     tags = [
-        "cuda-only",
         "gpu",
     ],
     deps = [
@@ -3677,7 +3676,6 @@ xla_test(
     },
     backends = ["gpu"],
     tags = [
-        "cuda-only",
         "gpu",
     ],
     deps = [
