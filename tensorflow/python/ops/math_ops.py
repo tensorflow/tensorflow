@@ -104,10 +104,6 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
-
-from tensorflow.python.framework import config
-from tensorflow.python.platform import tf_logging as logging
-
 # Aliases for some automatically-generated names.
 nextafter = gen_math_ops.next_after
 
@@ -125,7 +121,7 @@ def linspace_nd(start, stop, num, name=None, axis=0):
   If `num <= 0`, `ValueError` is raised.
 
   Matches
-  [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/numpy.linspace.html)'s
+  [np.linspace](https://docs.scipy.org/doc/numpy/reference/generated/nump\y.linspace.html)'s
   behaviour
   except when `num == 0`.
 
@@ -2973,23 +2969,11 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   @end_compatibility
   """
   keepdims = False if keepdims is None else bool(keepdims)
-
-  # Warn users when op determinism is enabled but reduce_min may still be nondeterministic.
-  from tensorflow.python.framework import config
-  from tensorflow.python.platform import tf_logging as logging
-
-  if config.is_op_determinism_enabled():
-    logging.warning(
-        "tf.reduce_min may produce nondeterministic results on some GPU "
-        "configurations even when op determinism is enabled."
-    )
-
   return _may_reduce_to_scalar(
       keepdims, axis,
       gen_math_ops._min(
           input_tensor, _ReductionDims(input_tensor, axis), keepdims,
           name=name))
-
 
 
 @tf_export(v1=["math.reduce_max", "reduce_max"])
