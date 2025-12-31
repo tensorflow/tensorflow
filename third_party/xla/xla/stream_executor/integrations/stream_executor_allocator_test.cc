@@ -95,7 +95,7 @@ TEST(StreamExecutorAllocatorTest,
           uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
         auto new_allocation = std::make_unique<GenericMemoryAllocation>(
             new char[64], 64, [&allocation](void* ptr, uint64_t size) {
-              EXPECT_EQ(ptr, allocation->opaque());
+              EXPECT_EQ(ptr, allocation->address().opaque());
               EXPECT_EQ(size, 64);
               char* char_ptr = static_cast<char*>(ptr);
               delete[] char_ptr;
@@ -107,7 +107,7 @@ TEST(StreamExecutorAllocatorTest,
   bool alloc_visitor_called = false;
   auto alloc_visitor = [&allocation, &alloc_visitor_called](
                            void* ptr, int index, uint64_t size) {
-    EXPECT_EQ(ptr, allocation->opaque());
+    EXPECT_EQ(ptr, allocation->address().opaque());
     EXPECT_EQ(index, 0);
     EXPECT_EQ(size, 64);
     alloc_visitor_called = true;
@@ -116,7 +116,7 @@ TEST(StreamExecutorAllocatorTest,
   bool free_visitor_called = false;
   auto free_visitor = [&allocation, &free_visitor_called](void* ptr, int index,
                                                           uint64_t size) {
-    EXPECT_EQ(ptr, allocation->opaque());
+    EXPECT_EQ(ptr, allocation->address().opaque());
     EXPECT_EQ(index, 0);
     EXPECT_EQ(size, 64);
     free_visitor_called = true;
@@ -129,9 +129,9 @@ TEST(StreamExecutorAllocatorTest,
   size_t bytes_received = 0;
   EXPECT_EQ(stream_executor_allocator.Alloc(/*alignment=*/1, /*num_bytes=*/64,
                                             &bytes_received),
-            allocation->opaque());
+            allocation->address().opaque());
   EXPECT_TRUE(alloc_visitor_called);
-  stream_executor_allocator.Free(allocation->opaque(), 64);
+  stream_executor_allocator.Free(allocation->address().opaque(), 64);
   EXPECT_TRUE(free_visitor_called);
 }
 
