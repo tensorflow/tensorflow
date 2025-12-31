@@ -1131,7 +1131,7 @@ absl::Status CustomKernelLaunchCmd::Record(
     buffers.push_back(buf);
   }
 
-  se::KernelArgsDeviceMemoryArray kernel_args(
+  stream_executor::KernelArgsDeviceAddressArray kernel_args(
       buffers, custom_kernel_.shared_memory_bytes());
 
   return HandleCmdCreateOrUpdate(
@@ -2476,7 +2476,7 @@ absl::Status DynamicSliceFusionCmd::Record(
   int64_t* offsets_alloc = [&] {
     absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
-        offsets_allocs_.at(stream.parent())->opaque());
+        offsets_allocs_.at(stream.parent())->address().opaque());
   }();
 
   auto offset_value = [&](int64_t arg_idx, int64_t offset_idx) -> int64_t& {
