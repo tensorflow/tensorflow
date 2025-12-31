@@ -59,6 +59,13 @@ namespace tsl {
 template <class T = void>
 class Future;
 
+// Promise<T> provides a facility to store a value or an error that is later
+// acquired asynchronously via a Future<T> constructed from the promise object.
+// Note that the promise object is meant to be used only once (set value or
+// error).
+template <class T = void>
+class Promise;
+
 // Returns a `Future` that will be successful if all `futures` complete
 // successfully, or return a first encountered error.
 Future<> JoinFutures(absl::Span<const Future<>> futures);
@@ -209,72 +216,6 @@ class FutureBase : public FutureMoveControl<is_move_only> {
  protected:
   static constexpr bool IsMoveOnly() { return is_move_only; }
 
-  // Future<T>::Promise provides a facility to store a value or an error
-  // that is later acquired asynchronously via a Future<T> constructed from
-  // the promise object. Note that the promise object is meant to be used only
-  // once (set value or error).
-  class Promise {
-   public:
-    Promise() = default;
-
-    Promise(Promise&& other) = default;
-    Promise& operator=(Promise&& other) = default;
-
-    ~Promise() {
-      if (promise_ && !IsUniqueReference() && promise_.IsUnavailable()) {
-        // At this point, we know that the underlying AsyncValueRef will
-        // otherwise not fulfilled ever because `Promise` is move-only.
-        promise_.emplace(
-            absl::InternalError("Promise destroyed without being set"));
-      }
-    }
-
-    explicit operator bool() const { return static_cast<bool>(promise_); }
-
-    // Returns if this promise is the unique reference to the underlying value.
-    // That is, this method returns true only if all of the following conditions
-    // are satisfied:
-    //
-    // - The promise is the only reference to the underlying value, i.e., there
-    //   are no other promises or futures associated with this value.
-    // - There are no OnReady callbacks registered to this promise.
-    //
-    // This may be used by the caller of `Set()` to short-circuit the work to
-    // fulfill the promise if no one will ever consume the value. Even in that
-    // case, consider fulfilling the promise with an error (e.g., `CANCELLED`)
-    // instead of dropping the promise without fulfilling it in order to make
-    // debugging easier. Also, be aware that the current promise may still be
-    // used to mint a future.
-    //
-    // We use this API only when we are exclusive owner of the promise and can
-    // guarantee that it didn't escape to other threads via pointers. Otherwise,
-    // this is best effort check, because it uses two atomic operations and is
-    // not atomic itself.
-    bool IsUniqueReference() const {
-      CHECK(promise_ && !promise_.GetAsyncValue()->IsIndirect())
-          << "Promise must wrap a concrete async value";
-      return promise_.GetAsyncValue()->NumRef() == 1 && !promise_.HasWaiter();
-    }
-
-   protected:
-    explicit Promise(tsl::AsyncValueRef<T> promise)
-        : promise_(std::move(promise)) {}
-
-    template <typename... Args>
-    void emplace(Args&&... args) const {
-      CHECK(promise_) << "Promise must wrap an async value";
-      CHECK(promise_.IsUnavailable())
-          << "Promise must not be fulfilled more than once";
-      promise_.template emplace<Args...>(std::forward<Args>(args)...);
-    }
-
-    // Takes a reference to the underlying AsyncValueRef container.
-    tsl::AsyncValueRef<T> ref() const { return promise_; }
-
-   private:
-    tsl::AsyncValueRef<T> promise_;
-  };
-
   class ProfilingCleanup {
    public:
     ProfilingCleanup(const FutureBase* parent,
@@ -420,7 +361,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   AsyncValuePtr<T> promise() const { return promise_.AsPtr(); }
 
  private:
-  friend class tsl::FutureHelpers;
+  friend class ::tsl::FutureHelpers;
 
   // Wraps a callback into a functor compatible with AsyncValue::AndThen.
   template <typename F>
@@ -451,6 +392,71 @@ class FutureBase : public FutureMoveControl<is_move_only> {
   FutureHelpers::OnBlockStart on_block_start_;
   // Function that is called after a thread finishes blocking on the promise.
   FutureHelpers::OnBlockEnd on_block_end_;
+};
+
+template <typename T>
+class PromiseBase {
+ public:
+  PromiseBase() = default;
+
+  PromiseBase(PromiseBase&& other) = default;
+  PromiseBase& operator=(PromiseBase&& other) = default;
+
+  ~PromiseBase() {
+    if (promise_ && !IsUniqueReference() && promise_.IsUnavailable()) {
+      // At this point, we know that the underlying AsyncValueRef will
+      // otherwise not fulfilled ever because `Promise` is move-only.
+      promise_.emplace(
+          absl::InternalError("Promise destroyed without being set"));
+    }
+  }
+
+  explicit operator bool() const { return static_cast<bool>(promise_); }
+
+  // Returns if this promise is the unique reference to the underlying value.
+  // That is, this method returns true only if all of the following conditions
+  // are satisfied:
+  //
+  // - The promise is the only reference to the underlying value, i.e., there
+  //   are no other promises or futures associated with this value.
+  // - There are no OnReady callbacks registered to this promise.
+  //
+  // This may be used by the caller of `Set()` to short-circuit the work to
+  // fulfill the promise if no one will ever consume the value. Even in that
+  // case, consider fulfilling the promise with an error (e.g., `CANCELLED`)
+  // instead of dropping the promise without fulfilling it in order to make
+  // debugging easier. Also, be aware that the current promise may still be
+  // used to mint a future.
+  //
+  // We use this API only when we are exclusive owner of the promise and can
+  // guarantee that it didn't escape to other threads via pointers. Otherwise,
+  // this is best effort check, because it uses two atomic operations and is
+  // not atomic itself.
+  bool IsUniqueReference() const {
+    CHECK(promise_ && !promise_.GetAsyncValue()->IsIndirect())
+        << "Promise must wrap a concrete async value";
+    return promise_.GetAsyncValue()->NumRef() == 1 && !promise_.HasWaiter();
+  }
+
+ protected:
+  friend class ::tsl::Future<internal::future_type_t<T>>;
+
+  explicit PromiseBase(tsl::AsyncValueRef<T> promise)
+      : promise_(std::move(promise)) {}
+
+  template <typename... Args>
+  void emplace(Args&&... args) const {
+    CHECK(promise_) << "Promise must wrap an async value";
+    CHECK(promise_.IsUnavailable())
+        << "Promise must not be fulfilled more than once";
+    promise_.template emplace<Args...>(std::forward<Args>(args)...);
+  }
+
+  // Takes a reference to the underlying AsyncValueRef container.
+  tsl::AsyncValueRef<T> ref() const { return promise_; }
+
+ private:
+  tsl::AsyncValueRef<T> promise_;
 };
 
 // A type predicate to check if a type combination of `R` and `U` is
@@ -519,6 +525,9 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       "Future<T> already has an implicit absl::StatusOr<T> semantics");
 
  public:
+  // Deprecated alias for `tsl::Promise<T>`.
+  using Promise = ::tsl::Promise<T>;
+
   Future() = default;
 
   // Constructs an immediately available future with the given value.
@@ -534,43 +543,6 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       std::enable_if_t<std::is_constructible_v<T, U> &&
                        !std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
   explicit Future(U&& value) : Base(std::forward<U>(value)) {}
-
-  class [[nodiscard]] Promise : public Base::Promise {
-   public:
-    using Base::Promise::Promise;
-
-    // Sets the value of the promise. Must be called at most once.
-    //
-    // After Set is called, value will be delivered to waiters on the Future
-    // constructed from a promise, via blocking or callbacks.
-    void Set(absl::StatusOr<T> value) {
-      Base::Promise::emplace(std::move(value));
-    }
-
-    // A helper function to convert move-only Promise to shared_ptr, which is
-    // useful when the promise has to be captured by a std::function.
-    std::shared_ptr<Promise> ToShared() && {
-      return std::make_shared<Promise>(std::move(*this));
-    }
-
-    // Returns a future associated with the promise. We use a trick we an extra
-    // template parameter to disable converting promise to future for move-only
-    // types, as it is illegal to create multiple move-only futures sharing the
-    // underlying async value storage. For move-only types, the only way to
-    // create a future is to call `MakePromise`.
-    template <typename U = void,
-              std::enable_if_t<!is_move_only && std::is_void_v<U>>* = nullptr>
-    [[nodiscard]] Future<T> future(
-        FutureHelpers::OnBlockStart on_block_start = nullptr,
-        FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-      return Future<T>(*this, std::move(on_block_start),
-                       std::move(on_block_end));
-    }
-
-   private:
-    friend class Future<T>;
-    friend class internal::PromiseMaker<T>;
-  };
 
   ABSL_DEPRECATED("Use `tsl::MakePromise<T>` instead")
   static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<T>> MakePromise(
@@ -703,6 +675,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
 
  private:
   friend class FutureHelpers;
+  friend class ::tsl::Promise<T>;
   friend class internal::PromiseMaker<T>;
 
   // Wraps a map functor into a callback compatible with Future<>::OnReady.
@@ -717,10 +690,52 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   //
   // - on_block_start is called before Await starts to block.
   // - on_block_end is called after Await finishes blocking.
-  Future(const Promise& promise, FutureHelpers::OnBlockStart on_block_start,
+  Future(const internal::PromiseBase<absl::StatusOr<T>>& promise,
+         FutureHelpers::OnBlockStart on_block_start,
          FutureHelpers::OnBlockEnd on_block_end)
       : Base(promise.ref(), std::move(on_block_start),
              std::move(on_block_end)) {}
+};
+
+template <typename T>
+class [[nodiscard]] Promise : public internal::PromiseBase<absl::StatusOr<T>> {
+  using Base = internal::PromiseBase<absl::StatusOr<T>>;
+
+ public:
+  Promise() = default;
+
+  // Sets the value of the promise. Must be called at most once.
+  //
+  // After Set is called, value will be delivered to waiters on the Future
+  // constructed from a promise, via blocking or callbacks.
+  void Set(absl::StatusOr<T> value) { Base::emplace(std::move(value)); }
+
+  // A helper function to convert move-only Promise to shared_ptr, which is
+  // useful when the promise has to be captured by a std::function.
+  std::shared_ptr<Promise> ToShared() && {
+    return std::make_shared<Promise>(std::move(*this));
+  }
+
+  // Returns a future associated with the promise. We use a trick we an extra
+  // template parameter to disable converting promise to future for move-only
+  // types, as it is illegal to create multiple move-only futures sharing the
+  // underlying async value storage. For move-only types, the only way to
+  // create a future is to call `MakePromise`.
+  template <typename U = void,
+            std::enable_if_t<std::is_copy_constructible_v<T> &&
+                             std::is_void_v<U>>* = nullptr>
+  [[nodiscard]] Future<T> future(
+      FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    return Future<T>(*this, std::move(on_block_start), std::move(on_block_end));
+  }
+
+ private:
+  friend class Future<T>;
+  friend class internal::PromiseMaker<T>;
+
+  explicit Promise(tsl::AsyncValueRef<absl::StatusOr<T>> promise)
+      : Base(std::move(promise)) {}
 };
 
 // Future<void> specialization for communicating stateless events.
@@ -731,6 +746,9 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   using Base = internal::FutureBase<absl::Status>;
 
  public:
+  // Deprecated alias for `tsl::Promise<>`.
+  using Promise = ::tsl::Promise<>;
+
   Future() = default;
 
   // Constructor for a future that is immediately ready with a given status.
@@ -750,38 +768,6 @@ class Future<void> : public internal::FutureBase<absl::Status> {
             std::enable_if_t<std::is_convertible_v<U, absl::Status>>* = nullptr>
   Future(U&& status)  // NOLINT
       : Future(absl::Status(std::forward<U>(status))) {}
-
-  class [[nodiscard]] Promise : public Base::Promise {
-   public:
-    using Base::Promise::Promise;
-
-    // Sets the promise completed with a given status. Must be called at most
-    // once.
-    //
-    // After Set is called, completion event will be delivered to waiters on the
-    // Future constructed from a promise, via blocking or callbacks.
-    void Set(absl::Status status = absl::OkStatus()) {
-      Base::Promise::emplace(std::move(status));
-    }
-
-    // A helper function to convert move-only Promise to shared_ptr, which is
-    // useful when the promise has to be captured by a std::function.
-    std::shared_ptr<Promise> ToShared() && {
-      return std::make_shared<Promise>(std::move(*this));
-    }
-
-    // Returns a future associated with the promise.
-    [[nodiscard]] Future<> future(
-        FutureHelpers::OnBlockStart on_block_start = nullptr,
-        FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
-      return Future<>(*this, std::move(on_block_start),
-                      std::move(on_block_end));
-    }
-
-   private:
-    friend class Future<void>;
-    friend class internal::PromiseMaker<void>;
-  };
 
   ABSL_DEPRECATED("Use `tsl::MakePromise<>` instead")
   static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
@@ -872,6 +858,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
 
  private:
   friend class FutureHelpers;
+  friend class ::tsl::Promise<void>;
   friend class internal::PromiseMaker<void>;
 
   // Wraps a map functor into a callback compatible with Future<>::OnReady.
@@ -891,15 +878,49 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   //
   // - on_block_start is called before Await starts to block.
   // - on_block_end is called after Await finishes blocking.
-  Future(const Promise& promise, FutureHelpers::OnBlockStart on_block_start,
+  Future(const internal::PromiseBase<absl::Status>& promise,
+         FutureHelpers::OnBlockStart on_block_start,
          FutureHelpers::OnBlockEnd on_block_end)
       : Base(promise.ref(), std::move(on_block_start),
              std::move(on_block_end)) {}
 };
 
-// Bring Promise implementation into the tsl namespace.
-template <typename T = void>
-using Promise = typename Future<T>::Promise;  // NOLINT
+template <>
+class [[nodiscard]] Promise<void> : public internal::PromiseBase<absl::Status> {
+  using Base = internal::PromiseBase<absl::Status>;
+
+ public:
+  Promise() = default;
+
+  // Sets the promise completed with a given status. Must be called at most
+  // once.
+  //
+  // After Set is called, completion event will be delivered to waiters on the
+  // Future constructed from a promise, via blocking or callbacks.
+  void Set(absl::Status status = absl::OkStatus()) {
+    Base::emplace(std::move(status));
+  }
+
+  // A helper function to convert move-only Promise to shared_ptr, which is
+  // useful when the promise has to be captured by a std::function.
+  std::shared_ptr<Promise> ToShared() && {
+    return std::make_shared<Promise>(std::move(*this));
+  }
+
+  // Returns a future associated with the promise.
+  [[nodiscard]] Future<> future(
+      FutureHelpers::OnBlockStart on_block_start = nullptr,
+      FutureHelpers::OnBlockEnd on_block_end = nullptr) const {
+    return Future<>(*this, std::move(on_block_start), std::move(on_block_end));
+  }
+
+ private:
+  friend class Future<void>;
+  friend class internal::PromiseMaker<void>;
+
+  explicit Promise(tsl::AsyncValueRef<absl::Status> promise)
+      : Base(std::move(promise)) {}
+};
 
 namespace internal {
 
