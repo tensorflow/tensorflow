@@ -31,6 +31,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -59,6 +60,7 @@
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -304,17 +306,8 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
 
   auto req = std::make_unique<CopyArraysRequest>();
-  for (const auto& array : arrays) {
-    if (auto* proxy_array =
-            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
-      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
-                          proxy_array->GetHandle(semantics));
-      req->add_array_handles(handle.handle);
-    } else {
-      return absl::InvalidArgumentError(
-          "CopyArrays only supports arrays created via IFRT Proxy client");
-    }
-  }
+  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                      Array::GetHandles(arrays, semantics));
   if (devices.has_value()) {
     for (auto* const device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
@@ -373,6 +366,50 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
+    absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "ReshardArrays requires arrays and specs to have same size, but got ",
+        arrays.size(), " vs ", specs.size()));
+  }
+
+  auto req = std::make_unique<ReshardArraysRequest>();
+  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                      Array::GetHandles(arrays, semantics));
+  for (const auto& spec : specs) {
+    TF_RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
+                                    rpc_helper_->ifrt_serdes_version()));
+  }
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+
+  auto result_handles = std::make_shared<std::vector<uint64_t>>();
+  result_handles->reserve(arrays.size());
+  for ([[maybe_unused]] const auto& array : arrays) {
+    result_handles->push_back(rpc_helper_->NextHandle());
+    req->add_result_handles(result_handles->back());
+  }
+  rpc_helper_->ReshardArrays(std::move(req))
+      .OnReady([result_handles](
+                   absl::StatusOr<std::shared_ptr<ReshardArraysResponse>> r) {
+        if (r.ok()) {
+          for (int i = 0; i < result_handles->size(); ++i) {
+            CHECK_EQ((*r)->array_handles(i), (*result_handles)[i]);
+          }
+        }
+      });
+
+  std::vector<xla::ifrt::ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < result_handles->size(); ++i) {
+    new_arrays.push_back(tsl::MakeRef<Array>(
+        this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
+        specs[i].sharding, ArrayHandle{(*result_handles)[i]}, specs[i].layout));
+  }
+  return new_arrays;
 }
 
 tsl::Future<> Client::GetReadyFuture(

@@ -39,6 +39,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -696,6 +697,24 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
         result_handles[i], std::move(output_layouts[i]))));
   }
   return result;
+}
+
+absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(
+    absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics) {
+  ::google::protobuf::RepeatedField<uint64_t> handles;
+  handles.Reserve(arrays.size());
+  for (const auto& array : arrays) {
+    if (auto* proxy_array =
+            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          proxy_array->GetHandle(semantics));
+      handles.Add(handle.handle);
+    } else {
+      return absl::InvalidArgumentError(
+          "Operation only supports arrays created via IFRT Proxy client");
+    }
+  }
+  return handles;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>

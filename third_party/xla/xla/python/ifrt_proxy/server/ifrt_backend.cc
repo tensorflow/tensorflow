@@ -582,6 +582,11 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
                   &array_store_);
       return tsl::Future<Response>(asr->ProcessResponse(
           HandleRemapArraysRequest(*asr, std::move(request))));
+    case IfrtRequest::RequestCase::kReshardArraysRequest:
+      asr.emplace(request->reshard_arrays_request().result_handles(),
+                  &array_store_);
+      return tsl::Future<Response>(asr->ProcessResponse(
+          HandleReshardArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kCopyToHostBufferRequest:
       return HandleCopyToHostBufferRequest(std::move(request));
     case IfrtRequest::RequestCase::kDisassembleIntoSingleDeviceArraysRequest:
@@ -1099,6 +1104,37 @@ IfrtBackend::HandleRemapArraysRequest(ArrayStore::Reservation& asr,
   response->mutable_remap_arrays_response()->mutable_array_handles()->Assign(
       response_handles.begin(), response_handles.end());
 
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleReshardArraysRequest(ArrayStore::Reservation& asr,
+                                        std::unique_ptr<IfrtRequest> request) {
+  const auto& reshard_request = request->reshard_arrays_request();
+
+  TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
+                      array_store_.Find(reshard_request.array_handles()));
+
+  std::vector<ArraySpec> array_specs;
+  array_specs.reserve(reshard_request.array_specs_size());
+  for (const auto& array_spec_proto : reshard_request.array_specs()) {
+    TF_ASSIGN_OR_RETURN(auto array_spec,
+                        ArraySpec::FromProto(client_.get(), array_spec_proto));
+    array_specs.push_back(std::move(array_spec));
+  }
+  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
+                                          reshard_request.copy_semantics()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto out_arrays,
+      client_->ReshardArrays(absl::MakeSpan(arrays), array_specs, semantics));
+
+  std::vector<uint64_t> response_handles = asr.Fill(std::move(out_arrays));
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  response->mutable_reshard_arrays_response()->mutable_array_handles()->Assign(
+      response_handles.begin(), response_handles.end());
   return response;
 }
 
