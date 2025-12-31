@@ -126,7 +126,8 @@ class ManualConstructor {
   // Support users creating arrays of ManualConstructor<>s.  This ensures that
   // the array itself has the correct alignment.
   static void* operator new[](size_t size) {
-    return port::AlignedMalloc(size, TF_LIB_GTL_ALIGN_OF(Type));
+    return tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(TF_LIB_GTL_ALIGN_OF(Type)));
   }
   static void operator delete[](void* mem) { port::AlignedFree(mem); }
 
