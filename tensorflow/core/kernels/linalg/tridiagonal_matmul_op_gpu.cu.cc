@@ -70,7 +70,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
     OP_REQUIRES_OK(context, ValidateInputTensor(superdiag, "superdiag", rhs));
     OP_REQUIRES_OK(context, ValidateInputTensor(maindiag, "maindiag", rhs));
     OP_REQUIRES_OK(context, ValidateInputTensor(subdiag, "subdiag", rhs));
-    int64 batch_size = 1;
+    int64_t batch_size = 1;
     for (int i = 0; i < ndims - 2; i++) {
       batch_size *= rhs.dim_size(i);
     }
@@ -91,9 +91,9 @@ class TridiagonalMatMulOpGpu : public OpKernel {
   }
 
  private:
-  Status ValidateInputTensor(const Tensor& tensor,
-                             const std::string& tensor_name,
-                             const Tensor& rhs) {
+  absl::Status ValidateInputTensor(const Tensor& tensor,
+                                   const std::string& tensor_name,
+                                   const Tensor& rhs) {
     const int ndims = rhs.dims();
     if (tensor.dims() != ndims) {
       return errors::InvalidArgument(tensor_name,
@@ -120,7 +120,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
                                      tensor.dim_size(ndims - 1), " and ",
                                      rhs.dim_size(ndims - 2));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
