@@ -110,17 +110,17 @@ REGISTER_KERNEL(GPU, Eigen::half);
 REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
-REGISTER_KERNEL(GPU, uint8);
-REGISTER_KERNEL(GPU, int8);
+REGISTER_KERNEL(GPU, uint8_t);
+REGISTER_KERNEL(GPU, int8_t);
 REGISTER_KERNEL(GPU, qint8);
-REGISTER_KERNEL(GPU, uint16);
-REGISTER_KERNEL(GPU, int16);
+REGISTER_KERNEL(GPU, uint16_t);
+REGISTER_KERNEL(GPU, int16_t);
 REGISTER_KERNEL(GPU, qint16);
 REGISTER_KERNEL(GPU, quint16);
-REGISTER_KERNEL(GPU, uint32);
+REGISTER_KERNEL(GPU, uint32_t);
 REGISTER_KERNEL(GPU, qint32);
 REGISTER_KERNEL(GPU, int64_t);
-REGISTER_KERNEL(GPU, uint64);
+REGISTER_KERNEL(GPU, uint64_t);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
 REGISTER_KERNEL(GPU, bool);
@@ -215,10 +215,10 @@ REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
-REGISTER_KERNEL(GPU, uint8);
-REGISTER_KERNEL(GPU, int8);
-REGISTER_KERNEL(GPU, uint16);
-REGISTER_KERNEL(GPU, int16);
+REGISTER_KERNEL(GPU, uint8_t);
+REGISTER_KERNEL(GPU, int8_t);
+REGISTER_KERNEL(GPU, uint16_t);
+REGISTER_KERNEL(GPU, int16_t);
 REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
 REGISTER_KERNEL(GPU, int4);
@@ -231,12 +231,12 @@ REGISTER_KERNEL(GPU, uint4);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Fill")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("index_type")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("index_type")
                             .HostMemory("dims")
                             .HostMemory("value")
                             .HostMemory("output"),
-                        FillOp<CPUDevice, int32, int32>);
+                        FillOp<CPUDevice, int32_t, int32_t>);
 
 #undef REGISTER_KERNEL
 
@@ -301,9 +301,9 @@ REGISTER_KERNEL(Variant, GPU);
 
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("y"),
-                        ZerosLikeOp<CPUDevice, int32>);
+                        ZerosLikeOp<CPUDevice, int32_t>);
 
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
@@ -347,9 +347,9 @@ REGISTER_KERNEL(bfloat16, GPU);
 
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("y"),
-                        OnesLikeOp<CPUDevice, int32>);
+                        OnesLikeOp<CPUDevice, int32_t>);
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
