@@ -451,7 +451,7 @@ tsl::Future<> Array::GetReadyFuture() const {
   auto req = std::make_unique<CheckValueReadyRequest>();
   req->add_value_handles(handle_.handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   rpc_helper_->CheckValueReady(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
@@ -834,7 +834,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
 
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   auto on_ready = [promise = std::move(promise),
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
@@ -900,7 +900,7 @@ tsl::Future<> Array::CopyToHostBuffer(
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   auto on_ready = [host_buffer_store = rpc_helper_->host_buffer_store(),
                    promise = std::move(promise), host_buffer_handle,
                    mem_region = mem_region->mem_region()](

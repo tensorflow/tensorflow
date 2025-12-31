@@ -381,8 +381,7 @@ LoadedExecutable::LoadedExecutable(
   // eagerly schedule this fetch since, in some implementations, it may take a
   // long time for sharding information to be available.
 
-  auto [promise, future] =
-      tsl::Future<std::shared_ptr<Metadata>>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<Metadata>>();
   metadata_future_ = std::move(future);
 
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();

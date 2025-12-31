@@ -438,7 +438,7 @@ tsl::Future<> Client::GetReadyFuture(
     }
   }
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   rpc_helper_->CheckValueReady(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>

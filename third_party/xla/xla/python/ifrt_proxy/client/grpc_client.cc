@@ -67,7 +67,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto [init_response_promise, init_response_future] =
-      tsl::Future<std::shared_ptr<InitResponse>>::MakePromise();
+      tsl::MakePromise<std::shared_ptr<InitResponse>>();
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.

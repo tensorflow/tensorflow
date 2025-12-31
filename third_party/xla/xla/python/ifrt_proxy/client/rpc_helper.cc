@@ -358,7 +358,7 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
         std::move(tracked_user_context));
   }
 
-  auto [promise, future] = tsl::Future<std::shared_ptr<Resp>>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<Resp>>();
   auto on_ready = [promise = std::move(promise),
                    user_contexts_referenced_by_proxy_server =
                        std::move(user_contexts_referenced_by_proxy_server),
@@ -490,7 +490,7 @@ tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   CheckFuture(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckFutureResponse>>

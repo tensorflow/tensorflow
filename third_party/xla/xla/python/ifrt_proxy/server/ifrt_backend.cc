@@ -370,7 +370,7 @@ class IfrtBackend::InOrderRequestsProcessor {
 
   tsl::Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
     VLOG(3) << "Enqueuing " << request->ShortDebugString();
-    auto [promise, future] = tsl::Future<Response>::MakePromise();
+    auto [promise, future] = tsl::MakePromise<Response>();
     absl::MutexLock l(mu_);
     if (shutdown_msg_.has_value()) {
       promise.Set(absl::InternalError(absl::StrCat(
@@ -723,7 +723,7 @@ tsl::Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
     absl::MutexLock lock(in_flight_count_mutex_);
     ++in_flight_count_;
   }
-  auto [promise, future] = tsl::Future<Response>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<Response>();
   auto f =
       WithCurrentUserContext([this, promise = std::move(promise).ToShared(),
                               handle_fn = std::move(handle_fn)]() mutable {
