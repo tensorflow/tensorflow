@@ -517,11 +517,17 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   Future() = default;
 
   // Constructs an immediately available future with the given value.
-  explicit Future(absl::StatusOr<T> value) : Base(std::move(value)) {}
+  template <
+      typename U,
+      std::enable_if_t<std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
+  Future(U&& value)  // NOLINT
+      : Base(std::forward<U>(value)) {}
 
   // Constructs and immediately available future from the given value.
-  template <typename U,
-            std::enable_if_t<std::is_constructible_v<T, U>>* = nullptr>
+  template <
+      typename U,
+      std::enable_if_t<std::is_constructible_v<T, U> &&
+                       !std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
   explicit Future(U&& value) : Base(std::forward<U>(value)) {}
 
   class [[nodiscard]] Promise : public Base::Promise {

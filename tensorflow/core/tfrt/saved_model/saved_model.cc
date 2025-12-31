@@ -525,7 +525,7 @@ void UpdateCompileOptions(SavedModel::Options& options) {
 // TODO(b/416666698): When possible, call the reference implementation.
 void EmitSavedModelUnifiedModelId(absl::string_view saved_model_dir,
                                   const SavedModel::Options& options) {
-  string saved_model_uuid = "(empty)";
+  std::string saved_model_uuid = "(empty)";
   absl::StatusOr<FingerprintDef> fingerprint_or =
       saved_model::fingerprinting::ReadSavedModelFingerprint(saved_model_dir);
   if (fingerprint_or.ok()) {
