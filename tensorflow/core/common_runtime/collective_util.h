@@ -28,10 +28,10 @@ namespace tensorflow {
 namespace collective_util {
 
 absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
-                                         const string& device_name,
+                                         const std::string& device_name,
                                          Device** device,
                                          DeviceLocality* device_locality);
-string SubdivPermDebugString(const CollectiveParams& col_params);
+std::string SubdivPermDebugString(const CollectiveParams& col_params);
 
 // Used for executing a sub-operation, e.g. a merge_op instance, with
 // an OpKernelContext based on the one passed into this Op.
