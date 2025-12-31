@@ -268,7 +268,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       return;
     }
 
-    se::DeviceMemoryBase output_rows_device(
+    stream_executor::DeviceAddressBase output_rows_device(
         const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
         (num_indices - 1));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
@@ -504,7 +504,7 @@ class UnsortedSegmentReductionOp : public OpKernel {
                        this, context, data, segment_ids, num_segments));
     const auto segment_flat = segment_ids.flat<Index>();
     const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
-        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
+        num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32_t>()()
                                          : num_segments.scalar<int64_t>()()));
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("Input num_segments == ", output_rows,
@@ -565,7 +565,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
       const Tensor& num_segments = context->input(3);
       // Note that there is a Tnumsegments parameter on the op, but it is not
       // plumbed through to here and so always takes its default value of int32.
-      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
+      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32_t>()());
     }
     const int64_t num_indices = indices.NumElements();
 
@@ -956,7 +956,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       const Tensor& num_segments_t = context->input(3);
       SegmentId num_segments =
           internal::SubtleMustCopy(num_segments_t.dtype() == DT_INT32
-                                       ? num_segments_t.scalar<int32>()()
+                                       ? num_segments_t.scalar<int32_t>()()
                                        : num_segments_t.scalar<int64_t>()());
       *last_segment_id_host.mutable_data() = num_segments - 1;
       create_and_check_output();
@@ -975,7 +975,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
 
       // Need to copy last element of segment_ids from device to host, and then
       // asynchronously allocate the output and finish the computation.
-      se::DeviceMemoryBase last_segment_id_device(
+      stream_executor::DeviceAddressBase last_segment_id_device(
           const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
           (num_indices - 1));
       auto stream = context->op_device_context()->stream();
@@ -1315,7 +1315,8 @@ class SparseSegmentGradOpBase : public OpKernel {
     OP_REQUIRES(context, N == segment_ids.NumElements(),
                 errors::InvalidArgument(
                     "segment_ids and indices should have same size."));
-    const SegmentId M = internal::SubtleMustCopy(output_dim0.scalar<int32>()());
+    const SegmentId M =
+        internal::SubtleMustCopy(output_dim0.scalar<int32_t>()());
 
     auto input_flat = input.flat_outer_dims<T>();
     const auto indices_vec = indices.vec<Index>();
