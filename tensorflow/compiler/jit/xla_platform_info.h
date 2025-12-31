@@ -40,7 +40,7 @@ class XlaPlatformInfo {
       const DeviceType device_type, se::Platform::Id platform_id,
       const XlaDevice::Metadata* xla_device_metadata,
       const PjRtBaseDevice::Metadata* pjrt_device_metadata,
-      std::shared_ptr<se::DeviceMemoryAllocator> device_allocator)
+      std::shared_ptr<stream_executor::DeviceAddressAllocator> device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
@@ -54,7 +54,8 @@ class XlaPlatformInfo {
   }
 
   // Non-null only when run on an XLA device.
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator() const {
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator()
+      const {
     return device_allocator_;
   }
 
@@ -94,7 +95,7 @@ class XlaPlatformInfo {
   // is placed on a regular CPU or GPU device then device_allocator_ is null.
   // The allocator is of unknown provenance; keep it in a shared pointer to
   // set an artificial refcount of one.
-  std::shared_ptr<se::DeviceMemoryAllocator> device_allocator_;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> device_allocator_;
 
   XlaPlatformInfo(const XlaPlatformInfo&) = delete;
   void operator=(const XlaPlatformInfo&) = delete;
@@ -163,7 +164,7 @@ std::string GetPersistentCacheDirectory(
 // dummy tensors.
 //
 // `stream` parameter is nullable when running on host.
-std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
+std::shared_ptr<stream_executor::DeviceAddressAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info);
 
