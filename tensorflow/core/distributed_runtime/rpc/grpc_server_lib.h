@@ -105,7 +105,7 @@ class GrpcServer : public ServerInterface {
   absl::Status Start() override;
   absl::Status Stop() override;
   absl::Status Join() override;
-  const string target() const override;
+  const std::string target() const override;
 
   WorkerEnv* worker_env() override { return &worker_env_; }
   MasterEnv* master_env() override { return &master_env_; }
@@ -113,8 +113,7 @@ class GrpcServer : public ServerInterface {
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
   absl::Status AddMasterEagerContextToEagerService(
-      const tensorflow::uint64 context_id,
-      tensorflow::EagerContext* context) override;
+      const uint64_t context_id, tensorflow::EagerContext* context) override;
   // Update the set of workers that can be reached by the GRPC server
   absl::Status UpdateServerDef(const ServerDef& server_def) override;
   // Pass coordination service agent instance to server's RPC handler
@@ -126,7 +125,7 @@ class GrpcServer : public ServerInterface {
 
  protected:
   virtual absl::Status GetHostAndPort(const ServerDef& server_def,
-                                      string* host_name, int* port) const;
+                                      std::string* host_name, int* port) const;
   absl::Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
@@ -169,7 +168,7 @@ class GrpcServer : public ServerInterface {
   int bound_port() const { return bound_port_; }
 
   // Returns hostname.
-  const string& host_name() const { return host_name_; }
+  const std::string& host_name() const { return host_name_; }
 
   const ServerDef& server_def() const { return server_def_; }
   GrpcWorker* worker_impl() const { return worker_impl_.get(); }
@@ -185,7 +184,7 @@ class GrpcServer : public ServerInterface {
   int bound_port_ = 0;
 
   // The host name of this server
-  string host_name_;
+  std::string host_name_;
 
   // Guards server configuration, server, and state.
   mutex mu_;
