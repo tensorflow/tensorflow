@@ -179,7 +179,7 @@ class FutureBase : public FutureMoveControl<is_move_only> {
                    /*on_block_start=*/nullptr, /*on_block_end=*/nullptr) {}
 
  public:
-  using type = T;
+  using value_type = T;
 
   bool IsValid() const { return promise_ != nullptr; }
 
@@ -931,8 +931,8 @@ class PromiseMaker {
   static std::pair<Promise<T>, Future<T>> Make(
       FutureHelpers::OnBlockStart on_block_start,
       FutureHelpers::OnBlockEnd on_block_end) {
-    Promise<T> promise(
-        tsl::MakeUnconstructedAsyncValueRef<typename tsl::Future<T>::type>());
+    Promise<T> promise(tsl::MakeUnconstructedAsyncValueRef<
+                       typename tsl::Future<T>::value_type>());
     Future<T> future(promise, std::move(on_block_start),
                      std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
@@ -977,7 +977,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise<T>, Future<T>> MakePromise(
 // `f` on the given `executor`.
 template <typename T, typename F, typename R = std::invoke_result_t<F>,
           std::enable_if_t<std::is_constructible_v<
-              typename tsl::Future<T>::type, R>>* = nullptr>
+              typename tsl::Future<T>::value_type, R>>* = nullptr>
 [[nodiscard]] Future<T> MakeFutureOn(Executor& executor, F&& f) {
   auto [promise, future] = MakePromise<T>();
   executor.Execute(
