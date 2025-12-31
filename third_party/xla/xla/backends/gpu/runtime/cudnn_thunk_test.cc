@@ -34,7 +34,7 @@ using tsl::proto_testing::EqualsProto;
 
 TEST(CuDnnThunkTest, TestSerializationDeserialization) {
   CudnnThunkProto cudnn_thunk_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         fingerprint: "fingerprint"
         args { offset: 123 size: 456 }

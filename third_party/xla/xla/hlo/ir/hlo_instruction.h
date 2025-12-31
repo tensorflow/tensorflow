@@ -2017,8 +2017,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   const StatisticsViz& statistics_viz() const { return rare()->statistics_viz; }
 
   template <typename T>
-  using EnableIfProto = typename std::enable_if_t<
-      std::is_base_of<tsl::protobuf::Message, T>::value>;
+  using EnableIfProto =
+      typename std::enable_if_t<std::is_base_of<google::protobuf::Message, T>::value>;
 
   // Returns the backend-specific configuration for how a backend should compile
   // this HLO. The meaning of the field is backend specific. Not for use before
@@ -2045,7 +2045,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     return backend_config_.ApplyFnOnProto(fn);
   }
 
-  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
+  absl::Status set_backend_config(const google::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
   }
@@ -2571,7 +2571,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
-  absl::Status GetBackendConfigInternal(tsl::protobuf::Message* proto) const;
+  absl::Status GetBackendConfigInternal(google::protobuf::Message* proto) const;
 
   // Mark this instruction as dead. Accessed by friend class HloInstruction.
   void MarkAsDead() { marked_as_dead_ = true; }

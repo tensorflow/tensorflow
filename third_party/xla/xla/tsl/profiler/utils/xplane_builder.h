@@ -18,20 +18,18 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
-#include <limits>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/meta/type_traits.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/timespan.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -174,7 +172,7 @@ class XStatsBuilder {
   static void SetStatValue(const XStatMetadata& value, XStat* stat) {
     stat->set_ref_value(value.id());
   }
-  static void SetStatValue(const protobuf::MessageLite& proto, XStat* stat) {
+  static void SetStatValue(const google::protobuf::MessageLite& proto, XStat* stat) {
     auto* bytes = stat->mutable_bytes_value();
     proto.SerializeToString(bytes);
   }

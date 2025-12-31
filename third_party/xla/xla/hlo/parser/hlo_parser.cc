@@ -500,7 +500,7 @@ class HloParserImpl : public HloParser {
   bool CopyAttributeToProtoMessage(
       absl::flat_hash_set<std::string> non_proto_attrs,
       const absl::flat_hash_map<std::string, AttrConfig>& attrs,
-      tsl::protobuf::Message* message);
+      google::protobuf::Message* message);
 
   // Parses an attribute string into a protocol buffer `message`.
   // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
@@ -509,7 +509,7 @@ class HloParserImpl : public HloParser {
   // but added to the HloInstruction.
   bool ParseAttributesAsProtoMessage(
       const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
-      tsl::protobuf::Message* message);
+      google::protobuf::Message* message);
 
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
@@ -5532,17 +5532,16 @@ bool HloParserImpl::ParseAttributeHelper(
 bool HloParserImpl::CopyAttributeToProtoMessage(
     absl::flat_hash_set<std::string> non_proto_attrs,
     const absl::flat_hash_map<std::string, AttrConfig>& attrs,
-    tsl::protobuf::Message* message) {
-  const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  const tsl::protobuf::Reflection* reflection = message->GetReflection();
+    google::protobuf::Message* message) {
+  const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
+  const google::protobuf::Reflection* reflection = message->GetReflection();
 
   for (const auto& p : attrs) {
     const std::string& name = p.first;
     if (non_proto_attrs.find(name) != non_proto_attrs.end()) {
       continue;
     }
-    const tsl::protobuf::FieldDescriptor* fd =
-        descriptor->FindFieldByName(name);
+    const google::protobuf::FieldDescriptor* fd = descriptor->FindFieldByName(name);
     if (!fd) {
       std::string allowed_attrs = "Allowed attributes: ";
 
@@ -5560,18 +5559,18 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
     CHECK(!fd->is_repeated());  // Repeated fields not implemented.
     bool success = [&] {
       switch (fd->type()) {
-        case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+        case google::protobuf::FieldDescriptor::TYPE_BOOL: {
           auto attr_value = static_cast<optional<bool>*>(p.second.result);
           if (attr_value->has_value()) {
             reflection->SetBool(message, fd, **attr_value);
           }
           return true;
         }
-        case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+        case google::protobuf::FieldDescriptor::TYPE_ENUM: {
           auto attr_value =
               static_cast<optional<std::string>*>(p.second.result);
           if (attr_value->has_value()) {
-            const tsl::protobuf::EnumValueDescriptor* evd =
+            const google::protobuf::EnumValueDescriptor* evd =
                 fd->enum_type()->FindValueByName(**attr_value);
             reflection->SetEnum(message, fd, evd);
           }
@@ -5593,8 +5592,8 @@ bool HloParserImpl::CopyAttributeToProtoMessage(
 // attributes ::= (',' attribute)*
 bool HloParserImpl::ParseAttributesAsProtoMessage(
     const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
-    tsl::protobuf::Message* message) {
-  const tsl::protobuf::Descriptor* descriptor = message->GetDescriptor();
+    google::protobuf::Message* message) {
+  const google::protobuf::Descriptor* descriptor = message->GetDescriptor();
   absl::flat_hash_map<std::string, AttrConfig> attrs;
 
   // Storage for attributes.
@@ -5607,16 +5606,16 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
 
   // Populate the storage of expected attributes from the protobuf description.
   for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
-    const tsl::protobuf::FieldDescriptor* fd = descriptor->field(field_idx);
+    const google::protobuf::FieldDescriptor* fd = descriptor->field(field_idx);
     absl::string_view field_name = fd->name();
     switch (fd->type()) {
-      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+      case google::protobuf::FieldDescriptor::TYPE_BOOL: {
         bool_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
                              &bool_params.back()};
         break;
       }
-      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+      case google::protobuf::FieldDescriptor::TYPE_ENUM: {
         string_params.emplace_back(std::nullopt);
         attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
                              &string_params.back()};

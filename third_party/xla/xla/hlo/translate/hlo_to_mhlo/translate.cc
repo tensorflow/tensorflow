@@ -24,26 +24,27 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/PassManager.h"
+#include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 namespace {
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public google::protobuf::io::ErrorCollector {
  public:
-  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+  void RecordError(int line, google::protobuf::io::ColumnNumber column,
                    absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
+  google::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||

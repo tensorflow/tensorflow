@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/protobuf.h"
 
 // Delete leaked Windows definitions.
 #ifdef PLATFORM_WINDOWS
@@ -429,13 +429,13 @@ class Env {
   /// \brief Returns the number of nano-seconds since the Unix epoch.
   virtual uint64_t NowNanos() const { return EnvTime::NowNanos(); }
 
-  /// \brief Returns the number of micro-seconds since the Unix epoch.
+  /// \brief Returns the number of microseconds since the Unix epoch.
   virtual uint64_t NowMicros() const { return EnvTime::NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
   virtual uint64_t NowSeconds() const { return EnvTime::NowSeconds(); }
 
-  /// Sleeps/delays the thread for the prescribed number of micro-seconds.
+  /// Sleeps/delays the thread for the prescribed number of microseconds.
   virtual void SleepForMicroseconds(int64_t micros) = 0;
 
   /// Returns the process ID of the calling process.
@@ -660,38 +660,38 @@ absl::Status WriteStringToFile(Env* env, const std::string& fname,
 
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,
-                              const protobuf::MessageLite& proto);
+                              const google::protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
 absl::Status ReadBinaryProto(Env* env, const std::string& fname,
-                             protobuf::MessageLite* proto);
+                             google::protobuf::MessageLite* proto);
 
 /// Write the text representation of "proto" to the named file.
 inline absl::Status WriteTextProto(Env* /* env */,
                                    const std::string& /* fname */,
-                                   const protobuf::MessageLite& /* proto */) {
+                                   const google::protobuf::MessageLite& /* proto */) {
   return absl::UnimplementedError("Can't write text protos with protolite.");
 }
 absl::Status WriteTextProto(Env* env, const std::string& fname,
-                            const protobuf::Message& proto);
+                            const google::protobuf::Message& proto);
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
 inline absl::Status ReadTextProto(Env* /* env */,
                                   const std::string& /* fname */,
-                                  protobuf::MessageLite* /* proto */) {
+                                  google::protobuf::MessageLite* /* proto */) {
   return absl::UnimplementedError("Can't parse text protos with protolite.");
 }
 absl::Status ReadTextProto(Env* env, const std::string& fname,
-                           protobuf::Message* proto);
+                           google::protobuf::Message* proto);
 
 /// Read contents of named file and parse as either text or binary encoded proto
 /// data and store into `*proto`.
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
-                                   protobuf::Message* proto);
+                                   google::protobuf::Message* proto);
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
-                                   protobuf::MessageLite* proto);
+                                   google::protobuf::MessageLite* proto);
 
 // START_SKIP_DOXYGEN
 

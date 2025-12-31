@@ -73,6 +73,7 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/service:sharding_propagation",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -321,6 +322,8 @@ cc_library(
         "//xla/service:call_graph",
         "//xla/service:computation_layout",
         "//xla/service:sharding_propagation",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -333,7 +336,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

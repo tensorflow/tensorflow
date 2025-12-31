@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -33,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -334,8 +333,7 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
     const Literal& literal);
 
 // Returns a deterministic encoded string representation of the proto message.
-absl::StatusOr<std::string> GetProtoFingerprint(
-    const tsl::protobuf::MessageLite&);
+absl::StatusOr<std::string> GetProtoFingerprint(const google::protobuf::MessageLite&);
 
 // Returns concatenated fingerprint of an HLO instruction without its backend
 // config and its backend config's deterministic fingerprint.

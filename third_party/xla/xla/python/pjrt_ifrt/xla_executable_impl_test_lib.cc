@@ -31,6 +31,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/util/delimited_message_util.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -57,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -640,8 +641,8 @@ TEST(ExecutableTest, ExecutableSerialization) {
   TF_ASSERT_OK(serialized_executable);
 
   xla::ifrt::SerializedXlaExecutableMetadata metadata;
-  tsl::protobuf::io::ArrayInputStream input_stream(
-      serialized_executable->data(), serialized_executable->size());
+  google::protobuf::io::ArrayInputStream input_stream(serialized_executable->data(),
+                                            serialized_executable->size());
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 

@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
@@ -309,8 +309,8 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
           &gpu_target_config_string));
       stream_executor::GpuTargetConfigProto gpu_target_config_proto;
 
-      if (!tsl::protobuf::TextFormat::ParseFromString(
-              gpu_target_config_string, &gpu_target_config_proto)) {
+      if (!google::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
+                                               &gpu_target_config_proto)) {
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 

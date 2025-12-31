@@ -86,7 +86,7 @@ class CpuLibraryTest : public TargetMachineTestBase {
                             ParseAndReturnVerifiedModule(hlo_text));
 
     // Run the pass.
-    tsl::protobuf::RepeatedField<int> fusion_types;
+    google::protobuf::RepeatedField<int> fusion_types;
     fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
     if (spec.fusion_mode == "greedy") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
@@ -94,7 +94,7 @@ class CpuLibraryTest : public TargetMachineTestBase {
     if (spec.fusion_mode == "reduce") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     }
-    tsl::protobuf::RepeatedField<int> empty_fusion_types;
+    google::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
     bool use_ynnpack = spec.lib == "ynn";
     LibraryRewriterOptions options = {

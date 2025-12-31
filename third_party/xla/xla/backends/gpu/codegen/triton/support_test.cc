@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <wrapper_internal_exception_macros.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -22,19 +24,20 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "llvm/TargetParser/Triple.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,7 +52,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -160,8 +162,8 @@ std::vector<xla::PrimitiveType> AllOpSupportedTypes(HloOpcode opcode) {
 
 std::vector<PrecisionConfig::Algorithm> AllPrecisionAlgorithms() {
   std::vector<PrecisionConfig::Algorithm> algorithms;
-  const tsl::protobuf::EnumDescriptor* algorithm_descriptor =
-      tsl::protobuf::GetEnumDescriptor<PrecisionConfig::Algorithm>();
+  const google::protobuf::EnumDescriptor* algorithm_descriptor =
+      google::protobuf::GetEnumDescriptor<PrecisionConfig::Algorithm>();
   for (int enum_ix = 0; enum_ix < algorithm_descriptor->value_count();
        ++enum_ix) {
     algorithms.push_back(static_cast<PrecisionConfig::Algorithm>(

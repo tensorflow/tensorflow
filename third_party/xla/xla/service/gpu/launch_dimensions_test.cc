@@ -72,7 +72,7 @@ TEST(LaunchDimensionsTest, ToAndFromProto) {
 
 TEST(LaunchDimensionsTest, FromAndToProto) {
   LaunchDimensionsProto proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         block_counts { coordinates { x: 10, y: 20, z: 30 } }
         thread_counts_per_block { coordinates { x: 44 y: 55 z: 66 } }

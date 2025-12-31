@@ -21,6 +21,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/util/delimited_message_util.h"
 #include "xla/literal.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/coded_stream_iterators.h"
 #include "xla/service/hlo.pb.h"
@@ -28,7 +31,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -37,7 +39,7 @@ constexpr int kMaxSupportedLiteralVersion = 0;
 
 absl::Status SerializeHloUnoptimizedSnapshot(
     const HloUnoptimizedSnapshot& snapshot,
-    tsl::protobuf::io::ZeroCopyOutputStream* zero_copy_output_stream) {
+    google::protobuf::io::ZeroCopyOutputStream* zero_copy_output_stream) {
   // Prepare metadata
   HloUnoptimizedSnapshot metadata_proto;
   *metadata_proto.mutable_hlo_module() = snapshot.hlo_module();
@@ -55,10 +57,9 @@ absl::Status SerializeHloUnoptimizedSnapshot(
   }
 
   // Serialize metadata
-  tsl::protobuf::io::CodedOutputStream output_stream(zero_copy_output_stream);
+  google::protobuf::io::CodedOutputStream output_stream(zero_copy_output_stream);
   CodedStreamOutputIterator output_it(&output_stream);
-  tsl::protobuf::util::SerializeDelimitedToCodedStream(metadata_proto,
-                                                       &output_stream);
+  google::protobuf::util::SerializeDelimitedToCodedStream(metadata_proto, &output_stream);
 
   // Serialize literals
   for (const auto& hlo_input : snapshot.partitions()) {
@@ -72,15 +73,14 @@ absl::Status SerializeHloUnoptimizedSnapshot(
 }
 
 absl::StatusOr<HloUnoptimizedSnapshot> DeserializeHloUnoptimizedSnapshot(
-    tsl::protobuf::io::ZeroCopyInputStream* zero_copy_input_stream) {
+    google::protobuf::io::ZeroCopyInputStream* zero_copy_input_stream) {
   HloUnoptimizedSnapshot metadata;
   {
-    tsl::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
+    google::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
 
     // Deserialize metadata
-    if (!tsl::protobuf::util::ParseDelimitedFromCodedStream(
-            &metadata, &input_stream,
-            /*clean_eof=*/nullptr)) {
+    if (!google::protobuf::util::ParseDelimitedFromCodedStream(&metadata, &input_stream,
+                                                     /*clean_eof=*/nullptr)) {
       return absl::InternalError("Failed to deserialize metadata");
     }
   }
@@ -99,7 +99,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> DeserializeHloUnoptimizedSnapshot(
   for (const auto& partition : metadata.partitions()) {
     HloInputs* partition_metadata = snapshot_with_args.add_partitions();
     for (const auto& descriptor : partition.arguments_descriptors()) {
-      tsl::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
+      google::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
 
       if (descriptor.version() > kMaxSupportedLiteralVersion) {
         return absl::InternalError(absl::StrCat(
@@ -119,7 +119,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> DeserializeHloUnoptimizedSnapshot(
           literal_or_status.value().ToProto();
     }
   }
-  tsl::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
+  google::protobuf::io::CodedInputStream input_stream(zero_copy_input_stream);
   if (input_stream.BytesUntilTotalBytesLimit() > 0) {
     return absl::InternalError("Unexpected extra data in the stream");
   }

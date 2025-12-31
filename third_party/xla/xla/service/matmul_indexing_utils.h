@@ -36,13 +36,13 @@ absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
 
 // Batch dimensions of an operand of a dot instruction.
 // Just an unified accessor to lhs_batch_dimensions and rhs_batch_dimensions.
-const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+const google::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
     const HloInstruction& dot, int operand_number);
 
 // Contracting dimensions of an operand of a dot instruction.
 // Just an unified accessor to lhs_contracting_dimensions and
 // rhs_contracting_dimensions.
-const tsl::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
+const google::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
     const HloInstruction& dot, int operand_number);
 
 // Index of the only contracting dimension of dot instruction operand.

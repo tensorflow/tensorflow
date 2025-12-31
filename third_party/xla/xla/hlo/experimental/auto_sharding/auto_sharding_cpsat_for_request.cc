@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -27,7 +25,9 @@ limitations under the License.
 
 #include "absl/container/btree_set.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #ifdef PLATFORM_GOOGLE
 #include "file/base/options.h"
@@ -345,9 +345,9 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
 std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     const AutoShardingSolverRequest& request, MPSolver& solver,
     int64_t num_primitives,
-    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+    const google::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Pair>& intervals,
-    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+    const google::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Costs>& memory_costs,
     absl::string_view prim_type,
     std::vector<std::vector<MPVariable*>>& prim_vars,
@@ -412,7 +412,7 @@ void AddMemoryTerms(
     const AutoShardingSolverRequest& request, MPSolver& solver,
     int64_t num_primitives,
     const std::vector<std::pair<int64_t, int64_t>>& intervals,
-    const tsl::protobuf::RepeatedPtrField<  // NOLINT
+    const google::protobuf::RepeatedPtrField<  // NOLINT
         AutoShardingSolverRequest_Costs>& memory_costs,
     const MPVariable* overbudget_var,
     const absl::flat_hash_set<int64_t>& reduced_times,

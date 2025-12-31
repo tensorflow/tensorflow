@@ -593,7 +593,7 @@ std::string ConfigToString(const BackendConfig& config) {
 
 std::string Serialize(const BackendConfig& config) {
   if (auto* triton_config = std::get_if<TritonGemmConfig>(&config)) {
-    tsl::protobuf::TextFormat::Printer printer;
+    google::protobuf::TextFormat::Printer printer;
     printer.SetSingleLineMode(true);
     std::string result;
     printer.PrintToString(triton_config->ToProto(), &result);
@@ -1383,7 +1383,7 @@ static absl::Status DumpAutotuningLogs(const DebugOptions& debug_opts,
     }
 
     std::string textproto;
-    tsl::protobuf::TextFormat::PrintToString(autotuning_logs, &textproto);
+    google::protobuf::TextFormat::PrintToString(autotuning_logs, &textproto);
 
     TF_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), resolved_path, textproto));
@@ -1606,7 +1606,7 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunImpl(
   } else if (!debug_options.xla_gpu_override_gemm_autotuner().empty()) {
     // TODO(gflegar): support overriding with non-Triton configs (cuBLAS, cuDNN)
     AutotuneResult::TritonGemmKey gemm_key;
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+    CHECK(google::protobuf::TextFormat::ParseFromString(
         debug_options.xla_gpu_override_gemm_autotuner(), &gemm_key));
     VLOG(1) << "Overriding GEMM autotuner with the following config: "
             << gemm_key.DebugString();

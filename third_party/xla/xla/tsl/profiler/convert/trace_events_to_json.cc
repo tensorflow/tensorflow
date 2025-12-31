@@ -16,16 +16,17 @@ limitations under the License.
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
-#include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/convert/trace_container.h"
 #include "xla/tsl/profiler/utils/format_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 
 namespace tsl {
@@ -85,7 +86,7 @@ inline void AddResourceMetadata(uint32_t device_id, uint32_t resource_id,
 }
 
 inline void AddTraceEvent(const TraceEvent& event, std::string* json) {
-  auto duration_ps = std::max(event.duration_ps(), protobuf_uint64{1});
+  auto duration_ps = std::max(event.duration_ps(), uint64_t{1});
   absl::StrAppend(json, R"({"ph":"X","pid":)", event.device_id(), R"(,"tid":)",
                   event.resource_id(), R"(,"ts":)",
                   PicosToMicrosString(event.timestamp_ps()), R"(,"dur":)",

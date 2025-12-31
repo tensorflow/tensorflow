@@ -326,7 +326,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf_lite",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -429,7 +428,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -471,7 +469,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:base64",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -716,7 +713,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

@@ -22,8 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/util/proto/proto_matchers_test_protos.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace tsl {
 namespace proto_testing {
@@ -36,7 +36,7 @@ using ::testing::Not;
 Foo MakeFoo(absl::string_view sv) {
   const std::string s = std::string(sv);
   Foo foo;
-  EXPECT_TRUE(::tsl::protobuf::TextFormat::ParseFromString(s, &foo));
+  EXPECT_TRUE(::google::protobuf::TextFormat::ParseFromString(s, &foo));
   return foo;
 }
 

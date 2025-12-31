@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -1794,10 +1793,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return {dim_sizes, dim_scale_divisors};
     }
 
-    ShapeInfo(
-        const Literal& literal, const Literal& scale_literal,
-        const tsl::protobuf::RepeatedField<int64_t>& contracting_dims_field,
-        const tsl::protobuf::RepeatedField<int64_t>& batch_dims_field)
+    ShapeInfo(const Literal& literal, const Literal& scale_literal,
+              const google::protobuf::RepeatedField<int64_t>& contracting_dims_field,
+              const google::protobuf::RepeatedField<int64_t>& batch_dims_field)
         : rank(literal.shape().dimensions().size()) {
       batch_dim_indexes =
           DimensionVector(batch_dims_field.begin(), batch_dims_field.end());

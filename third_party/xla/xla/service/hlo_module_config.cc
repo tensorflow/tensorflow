@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -36,8 +37,8 @@ limitations under the License.
 #include "xla/service/sharding_config.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -117,8 +118,7 @@ std::string HloModuleConfig::compilation_cache_key() const {
 }
 
 /*static*/ void HloModuleConfig::AssignProtoShardableValueUpdatePairs(
-    tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>*
-        proto_update_pairs,
+    google::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>* proto_update_pairs,
     const std::vector<HloModuleConfig::ShardableValueUpdatePair>&
         update_pairs) {
   using ProtoShard = std::decay_t<decltype(proto_update_pairs->at(0))>;
@@ -201,8 +201,7 @@ static void AssignProtoPhaseOrderingConfig(
 
 /*static*/ void HloModuleConfig::AssignStructShardableValueUpdatePairs(
     HloModuleConfig& config,
-    const tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>&
-        pairs) {
+    const google::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>& pairs) {
   std::vector<HloModuleConfig::ShardableValueUpdatePair> cfg_pairs;
   cfg_pairs.reserve(pairs.size());
   for (const auto& proto_pair : pairs) {

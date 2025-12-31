@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {

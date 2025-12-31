@@ -68,7 +68,7 @@ absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
   return std::vector<int64_t>(nc.begin(), nc.end());
 }
 
-const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+const google::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
     const HloInstruction& dot, const int operand_number) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   Side side = GetSide(dot, operand_number);
@@ -78,7 +78,7 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
   return dimension_numbers.rhs_batch_dimensions();
 }
 
-const tsl::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
+const google::protobuf::RepeatedField<int64_t>& ContractingDimensionsForOperand(
     const HloInstruction& dot, const int operand_number) {
   const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
   Side side = GetSide(dot, operand_number);

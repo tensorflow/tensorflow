@@ -32,7 +32,6 @@ cc_library(
         "@com_google_protobuf//:protobuf_lite",
         "@jsoncpp_git//:jsoncpp",  # buildcleaner: keep
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

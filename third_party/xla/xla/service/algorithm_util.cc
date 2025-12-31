@@ -16,19 +16,18 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 
 #include <cstdint>
-#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace algorithm_util {
@@ -95,8 +94,8 @@ absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
       std::vector<PrimitiveType> f8_types;
-      const tsl::protobuf::EnumDescriptor* desc =
-          tsl::protobuf::GetEnumDescriptor<PrimitiveType>();
+      const google::protobuf::EnumDescriptor* desc =
+          google::protobuf::GetEnumDescriptor<PrimitiveType>();
       for (int i = 0; i < desc->value_count(); ++i) {
         PrimitiveType ty = static_cast<PrimitiveType>(desc->value(i)->number());
         if (primitive_util::IsF8Type(ty)) {

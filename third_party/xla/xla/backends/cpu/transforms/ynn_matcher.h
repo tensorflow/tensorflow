@@ -22,19 +22,19 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/backends/cpu/ynn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
 class YnnMatcher : public LibraryMatcher {
  public:
   explicit YnnMatcher(const TargetMachineFeatures* target_machine_features,
-                      const tsl::protobuf::RepeatedField<int>* fusion_types)
+                      const google::protobuf::RepeatedField<int>* fusion_types)
       : LibraryMatcher(target_machine_features, fusion_types) {}
   ~YnnMatcher() override = default;
 

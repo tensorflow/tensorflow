@@ -630,8 +630,8 @@ TEST_P(GpuHloScheduleParameterizedTest, ProfileGuidedCostModel) {
     costs { name: "ar-start1" cost_us: 1000.0 }
   )pb";
   tensorflow::profiler::ProfiledInstructionsProto profile;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      ar1_long_latency_proto_text, &profile));
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(ar1_long_latency_proto_text,
+                                                  &profile));
   std::string ar1_long_latency_proto_binary = profile.SerializeAsString();
   subtests.push_back({profile.SerializeAsString(), "ar-start1", "ar-done1"});
 
@@ -1527,8 +1527,8 @@ TEST_P(GpuHloScheduleParameterizedTest,
   )pb";
 
   tensorflow::profiler::ProfiledInstructionsProto profile;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      ar_long_latency_proto_text, &profile));
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(ar_long_latency_proto_text,
+                                                  &profile));
   std::string ar_long_latency_proto_binary = profile.SerializeAsString();
 
   // Post processing should work even with GpuAsyncTrackerBase.

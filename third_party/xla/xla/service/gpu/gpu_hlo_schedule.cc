@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -78,7 +79,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -347,7 +347,7 @@ std::optional<ProfiledInstructionsProto> ProfileFromConfig(
   }
   LOG(INFO) << "Not a binary proto, attempt to parse it as a text proto.";
   profile.Clear();
-  if (tsl::protobuf::TextFormat::ParseFromString(
+  if (google::protobuf::TextFormat::ParseFromString(
           std::string(from_config),  // NOLINT copybara XLA Linux ARM64 breaks
                                      // without this explicit conversion.
           &profile)) {

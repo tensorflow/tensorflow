@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
@@ -46,6 +45,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,9 +58,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -69,7 +67,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -525,7 +522,7 @@ absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
 }
 
 absl::StatusOr<std::string> GetProtoFingerprint(
-    const tsl::protobuf::MessageLite& proto) {
+    const google::protobuf::MessageLite& proto) {
   std::string result;
   TF_RET_CHECK(tsl::SerializeToStringDeterministic(proto, &result));
   return absl::WebSafeBase64Escape(result);

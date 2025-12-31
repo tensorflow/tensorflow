@@ -90,17 +90,17 @@ struct type_caster<xla::ConvolutionDimensionNumbers> {
       dims = cast<std::vector<int64_t>>(
           getattr(handle, "input_spatial_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_input_spatial_dimensions()));
       dims = cast<std::vector<int64_t>>(
           getattr(handle, "kernel_spatial_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_kernel_spatial_dimensions()));
       dims = cast<std::vector<int64_t>>(
           getattr(handle, "output_spatial_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_output_spatial_dimensions()));
       return true;
     } catch (...) {
@@ -121,22 +121,22 @@ struct type_caster<xla::DotDimensionNumbers> {
       std::vector<int64_t> dims = cast<std::vector<int64_t>>(
           getattr(handle, "lhs_contracting_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_lhs_contracting_dimensions()));
       dims = cast<std::vector<int64_t>>(
           getattr(handle, "rhs_contracting_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_rhs_contracting_dimensions()));
       dims =
           cast<std::vector<int64_t>>(getattr(handle, "lhs_batch_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_lhs_batch_dimensions()));
       dims =
           cast<std::vector<int64_t>>(getattr(handle, "rhs_batch_dimensions"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_rhs_batch_dimensions()));
       return true;
     } catch (...) {
@@ -157,17 +157,16 @@ struct type_caster<xla::GatherDimensionNumbers> {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "offset_dims"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
-                    value.mutable_offset_dims()));
+                google::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
       dims =
           cast<std::vector<int64_t>>(getattr(handle, "collapsed_slice_dims"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_collapsed_slice_dims()));
       dims = cast<std::vector<int64_t>>(getattr(handle, "start_index_map"));
-      std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
-                    value.mutable_start_index_map()));
+      std::copy(
+          dims.begin(), dims.end(),
+          google::protobuf::RepeatedFieldBackInserter(value.mutable_start_index_map()));
       value.set_index_vector_dim(
           cast<int64_t>(getattr(handle, "index_vector_dim")));
       return true;
@@ -189,17 +188,17 @@ struct type_caster<xla::ScatterDimensionNumbers> {
       std::vector<int64_t> dims;
       dims = cast<std::vector<int64_t>>(getattr(handle, "update_window_dims"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_update_window_dims()));
       dims =
           cast<std::vector<int64_t>>(getattr(handle, "inserted_window_dims"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_inserted_window_dims()));
       dims = cast<std::vector<int64_t>>(
           getattr(handle, "scatter_dims_to_operand_dims"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
+                google::protobuf::RepeatedFieldBackInserter(
                     value.mutable_scatter_dims_to_operand_dims()));
       value.set_index_vector_dim(
           cast<int64_t>(getattr(handle, "index_vector_dim")));
@@ -221,8 +220,7 @@ struct type_caster<xla::ReplicaGroup> {
     try {
       auto dims = cast<std::vector<int64_t>>(getattr(handle, "replica_ids"));
       std::copy(dims.begin(), dims.end(),
-                tsl::protobuf::RepeatedFieldBackInserter(
-                    value.mutable_replica_ids()));
+                google::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
       return true;
     } catch (...) {
       return false;

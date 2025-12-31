@@ -123,7 +123,6 @@ cc_library(
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",

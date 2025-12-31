@@ -60,9 +60,9 @@ using dnnl::memory;
 using dnnl::primitive;
 using dnnl::stream;
 
-void TransposeIfNecessary(
-    const tsl::protobuf::RepeatedField<uint64_t> dimensions,
-    bool transpose_last_2_dims, dnnl::memory::desc& mem_desc) {
+void TransposeIfNecessary(const google::protobuf::RepeatedField<uint64_t> dimensions,
+                          bool transpose_last_2_dims,
+                          dnnl::memory::desc& mem_desc) {
   if (mem_desc.get_ndims() < 2) {
     return;
   }

@@ -99,11 +99,11 @@ void DumpToFileInDirOrStdout(const HloModule& module,
 // Exactly where and in what formats it's dumped is determined by the debug
 // options. Allows for an optional custom serialization function to be used for
 // added customization.
-void DumpProtobufToFile(const tsl::protobuf::Message& proto,
+void DumpProtobufToFile(const google::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename,
                         absl::AnyInvocable<absl::StatusOr<std::string>(
-                            tsl::Env*, const tsl::protobuf::Message&)>
+                            tsl::Env*, const google::protobuf::Message&)>
                             text_formatter = nullptr);
 
 // Render graph in a given format.
@@ -114,22 +114,21 @@ std::string RenderGraph(absl::string_view label, const HloModule& module,
 
 // Similar to above, but the filename depends on module's information and the
 // given name. Also allows for the optional serialization function.
-void DumpPerModuleProtobufToFile(const HloModule& module,
-                                 const tsl::protobuf::Message& proto,
-                                 const DebugOptions& debug_options,
-                                 absl::string_view name,
-                                 absl::AnyInvocable<absl::StatusOr<std::string>(
-                                     tsl::Env*, const tsl::protobuf::Message&)>
-                                     text_formatter = nullptr);
+void DumpPerModuleProtobufToFile(
+    const HloModule& module, const google::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<absl::StatusOr<std::string>(tsl::Env*,
+                                                   const google::protobuf::Message&)>
+        text_formatter = nullptr);
 
 // Similar to above, but the filename depends on module's information, the
 // given name, and the number of times the module has been executed so far. Also
 // allows for the optional serialization function.
 void DumpPerExecutionProtobufToFile(
-    const HloModule& module, const tsl::protobuf::Message& proto,
+    const HloModule& module, const google::protobuf::Message& proto,
     const DebugOptions& debug_options, absl::string_view name,
-    absl::AnyInvocable<
-        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+    absl::AnyInvocable<absl::StatusOr<std::string>(tsl::Env*,
+                                                   const google::protobuf::Message&)>
         text_formatter = nullptr);
 
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
@@ -214,7 +213,7 @@ bool DumpingToStdout(const DebugOptions& opts);
 //
 // If 'full_name' is not null then it is set to the name of the file the
 // protobuf was written to.
-absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
+absl::Status DumpProtoToDirectory(const google::protobuf::Message& message,
                                   const std::string& directory,
                                   const std::string& file_name,
                                   std::string* full_path = nullptr);

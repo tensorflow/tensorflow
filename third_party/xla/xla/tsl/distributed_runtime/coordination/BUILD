@@ -203,7 +203,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )

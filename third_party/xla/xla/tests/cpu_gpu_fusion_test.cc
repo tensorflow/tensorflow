@@ -24,6 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "google/protobuf/text_format.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
+
 #define EIGEN_USE_THREADS
 
 #include "xla/tests/xla_test_backend_predicates.h"
@@ -50,7 +53,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -61,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -699,23 +700,23 @@ TEST_F(CpuGpuFusionTest, ReduceWindow) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   Window window;
   ASSERT_TRUE(
-      tsl::protobuf::TextFormat::ParseFromString("dimensions:{\n"
-                                                 "size:2\n"
-                                                 "stride:1\n"
-                                                 "padding_low:0\n"
-                                                 "padding_high:0\n"
-                                                 "window_dilation:1\n"
-                                                 "base_dilation:1\n"
-                                                 "}\n"
-                                                 "dimensions:{\n"
-                                                 "size:2\n"
-                                                 "stride:1\n"
-                                                 "padding_low:0\n"
-                                                 "padding_high:0\n"
-                                                 "window_dilation:1\n"
-                                                 "base_dilation:1\n"
-                                                 "}\n",
-                                                 &window));
+      google::protobuf::TextFormat::ParseFromString("dimensions:{\n"
+                                          "size:2\n"
+                                          "stride:1\n"
+                                          "padding_low:0\n"
+                                          "padding_high:0\n"
+                                          "window_dilation:1\n"
+                                          "base_dilation:1\n"
+                                          "}\n"
+                                          "dimensions:{\n"
+                                          "size:2\n"
+                                          "stride:1\n"
+                                          "padding_low:0\n"
+                                          "padding_high:0\n"
+                                          "window_dilation:1\n"
+                                          "base_dilation:1\n"
+                                          "}\n",
+                                          &window));
   auto nested_builder = HloComputation::Builder("mul");
   {
     auto x = nested_builder.AddInstruction(

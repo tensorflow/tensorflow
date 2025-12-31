@@ -42,7 +42,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf_lite",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -79,7 +78,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -95,7 +93,7 @@ onednn_graph_cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 
@@ -111,7 +109,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 

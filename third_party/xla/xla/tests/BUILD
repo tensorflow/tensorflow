@@ -68,7 +68,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
     ],
 )
 
@@ -3302,19 +3303,18 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_runner_interface",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_protobuf//:differencer",
     ],
 )
 
@@ -3500,7 +3500,7 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
@@ -3509,8 +3509,8 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
+        "@com_google_protobuf//:protobuf",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

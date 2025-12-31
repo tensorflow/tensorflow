@@ -20,8 +20,8 @@ limitations under the License.
 namespace tensorflow {
 namespace crash_analysis {
 
-BufferedDataSource* ReportProtoDataOnCrash(
-    const std::string& file_name, const tsl::protobuf::Message& message) {
+BufferedDataSource* ReportProtoDataOnCrash(const std::string& file_name,
+                                           const google::protobuf::Message& message) {
   return nullptr;
 }
 

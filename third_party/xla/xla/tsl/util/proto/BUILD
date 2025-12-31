@@ -36,10 +36,10 @@ cc_library(
         "//xla:__subpackages__",
     ],
     deps = [
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_for_library",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:differencer",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -57,7 +57,7 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

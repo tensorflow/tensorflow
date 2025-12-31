@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -65,7 +64,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -3072,7 +3070,7 @@ void ConvertV2ToV1Sharding(OpSharding& sharding) {
   absl::c_copy(
       ToArray(sharding.iota_reshape_dims(), sharding.iota_transpose_perm(),
               sharding.tile_assignment_dimensions()),
-      tsl::protobuf::RepeatedFieldBackInserter(
+      google::protobuf::RepeatedFieldBackInserter(
           sharding.mutable_tile_assignment_devices()));
   sharding.clear_iota_reshape_dims();
   sharding.clear_iota_transpose_perm();

@@ -227,11 +227,11 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
 
   // 1. Parse kDefaultCollectivePTable to get current profiles
   DeviceHloInstructionProfiles current_profiles_proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
-                                                   &current_profiles_proto));
+  CHECK(google::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
+                                            &current_profiles_proto));
   std::string current_profiles_pbtxt;
-  tsl::protobuf::TextFormat::PrintToString(current_profiles_proto,
-                                           &current_profiles_pbtxt);
+  google::protobuf::TextFormat::PrintToString(current_profiles_proto,
+                                    &current_profiles_pbtxt);
 
   // 2. Save current profiles to temp file
   std::string temp_file_current =
@@ -241,7 +241,7 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
 
   // 3. Save new profiles to temp file
   std::string new_profiles_pbtxt;
-  tsl::protobuf::TextFormat::PrintToString(new_profiles, &new_profiles_pbtxt);
+  google::protobuf::TextFormat::PrintToString(new_profiles, &new_profiles_pbtxt);
   std::string temp_file_new =
       tsl::io::JoinPath("/tmp", "xla_gpu_perf_merge_new.pbtxt");
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(tsl::Env::Default(), temp_file_new,
@@ -252,7 +252,7 @@ absl::Status UpdateHeader(const DeviceHloInstructionProfiles& new_profiles,
   DeviceHloInstructionProfiles merged_profiles = gen->Merge(files_to_merge);
 
   // 5. Format as text
-  tsl::protobuf::TextFormat::Printer printer;
+  google::protobuf::TextFormat::Printer printer;
   printer.SetInitialIndentLevel(1);
   std::string merged_profiles_pbtxt;
   printer.PrintToString(merged_profiles, &merged_profiles_pbtxt);

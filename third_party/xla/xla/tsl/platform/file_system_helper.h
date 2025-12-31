@@ -70,11 +70,10 @@ absl::StatusOr<bool> FileExists(Env* env, const string& fname);
 //  allows using a WritableFile with systems expecting a CopyingOutputStream and
 //  convert it to a ZeroCopyOutputStream easily using
 //  CopyingOutputStreamAdaptor.
-class WritableFileCopyingOutputStream
-    : public tsl::protobuf::io::CopyingOutputStream {
+class WritableFileCopyingOutputStream : public google::protobuf::io::CopyingOutputStream {
  public:
   explicit WritableFileCopyingOutputStream(WritableFile* file)
-      : tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
+      : google::protobuf::io::CopyingOutputStream(), file_(file) {}
 
   bool Write(const void* buffer, int size) override {
     return file_
@@ -92,7 +91,7 @@ class WritableFileCopyingOutputStream
 // and convert it to a ZeroCopyInputStream easily using
 // CopyingInputStreamAdaptor.
 class RandomAccessFileCopyingInputStream
-    : public protobuf::io::CopyingInputStream {
+    : public google::protobuf::io::CopyingInputStream {
  public:
   explicit RandomAccessFileCopyingInputStream(RandomAccessFile* file)
       : file_(file), position_(0) {}

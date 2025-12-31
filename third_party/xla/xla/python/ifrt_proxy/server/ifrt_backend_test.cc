@@ -91,13 +91,13 @@
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
 
+using ::google::protobuf::TextFormat;
 using ::testing::_;
 using ::testing::ByMove;
 using ::testing::DoAll;
@@ -114,7 +114,6 @@ using ::testing::Return;
 using ::testing::ReturnRef;
 using ::testing::SizeIs;
 using ::testing::StrEq;
-using ::tsl::protobuf::TextFormat;
 
 using ::tsl::proto_testing::EquivToProto;
 using ::tsl::proto_testing::Partially;

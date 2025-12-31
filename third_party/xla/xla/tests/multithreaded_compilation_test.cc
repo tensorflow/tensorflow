@@ -14,25 +14,24 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "google/protobuf/util/message_differencer.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -89,7 +88,7 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     }
   }
 
-  ::tsl::protobuf::util::MessageDifferencer differencer;
+  ::google::protobuf::util::MessageDifferencer differencer;
   bool first_time = true;
   HloProto first_hlo_proto;
   for (const std::unique_ptr<OpaqueExecutable>& exec : executables) {

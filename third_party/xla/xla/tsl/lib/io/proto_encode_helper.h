@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/coding.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/stringpiece.h"
 
 // A helper class for appending various kinds of values in protocol

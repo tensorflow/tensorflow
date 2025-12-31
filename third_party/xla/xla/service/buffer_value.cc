@@ -18,8 +18,11 @@ limitations under the License.
 #include <iosfwd>
 #include <ostream>
 
-#include "xla/hlo/ir/hlo_computation.h"
+#include "absl/algorithm/container.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -40,8 +43,8 @@ std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
     const HloInstruction& instruction, const ShapeIndex& index) {
   LogicalBufferProto::Location proto;
   proto.set_instruction_id(instruction.unique_id());
-  absl::c_copy(index, tsl::protobuf::RepeatedFieldBackInserter(
-                          proto.mutable_shape_index()));
+  absl::c_copy(index,
+               google::protobuf::RepeatedFieldBackInserter(proto.mutable_shape_index()));
   return proto;
 }
 

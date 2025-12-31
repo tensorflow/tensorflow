@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
@@ -132,7 +131,7 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
   VLOG(1) << "Writing autotune result to file: " << file_path;
 
   std::string result_str;
-  if (!tsl::protobuf::TextFormat::PrintToString(result, &result_str)) {
+  if (!google::protobuf::TextFormat::PrintToString(result, &result_str)) {
     return absl::InternalError("Failed to serialize autotune result.");
   }
 
@@ -186,8 +185,7 @@ TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), file_path,
                                            &autotune_result_str));
   AutotuneResult result;
-  if (!tsl::protobuf::TextFormat::ParseFromString(autotune_result_str,
-                                                  &result)) {
+  if (!google::protobuf::TextFormat::ParseFromString(autotune_result_str, &result)) {
     return absl::InvalidArgumentError("Failed to parse autotune result.");
   }
   return result;
@@ -212,7 +210,7 @@ absl::StatusOr<std::string> AutotuneResultsToString(
     const AutotuneResults& results, bool as_textproto) {
   if (as_textproto) {
     std::string textproto;
-    if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
+    if (google::protobuf::TextFormat::PrintToString(results, &textproto)) {
       return textproto;
     }
     return Internal("Failed to serialize autotune results.");
@@ -327,7 +325,7 @@ absl::StatusOr<AutotuneConfig> AutotuneConfig::FromDebugOptions(
     TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
                                              &file_content));
     TritonGemmConfigsProto configs;
-    if (!tsl::protobuf::TextFormat::ParseFromString(file_content, &configs)) {
+    if (!google::protobuf::TextFormat::ParseFromString(file_content, &configs)) {
       return absl::InvalidArgumentError(
           absl::StrCat("Could not parse override file: ", override_file));
     }
@@ -451,10 +449,9 @@ bool IsTextProtoPath(absl::string_view file_path) {
     absl::string_view data, bool as_textproto, bool allow_override) {
   AutotuneResults results;
   // The cast here is necessary for MacOS builds.
-  bool parse_success =
-      as_textproto ? tsl::protobuf::TextFormat::ParseFromString(
-                         std::string(data), &results)             // NOLINT
-                   : results.ParseFromString(std::string(data));  // NOLINT
+  bool parse_success = as_textproto
+                           ? google::protobuf::TextFormat::ParseFromString(data, &results)
+                           : results.ParseFromString(data);
   if (!parse_success) {
     return absl::InvalidArgumentError(
         "Failed to parse autotune results string.");

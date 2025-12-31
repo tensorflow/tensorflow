@@ -39,9 +39,9 @@ namespace m = match;
 
 class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
  public:
-  absl::Status HandleCustomCall(HloInstruction *instr) override {
-    HloInstruction *existing_gemm;
-    HloInstruction *bcast;
+  absl::Status HandleCustomCall(HloInstruction* instr) override {
+    HloInstruction* existing_gemm;
+    HloInstruction* bcast;
     if (Match(instr, m::CustomCall(&existing_gemm,
                                    {kGemmCallTarget, kCublasLtMatmulCallTarget})
                          .WithOperand(0, m::Broadcast(&bcast, m::Op()))) ||
@@ -50,14 +50,14 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
       TF_ASSIGN_OR_RETURN(auto gpu_config,
                           existing_gemm->backend_config<GpuBackendConfig>());
-      GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
-      DotDimensionNumbers *dim_nums = config.mutable_dot_dimension_numbers();
+      GemmBackendConfig& config = *gpu_config.mutable_gemm_backend_config();
+      DotDimensionNumbers* dim_nums = config.mutable_dot_dimension_numbers();
       int bcast_operand_index = instr->operand_index(bcast);
       int num_bcast_dims = (bcast->shape().dimensions().size() -
                             bcast->operand(0)->shape().dimensions().size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
-      const tsl::protobuf::RepeatedField<int64_t> &batch_dimensions =
+      const google::protobuf::RepeatedField<int64_t>& batch_dimensions =
           (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
                                      : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions
@@ -102,7 +102,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-static absl::StatusOr<bool> RunOnComputation(HloComputation *computation) {
+static absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
   GemmBroadcastFoldingVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -112,7 +112,7 @@ absl::StatusOr<bool> GemmBroadcastFoldingRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation *computation :
+  for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;

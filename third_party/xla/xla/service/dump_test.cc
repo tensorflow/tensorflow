@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -35,7 +37,10 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,7 +50,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -358,8 +362,8 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   std::string file_contents;
   TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), matches.front(),
                                      &file_contents));
-  tsl::protobuf::io::ArrayInputStream input_stream(file_contents.data(),
-                                                   file_contents.size());
+  google::protobuf::io::ArrayInputStream input_stream(file_contents.data(),
+                                            file_contents.size());
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot hlo_snapshot_loaded,
                           DeserializeHloUnoptimizedSnapshot(&input_stream));
   EXPECT_EQ(hlo_snapshot_loaded.hlo_module().name(), module.name());
@@ -445,7 +449,7 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
                          std::to_string(chunk_size_bytes) +
                          "\"\n"
                          "}"));
-  tsl::protobuf::TextFormat::Parser parser;
+  google::protobuf::TextFormat::Parser parser;
   DebugOptions parsed_options = DefaultDebugOptionsIgnoringFlags();
   parser.ParseFromString(non_default_options, &parsed_options);
   EXPECT_EQ(parsed_options.xla_dump_to(), dump_folder);

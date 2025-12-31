@@ -58,8 +58,7 @@ namespace {
 static const GemmPerfTable& Profile() {
   static const GemmPerfTable* profile = []() {
     auto* profile = new GemmPerfTable();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable,
-                                                     profile))
+    CHECK(google::protobuf::TextFormat::ParseFromString(kDefaultMatmulPTable, profile))
         << "Cannot parse a default profile.";
     return profile;
   }();

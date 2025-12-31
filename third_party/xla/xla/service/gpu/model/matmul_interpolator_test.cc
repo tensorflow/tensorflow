@@ -691,7 +691,7 @@ class MatmulInterpolatorTest : public Test {
       }
     )pb";
     HloInstructionProfileList profiles;
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(perf_table, &profiles));
+    CHECK(google::protobuf::TextFormat::ParseFromString(perf_table, &profiles));
     interpolator_ = *MatmulInterpolator::Create(
         profiles, TestGpuDeviceInfo::RTXA6000DeviceInfo());
   }

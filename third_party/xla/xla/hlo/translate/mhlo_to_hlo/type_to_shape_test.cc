@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 using mlir::Builder;
 using mlir::MemRefType;
@@ -48,7 +47,7 @@ namespace {
 // Only works as ShapeProto's textual representation is deterministic.
 class ProtoStringMatcher {
  public:
-  explicit ProtoStringMatcher(const tsl::protobuf::Message& expected)
+  explicit ProtoStringMatcher(const google::protobuf::Message& expected)
       : expected_(expected.SerializeAsString()) {}
 
   template <typename Message>
@@ -66,7 +65,7 @@ class ProtoStringMatcher {
 };
 
 inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
-    const tsl::protobuf::Message& x) {
+    const google::protobuf::Message& x) {
   return ::testing::MakePolymorphicMatcher(ProtoStringMatcher(x));
 }
 

@@ -15,20 +15,19 @@ limitations under the License.
 
 #include "xla/service/cpu/onednn_convolution.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_common.hpp"
-#include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 
 #define EIGEN_USE_THREADS
 
@@ -55,8 +53,8 @@ using dnnl::primitive;
 using dnnl::prop_kind;
 using dnnl::stream;
 
-memory::dims GetPrimitiveParameter(
-    const tsl::protobuf::RepeatedField<uint64_t>& field, int offset = 0) {
+memory::dims GetPrimitiveParameter(const google::protobuf::RepeatedField<uint64_t>& field,
+                                   int offset = 0) {
   memory::dims param_field(field.begin(), field.end());
   // Subtract the offset so that values are interpreted accurately
   for (int64_t& n : param_field) {
@@ -67,7 +65,7 @@ memory::dims GetPrimitiveParameter(
 
 std::vector<int> ComputePermutations(
     uint64_t dims, uint64_t dim0, uint64_t dim1,
-    const tsl::protobuf::RepeatedField<uint64_t>& spatial_dims) {
+    const google::protobuf::RepeatedField<uint64_t>& spatial_dims) {
   std::vector<int> perm_axes(dims);
   perm_axes[dim0] = 0;
   perm_axes[dim1] = 1;

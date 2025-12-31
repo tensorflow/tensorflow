@@ -26,8 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "nanobind/nanobind.h"
 #include "google/protobuf/repeated_ptr_field.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
+#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow::profiler::python {
@@ -41,7 +40,7 @@ class VisitorIterator
     : public std::iterator<std::input_iterator_tag, OutputType> {
  public:
   VisitorIterator(
-      const tsl::protobuf::RepeatedPtrField<InputType>* values,
+      const google::protobuf::RepeatedPtrField<InputType>* values,
       const std::function<OutputType(const InputType&)>& make_visitor,
       int pos = 0)
       : values_(values), make_visitor_(make_visitor), pos_(pos) {
@@ -74,7 +73,7 @@ class VisitorIterator
   OutputType operator*() { return make_visitor_((*values_)[pos_]); }
 
  private:
-  const tsl::protobuf::RepeatedPtrField<InputType>* values_;
+  const google::protobuf::RepeatedPtrField<InputType>* values_;
   const std::function<OutputType(const InputType&)> make_visitor_;
   int pos_ = 0;
 };

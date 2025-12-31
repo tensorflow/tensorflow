@@ -13,13 +13,10 @@ cc_library(
     hdrs = ["proto_serialization.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/tsl/lib/gtl:inlined_vector",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:macros",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_lite",
+        "@com_google_protobuf//src/google/protobuf/io",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

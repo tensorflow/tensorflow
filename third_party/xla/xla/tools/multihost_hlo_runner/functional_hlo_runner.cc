@@ -39,6 +39,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -227,7 +229,7 @@ absl::StatusOr<HloUnoptimizedSnapshot> ReadHloUnoptimizedSnapshot(
 
   tsl::RandomAccessFileCopyingInputStream custom_deserialization_input_stream(
       file.get());
-  tsl::protobuf::io::CopyingInputStreamAdaptor custom_deserialization_adaptor(
+  google::protobuf::io::CopyingInputStreamAdaptor custom_deserialization_adaptor(
       &custom_deserialization_input_stream);
 
   // Try to deserialize snapshot with custom deserialization.
@@ -244,9 +246,9 @@ absl::StatusOr<HloUnoptimizedSnapshot> ReadHloUnoptimizedSnapshot(
   // Fallback to standard deserialization. This requires creating a new input
   // stream because we need to read from the beginning of the file.
   tsl::RandomAccessFileCopyingInputStream fallback_input_stream(file.get());
-  tsl::protobuf::io::CopyingInputStreamAdaptor fallback_adaptor(
+  google::protobuf::io::CopyingInputStreamAdaptor fallback_adaptor(
       &fallback_input_stream);
-  tsl::protobuf::io::CodedInputStream coded_stream(&fallback_adaptor);
+  google::protobuf::io::CodedInputStream coded_stream(&fallback_adaptor);
 
   if (!proto.ParseFromCodedStream(&coded_stream)) {
     return Internal(

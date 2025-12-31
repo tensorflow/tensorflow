@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
-#include "tsl/platform/protobuf.h"
 
 namespace vhlo = ::mlir::vhlo;
 
@@ -58,7 +57,7 @@ class IfrtAtomProgramsToVhloPass
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
   explicit IfrtAtomProgramsToVhloPass(
-      tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
+      google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
       std::string vhlo_target_version)
       : atom_programs_(atom_programs),
         vhlo_target_version_(std::move(vhlo_target_version)) {}
@@ -80,7 +79,7 @@ class IfrtAtomProgramsToVhloPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IfrtAtomProgramsToVhloPass);
 
  private:
-  tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs_;
+  google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs_;
   std::string vhlo_target_version_;
 };
 
@@ -169,7 +168,7 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsToVhloPass(
-    tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
+    google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
     std::string vhlo_target_version) {
   return std::make_unique<IfrtAtomProgramsToVhloPass>(
       atom_programs, std::move(vhlo_target_version));

@@ -38,6 +38,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/message.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -948,12 +951,12 @@ absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
 
 namespace {
 
-std::string SerializeDeterministically(const tsl::protobuf::Message& message) {
+std::string SerializeDeterministically(const google::protobuf::Message& message) {
   const size_t size = message.ByteSizeLong();
   std::string buffer;
   buffer.resize(size);
-  tsl::protobuf::io::StringOutputStream string_stream(&buffer);
-  tsl::protobuf::io::CodedOutputStream coded_stream(&string_stream);
+  google::protobuf::io::StringOutputStream string_stream(&buffer);
+  google::protobuf::io::CodedOutputStream coded_stream(&string_stream);
   coded_stream.SetSerializationDeterministic(true);
   message.SerializeWithCachedSizes(&coded_stream);
   return buffer;

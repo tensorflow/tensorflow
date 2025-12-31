@@ -564,7 +564,7 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
 
 // A ZeroCopyInputStream on a RandomAccessFile.
 namespace {
-class FileStream : public protobuf::io::ZeroCopyInputStream {
+class FileStream : public google::protobuf::io::ZeroCopyInputStream {
  public:
   explicit FileStream(RandomAccessFile* file) : file_(file), pos_(0) {}
 
@@ -602,18 +602,18 @@ class FileStream : public protobuf::io::ZeroCopyInputStream {
 }  // namespace
 
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,
-                              const protobuf::MessageLite& proto) {
+                              const google::protobuf::MessageLite& proto) {
   std::string serialized;
   proto.AppendToString(&serialized);
   return WriteStringToFile(env, fname, serialized);
 }
 
 absl::Status ReadBinaryProto(Env* env, const std::string& fname,
-                             protobuf::MessageLite* proto) {
+                             google::protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
-  protobuf::io::CodedInputStream coded_stream(stream.get());
+  google::protobuf::io::CodedInputStream coded_stream(stream.get());
 
   if (!proto->ParseFromCodedStream(&coded_stream) ||
       !coded_stream.ConsumedEntireMessage()) {
@@ -625,21 +625,21 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
 }
 
 absl::Status WriteTextProto(Env* env, const std::string& fname,
-                            const protobuf::Message& proto) {
+                            const google::protobuf::Message& proto) {
   std::string serialized;
-  if (!protobuf::TextFormat::PrintToString(proto, &serialized)) {
+  if (!google::protobuf::TextFormat::PrintToString(proto, &serialized)) {
     return errors::FailedPrecondition("Unable to convert proto to text.");
   }
   return WriteStringToFile(env, fname, serialized);
 }
 
 absl::Status ReadTextProto(Env* env, const std::string& fname,
-                           protobuf::Message* proto) {
+                           google::protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
-  if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
+  if (!google::protobuf::TextFormat::Parse(stream.get(), proto)) {
     TF_RETURN_IF_ERROR(stream->status());
     return absl::DataLossError(
         absl::StrCat("Can't parse ", fname, " as text proto"));
@@ -648,7 +648,7 @@ absl::Status ReadTextProto(Env* env, const std::string& fname,
 }
 
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
-                                   protobuf::Message* proto) {
+                                   google::protobuf::Message* proto) {
   if (ReadTextProto(env, fname, proto).ok()) {
     return absl::OkStatus();
   }
@@ -656,7 +656,7 @@ absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
 }
 
 absl::Status ReadTextOrBinaryProto(Env* env, const std::string& fname,
-                                   protobuf::MessageLite* proto) {
+                                   google::protobuf::MessageLite* proto) {
   return ReadBinaryProto(env, fname, proto);
 }
 

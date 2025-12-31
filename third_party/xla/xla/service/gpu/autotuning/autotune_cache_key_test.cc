@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -69,8 +68,7 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
         tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                           "backends/gpu/target_config/specs", spec_file_name),
         &spec_string));
-    EXPECT_TRUE(
-        tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
+    EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(spec_string, &proto));
     absl::StatusOr<se::DeviceDescription> device_description =
         se::DeviceDescription::FromProto(proto.gpu_device_info());
     CHECK_OK(device_description.status());

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -29,9 +30,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -49,7 +49,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
            FindIndex(unnormalized_shape.layout().minor_to_major(), dim) - 1;
   };
 
-  auto transpose_dims = [&](tsl::protobuf::RepeatedField<int64_t>& dims,
+  auto transpose_dims = [&](google::protobuf::RepeatedField<int64_t>& dims,
                             const Shape& unnormalized_shape) {
     for (auto& dim : dims) {
       dim = transpose_dim(dim, unnormalized_shape);

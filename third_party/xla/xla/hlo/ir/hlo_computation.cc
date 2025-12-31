@@ -1301,7 +1301,7 @@ HloComputation::CreateFromProto(
     // If preserve_instruction_ids is true, we need to reserve space for all
     // instructions in the proto, even if they are gaps to keep the condition
     // that instructions[instruction->local_id_] == instruction.
-    tsl::protobuf::internal::RepeatedPtrIterator<const xla::HloInstructionProto>
+    google::protobuf::internal::RepeatedPtrIterator<const xla::HloInstructionProto>
         instruction_with_max_id = absl::c_max_element(
             proto.instructions(),
             [](const HloInstructionProto& a, const HloInstructionProto& b) {

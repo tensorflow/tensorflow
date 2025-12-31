@@ -17,19 +17,22 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_CLOUD_HTTP_REQUEST_FAKE_H_
 
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <string>
 #include <vector>
 
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/strcat.h"
 
 namespace tsl {
 
@@ -80,7 +83,7 @@ class FakeHttpRequest : public CurlHttpRequest {
     actual_uri_ += "Uri: " + uri + "\n";
   }
   void SetRange(uint64 start, uint64 end) override {
-    actual_request_ += strings::StrCat("Range: ", start, "-", end, "\n");
+    absl::StrAppend(&actual_request_, "Range: ", start, "-", end, "\n");
   }
   void AddHeader(const string& name, const string& value) override {
     actual_request_ += "Header " + name + ": " + value + "\n";
@@ -164,8 +167,8 @@ class FakeHttpRequest : public CurlHttpRequest {
 
   void SetTimeouts(uint32 connection, uint32 inactivity,
                    uint32 total) override {
-    actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
-                                       inactivity, " ", total, "\n");
+    absl::StrAppend(&actual_request_, "Timeouts: ", connection, " ", inactivity,
+                    " ", total, "\n");
   }
 
  private:

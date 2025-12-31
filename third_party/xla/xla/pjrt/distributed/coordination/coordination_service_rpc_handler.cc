@@ -31,9 +31,9 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -134,7 +134,7 @@ void CoordinationServiceRpcHandler::WatchJobStateAsync(
       request->job_name(), version_number,
       [response, done](std::vector<tensorflow::CoordinatedTaskStateInfo> info,
                        int64_t version_number) {
-        absl::c_move(info, tsl::protobuf::RepeatedFieldBackInserter(
+        absl::c_move(info, google::protobuf::RepeatedFieldBackInserter(
                                response->mutable_task_state()));
         response->set_version_number(version_number);
         done(absl::OkStatus());

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -38,6 +39,7 @@
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
@@ -75,7 +77,6 @@
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -306,8 +307,9 @@ class LoadedExecutable::OutputSpecCache {
   // If data has not already been cached, derives and caches the output spec
   // from the given `outputs` parameter. If data has already been cached,
   // returns OK status.
-  absl::Status Cache(const tsl::protobuf::RepeatedPtrField<
-                     LoadedExecutableExecuteResponse_Output>& outputs) {
+  absl::Status Cache(
+      const google::protobuf::RepeatedPtrField<LoadedExecutableExecuteResponse_Output>&
+          outputs) {
     {
       absl::MutexLock l(mu_);
       if (data_.has_value()) {

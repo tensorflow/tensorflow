@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "google/protobuf/repeated_field.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace spmd {
@@ -55,8 +54,7 @@ int64_t length(const Interval& interval) {
 
 std::pair<int64_t, int64_t> MemoryTermReducer::Reduce(
     int64_t num_lives, int64_t num_primitives,
-    const std::function<
-        tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
+    const std::function<google::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
         live,
     int64_t max_iterations) {
   LOG(INFO) << "Memory Term Reducer beginning to reduce number of terms ...";

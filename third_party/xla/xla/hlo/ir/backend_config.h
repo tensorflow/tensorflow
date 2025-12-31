@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -28,13 +29,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
 template <typename T>
-using EnableIfProto = typename std::enable_if_t<
-    std::is_base_of<tsl::protobuf::Message, T>::value>;
+using EnableIfProto =
+    typename std::enable_if_t<std::is_base_of<google::protobuf::Message, T>::value>;
 
 // Returns a string representation of a proto in the format used by
 // HloInstruction::raw_backend_config_string.
@@ -46,12 +46,12 @@ using EnableIfProto = typename std::enable_if_t<
 //   return instr.raw_backend_config_string();
 //
 absl::StatusOr<std::string> BackendConfigToRawString(
-    const tsl::protobuf::Message& proto);
+    const google::protobuf::Message& proto);
 
 // Clones the provided proto. If the input is nullptr, the result is also
 // nullptr.
-std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
-    const tsl::protobuf::Message* proto);
+std::unique_ptr<google::protobuf::Message> CloneBackendConfigProto(
+    const google::protobuf::Message* proto);
 
 // A wrapper around the BackendConfig proto. It can be initialized either with
 // a proto object or a string representing the JSON encoding of a proto. Once
@@ -70,7 +70,7 @@ class BackendConfigWrapper {
   BackendConfigWrapper() = default;
   explicit BackendConfigWrapper(std::string raw_string)
       : raw_string_(std::move(raw_string)) {}
-  explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
+  explicit BackendConfigWrapper(const google::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {
     absl::MutexLock other_lock{other.mutex_};
@@ -98,7 +98,7 @@ class BackendConfigWrapper {
     absl::WriterMutexLock lock{mutex_};
     return GetRawStringWithoutMutex();
   }
-  absl::Status GetProto(tsl::protobuf::Message* output_proto) const;
+  absl::Status GetProto(google::protobuf::Message* output_proto) const;
 
   // Type trait to check if a type has the mutable_custom_call_metadata method.
   template <typename T, typename = void>
@@ -165,8 +165,7 @@ class BackendConfigWrapper {
   // Unfortunately, all members have to be mutable, since either of them can be
   // the cached one.
   mutable absl::Mutex mutex_;
-  mutable std::unique_ptr<tsl::protobuf::Message> proto_
-      ABSL_GUARDED_BY(mutex_);
+  mutable std::unique_ptr<google::protobuf::Message> proto_ ABSL_GUARDED_BY(mutex_);
   mutable std::string raw_string_ ABSL_GUARDED_BY(mutex_);
 };
 

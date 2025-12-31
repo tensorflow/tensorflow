@@ -240,9 +240,8 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::vector<std::unique_ptr<tsl::protobuf::Message>>
-  ComputeBackendConfigs(const HloInstruction& hlo,
-                        se::StreamExecutor* executor) const;
+  virtual std::vector<std::unique_ptr<google::protobuf::Message>> ComputeBackendConfigs(
+      const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
   // Returns the backend configuration that the backend chooses by default for
   // the given HLO. Returns no configuration if the backend does not support
@@ -250,7 +249,7 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
+  virtual std::unique_ptr<google::protobuf::Message> ComputeDefaultBackendConfig(
       const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for

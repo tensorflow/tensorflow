@@ -468,7 +468,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const tsl::protobuf::Message* backend_config, const bool use_random_data,
+    const google::protobuf::Message* backend_config, const bool use_random_data,
     BufferAssignmentProto* buffer_assignment_proto) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string);
@@ -513,7 +513,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunReplicated(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const int64_t num_devices, const tsl::protobuf::Message* backend_config) {
+    const int64_t num_devices, const google::protobuf::Message* backend_config) {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> module =
       ParseAndReturnVerifiedModule(hlo_string, /*num_replicas=*/num_devices,
                                    /*num_partitions=*/1);
@@ -561,7 +561,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::RunMultipleTimes(
     const absl::string_view hlo_string, const bool run_hlo_passes,
-    const int64_t num_runs, const tsl::protobuf::Message* const backend_config,
+    const int64_t num_runs, const google::protobuf::Message* const backend_config,
     const bool assert_determinism) {
   std::vector<std::vector<Literal*>> fake_argument_ptrs(num_runs);
   std::vector<std::vector<Literal>> fake_arguments(num_runs);

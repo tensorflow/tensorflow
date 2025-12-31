@@ -44,14 +44,12 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/run_hlo_module.pb.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -152,10 +150,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         }
       }
     } else if (format == "pbtxt") {
-      if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
-          !tsl::protobuf::TextFormat::ParseFromString(data,
-                                                      proto.mutable_hlo()) &&
-          !tsl::protobuf::TextFormat::ParseFromString(
+      if (!google::protobuf::TextFormat::ParseFromString(data, &proto) &&
+          !google::protobuf::TextFormat::ParseFromString(data, proto.mutable_hlo()) &&
+          !google::protobuf::TextFormat::ParseFromString(
               data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
@@ -202,10 +199,9 @@ LoadInputFromData(absl::string_view data, absl::string_view format) {
       return InvalidArgument("Failed to parse input as HLO protobuf binary");
     }
   } else if (format == "pbtxt") {
-    if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
-        !tsl::protobuf::TextFormat::ParseFromString(data,
-                                                    proto.mutable_hlo()) &&
-        !tsl::protobuf::TextFormat::ParseFromString(
+    if (!google::protobuf::TextFormat::ParseFromString(data, &proto) &&
+        !google::protobuf::TextFormat::ParseFromString(data, proto.mutable_hlo()) &&
+        !google::protobuf::TextFormat::ParseFromString(
             data, proto.mutable_hlo()->mutable_hlo_module())) {
       return InvalidArgument("Failed to parse input as HLO protobuf text");
     }

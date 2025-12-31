@@ -17,12 +17,8 @@ limitations under the License.
 #define XLA_PROTOBUF_UTIL_H_
 
 #include <cstddef>
-#include <functional>
-#include <string>
 
-#include "absl/status/status.h"
 #include "google/protobuf/message.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace protobuf_util {
@@ -35,15 +31,14 @@ namespace protobuf_util {
 // In g3 tests, prefer matchers like ::testing::EqualsProto. In OSS tests,
 // prefer ::tsl::proto_testing::EqualsProto. These have more precise semantics
 // and will give far better error messages.
-[[nodiscard]] bool HaveSameSerialization(const tsl::protobuf::Message& m1,
-                                         const tsl::protobuf::Message& m2);
+[[nodiscard]] bool HaveSameSerialization(const google::protobuf::Message& m1,
+                                         const google::protobuf::Message& m2);
 
 // Return the hash of the message "m", based on its serialization.
 //
 // WARNING: This uses the same serialization approach used by
 // HaveSameSerialization, so the WARNING for that function applies here.
-[[nodiscard]] size_t ProtobufHashBySerialization(
-    const tsl::protobuf::Message& m);
+[[nodiscard]] size_t ProtobufHashBySerialization(const google::protobuf::Message& m);
 
 // Wrappers for HaveSameSerialization() so that we can use protos in containers
 // that require equality.
@@ -52,8 +47,8 @@ namespace protobuf_util {
 // HaveSameSerialization, so the WARNING for that function applies here.
 class HaveSameSerializationFunctor {
  public:
-  [[nodiscard]] bool operator()(const tsl::protobuf::Message& m1,
-                                const tsl::protobuf::Message& m2) const {
+  [[nodiscard]] bool operator()(const google::protobuf::Message& m1,
+                                const google::protobuf::Message& m2) const {
     return HaveSameSerialization(m1, m2);
   }
 };
@@ -64,7 +59,7 @@ class HaveSameSerializationFunctor {
 // HaveSameSerialization, so the WARNING for that function applies here.
 class ProtobufHashBySerializationFunctor {
  public:
-  [[nodiscard]] size_t operator()(const tsl::protobuf::Message& m) const {
+  [[nodiscard]] size_t operator()(const google::protobuf::Message& m) const {
     return ProtobufHashBySerialization(m);
   }
 };

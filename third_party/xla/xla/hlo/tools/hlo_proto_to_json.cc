@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/util/json_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -41,13 +42,13 @@ using std::string;
 namespace xla {
 namespace tools {
 
-absl::StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
+absl::StatusOr<std::string> ToJson(const google::protobuf::Message& message) {
   std::string json_output;
-  tsl::protobuf::util::JsonPrintOptions json_options;
+  google::protobuf::util::JsonPrintOptions json_options;
   json_options.add_whitespace = true;
   json_options.always_print_fields_with_no_presence = true;
-  auto status = tsl::protobuf::util::MessageToJsonString(message, &json_output,
-                                                         json_options);
+  auto status =
+      google::protobuf::util::MessageToJsonString(message, &json_output, json_options);
   if (!status.ok()) {
     return Internal("MessageToJsonString failed: %s",
                     std::string{status.message()});

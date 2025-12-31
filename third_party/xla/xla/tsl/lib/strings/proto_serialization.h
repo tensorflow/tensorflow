@@ -15,7 +15,11 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_STRINGS_PROTO_SERIALIZATION_H_
 #define XLA_TSL_LIB_STRINGS_PROTO_SERIALIZATION_H_
 
-#include "tsl/platform/protobuf.h"
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+#include "google/protobuf/message_lite.h"
 
 namespace tsl {
 
@@ -25,22 +29,22 @@ namespace tsl {
 // Serialization is guaranteed to be deterministic for a given binary only.
 // See the following for more details:
 // https://github.com/google/protobuf/blob/a1bb147e96b6f74db6cdf3c3fcb00492472dbbfa/src/google/protobuf/io/coded_stream.h#L834
-bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
+bool SerializeToStringDeterministic(const google::protobuf::MessageLite& msg,
                                     std::string* result);
 
 // As above, but takes a pre-allocated buffer wrapped by result.
 // PRECONDITION: size == msg.ByteSizeLong() && size <= INT_MAX.
-bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
+bool SerializeToBufferDeterministic(const google::protobuf::MessageLite& msg,
                                     char* buffer, size_t size);
 
 // Returns true if serializing x and y using
 // SerializeToBufferDeterministic() yields identical strings.
-bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
-                              const protobuf::MessageLite& y);
+bool AreSerializedProtosEqual(const google::protobuf::MessageLite& x,
+                              const google::protobuf::MessageLite& y);
 
 // Computes Hash64 of the output of SerializeToBufferDeterministic().
-uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto);
-uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto,
+uint64_t DeterministicProtoHash64(const google::protobuf::MessageLite& proto);
+uint64_t DeterministicProtoHash64(const google::protobuf::MessageLite& proto,
                                   uint64_t seed);
 
 }  // namespace tsl

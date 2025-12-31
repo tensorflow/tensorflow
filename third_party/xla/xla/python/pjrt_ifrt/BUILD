@@ -252,8 +252,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:delimited_message_util",
+        "@com_google_protobuf//src/google/protobuf/io",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
     ],
     alwayslink = True,
 )

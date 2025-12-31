@@ -317,8 +317,7 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).
   DotDimensionNumbers new_dnums = src_dot->dot_dimension_numbers();
-  auto shift_dimension = [](tsl::protobuf::RepeatedField<int64_t>* dims,
-                            int64_t idx) {
+  auto shift_dimension = [](google::protobuf::RepeatedField<int64_t>* dims, int64_t idx) {
     absl::c_for_each(*dims, [idx](int64_t& dim) {
       if (dim >= idx) {
         dim++;

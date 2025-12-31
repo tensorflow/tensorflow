@@ -69,7 +69,7 @@ bool IsNonIdentityTranspose(const HloInstruction* instruction) {
   return false;
 }
 
-void TransposeDims(tsl::protobuf::RepeatedField<int64_t>& dims,
+void TransposeDims(google::protobuf::RepeatedField<int64_t>& dims,
                    absl::Span<const int64_t> transpose_dims) {
   for (auto& dim : dims) {
     dim = transpose_dims[dim];

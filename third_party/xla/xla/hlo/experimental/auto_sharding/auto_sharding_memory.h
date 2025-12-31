@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/repeated_field.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace spmd {
@@ -50,8 +49,7 @@ class MemoryTermReducer {
   // Returns the number of memory terms before and after the reduction.
   std::pair<int64_t, int64_t> Reduce(
       int64_t num_lives, int64_t num_primitives,
-      const std::function<
-          tsl::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
+      const std::function<google::protobuf::RepeatedField<int64_t>(int64_t)>&  // NOLINT
           live,
       int64_t max_iterations = std::numeric_limits<int64_t>::max());
 

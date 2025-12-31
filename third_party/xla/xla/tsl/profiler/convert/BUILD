@@ -29,7 +29,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
 )
@@ -111,7 +111,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
 )
@@ -123,7 +122,6 @@ tsl_cc_test(
         ":trace_container",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -136,7 +134,6 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:trace_events_proto_cc",
     ],
 )

@@ -200,7 +200,7 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
   m->comp_envs().RegisterProcessNewEnvFn(
       test::TestCompilationEnvironment1::GetDescriptor(),
-      [](std::unique_ptr<tsl::protobuf::Message> msg) {
+      [](std::unique_ptr<google::protobuf::Message> msg) {
         std::unique_ptr<test::TestCompilationEnvironment1> env(
             tensorflow::down_cast<test::TestCompilationEnvironment1*>(
                 msg.release()));

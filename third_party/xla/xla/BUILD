@@ -314,7 +314,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":status_macros",
         ":types",
         ":xla_data_proto_cc",
         "//xla/tsl/lib/gtl:iterator_range",
@@ -346,7 +345,6 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -406,14 +404,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/status",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -563,7 +556,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -1270,7 +1262,6 @@ xla_cc_test(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:protobuf",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

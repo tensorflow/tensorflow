@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "google/protobuf/any.pb.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -96,7 +96,7 @@ void HloModuleMetadata::set_prepartitioning_metadata(
 }
 
 absl::Status HloModuleMetadata::set_custom_metadata(
-    const ::tsl::protobuf::Message& message) {
+    const ::google::protobuf::Message& message) {
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   if (!pass_metadata->mutable_custom_metadata()->PackFrom(message)) {

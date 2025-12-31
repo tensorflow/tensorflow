@@ -795,7 +795,7 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
 
 TEST(HloModuleTest, TestRemapInstructionIdsResolvesOperands) {
   HloModuleProto hlo_module_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(R"(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(R"(
   name: "hlo_module_proto"
   entry_computation_id: 1
 computations {
@@ -882,7 +882,7 @@ computations {
 }
 
 )",
-                                                         &hlo_module_proto));
+                                                  &hlo_module_proto));
 
   TF_ASSERT_OK_AND_ASSIGN(HloModuleProto remapped_hlo_module_proto,
                           HloModule::RemapInstructionIds(hlo_module_proto));
@@ -903,7 +903,7 @@ computations {
 
 TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
   xla::HloModuleProto hlo_module_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         name: "some_module"
         entry_computation_name: "entry_computation"
@@ -1191,8 +1191,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
       {"4294967300", "4294967523"}};
 
   std::string opt_hlo_module_proto_str;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::PrintToString(
-      opt_hlo_module_proto, &opt_hlo_module_proto_str));
+  ASSERT_TRUE(google::protobuf::TextFormat::PrintToString(opt_hlo_module_proto,
+                                                &opt_hlo_module_proto_str));
 
   ASSERT_GT(
       absl::StrReplaceAll(instruction_id_remap_map, &opt_hlo_module_proto_str),
@@ -1201,7 +1201,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
   // Load modified HloProto from string and reassign ids instead of preserving
   // them.
   HloProto opt_hlo_module_proto_modified;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       opt_hlo_module_proto_str, &opt_hlo_module_proto_modified));
 
   // Recreate the hlo module from the altered protos.
