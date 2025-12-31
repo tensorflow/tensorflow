@@ -63,7 +63,7 @@ TEST(FutureTest, ValueConstructedFuture) {
 }
 
 TEST(FutureTest, StatelessFuture) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set();
@@ -76,7 +76,7 @@ TEST(FutureTest, StatelessFuture) {
 }
 
 TEST(FutureTest, CreateFutureFromPromise) {
-  auto [promise, _] = Future<int32_t>::MakePromise();
+  auto [promise, _] = MakePromise<int32_t>();
   Future<int32_t> future = promise.future();
 
   EXPECT_FALSE(future.IsReady());
@@ -85,7 +85,7 @@ TEST(FutureTest, CreateFutureFromPromise) {
 }
 
 TEST(FutureTest, StatefulFutureToStateless) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(ready_future.IsReady());
@@ -94,7 +94,7 @@ TEST(FutureTest, StatefulFutureToStateless) {
 }
 
 TEST(FutureTest, StatefulFutureToStatelessError) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(ready_future.IsReady());
@@ -103,7 +103,7 @@ TEST(FutureTest, StatefulFutureToStatelessError) {
 }
 
 TEST(FutureTest, MoveOnlyFutureToStateless) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   Future<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(future.IsReady());
@@ -114,7 +114,7 @@ TEST(FutureTest, MoveOnlyFutureToStateless) {
 }
 
 TEST(FutureTest, MoveOnlyFutureToStatelessError) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   Future<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(future.IsReady());
@@ -125,7 +125,7 @@ TEST(FutureTest, MoveOnlyFutureToStatelessError) {
 }
 
 TEST(FutureTest, CopyableFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   Future<int32_t> copy_constructed(future);
   Future<int32_t> copy_assigned = future;
@@ -138,7 +138,7 @@ TEST(FutureTest, CopyableFuture) {
 }
 
 TEST(FutureTest, MoveConstructedFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<int32_t>> move_constructed(std::move(future));
 
@@ -148,7 +148,7 @@ TEST(FutureTest, MoveConstructedFuture) {
 }
 
 TEST(FutureTest, MoveAssignedFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<int32_t>> move_assigned = std::move(future);
 
@@ -185,7 +185,7 @@ TEST(FutureTest, StatusMacro) {
 }
 
 TEST(FutureTest, AwaitMoveOnlyFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -194,7 +194,7 @@ TEST(FutureTest, AwaitMoveOnlyFuture) {
 }
 
 TEST(FutureTest, OnReadyRvalueFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   promise.Set(42);
 
@@ -203,7 +203,7 @@ TEST(FutureTest, OnReadyRvalueFuture) {
 }
 
 TEST(FutureTest, OnReadyMoveOnlyFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -216,27 +216,27 @@ TEST(FutureTest, PromiseNotSet) {
   Future<> future;
   {
     Promise<> promise;
-    std::tie(promise, future) = Future<>::MakePromise();
+    std::tie(promise, future) = MakePromise();
   }
   ASSERT_TRUE(future.IsReady());
   EXPECT_THAT(future.Await(), Not(IsOk()));
 }
 
 TEST(FutureTest, PromiseSetTwice) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   promise.Set();
   EXPECT_DEATH(promise.Set(), "Promise must not be fulfilled more than once");
 }
 
 TEST(FutureTest, UnlinkedPromiseIsUnique) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   EXPECT_FALSE(promise.IsUniqueReference());
   future = {};
   EXPECT_TRUE(promise.IsUniqueReference());
 }
 
 TEST(FutureTest, PromiseIsUnique) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   // Future is linked to the promise object.
   EXPECT_FALSE(promise.IsUniqueReference());
@@ -254,7 +254,7 @@ TEST(FutureTest, PromiseIsUnique) {
 }
 
 TEST(FutureTest, MapCopyableFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
 
   EXPECT_FALSE(future.IsReady());
@@ -273,7 +273,7 @@ TEST(FutureTest, MapCopyableFuture) {
 }
 
 TEST(FutureTest, MapCopyableFutureError) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
 
   promise.Set(absl::InternalError("test"));
@@ -282,7 +282,7 @@ TEST(FutureTest, MapCopyableFutureError) {
 }
 
 TEST(FutureTest, MapMoveOnlyFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<float>> mapped =
       std::move(future).Map([](std::unique_ptr<int32_t> v) {
@@ -298,7 +298,7 @@ TEST(FutureTest, MapMoveOnlyFuture) {
 }
 
 TEST(FutureTest, MapMoveOnlyFutureError) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   Future<std::unique_ptr<float>> mapped =
       std::move(future).Map([](std::unique_ptr<int32_t> v) {
         return std::make_unique<float>(*v * 2.0f);
@@ -315,7 +315,7 @@ TEST(FutureTest, MapCopyableWithInplaceConstructor) {
     int32_t v;
   };
 
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<Struct> mapped = future.Map<Struct>([](int32_t v) { return v; });
 
   promise.Set(42);
@@ -329,7 +329,7 @@ TEST(FutureTest, MapMoveOnlyWithInplaceConstructor) {
     int32_t v;
   };
 
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   Future<Struct> mapped = std::move(future).Map<Struct>(
       [](std::unique_ptr<int32_t> v) { return *v; });
 
@@ -339,7 +339,7 @@ TEST(FutureTest, MapMoveOnlyWithInplaceConstructor) {
 }
 
 TEST(FutureTest, MapStatelessUnusedResult) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   bool called = false;
   // We intentionally drop returned future to test that promise will not
@@ -350,7 +350,7 @@ TEST(FutureTest, MapStatelessUnusedResult) {
 }
 
 TEST(FutureTest, MapStatelessOnExecutorUnusedResult) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   CountingExecutor executor;
   bool called = false;
@@ -363,7 +363,7 @@ TEST(FutureTest, MapStatelessOnExecutorUnusedResult) {
 }
 
 TEST(FutureTest, MapStatefulUnusedResult) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   bool called = false;
   // We intentionally drop returned future to test that promise will not
@@ -374,7 +374,7 @@ TEST(FutureTest, MapStatefulUnusedResult) {
 }
 
 TEST(FutureTest, MapStatefulOnExecutorUnusedResult) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   CountingExecutor executor;
   bool called = false;
@@ -387,7 +387,7 @@ TEST(FutureTest, MapStatefulOnExecutorUnusedResult) {
 }
 
 TEST(FutureTest, MapStatefulRvalueOnExecutorUnusedResult) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   CountingExecutor executor;
   bool called = false;
@@ -400,7 +400,7 @@ TEST(FutureTest, MapStatefulRvalueOnExecutorUnusedResult) {
 }
 
 TEST(FutureTest, TryMapCopyableFutureToStateless) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   promise.Set(42);
 
   {
@@ -416,7 +416,7 @@ TEST(FutureTest, TryMapCopyableFutureToStateless) {
 }
 
 TEST(FutureTest, TryMapCopyableFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<float> mapped =
       future.Map([](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
 
@@ -436,7 +436,7 @@ TEST(FutureTest, TryMapCopyableFuture) {
 }
 
 TEST(FutureTest, TryMapCopyableFutureForwardError) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<float> mapped =
       future.Map([](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
 
@@ -446,7 +446,7 @@ TEST(FutureTest, TryMapCopyableFutureForwardError) {
 }
 
 TEST(FutureTest, TryMapCopyableFutureCreateError) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
   Future<float> mapped = future.Map([](int32_t v) -> absl::StatusOr<float> {
     return absl::InternalError("test");
   });
@@ -457,7 +457,7 @@ TEST(FutureTest, TryMapCopyableFutureCreateError) {
 }
 
 TEST(FutureTest, TryMapMoveOnlyFutureToStateless) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   promise.Set(std::make_unique<int32_t>(42));
 
   Future<> mapped = std::move(future).Map(
@@ -466,7 +466,7 @@ TEST(FutureTest, TryMapMoveOnlyFutureToStateless) {
 }
 
 TEST(FutureTest, TryMapMoveOnlyFuture) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<float>> mapped = std::move(future).Map(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
@@ -482,7 +482,7 @@ TEST(FutureTest, TryMapMoveOnlyFuture) {
 }
 
 TEST(FutureTest, TryMapMoveOnlyFutureForwardError) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<float>> mapped = std::move(future).Map(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
@@ -498,7 +498,7 @@ TEST(FutureTest, TryMapMoveOnlyFutureForwardError) {
 }
 
 TEST(FutureTest, MapFutureCopies) {
-  auto [promise, future] = Future<std::shared_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::shared_ptr<int32_t>>();
   promise.Set(std::make_shared<int32_t>(42));
 
   Future<std::shared_ptr<int32_t>> future0 = future;
@@ -518,7 +518,7 @@ TEST(FutureTest, MapFutureCopies) {
 }
 
 TEST(FutureTest, TryMapMoveOnlyFutureCreateError) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   Future<std::unique_ptr<float>> mapped = std::move(future).Map(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
@@ -535,7 +535,7 @@ TEST(FutureTest, TryMapMoveOnlyFutureCreateError) {
 
 TEST(FutureTest, MapWithVoidFunctor) {
   {
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise();
     promise.Set(absl::OkStatus());
 
     Future<> mapped = future.Map([] {});
@@ -543,7 +543,7 @@ TEST(FutureTest, MapWithVoidFunctor) {
   }
 
   {
-    auto [promise, future] = Future<int32_t>::MakePromise();
+    auto [promise, future] = MakePromise<int32_t>();
     promise.Set(42);
 
     Future<> mapped = future.Map([](int32_t value) { EXPECT_EQ(value, 42); });
@@ -551,7 +551,7 @@ TEST(FutureTest, MapWithVoidFunctor) {
   }
 
   {
-    auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+    auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
     promise.Set(std::make_unique<int32_t>(42));
 
     Future<> mapped = std::move(future).Map(
@@ -574,7 +574,7 @@ TEST(FutureTest, MapDoesNotCopy) {
     Data& operator=(Data&& other) = delete;
   };
 
-  auto [promise, future] = Future<Data>::MakePromise();
+  auto [promise, future] = MakePromise<Data>();
 
   Future<> m0 = future.Map([](const Data& data) {});
   Future<> m1 = future.Map([](Data data) {});
@@ -604,7 +604,7 @@ TEST(FutureTest, DetachDoesnNotCopy) {
     Data& operator=(Data&& other) = delete;
   };
 
-  auto [promise, future] = Future<Data>::MakePromise();
+  auto [promise, future] = MakePromise<Data>();
   auto detached = future.Detach(executor);
 
   Future<> m0 = future.Map([](const Data& data) {});
@@ -622,7 +622,7 @@ TEST(FutureTest, DetachDoesnNotCopy) {
 TEST(FutureTest, DetachAndMap) {
   CountingExecutor executor;
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   Future<> mapped = future.Detach(executor).Map([] {});
   promise.Set(absl::OkStatus());
@@ -635,7 +635,7 @@ TEST(FutureTest, MakeDetachedFuture) {
   CountingExecutor executor;
 
   {  // Stateless future.
-    auto [promise, future] = Future<>::MakePromise(executor);
+    auto [promise, future] = MakePromise(executor);
     Future<> mapped = future.Map([] {});
     promise.Set(absl::OkStatus());
 
@@ -644,7 +644,7 @@ TEST(FutureTest, MakeDetachedFuture) {
   }
 
   {  // Stateful future.
-    auto [promise, future] = Future<int32_t>::MakePromise(executor);
+    auto [promise, future] = MakePromise<int32_t>(executor);
     Future<> mapped = future.Map([](int32_t value) { EXPECT_EQ(value, 42); });
     promise.Set(42);
 
@@ -657,7 +657,7 @@ TEST(FutureTest, DetachMoveOnly) {
   CountingExecutor executor;
   static int32_t counter = 0;
 
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
   auto detached = std::move(future).Detach(executor);
 
   Future<> m0 = std::move(detached).Map([](std::unique_ptr<int32_t> value) {
@@ -681,7 +681,7 @@ TEST(FutureTest, DetachOnThreadPool) {
   Executor* executor = thread_pool.AsExecutor();
 
   {  // Test both lvalue and rvalue stateless detached futures.
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise();
     Future<> detached = future.Detach(*executor);
     detached.OnReady([](auto) { counter++; });
     future.Detach(*executor).OnReady([](auto) { counter++; });
@@ -689,7 +689,7 @@ TEST(FutureTest, DetachOnThreadPool) {
   }
 
   {  // Test both lvalue and rvalue stateful detached futures.
-    auto [promise, future] = Future<int32_t>::MakePromise();
+    auto [promise, future] = MakePromise<int32_t>();
     Future<int32_t> detached = future.Detach(*executor);
     detached.OnReady([](auto) { counter++; });
     future.Detach(*executor).OnReady([](auto) { counter++; });
@@ -697,7 +697,7 @@ TEST(FutureTest, DetachOnThreadPool) {
   }
 
   {  // Test detached future with move-only payload.
-    auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+    auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
     std::move(future).Detach(*executor).OnReady([](auto) { counter++; });
     promise.Set(std::make_unique<int32_t>(42));
   }
@@ -707,7 +707,7 @@ TEST(FutureTest, DetachOnThreadPool) {
 }
 
 TEST(FutureTest, NoOpDetachDoesNotExecute) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   CountingExecutor executor;
   (void)future.Detach(executor);
@@ -716,7 +716,7 @@ TEST(FutureTest, NoOpDetachDoesNotExecute) {
 }
 
 TEST(FutureTest, NoOpMoveOnlyDetachDoesNotExecute) {
-  auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+  auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
 
   CountingExecutor executor;
   (void)std::move(future).Detach(executor);
@@ -741,7 +741,7 @@ TEST(FutureTest, MapOnExecutorDoesNotCopy) {
     Data& operator=(Data&& other) = delete;
   };
 
-  auto [promise, future] = Future<Data>::MakePromise();
+  auto [promise, future] = MakePromise<Data>();
 
   Future<> m0 = future.Map(*executor, [](const Data& data) {});
   Future<> m1 = future.Map(*executor, [](Data data) {});
@@ -757,7 +757,7 @@ TEST(FutureTest, MapOnExecutorDoesNotCopy) {
 };
 
 TEST(FutureTest, StatelessError) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(absl::InternalError("test"));
@@ -790,7 +790,7 @@ TEST(FutureTest, StatelessImmediate) {
 }
 
 TEST(FutureTest, MapStatelessFuture) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped = future.Map([]() { return 42.0f; });
 
   EXPECT_FALSE(future.IsReady());
@@ -805,7 +805,7 @@ TEST(FutureTest, MapStatelessFuture) {
 }
 
 TEST(FutureTest, MapStatelessToStatus) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   promise.Set(absl::OkStatus());
 
   {
@@ -822,7 +822,7 @@ TEST(FutureTest, MapStatelessToStatus) {
 }
 
 TEST(FutureTest, MapStatelessErrorToStatus) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   promise.Set(absl::InternalError("test"));
 
   Future<> mapped = future.Map([] { return absl::OkStatus(); });
@@ -831,7 +831,7 @@ TEST(FutureTest, MapStatelessErrorToStatus) {
 }
 
 TEST(FutureTest, MapStatelessFutureError) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped = future.Map([]() { return 42.0f; });
 
   EXPECT_FALSE(future.IsReady());
@@ -846,7 +846,7 @@ TEST(FutureTest, MapStatelessFutureError) {
 }
 
 TEST(FutureTest, MapStatelessFutureToStatusOr) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped =
       future.Map([]() -> absl::StatusOr<float> { return 42.0f; });
 
@@ -862,7 +862,7 @@ TEST(FutureTest, MapStatelessFutureToStatusOr) {
 }
 
 TEST(FutureTest, MapStatelessFutureForwardError) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped =
       future.Map([]() -> absl::StatusOr<float> { return 42.0f; });
 
@@ -872,7 +872,7 @@ TEST(FutureTest, MapStatelessFutureForwardError) {
 }
 
 TEST(FutureTest, MapStatelessFutureCreateError) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped = future.Map(
       []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
 
@@ -882,7 +882,7 @@ TEST(FutureTest, MapStatelessFutureCreateError) {
 }
 
 TEST(FutureTest, MapToStatelessFuture) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
   Future<float> mapped = future.MapTo(42.0f);
 
   EXPECT_FALSE(future.IsReady());
@@ -897,7 +897,7 @@ TEST(FutureTest, MapToStatelessFuture) {
 }
 
 TEST(FutureTest, StatefulFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(42);
@@ -907,7 +907,7 @@ TEST(FutureTest, StatefulFuture) {
 }
 
 TEST(FutureTest, StatusFuture) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(absl::OkStatus());
@@ -918,7 +918,7 @@ TEST(FutureTest, StatusFuture) {
 }
 
 TEST(FutureTest, StatusOrFuture) {
-  auto [promise, future] = Future<int32_t>::MakePromise();
+  auto [promise, future] = MakePromise<int32_t>();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(42);
@@ -932,8 +932,8 @@ TEST(FutureTest, JoinFutures) {
   EXPECT_TRUE(empty_join.IsReady());
   EXPECT_EQ(empty_join.Await(), absl::OkStatus());
 
-  auto [promise0, future0] = Future<>::MakePromise();
-  auto [promise1, future1] = Future<>::MakePromise();
+  auto [promise0, future0] = MakePromise();
+  auto [promise1, future1] = MakePromise();
 
   std::vector<Future<>> futures0 = {future0};
   std::vector<Future<>> futures1 = {future0, future1};
@@ -959,8 +959,8 @@ TEST(FutureTest, JoinErrors) {
   EXPECT_TRUE(empty_join.IsReady());
   EXPECT_EQ(empty_join.Await(), absl::OkStatus());
 
-  auto [promise0, future0] = Future<>::MakePromise();
-  auto [promise1, future1] = Future<>::MakePromise();
+  auto [promise0, future0] = MakePromise();
+  auto [promise1, future1] = MakePromise();
 
   std::vector<Future<>> futures0 = {future0};
   std::vector<Future<>> futures1 = {future0, future1};
@@ -982,9 +982,9 @@ TEST(FutureTest, JoinErrors) {
 }
 
 TEST(FutureTest, WithProfiling) {
-  auto [promise, future] = Future<int32_t>::MakePromise(
-      [&] { return FutureHelpers::ProfilingKeys{}; },
-      [&](FutureHelpers::ProfilingKeys) {});
+  auto [promise, future] =
+      MakePromise<int32_t>([&] { return FutureHelpers::ProfilingKeys{}; },
+                           [&](FutureHelpers::ProfilingKeys) {});
 
   auto update_profiling = FutureHelpers::WithProfiling(
       std::move(future), [&] { return FutureHelpers::ProfilingKeys{}; },
@@ -1000,7 +1000,7 @@ TEST(FutureTest, WithProfiling) {
 
 TEST(FutureTest, MakeSharedPromise) {
   {  // Stateless future.
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise();
 
     auto shared_promise = std::move(promise).ToShared();
     shared_promise->Set();
@@ -1013,7 +1013,7 @@ TEST(FutureTest, MakeSharedPromise) {
   }
 
   {  // Stateful future.
-    auto [promise, future] = Future<int32_t>::MakePromise();
+    auto [promise, future] = MakePromise<int32_t>();
 
     auto shared_promise = std::move(promise).ToShared();
     shared_promise->Set(42);
@@ -1030,14 +1030,14 @@ TEST(FutureTest, MakeOnStateless) {
   InlineExecutor e;
 
   {
-    auto future = Future<>::MakeOn(e, [] { return absl::OkStatus(); });
+    auto future = MakeFutureOn<void>(e, [] { return absl::OkStatus(); });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(future.Await(), absl::OkStatus());
   }
 
   {
     auto future =
-        Future<>::MakeOn(e, [] { return absl::InternalError("test"); });
+        MakeFutureOn<void>(e, [] { return absl::InternalError("test"); });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(future.Await(), absl::InternalError("test"));
   }
@@ -1052,26 +1052,26 @@ TEST(FutureTest, MakeOnStateful) {
   };
 
   {
-    auto future = Future<int32_t>::MakeOn(executor, [] { return 42; });
+    auto future = MakeFutureOn<int32_t>(executor, [] { return 42; });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(*future.Await(), 42);
   }
 
   {
-    auto future = Future<Foo>::MakeOn(executor, [] { return 42; });
+    auto future = MakeFutureOn<Foo>(executor, [] { return 42; });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(future.Await()->value, 42);
   }
 
   {
-    auto future = Future<std::unique_ptr<int32_t>>::MakeOn(
+    auto future = MakeFutureOn<std::unique_ptr<int32_t>>(
         executor, [] { return std::make_unique<int32_t>(42); });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(**future.Await(), 42);
   }
 
   {
-    auto future = Future<int32_t>::MakeOn(
+    auto future = MakeFutureOn<int32_t>(
         executor, [] { return absl::InternalError("test"); });
     EXPECT_TRUE(future.IsReady());
     EXPECT_EQ(future.Await().status(), absl::InternalError("test"));
@@ -1120,7 +1120,7 @@ TEST(FutureTest, MapStatelessOnThreadPoolExecutor) {
 
   {  // Create mapped future in a nested scope to make sure that `promise` and
     // `future` are destroyed before the end of the test.
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise();
     for (size_t i = 0; i < 100; ++i) {
       mapped.push_back(
           future.Map(*thread_pool.AsExecutor(), [&] { ++counter; }));
@@ -1140,7 +1140,7 @@ TEST(FutureTest, MapStatefulOnThreadPoolExecutor) {
 
   {  // Create mapped future in a nested scope to make sure that `promise` and
     // `future` are destroyed before the end of the test.
-    auto [promise, future] = Future<int32_t>::MakePromise();
+    auto [promise, future] = MakePromise<int32_t>();
     for (size_t i = 0; i < 100; ++i) {
       mapped.push_back(future.Map(*thread_pool.AsExecutor(),
                                   [&](int32_t value) { counter += value; }));
@@ -1160,7 +1160,7 @@ TEST(FutureTest, MapMoveOnlyOnThreadPoolExecutor) {
 
   {  // Create mapped future in a nested scope to make sure that `promise` and
     // `future` are destroyed before the end of the test.
-    auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+    auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
     for (size_t i = 0; i < 100; ++i) {
       mapped.push_back(future.Map(
           *thread_pool.AsExecutor(),
@@ -1182,7 +1182,7 @@ TEST(FutureTest, MapMoveOnlyRvalueOnThreadPoolExecutor) {
   {  // Create mapped future in a nested scope to make sure that `promise` and
     // `future` are destroyed before the end of the test.
     for (size_t i = 0; i < 100; ++i) {
-      auto [promise, future] = Future<std::unique_ptr<int32_t>>::MakePromise();
+      auto [promise, future] = MakePromise<std::unique_ptr<int32_t>>();
       mapped.push_back(std::move(future).Map(
           *thread_pool.AsExecutor(),
           [&](std::unique_ptr<int32_t> value) { counter += *value; }));
@@ -1203,7 +1203,7 @@ TEST(FutureTest, DetachStatefulOnThreadPoolExecutor) {
 
   {  // Create mapped future in a nested scope to make sure that `promise` and
     // `future` are destroyed before the end of the test.
-    auto [promise, future] = Future<int32_t>::MakePromise();
+    auto [promise, future] = MakePromise<int32_t>();
     for (size_t i = 0; i < 100; ++i) {
       mapped.push_back(future.Detach(*executor).Map(
           [&](int32_t value) { counter += value; }));
@@ -1286,7 +1286,7 @@ static void BM_CreateAndMapStatelessFuture(benchmark::State& state) {
   Future<> future(absl::OkStatus());
 
   for (auto _ : state) {
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise();
     Future<int32_t> mapped = future.Map([] { return 42; });
     promise.Set(absl::OkStatus());
     benchmark::DoNotOptimize(mapped);
