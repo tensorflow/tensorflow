@@ -91,23 +91,23 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff0,
+      ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff1,
+      ScopedDeviceAddress<uint8_t> buff1,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff1->opaque()), 0x1002);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff2,
+      ScopedDeviceAddress<uint8_t> buff2,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff2->opaque()), 0x3001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff3,
+      ScopedDeviceAddress<uint8_t> buff3,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff3->opaque()), 0x2001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff4,
+      ScopedDeviceAddress<uint8_t> buff4,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff4->opaque()), 0x4001);
 }
@@ -138,7 +138,7 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
                                            std::move(info_deallocator));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceAddress buff0,
+      ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(allocations->size(), 1);
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
