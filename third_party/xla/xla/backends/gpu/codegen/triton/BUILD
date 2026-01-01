@@ -4,7 +4,7 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "if_cuda_or_rocm_is_configured",
 )
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
@@ -24,6 +24,9 @@ package_group(
         "//xla:friends",
     ],
 )
+
+# Generate test_suites for all backends, named "${backend}_tests".
+generate_backend_suites()
 
 cc_library(
     name = "fusion",
