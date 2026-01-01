@@ -659,7 +659,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
       arrays.size(), std::move(buffer_backing_store));
 
   auto [buffers_promise, buffers_future] =
-      tsl::Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::MakePromise<BasicStringArray::Buffers>();
 
   auto buffer_copier = [state = buffer_copying_state,
                         promise = std::move(buffers_promise).ToShared()](
@@ -1583,7 +1583,7 @@ absl::Status PjRtClient::CrossHostSendBuffers(
   // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
   // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
-    auto [promise, descriptor_future] = tsl::Future<std::string>::MakePromise();
+    auto [promise, descriptor_future] = tsl::MakePromise<std::string>();
     work_queue_->Schedule(
         [this, k = keys[i], promise = std::move(promise).ToShared()]() mutable {
           std::string key = absl::StrCat(kKeyPrefix, k.value());
