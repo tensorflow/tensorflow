@@ -58,7 +58,7 @@ class SingleDebugEventFileWriter {
   absl::Status Flush();
   absl::Status Close();
 
-  const std::string FileName();
+  std::string FileName();
 
  private:
   Env* env_;
@@ -238,7 +238,7 @@ class DebugEventsWriter {
 
   void SelectWriter(DebugEventFileType type,
                     std::unique_ptr<SingleDebugEventFileWriter>** writer);
-  const std::string GetSuffix(DebugEventFileType type);
+  std::string GetSuffix(DebugEventFileType type);
   std::string GetFileNameInternal(DebugEventFileType type);
 
   Env* env_;
