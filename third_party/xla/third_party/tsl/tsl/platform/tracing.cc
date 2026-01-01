@@ -23,7 +23,7 @@ limitations under the License.
 namespace tsl {
 namespace tracing {
 namespace {
-std::atomic<uint64> unique_arg{1};
+std::atomic<uint64_t> unique_arg{1};
 }  // namespace
 
 const char* GetEventCategoryName(EventCategory category) {
@@ -47,11 +47,11 @@ void SetEventCollector(EventCategory category,
   EventCollector::instances_[static_cast<unsigned>(category)] = collector;
 }
 
-uint64 GetUniqueArg() {
+uint64_t GetUniqueArg() {
   return unique_arg.fetch_add(1, std::memory_order_relaxed);
 }
 
-uint64 GetArgForName(absl::string_view name) {
+uint64_t GetArgForName(absl::string_view name) {
   return Hash64(name.data(), name.size());
 }
 

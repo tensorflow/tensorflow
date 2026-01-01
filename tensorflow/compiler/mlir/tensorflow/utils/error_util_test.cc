@@ -45,7 +45,7 @@ using StatusScopedDiagnosticHandlerTest = ErrorUtilTest;
 TEST_F(StatusScopedDiagnosticHandlerTest,
        OkWithoutDiagnosticGetsPassedThrough) {
   TF_ASSERT_OK(
-      StatusScopedDiagnosticHandler(&context_).Combine(tensorflow::OkStatus()));
+      StatusScopedDiagnosticHandler(&context_).Combine(absl::OkStatus()));
 }
 
 TEST_F(StatusScopedDiagnosticHandlerTest,
