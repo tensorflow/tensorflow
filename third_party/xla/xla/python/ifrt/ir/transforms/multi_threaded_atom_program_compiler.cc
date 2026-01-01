@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -179,7 +180,7 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
   auto hlo_program = std::make_unique<HloProgram>(
       /*context=*/nullptr,  // Shares the same long-living context.
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
-  auto [promise, future] = CompileFuture::MakePromise();
+  auto [promise, future] = tsl::MakePromise<AtomProgramCompileResult>();
   tsl::Env::Default()->StartDetachedThread(
       tsl::ThreadOptions(), /*name=*/"MultiThreadedAtomProgramCompiler",
       WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
@@ -221,7 +222,7 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
     out_arrays_types.push_back(array_type);
   }
-  auto [promise, future] = CompileFuture::MakePromise();
+  auto [promise, future] = tsl::MakePromise<AtomProgramCompileResult>();
   // No need to dispatch from a different thread because MpmdReshard uses its
   // own thread pool already.
   auto compile_result = compiler_->CompileMpmdReshard(
