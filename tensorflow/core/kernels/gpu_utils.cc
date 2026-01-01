@@ -80,8 +80,8 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (RedzoneCheckDisabled()) {
     return;
   }
-  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-      rz_allocator.CheckRedzones();
+  absl::StatusOr<stream_executor::RedzoneAllocator::RedzoneCheckStatus>
+      rz_status = rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
     absl::call_once(failure_logged, [&]() {
@@ -129,7 +129,8 @@ namespace {
 CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    absl::StatusOr<stream_executor::dnn::VersionInfo> version_or =
+        dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
@@ -287,7 +288,7 @@ void LogFusedMatmulAutotuneResults(
 }
 
 namespace {
-StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+absl::StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
     absl::Span<const xla::AutotuneResult> results) {
   auto compare_run_times = [](const xla::AutotuneResult& lhs,
                               const xla::AutotuneResult& rhs) {
@@ -329,7 +330,7 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
 }
 }  // namespace
 
-StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+absl::StatusOr<stream_executor::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
     absl::Span<const xla::AutotuneResult> results) {
   int idx;
   int idx_no_scratch;
