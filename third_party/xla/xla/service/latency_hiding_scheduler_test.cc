@@ -227,11 +227,13 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
-  absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
-      HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
-      std::unique_ptr<LatencyEstimator> latency_estimator =
-          std::make_unique<ApproximateLatencyEstimator>(),
-      std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+  absl::StatusOr<std::pair<std::unique_ptr<LatencyHidingScheduler>,
+                           std::shared_ptr<SchedulerCore>>>
+  SetupScheduler(HloModule* module,
+                 SchedulerConfig sched_config = GetDefaultSchedConfig(),
+                 std::unique_ptr<LatencyEstimator> latency_estimator =
+                     std::make_unique<ApproximateLatencyEstimator>(),
+                 std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
     AsyncCollectiveCreator::CollectiveCreatorConfig config{
         /*convert_all_reduce=*/HloPredicateTrue,
         /*convert_all_gather=*/HloPredicateTrue,
@@ -250,10 +252,11 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
         std::make_shared<const SchedulingContext>(
             module, std::move(latency_estimator), std::move(async_tracker),
             &alias_info_, ShapeSizeBytes);
-    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+    auto scheduler_core = std::make_shared<DefaultSchedulerCore>(
         scheduling_context, sched_config);
-    return std::make_unique<LatencyHidingScheduler>(scheduling_context,
-                                                    std::move(scheduler_core));
+    auto scheduler = std::make_unique<LatencyHidingScheduler>(
+        scheduling_context, scheduler_core);
+    return std::make_pair(std::move(scheduler), std::move(scheduler_core));
   }
   AliasInfo alias_info_;
 };
@@ -4678,8 +4681,7 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
-  std::unique_ptr<LatencyHidingScheduler> scheduler =
-      SetupScheduler(hlo_module.get()).value();
+  auto [scheduler, scheduler_core] = SetupScheduler(hlo_module.get()).value();
 
   // Save the old schedule before running the LHS.
   HloComputation* computation = hlo_module->entry_computation();
@@ -4700,8 +4702,11 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   // Restore original order.
   hlo_module->schedule().set_sequence(computation, original_order);
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sched_state,
+      scheduler_core->MakeSchedulingState(hlo_module->entry_computation()));
   auto result = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation);
+      hlo_module.get(), random_preferences, computation, sched_state);
 
   // Set the new schedule.
   hlo_module->schedule().set_sequence(computation, result->first);
