@@ -162,7 +162,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dotGeneralOp = DotGeneralOp::create(
         rewriter, einsum.getLoc(), dotGeneralResultType, einsum.getLhs(),
         einsum.getRhs(), dimNumbers,
-        /*precision_config=*/ArrayAttr{}, /*dot_algorithm=*/DotAlgorithmAttr{});
+        /*precision_config=*/ArrayAttr{}, /*algorithm=*/DotAlgorithmAttr{});
 
     if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.
