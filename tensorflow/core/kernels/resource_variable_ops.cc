@@ -1007,8 +1007,8 @@ absl::Status DoScatterOnCpu(OpKernelContext* c, Tensor* params,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
-Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
-                        Tensor* host_tensor) {
+absl::Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
+                              Tensor* host_tensor) {
   AllocatorAttributes alloc_attr;
   alloc_attr.set_on_host(true);
   alloc_attr.set_gpu_compatible(true);
@@ -1023,7 +1023,7 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   if (!stream) {
     return absl::InternalError("Failed to copy indices to host");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Copies inputs to the CPU, runs DoScatter on the CPU, then copies output
@@ -1031,8 +1031,9 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
 // and the GPU implementation is not. Tensor inputs to this function must be on
 // the GPU.
 template <typename T, typename Index, scatter_op::UpdateOp Op>
-Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                      const Tensor& updates, Index num_indices) {
+absl::Status DoScatterOnCpu(OpKernelContext* c, Tensor* params,
+                            const Tensor& indices, const Tensor& updates,
+                            Index num_indices) {
   if (!DataTypeCanUseMemcpy(params->dtype())) {
     return absl::UnimplementedError(absl::StrCat(
         "GPU Scatter ops for dtype ", DataTypeString(params->dtype()),
@@ -1064,7 +1065,7 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // destructed once the lambda is destructed.
   c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
       stream, [host_params] {});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
