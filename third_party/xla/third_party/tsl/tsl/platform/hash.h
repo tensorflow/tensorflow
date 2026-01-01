@@ -30,24 +30,26 @@ limitations under the License.
 
 namespace tsl {
 
-extern uint32 Hash32(const char* data, size_t n, uint32 seed);
-extern uint64 Hash64(const char* data, size_t n, uint64 seed);
+extern uint32_t Hash32(const char* data, size_t n, uint32_t seed);
+extern uint64_t Hash64(const char* data, size_t n, uint64_t seed);
 
-inline uint64 Hash64(const char* data, size_t n) {
+inline uint64_t Hash64(const char* data, size_t n) {
   return Hash64(data, n, 0xDECAFCAFFE);
 }
 
-inline uint64 Hash64(const char* data) { return Hash64(data, ::strlen(data)); }
+inline uint64_t Hash64(const char* data) {
+  return Hash64(data, ::strlen(data));
+}
 
-inline uint64 Hash64(const std::string& str) {
+inline uint64_t Hash64(const std::string& str) {
   return Hash64(str.data(), str.size());
 }
 
-inline uint64 Hash64(const tstring& str) {
+inline uint64_t Hash64(const tstring& str) {
   return Hash64(str.data(), str.size());
 }
 
-inline uint64 Hash64Combine(uint64 a, uint64 b) {
+inline uint64_t Hash64Combine(uint64_t a, uint64_t b) {
   return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));
 }
 
@@ -55,7 +57,7 @@ inline uint64 Hash64Combine(uint64 a, uint64 b) {
 // associative and compute the same hash for a collection of elements
 // independent of traversal order. Note that it is better to combine hashes
 // symmetrically with addition rather than XOR, since (x^x) == 0 but (x+x) != 0.
-inline uint64 Hash64CombineUnordered(uint64 a, uint64 b) { return a + b; }
+inline uint64_t Hash64CombineUnordered(uint64_t a, uint64_t b) { return a + b; }
 
 // Hash functor suitable for use with power-of-two sized hashtables.  Use
 // instead of std::hash<T>.
@@ -80,7 +82,7 @@ struct hash<T, typename std::enable_if<std::is_enum<T>::value>::type> {
     // We should be able to remove this and use the default
     // tsl::hash<EnumTy>() once we stop building with GCC versions old
     // enough to not have this defect fixed.
-    return std::hash<uint64>()(static_cast<uint64>(value));
+    return std::hash<uint64_t>()(static_cast<uint64_t>(value));
   }
 };
 
@@ -94,8 +96,8 @@ struct hash<T*> {
 };
 
 template <>
-struct hash<string> {
-  size_t operator()(const string& s) const {
+struct hash<std::string> {
+  size_t operator()(const std::string& s) const {
     return static_cast<size_t>(Hash64(s));
   }
 };
