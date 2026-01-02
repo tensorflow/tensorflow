@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/source_location.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
@@ -35,10 +37,9 @@ limitations under the License.
 
 namespace tsl {
 
-using ::absl_testing::IsOk;
 using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
-using ::testing::Not;
+using ::testing::HasSubstr;
 
 // Inline executor that counts the number of tasks executed.
 struct CountingExecutor : public Executor {
@@ -214,12 +215,19 @@ TEST(FutureTest, OnReadyMoveOnlyFuture) {
 
 TEST(FutureTest, PromiseNotSet) {
   Future<> future;
+  absl::SourceLocation loc = absl::SourceLocation::current();
   {
     Promise<> promise;
-    std::tie(promise, future) = MakePromise();
+    std::tie(promise, future) = MakePromise(loc);
   }
   ASSERT_TRUE(future.IsReady());
-  EXPECT_THAT(future.Await(), Not(IsOk()));
+  EXPECT_THAT(
+      future.Await(),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(absl::StrCat(
+              "Promise destroyed without being set; promise was created at ",
+              loc))));
 }
 
 TEST(FutureTest, PromiseSetTwice) {
