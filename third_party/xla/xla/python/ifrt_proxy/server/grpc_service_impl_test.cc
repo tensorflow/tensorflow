@@ -57,7 +57,7 @@ IfrtProxyVersion Version() {
 absl::StatusOr<std::unique_ptr<GrpcServer>> MakeGrpcServer() {
   // TODO(b/282993619): For external/GKE uses, we may need to find (or build)
   // a utility function that works similar to PickUnusedPortorDie().
-  auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
+  auto addr = absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
   return GrpcServer::CreateFromIfrtClientFactory(
       addr, [](AttributeMap initialization_data) {
         return absl::UnimplementedError(
