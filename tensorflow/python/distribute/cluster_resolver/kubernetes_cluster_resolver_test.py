@@ -98,7 +98,7 @@ class KubernetesClusterResolverTest(test.TestCase):
 
     _mock_kubernetes_module()
 
-    with self.assertRaisesRegexp(ValueError, '.*'):
+    with self.assertRaisesRegex(ValueError, '.*'):
       KubernetesClusterResolver(executable_location=None)
 
   def testSingleItemSuccessfulRetrieval(self):
