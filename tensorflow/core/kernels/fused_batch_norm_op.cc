@@ -57,7 +57,7 @@ using se::Stream;
 using tsl::StatusOr;
 #endif
 
-string ToString(FusedBatchNormActivationMode activation_mode) {
+std::string ToString(FusedBatchNormActivationMode activation_mode) {
   switch (activation_mode) {
     case FusedBatchNormActivationMode::kIdentity:
       return "Identity";
@@ -69,7 +69,7 @@ string ToString(FusedBatchNormActivationMode activation_mode) {
 absl::Status ParseActivationMode(
     OpKernelConstruction* context,
     FusedBatchNormActivationMode* activation_mode) {
-  string activation_mode_str;
+  std::string activation_mode_str;
   TF_RETURN_IF_ERROR(context->GetAttr("activation_mode", &activation_mode_str));
 
   if (activation_mode_str == "Identity") {
@@ -151,7 +151,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
           context, context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
-      std::array<int32, 4> perm = {0, 2, 3, 1};
+      std::array<int32_t, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              x_input, perm, &transformed_x));
@@ -227,7 +227,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      const std::array<int32, 4> perm = {0, 3, 1, 2};
+      const std::array<int32_t, 4> perm = {0, 3, 1, 2};
       const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
@@ -296,7 +296,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
           context, context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
-      std::array<int32, 4> perm = {0, 2, 3, 1};
+      std::array<int32_t, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              x_input, perm, &transformed_x));
@@ -347,7 +347,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      const std::array<int32, 4> perm = {0, 3, 1, 2};
+      const std::array<int32_t, 4> perm = {0, 3, 1, 2};
       const absl::Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
@@ -412,7 +412,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
                                             transformed_x_backprop_output_shape,
                                             &transformed_x_backprop_output));
       // Perform NCHW to NHWC
-      std::array<int32, 4> perm = {0, 2, 3, 1};
+      std::array<int32_t, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              y_backprop_input, perm,
@@ -540,7 +540,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      std::array<int32, 4> perm = {0, 3, 1, 2};
+      std::array<int32_t, 4> perm = {0, 3, 1, 2};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              transformed_x_backprop_output,
@@ -704,13 +704,13 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64_t allocate_count =
         Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
-    Status allocation_status(context_->allocate_temp(
+    absl::Status allocation_status(context_->allocate_temp(
         tf_data_type, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
       return allocation_status;
@@ -719,7 +719,7 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return DeviceMemory<uint8>::MakeFromByteSize(
+    return stream_executor::DeviceAddress<uint8>::MakeFromByteSize(
         temporary_memory.template flat<T>().data(),
         temporary_memory.template flat<T>().size() * sizeof(T));
   }
@@ -758,7 +758,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
       int64_t byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
@@ -767,16 +767,16 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
         Eigen::divup(byte_size, static_cast<int64_t>(sizeof(T)));
 
     Tensor* temporary_memory = nullptr;
-    Status allocation_status(context_->allocate_output(
+    absl::Status allocation_status(context_->allocate_output(
         output_index_, TensorShape({allocate_count}), &temporary_memory));
     if (!allocation_status.ok()) {
       return allocation_status;
     }
     total_byte_size_ += byte_size;
-    auto memory_uint8 = DeviceMemory<uint8>::MakeFromByteSize(
+    auto memory_uint8 = stream_executor::DeviceAddress<uint8>::MakeFromByteSize(
         temporary_memory->template flat<T>().data(),
         temporary_memory->template flat<T>().size() * sizeof(T));
-    return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(memory_uint8);
+    return absl::StatusOr<stream_executor::DeviceAddress<uint8>>(memory_uint8);
   }
 
   int64_t TotalByteSize() { return total_byte_size_; }
@@ -842,12 +842,13 @@ struct FusedBatchNormImplGPU {
             << " tensor format: " << ToString(tensor_format)
             << " compute format: " << ToString(compute_format);
 
-    auto maybe_make_dummy_output = [context, use_reserved_space]() -> Status {
+    auto maybe_make_dummy_output = [context,
+                                    use_reserved_space]() -> absl::Status {
       if (use_reserved_space) {
         Tensor* dummy_reserve_space = nullptr;
         return context->allocate_output(5, {}, &dummy_reserve_space);
       }
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     // If input is empty, return NaN mean/variance
@@ -960,13 +961,13 @@ struct FusedBatchNormImplGPU {
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInOutput<U>>
         reserve_space_allocator;
-    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
+    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8_t>>
         workspace_allocator;
     if (use_reserved_space) {
       reserve_space_allocator.reset(
           new functor::CudnnBatchNormAllocatorInOutput<U>(context, 5));
       workspace_allocator.reset(
-          new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
+          new functor::CudnnBatchNormAllocatorInTemp<uint8_t>(context));
     }
     if (!batch_mean->SharesBufferWith(estimated_mean) &&
         exponential_avg_factor != 1.0f) {
@@ -1232,20 +1233,20 @@ struct FusedBatchNormGradImplGPU {
             ? StreamExecutorUtil::AsDeviceMemory<T>(*side_input_backprop)
             : se::DeviceMemory<T>();
 
-    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
+    std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8_t>>
         workspace_allocator;
-    DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
-    DeviceMemory<uint8> reserve_space_data;
+    stream_executor::DeviceAddress<uint8>* reserve_space_data_ptr = nullptr;
+    stream_executor::DeviceAddress<uint8> reserve_space_data;
 #if CUDNN_VERSION >= 7402
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       workspace_allocator.reset(
-          new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
+          new functor::CudnnBatchNormAllocatorInTemp<uint8_t>(context));
 
       // the cudnn kernel outputs inverse variance in forward and reuse it in
       // backward
       if (reserve_space.dims() != 0) {
-        reserve_space_data = functor::CastDeviceMemory<uint8, U>(
+        reserve_space_data = functor::CastDeviceMemory<uint8_t, U>(
             const_cast<Tensor*>(&reserve_space));
         reserve_space_data_ptr = &reserve_space_data;
       }
@@ -1416,7 +1417,7 @@ class FusedBatchNormOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
                                              &exponential_avg_factor));
     exponential_avg_factor_ = U(exponential_avg_factor);
-    string tensor_format;
+    std::string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -1645,7 +1646,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
     epsilon_ = U(epsilon);
-    string tensor_format;
+    std::string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
