@@ -41,6 +41,7 @@ cc_library(
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_utils",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
