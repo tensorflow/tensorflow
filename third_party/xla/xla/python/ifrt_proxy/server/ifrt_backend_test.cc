@@ -74,7 +74,6 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
-#include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
@@ -184,7 +183,8 @@ TEST_P(IfrtBackendTest, ProcessFailsWithNoRequestSet) {
 
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendTestWithAllVersions, IfrtBackendTest,
-    testing::Range(kServerMinVersion, kServerMaxVersion + 1),
+    testing::Range(protocol_version::kServerMin,
+                   protocol_version::kServerMax + 1),
     [](const testing::TestParamInfo<IfrtBackendTest::ParamType>& info) {
       return absl::StrCat(info.param);
     });
@@ -2054,7 +2054,8 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccessWithMpmdAddressableDevices) {
 
 INSTANTIATE_TEST_SUITE_P(
     IfrtBackendHandlerTestWithAllVersions, IfrtBackendHandlerTest,
-    testing::Range(kServerMinVersion, kServerMaxVersion + 1),
+    testing::Range(protocol_version::kServerMin,
+                   protocol_version::kServerMax + 1),
     [](const testing::TestParamInfo<IfrtBackendHandlerTest::ParamType>& info) {
       return absl::StrCat(info.param);
     });

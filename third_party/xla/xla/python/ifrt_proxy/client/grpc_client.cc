@@ -36,9 +36,9 @@
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -104,8 +104,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   GrpcIfrtSessionMetadata metadata;
   {
     GrpcGetVersionRequest request;
-    request.mutable_min_version()->set_protocol_version(kClientMinVersion);
-    request.mutable_max_version()->set_protocol_version(kClientMaxVersion);
+    request.mutable_min_version()->set_protocol_version(
+        protocol_version::kClientMin);
+    request.mutable_max_version()->set_protocol_version(
+        protocol_version::kClientMax);
     request.mutable_min_version()->set_ifrt_serdes_version_number(
         SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     request.mutable_max_version()->set_ifrt_serdes_version_number(
@@ -116,8 +118,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     TF_RETURN_IF_ERROR(xla::FromGrpcStatus(
         control_path_stub->GetVersion(&context, request, &response)));
 
-    CHECK_GE(response.version().protocol_version(), kClientMinVersion);
-    CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
+    CHECK_GE(response.version().protocol_version(),
+             protocol_version::kClientMin);
+    CHECK_LE(response.version().protocol_version(),
+             protocol_version::kClientMax);
     CHECK_GE(response.version().ifrt_serdes_version_number(),
              SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     CHECK_LE(response.version().ifrt_serdes_version_number(),

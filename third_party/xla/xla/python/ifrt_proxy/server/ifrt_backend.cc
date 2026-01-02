@@ -80,7 +80,6 @@
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
 #include "xla/python/ifrt_proxy/server/host_callback.h"
 #include "xla/python/ifrt_proxy/server/ifrt_backend_user_context.h"
-#include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -474,12 +473,12 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
   if (ifrt_client == nullptr) {
     return absl::InvalidArgumentError("ifrt_client cannot be a nullptr.");
   }
-  if (version.protocol_version() < kServerMinVersion ||
-      version.protocol_version() > kServerMaxVersion) {
+  if (version.protocol_version() < protocol_version::kServerMin ||
+      version.protocol_version() > protocol_version::kServerMax) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Protocol version ", version.protocol_version(),
         " is unsupported by IFRT Proxy server; supported versions: [",
-        kServerMinVersion, ",", kServerMaxVersion, "]"));
+        protocol_version::kServerMin, ",", protocol_version::kServerMax, "]"));
   }
   const SerDesVersionNumber ifrt_serdes_version_number(
       SerDesVersion::current().version_number());

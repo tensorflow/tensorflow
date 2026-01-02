@@ -35,9 +35,9 @@
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 #include "xla/python/ifrt_proxy/server/host_buffer.h"
-#include "xla/python/ifrt_proxy/server/version.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ namespace {
 
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
-  version.set_protocol_version(kServerMaxVersion);
+  version.set_protocol_version(protocol_version::kServerMax);
   version.set_ifrt_serdes_version_number(
       SerDesVersion::current().version_number().value());
   return version;

@@ -78,15 +78,19 @@ enum {
   kSentiel,
 };
 
-// The minimum protocol_version that the current client code understands.
-inline constexpr int kClientMin = kSerDesVersioning;
-
-// The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = kMakeArraysFromHostBufferShards;
-
 // The maximum protocol_version that the current client and server code
 // understand.
 constexpr int kCurrent = kSentiel - 1;
+
+// The minimum and maximum protocol_version that the current client code
+// understands.
+inline constexpr int kClientMin = kSerDesVersioning;
+inline constexpr int kClientMax = kCurrent;
+
+// The minimum and maximum protocol_version that the current server code
+// understands.
+inline constexpr int kServerMin = kMakeArraysFromHostBufferShards;
+inline constexpr int kServerMax = kCurrent;
 
 }  // namespace protocol_version
 

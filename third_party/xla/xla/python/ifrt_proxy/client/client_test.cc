@@ -46,9 +46,9 @@
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -499,7 +499,8 @@ TEST_P(ClientTest, ReshardArraysSuccess) {
 
 INSTANTIATE_TEST_SUITE_P(
     ClientTestWithAllVersions, ClientTest,
-    testing::Range(kClientMinVersion, kClientMaxVersion + 1),
+    testing::Range(protocol_version::kClientMin,
+                   protocol_version::kClientMax + 1),
     [](const testing::TestParamInfo<ClientTest::ParamType>& info) {
       return absl::StrCat(info.param);
     });
