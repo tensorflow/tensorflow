@@ -50,7 +50,7 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 }
 
 // Define a default version where metadata is not used.
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 Compiler::CompileAheadOfTime(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {

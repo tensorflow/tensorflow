@@ -211,7 +211,7 @@ class Compiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) {
     return Unimplemented("LoadAotCompilationResult unimplemented.");
   }
@@ -255,13 +255,13 @@ class Compiler {
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
@@ -303,7 +303,7 @@ class Compiler {
   }
 
   // Returns an AotCompilationResult of the executable for serialization.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) {
     return Unimplemented("Export unimplemented");
   }
@@ -321,7 +321,7 @@ class Compiler {
 
   // Creates an `Executable` based on the given `aot_result`.
   virtual absl::StatusOr<std::unique_ptr<Executable>>
-  LoadExecutableFromAotResult(const AotCompilationResult& aot_result,
+  LoadExecutableFromAotResult(const CompiledModule& aot_result,
                               const se::StreamExecutor& stream_exec) {
     return Unimplemented("LoadExecutableFromAotResult unimplemented");
   }
