@@ -100,6 +100,38 @@ std::string DeviceDescription::ToString() const {
   return ToGpuProto().DebugString();
 }
 
+bool DeviceDescription::operator==(const DeviceDescription& other) const {
+  return name_ == other.name_ && device_vendor_ == other.device_vendor_ &&
+         platform_version_ == other.platform_version_ &&
+         driver_version_ == other.driver_version_ &&
+         runtime_version_ == other.runtime_version_ &&
+         compile_time_toolkit_version_ == other.compile_time_toolkit_version_ &&
+         dnn_version_ == other.dnn_version_ && model_str_ == other.model_str_ &&
+         pci_bus_id_ == other.pci_bus_id_ && numa_node_ == other.numa_node_ &&
+         core_count_ == other.core_count_ &&
+         fpus_per_core_ == other.fpus_per_core_ &&
+         thread_dim_limit_ == other.thread_dim_limit_ &&
+         block_dim_limit_ == other.block_dim_limit_ &&
+         threads_per_block_limit_ == other.threads_per_block_limit_ &&
+         threads_per_core_limit_ == other.threads_per_core_limit_ &&
+         threads_per_warp_ == other.threads_per_warp_ &&
+         registers_per_core_limit_ == other.registers_per_core_limit_ &&
+         registers_per_block_limit_ == other.registers_per_block_limit_ &&
+         device_address_bits_ == other.device_address_bits_ &&
+         device_memory_size_ == other.device_memory_size_ &&
+         l2_cache_size_ == other.l2_cache_size_ &&
+         memory_bandwidth_ == other.memory_bandwidth_ &&
+         pcie_bandwidth_ == other.pcie_bandwidth_ &&
+         clock_rate_ghz_ == other.clock_rate_ghz_ &&
+         ecc_enabled_ == other.ecc_enabled_ &&
+         gpu_compute_capability_ == other.gpu_compute_capability_ &&
+         shared_memory_per_core_ == other.shared_memory_per_core_ &&
+         shared_memory_per_block_ == other.shared_memory_per_block_ &&
+         shared_memory_per_block_optin_ ==
+             other.shared_memory_per_block_optin_ &&
+         interconnect_info_ == other.interconnect_info_;
+}
+
 const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
   return gpu_compute_capability_;
 }

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -286,9 +288,22 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
     ++execute_calls;
     return absl::OkStatus();
   });
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
   se::StreamExecutorMemoryAllocator allocator(executor);
-  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
   BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &buffer_allocations};
+
   Thunk::InitializeParams initialize_params;
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
@@ -337,10 +352,23 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
     ++execute_calls;
     return absl::OkStatus();
   });
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
   se::StreamExecutorMemoryAllocator allocator(executor);
-  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
-  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &buffer_allocations};
+
+  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
       stream.get(), nullptr, nullptr);

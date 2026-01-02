@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
@@ -36,15 +37,18 @@ namespace gpu {
 class ConvolutionReorderThunk : public Thunk {
  public:
   struct BiasBuffers {
-    BufferAllocation::Slice bias_input;
-    BufferAllocation::Slice bias_output;
+    ShapedSlice bias_input;
+    ShapedSlice bias_output;
   };
 
   ConvolutionReorderThunk(ThunkInfo thunk_info,
                           ConvolutionFilterDimensions filter_dimensions,
-                          BufferAllocation::Slice filter_input,
-                          BufferAllocation::Slice filter_output,
+                          ShapedSlice filter_input, ShapedSlice filter_output,
                           std::optional<BiasBuffers> biases);
+
+  static absl::StatusOr<std::unique_ptr<ConvolutionReorderThunk>> Create(
+      ThunkInfo thunk_info, ShapedSlice filter_input, ShapedSlice filter_output,
+      std::optional<BiasBuffers> biases);
 
   ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
@@ -53,12 +57,14 @@ class ConvolutionReorderThunk : public Thunk {
 
   BufferUses buffer_uses() const override {
     BufferUses res{
-        BufferUse::Read(filter_input_),
-        BufferUse::Write(filter_output_),
+        BufferUse::Read(filter_input_.slice, filter_input_.shape),
+        BufferUse::Write(filter_output_.slice, filter_output_.shape),
     };
     if (biases_.has_value()) {
-      res.push_back(BufferUse::Read(biases_->bias_input));
-      res.push_back(BufferUse::Write(biases_->bias_output));
+      res.push_back(BufferUse::Read(biases_->bias_input.slice,
+                                    biases_->bias_input.shape));
+      res.push_back(BufferUse::Write(biases_->bias_output.slice,
+                                     biases_->bias_output.shape));
     }
     return res;
   }
@@ -72,9 +78,9 @@ class ConvolutionReorderThunk : public Thunk {
  private:
   const ConvolutionFilterDimensions filter_dimensions_;
   const se::dnn::FilterDescriptor filter_descriptor_;
-  BufferAllocation::Slice filter_input_;
-  BufferAllocation::Slice filter_output_;
-  std::optional<BiasBuffers> biases_;
+  const ShapedSlice filter_input_;
+  const ShapedSlice filter_output_;
+  const std::optional<BiasBuffers> biases_;
 };
 
 }  // namespace gpu

@@ -31,6 +31,7 @@
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -463,6 +464,37 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
 
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3),
               Not(absl_testing::IsOk()));
+}
+
+TEST_P(ClientTest, ReshardArraysSuccess) {
+  std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
+  auto array = tsl::MakeRef<Array>(client_.get(), rpc_helper_,
+                                   DType(DType::kF64), Shape({1, 2, 3}),
+                                   sharding, ArrayHandle{1234}, layout_1_);
+
+  IfrtResponse response;
+  response.mutable_reshard_arrays_response()->add_array_handles(1);
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kReshardArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array};
+  std::vector<xla::ifrt::ArraySpec> specs;
+  specs.push_back({array->dtype(), array->shape(), sharding, layout_2_});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto reshared_arrays,
+      client_->ReshardArrays(absl::MakeSpan(arrays), absl::MakeSpan(specs),
+                             ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(reshared_arrays, SizeIs(1));
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
+                          reshared_arrays[0]->pjrt_layout());
+  EXPECT_EQ(layout->ToString(), layout_2_->ToString());
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -32,6 +32,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -95,6 +96,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics);
+
+  // Gets handles from an array span.
+  static absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> GetHandles(
+      absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics);
 
   // Destructs the array associated with the given handle. The corresponding
   // array becomes unusable afterwards.

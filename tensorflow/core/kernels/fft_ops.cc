@@ -163,7 +163,7 @@ class FFTBase : public OpKernel {
 
     Tensor* out;
     TensorShape output_shape = input_shape;
-    uint64 fft_shape[3] = {0, 0, 0};
+    uint64_t fft_shape[3] = {0, 0, 0};
 
     // In R2C or C2R mode, we use a second input to specify the FFT length
     // instead of inferring it from the input shape.
@@ -175,7 +175,7 @@ class FFTBase : public OpKernel {
                   errors::InvalidArgument("fft_length must have shape [",
                                           fft_rank, "]"));
 
-      auto fft_length_as_vec = fft_length.vec<int32>();
+      auto fft_length_as_vec = fft_length.vec<int32_t>();
       for (int i = 0; i < fft_rank; ++i) {
         OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                     errors::InvalidArgument(
@@ -186,7 +186,7 @@ class FFTBase : public OpKernel {
         // IRFFTs, the inner-most input dimension must have length of at least
         // fft_shape[i] / 2 + 1.
         bool inner_most = (i == fft_rank - 1);
-        uint64 min_input_dim_length =
+        uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
         auto input_index = input_shape.dims() - fft_rank + i;
         OP_REQUIRES(
@@ -198,9 +198,9 @@ class FFTBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index)));
-        uint64 dim = IsForward() && inner_most && fft_shape[i] != 0
-                         ? fft_shape[i] / 2 + 1
-                         : fft_shape[i];
+        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
+                           ? fft_shape[i] / 2 + 1
+                           : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       }
     } else {
@@ -251,8 +251,8 @@ class FFTBase : public OpKernel {
   virtual bool IsReal() const = 0;
 
   // The function that actually computes the FFT.
-  virtual void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-                     Tensor* out) = 0;
+  virtual void DoFFT(OpKernelContext* ctx, const Tensor& in,
+                     uint64_t* fft_shape, Tensor* out) = 0;
 };
 
 class FFTNBase : public OpKernel {
@@ -277,7 +277,7 @@ class FFTNBase : public OpKernel {
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank of at least ", fft_rank,
                                  " but got: ", input_shape.DebugString())));
-    auto axes_as_vec = axes.vec<int32>();
+    auto axes_as_vec = axes.vec<int32_t>();
     // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
     for (int i = 0; i < fft_rank; ++i) {
       axes_shape[i] = axes_as_vec(i) % input_rank;
@@ -303,7 +303,7 @@ class FFTNBase : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "fft_length must have shape [", fft_rank,
                     "], but got: ", fft_length.shape().dim_size(0), ".")));
-    auto fft_length_as_vec = fft_length.vec<int32>();
+    auto fft_length_as_vec = fft_length.vec<int32_t>();
     for (int i = 0; i < fft_rank; ++i) {
       OP_REQUIRES(ctx, fft_length_as_vec(i) >= 0,
                   absl::InvalidArgumentError(absl::StrCat(
@@ -312,7 +312,7 @@ class FFTNBase : public OpKernel {
       fft_shape[i] = fft_length_as_vec(i);
       if (IsReal()) {
         bool inner_most = (i == fft_rank - 1);
-        uint64 min_input_dim_length =
+        uint64_t min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
         auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
@@ -324,9 +324,9 @@ class FFTNBase : public OpKernel {
                 "Input dimension ", input_index,
                 " must have length of at least ", min_input_dim_length,
                 " but got: ", input_shape.dim_size(input_index))));
-        uint64 dim = IsForward() && inner_most && fft_shape[i] != 0
-                         ? fft_shape[i] / 2 + 1
-                         : fft_shape[i];
+        uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
+                           ? fft_shape[i] / 2 + 1
+                           : fft_shape[i];
         output_shape.set_dim(output_shape.dims() - fft_rank + i, dim);
       } else {
         output_shape.set_dim(output_shape.dims() - fft_rank + i, fft_shape[i]);
@@ -374,8 +374,9 @@ class FFTNBase : public OpKernel {
   virtual bool IsForward() const = 0;
 
   // The function that actually computes the FFT.
-  virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-                      int32* axes_shape, Tensor* out) = 0;
+  virtual void DoFFTN(OpKernelContext* ctx, const Tensor& in,
+                      uint64_t* fft_shape, int32_t* axes_shape,
+                      Tensor* out) = 0;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -390,7 +391,7 @@ class FFTCPU : public FFTBase {
   bool IsForward() const override { return Forward; }
   bool IsReal() const override { return _Real; }
 
-  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
     std::vector<size_t> axes(Rank());
     int batch_dims = in.dims() - FFTRank;
@@ -436,11 +437,11 @@ namespace {
 // Info required for caching an FFT plan.
 struct FftPlanInfo {
   int rank = 0;
-  gtl::InlinedVector<uint64_t, 3> shape{};
-  gtl::InlinedVector<uint64_t, 3> input_embed{};
+  absl::InlinedVector<uint64_t, 3UL> shape{};
+  absl::InlinedVector<uint64_t, 3UL> input_embed{};
   uint64_t input_stride = 1;
   uint64_t input_distance = 0;
-  gtl::InlinedVector<uint64_t, 3> output_embed{};
+  absl::InlinedVector<uint64_t, 3UL> output_embed{};
   uint64_t output_stride = 1;
   uint64_t output_distance = 0;
   se::fft::Type type = se::fft::Type::kInvalid;
@@ -576,14 +577,15 @@ class FftPlanCache {
 
 template <typename T>
 se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  stream_executor::DeviceAddressBase wrapped(const_cast<T*>(cuda_memory));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 
 template <typename T>
-se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
-  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64_t size) {
+  stream_executor::DeviceAddressBase wrapped(const_cast<T*>(cuda_memory),
+                                             size * sizeof(T));
   se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
@@ -599,27 +601,27 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   CufftScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
-  absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
-      return absl::StatusOr<stream_executor::DeviceMemory<uint8>>();
+      return absl::StatusOr<stream_executor::DeviceAddress<uint8>>();
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
-    Status allocation_status(context_->allocate_temp(
+    absl::Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return absl::StatusOr<stream_executor::DeviceMemory<uint8>>();
+      return absl::StatusOr<stream_executor::DeviceAddress<uint8>>();
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(
-        AsDeviceMemory(temporary_memory.flat<uint8>().data(),
-                       temporary_memory.flat<uint8>().size()));
+    return absl::StatusOr<stream_executor::DeviceAddress<uint8>>(
+        AsDeviceMemory(temporary_memory.flat<uint8_t>().data(),
+                       temporary_memory.flat<uint8_t>().size()));
   }
   int64_t TotalByteSize() { return total_byte_size_; }
 
@@ -632,14 +634,14 @@ class CufftScratchAllocator : public se::ScratchAllocator {
 
 }  // end namespace
 
-int64_t GetCufftWorkspaceLimit(const string& envvar_in_mb,
+int64_t GetCufftWorkspaceLimit(const std::string& envvar_in_mb,
                                int64_t default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
     int64_t scratch_limit_in_mb = -1;
-    Status status = ReadInt64FromEnvVar(envvar_in_mb, default_value_in_bytes,
-                                        &scratch_limit_in_mb);
+    absl::Status status = ReadInt64FromEnvVar(
+        envvar_in_mb, default_value_in_bytes, &scratch_limit_in_mb);
     if (!status.ok()) {
       LOG(WARNING) << "Invalid value for env-var " << envvar_in_mb << ": "
                    << workspace_limit_in_mb_str;
@@ -661,7 +663,7 @@ class FFTGPUBase : public FFTBase {
   // ever hitting this limit in practice.
   static constexpr size_t kFftPlanCacheCapacity = 512;
 
-  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
              Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, absl::InternalError("No GPU stream available."));
@@ -674,12 +676,12 @@ class FFTGPUBase : public FFTBase {
     for (int i = 0; i < input_shape.dims() - fft_rank; ++i) {
       batch_size *= input_shape.dim_size(i);
     }
-    uint64 input_embed[3];
-    const uint64 input_stride = 1;
-    uint64 input_distance = 1;
-    uint64 output_embed[3];
-    const uint64 output_stride = 1;
-    uint64 output_distance = 1;
+    uint64_t input_embed[3];
+    const uint64_t input_stride = 1;
+    uint64_t input_distance = 1;
+    uint64_t output_embed[3];
+    const uint64_t output_stride = 1;
+    uint64_t output_distance = 1;
 
     for (int i = 0; i < fft_rank; ++i) {
       auto dim_offset = input_shape.dims() - fft_rank + i;
@@ -801,7 +803,7 @@ class FFTGPUBase : public FFTBase {
   template <typename InT, typename OutT>
   void DoFFTInternal(OpKernelContext* ctx, se::Stream* stream,
                      se::fft::Plan* plan, const se::fft::Type fft_type,
-                     const uint64 output_distance, const Tensor& in,
+                     const uint64_t output_distance, const Tensor& in,
                      Tensor* out) {
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();
@@ -846,8 +848,8 @@ class FFTNGPUBase : public FFTNBase {
   // ever hitting this limit in practice.
   static constexpr size_t kFftPlanCacheCapacity = 512;
 
-  void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-              int32* axes_shape, Tensor* out) override {
+  void DoFFTN(OpKernelContext* ctx, const Tensor& in, uint64_t* fft_shape,
+              int32_t* axes_shape, Tensor* out) override {
     int fft_rank = ctx->input(2).dim_size(0);
     // TODO(b/295966566): fftn() ops only support lower dimensions now (1~3).
     OP_REQUIRES(
@@ -861,13 +863,13 @@ class FFTNGPUBase : public FFTNBase {
     const TensorShape& output_shape = out->shape();
 
     int batch_size = 1;
-    uint64 input_stride = 1;
-    uint64 output_stride = 1;
-    uint64 input_embed[3];
-    uint64 output_embed[3];
+    uint64_t input_stride = 1;
+    uint64_t output_stride = 1;
+    uint64_t input_embed[3];
+    uint64_t output_embed[3];
 
-    uint64 input_distance = 1;
-    uint64 output_distance = 1;
+    uint64_t input_distance = 1;
+    uint64_t output_distance = 1;
     int ax = 0;
     for (int i = 0; i < input_shape.dims(); ++i) {
       if (i >= axes[0]) {
@@ -989,7 +991,7 @@ class FFTNGPUBase : public FFTNBase {
   template <typename InT, typename OutT>
   void DoFFTInternal(OpKernelContext* ctx, se::Stream* stream,
                      se::fft::Plan* plan, const se::fft::Type fft_type,
-                     const uint64 output_distance, const Tensor& in,
+                     const uint64_t output_distance, const Tensor& in,
                      Tensor* out) {
     const TensorShape& input_shape = in.shape();
     const TensorShape& output_shape = out->shape();

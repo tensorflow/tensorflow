@@ -98,10 +98,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
-      ArrayCopySemantics semantics) override {
-    return absl::UnimplementedError(
-        "ReshardArrays is not supported for the IFRT proxy client.");
-  }
+      ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 

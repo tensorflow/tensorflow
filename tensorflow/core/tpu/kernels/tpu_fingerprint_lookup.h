@@ -68,7 +68,7 @@ class TpuFingerprintLookup : public ResourceBase {
   std::optional<absl::string_view> Lookup(uint64 key);
 
   size_t num_valid() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return key_to_value_.size();
   }
 

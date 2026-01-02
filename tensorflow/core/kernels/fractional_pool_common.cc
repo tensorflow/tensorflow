@@ -91,7 +91,7 @@ static std::vector<int64_t> GeneratePoolingSequenceRandom(
   // Randomly shuffle this vector.
   auto local_gen = generator->ReserveSamples32(diff.size());
   random::SingleSampleAdapter<random::PhiloxRandom> single(&local_gen);
-  const auto uniform = [&single](uint32 n) { return single() % n; };
+  const auto uniform = [&single](uint32_t n) { return single() % n; };
   RandomShuffle(diff.begin(), diff.end(), uniform);
 
   return diff;

@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -48,7 +47,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
@@ -73,7 +71,6 @@ namespace {
 
 using ::mlir::ArrayRef;
 using ::mlir::DictionaryAttr;
-using ::mlir::LogicalResult;
 using ::mlir::ModuleOp;
 using ::mlir::OpBuilder;
 using ::mlir::Operation;
@@ -83,7 +80,6 @@ using ::mlir::PassWrapper;
 using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
-using ::mlir::success;
 using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
 
@@ -94,23 +90,6 @@ using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
-
-// Check if all shardings in an array are unreduced. Hard fail if at least one
-// but not all are unreduced.
-bool allShardingsUnreduced(ArrayRef<TensorShardingAttr> shardings) {
-  bool hasUnreduced = false;
-  bool hasNonUnreduced = false;
-  for (TensorShardingAttr sharding : shardings) {
-    if (sharding.getUnreducedAxes().empty()) {
-      hasNonUnreduced = true;
-    } else {
-      hasUnreduced = true;
-    }
-  }
-  CHECK(!hasUnreduced || !hasNonUnreduced)
-      << "Shardings have a mix of unreduced and non-unreduced.";
-  return hasUnreduced;
-}
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,

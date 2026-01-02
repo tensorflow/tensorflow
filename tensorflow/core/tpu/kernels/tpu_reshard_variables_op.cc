@@ -198,7 +198,7 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
       [](const xla::MaybeOwningDeviceMemory& buffer) {
-        return buffer.AsDeviceMemoryBase();
+        return buffer.AsDeviceAddress();
       }));
 
   // Write input root tuple.

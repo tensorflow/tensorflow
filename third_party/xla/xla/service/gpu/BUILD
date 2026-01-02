@@ -1615,6 +1615,7 @@ cc_library(
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_proto_cc",
+        "//xla/backends/gpu/target_config",
         "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
         "//xla/core/host_offloading:host_compute_asyncifier",
         "//xla/hlo/analysis:alias_info",
@@ -3181,6 +3182,11 @@ xla_test(
     name = "determinism_test",
     srcs = ["determinism_test.cc"],
     backends = ["gpu"],
+    # TODO(b/471244513) disabled because it times out.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",

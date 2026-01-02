@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -267,6 +268,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CollectivePermuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_permute_start_thunk(),
           buffer_allocations, collective_async_events_map);
+    case ThunkProto::kSendThunk:
+      return SendThunk::FromProto(std::move(thunk_info),
+                                  thunk_proto.send_thunk(), buffer_allocations,
+                                  collective_async_events_map);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);

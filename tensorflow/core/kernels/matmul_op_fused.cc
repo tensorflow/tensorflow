@@ -592,7 +592,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     auto plan_and_algorithms_or =
         PlanAndAlgorithms::GetOrCreate(stream, matmul_params, &pmu);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
-    absl::MutexLock lock(pmu);
+    absl::MutexLock lock(*pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
     const auto& algorithms = plan_and_algorithms->algorithms;
     OP_REQUIRES(context, algorithms.size() > 0,

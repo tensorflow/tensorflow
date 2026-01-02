@@ -112,7 +112,7 @@ struct CompileOptions {
       std::vector<std::pair<std::string, OptionOverride>>;
   EnvironmentOptionOverrides env_option_overrides;
 
-  std::optional<xla::Compiler::GpuTargetConfig> gpu_target_config;
+  std::optional<xla::gpu::GpuTargetConfig> gpu_target_config;
 
   // Allow to modify the input MLIR / XLA program.
   // This is used to run passes on the MLIR parameter without having to clone it

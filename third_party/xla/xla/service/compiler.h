@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -50,8 +51,6 @@ limitations under the License.
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -103,31 +102,7 @@ class AotCompilationMetadata {
 class Compiler {
  public:
   // Description of a target device for compilation.
-  struct GpuTargetConfig {
-    explicit GpuTargetConfig(se::StreamExecutor* s);
-
-    static absl::StatusOr<GpuTargetConfig> FromProto(
-        const se::GpuTargetConfigProto& proto);
-
-    se::GpuTargetConfigProto ToProto() const;
-
-    bool operator==(const GpuTargetConfig& other) const {
-      // TODO(cheshire): More efficient comparator, this is currently just for
-      // tests.
-      return ToProto().SerializeAsString() ==
-             other.ToProto().SerializeAsString();
-    }
-
-    std::string ToString() { return ToProto().DebugString(); }
-
-    se::DeviceDescription device_description;
-    std::string platform_name;
-    se::dnn::VersionInfo dnn_version_info;
-    std::string device_description_str;
-
-   private:
-    GpuTargetConfig() = default;
-  };
+  using GpuTargetConfig = ::xla::gpu::GpuTargetConfig;
 
   // Description of a target CPU for compilation.
   struct CpuTargetConfig {
@@ -236,7 +211,7 @@ class Compiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) {
     return Unimplemented("LoadAotCompilationResult unimplemented.");
   }
@@ -280,13 +255,13 @@ class Compiler {
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
@@ -328,7 +303,7 @@ class Compiler {
   }
 
   // Returns an AotCompilationResult of the executable for serialization.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       Executable* executable) {
     return Unimplemented("Export unimplemented");
   }
@@ -346,7 +321,7 @@ class Compiler {
 
   // Creates an `Executable` based on the given `aot_result`.
   virtual absl::StatusOr<std::unique_ptr<Executable>>
-  LoadExecutableFromAotResult(const AotCompilationResult& aot_result,
+  LoadExecutableFromAotResult(const CompiledModule& aot_result,
                               const se::StreamExecutor& stream_exec) {
     return Unimplemented("LoadExecutableFromAotResult unimplemented");
   }
@@ -465,11 +440,10 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
-  const std::optional<Compiler::GpuTargetConfig>& gpu_target_config() const {
+  const std::optional<gpu::GpuTargetConfig>& gpu_target_config() const {
     return gpu_target_config_;
   }
-  void set_gpu_target_config(
-      const Compiler::GpuTargetConfig& gpu_target_config) {
+  void set_gpu_target_config(const gpu::GpuTargetConfig& gpu_target_config) {
     gpu_target_config_ = gpu_target_config;
   }
 
@@ -503,7 +477,7 @@ class AotCompilationOptions {
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.
-  std::optional<Compiler::GpuTargetConfig> gpu_target_config_;
+  std::optional<gpu::GpuTargetConfig> gpu_target_config_;
   EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
 };
 

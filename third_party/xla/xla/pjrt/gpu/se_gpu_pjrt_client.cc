@@ -73,8 +73,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
-#include "xla/pjrt/gpu/gpu_topology.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -96,6 +94,8 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
@@ -183,7 +183,7 @@ GetTargetConfigForDevices(absl::Span<PjRtDevice* const> devices) {
         tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     if (local_device_state != nullptr) {
-      return xla::Compiler::GpuTargetConfig(local_device_state->executor())
+      return xla::gpu::GpuTargetConfig(local_device_state->executor())
           .ToProto();
     }
   }

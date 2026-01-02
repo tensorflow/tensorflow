@@ -38,7 +38,7 @@ absl::Status CheckIsValidKey(const Tensor& key);
 bool IsDefaultKey(const Tensor& key);
 
 absl::Status GetComputationCacheEntry(
-    const Tensor& key, string* rendezvous_key_base,
+    const Tensor& key, std::string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target);
 

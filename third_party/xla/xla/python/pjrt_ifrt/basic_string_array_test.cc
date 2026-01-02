@@ -109,7 +109,7 @@ CreateNonReadyTestArray(
     Client* client, Device* const device,
     BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
   auto [buffers_promise, buffers_future] =
-      tsl::Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::MakePromise<BasicStringArray::Buffers>();
   Shape shape({1});
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -158,8 +158,7 @@ TEST(BasicStringArrayTest, Destruction) {
   BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
       [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
 
-  auto [array_creation_promise, array_creation_future] =
-      tsl::Future<>::MakePromise();
+  auto [array_creation_promise, array_creation_future] = tsl::MakePromise<>();
 
   tsl::Env::Default()->SchedClosure(
       ([&, promise = std::move(array_creation_promise)]() mutable {
@@ -240,7 +239,7 @@ TEST(GetReadyFutureTest, SuccessCase) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Make a BasicStringArray with a future that is not ready.
   auto [promise, buffers_future] =
-      tsl::Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::MakePromise<BasicStringArray::Buffers>();
   TF_ASSERT_OK_AND_ASSIGN(auto array,
                           CreateTestArray(client.get(), buffers_future,
                                           /*on_done_with_buffer=*/nullptr));
@@ -261,7 +260,7 @@ TEST(GetReadyFutureTest, FailureCases) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Make a BasicStringArray with a future that is not ready.
   auto [promise, buffers_future] =
-      tsl::Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::MakePromise<BasicStringArray::Buffers>();
   TF_ASSERT_OK_AND_ASSIGN(auto array,
                           CreateTestArray(client.get(), buffers_future,
                                           /*on_done_with_buffer=*/nullptr));

@@ -53,11 +53,11 @@ bool ComputeInNhwcEnabled(DataType data_type, se::Stream* stream,
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
-int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                           int64_t default_value_in_bytes);
+int64_t GetDnnWorkspaceLimit(const std::string& envvar_in_mb,
+                             int64_t default_value_in_bytes);
 
 // Call the Dnn workspace limit from TF_CUDNN_WORKSPACE_LIMIT_IN_MB or default.
-int64 GetDnnWorkspaceLimitOrDefault();
+int64_t GetDnnWorkspaceLimitOrDefault();
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
@@ -67,7 +67,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   virtual ~DnnScratchAllocator() {}
   DnnScratchAllocator(int64_t memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+  int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
   absl::StatusOr<stream_executor::DeviceMemory<uint8>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
@@ -83,7 +83,7 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
-    Status allocation_status(context_->allocate_temp(
+    absl::Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
@@ -97,14 +97,14 @@ class DnnScratchAllocator : public se::ScratchAllocator {
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
     return absl::StatusOr<stream_executor::DeviceMemory<uint8>>(
-        AsDeviceMemory(temporary_memory.flat<uint8>().data(),
-                       temporary_memory.flat<uint8>().size()));
+        AsDeviceMemory(temporary_memory.flat<uint8_t>().data(),
+                       temporary_memory.flat<uint8_t>().size()));
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
-  int64 memory_limit_;
-  int64 total_byte_size_;
+  int64_t memory_limit_;
+  int64_t total_byte_size_;
   OpKernelContext* context_;
   std::vector<Tensor> allocated_tensors_;
 };
@@ -177,16 +177,14 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
 }
 
 template <typename T>
-Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
-                           DnnScratchAllocator* scratch_allocator,
-                           se::dnn::ConvolutionKind kind, se::Stream* stream,
-                           const se::dnn::BatchDescriptor& input_desc,
-                           se::DeviceMemory<T> in_ptr,
-                           const se::dnn::FilterDescriptor& filter_desc,
-                           se::DeviceMemory<T> filter_ptr,
-                           const se::dnn::ConvolutionDescriptor& conv_desc,
-                           const se::dnn::BatchDescriptor& output_desc,
-                           se::DeviceMemory<T> out_ptr) {
+absl::Status LaunchAutotunedConv(
+    const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
+    DnnScratchAllocator* scratch_allocator, se::dnn::ConvolutionKind kind,
+    se::Stream* stream, const se::dnn::BatchDescriptor& input_desc,
+    se::DeviceMemory<T> in_ptr, const se::dnn::FilterDescriptor& filter_desc,
+    se::DeviceMemory<T> filter_ptr,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::BatchDescriptor& output_desc, se::DeviceMemory<T> out_ptr) {
   if (!autotune_entry.is_algorithm_config()) {
     const auto& runners = autotune_entry.GetOpRunners();
     se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;

@@ -1025,6 +1025,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service/spmd/shardy:constants",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1618,16 +1619,13 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -1657,6 +1655,7 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -6254,6 +6253,50 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_topology_proto",
+    srcs = ["gpu_topology.proto"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/stream_executor:device_description_proto"],
+)
+
+cc_library(
+    name = "gpu_topology",
+    srcs = ["gpu_topology.cc"],
+    hdrs = ["gpu_topology.h"],
+    visibility = internal_visibility([
+        "//xla/pjrt:__subpackages__",
+        "//third_party/pathways:__subpackages__",
+        "//learning/brain/research/pjrt:__subpackages__",
+        "//learning/brain/research/jax:__subpackages__",
+        "//learning/pathways/compilation_service:__subpackages__",
+        "//tensorflow/core/common_runtime/eager:__subpackages__",
+        ":__subpackages__",
+    ]),
+    deps = [
+        ":gpu_topology_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_topology_test",
+    srcs = ["gpu_topology_test.cc"],
+    deps = [
+        ":gpu_topology",
+        "//xla/backends/gpu/target_config",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

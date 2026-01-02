@@ -29,9 +29,11 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
-TEST(CollectiveThunkTest, ProtoRoundTrip) {
+TEST(CollectiveDoneThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
@@ -63,6 +65,52 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   proto.mutable_collective_done_thunk()->set_async_events_unique_id(
       round_trip_proto.collective_done_thunk().async_events_unique_id());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(CollectiveConfigTest, ToProto) {
+  CollectiveConfig config{
+      /*operand_element_type=*/{PrimitiveType::F32, PrimitiveType::BF16},
+      /*replica_groups=*/
+      {ParseTextProtoOrDie<ReplicaGroup>(
+           R"pb(replica_ids: 0 replica_ids: 1)pb"),
+       ParseTextProtoOrDie<ReplicaGroup>(
+           R"pb(replica_ids: 2 replica_ids: 3)pb")},
+      /*group_mode=*/
+      CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION,
+      /*use_symmetric_buffer=*/true,
+  };
+
+  EXPECT_THAT(config.ToProto(), EqualsProto(R"pb(
+                operand_element_type: F32
+                operand_element_type: BF16
+                replica_groups { replica_ids: 0 replica_ids: 1 }
+                replica_groups { replica_ids: 2 replica_ids: 3 }
+                group_mode: COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION
+                use_symmetric_buffer: true
+              )pb"));
+}
+
+TEST(CollectiveConfigTest, FromProto) {
+  CollectiveConfigProto proto = ParseTextProtoOrDie<CollectiveConfigProto>(
+      R"pb(
+        operand_element_type: F32
+        operand_element_type: BF16
+        replica_groups { replica_ids: 0 replica_ids: 1 }
+        replica_groups { replica_ids: 2 replica_ids: 3 }
+        group_mode: COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION
+        use_symmetric_buffer: true
+      )pb");
+
+  CollectiveConfig config = CollectiveConfig::FromProto(proto);
+
+  EXPECT_THAT(config.operand_element_type,
+              ElementsAre(PrimitiveType::F32, PrimitiveType::BF16));
+  EXPECT_THAT(config.replica_groups,
+              ElementsAre(EqualsProto(R"pb(replica_ids: 0 replica_ids: 1)pb"),
+                          EqualsProto(R"pb(replica_ids: 2 replica_ids: 3)pb")));
+  EXPECT_EQ(config.group_mode,
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION);
+  EXPECT_TRUE(config.use_symmetric_buffer);
 }
 
 }  // namespace

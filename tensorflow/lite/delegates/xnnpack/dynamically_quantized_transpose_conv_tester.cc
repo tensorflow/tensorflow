@@ -55,10 +55,12 @@ void DynamicallyQuantizedTransposeConvTester::Test(
   const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
-  ASSERT_EQ(InterpreterBuilder(
-                model, ::tflite::ops::builtin::BuiltinOpResolverWithXNNPACK())(
-                &delegate_interpreter),
-            kTfLiteOk);
+  ASSERT_EQ(
+      InterpreterBuilder(
+          model,
+          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &delegate_interpreter),
+      kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
       InterpreterBuilder(

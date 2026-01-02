@@ -2,6 +2,11 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/stream_executor/device_description.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "GpuTopologyProto";
+
 // A proto used to serialize GpuTopology instances.
 message GpuTopologyProto {
   reserved 1;  // Was: device_ids
@@ -21,6 +26,9 @@ message GpuTopologyProto {
 
   // The number of devices for each host.
   int32 num_devices_per_host = 6;
+
+  // The GPU target config.
+  stream_executor.GpuTargetConfigProto gpu_target_config = 8;
 
   reserved 7;  // Was: core_count_per_chip
 }

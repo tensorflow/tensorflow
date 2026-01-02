@@ -37,7 +37,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 33.
+// Next ID: 34.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -58,6 +58,7 @@ message IfrtRequest {
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
+    ReshardArraysRequest reshard_arrays_request = 33;
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
         disassemble_into_single_device_arrays_request = 7;
@@ -104,7 +105,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 33.
+// Next ID: 34.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -125,6 +126,7 @@ message IfrtResponse {
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
+    ReshardArraysResponse reshard_arrays_response = 33;
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
         disassemble_into_single_device_arrays_response = 7;
@@ -386,6 +388,18 @@ message RemapArraysRequest {
   repeated fixed64 result_handles = 4;
 }
 message RemapArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
+// Reshards the given IFRT arrays to new IFRT arrays.
+// Equivalent to ifrt::Client::ReshardArrays.
+message ReshardArraysRequest {
+  repeated fixed64 array_handles = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message ReshardArraysResponse {
   repeated fixed64 array_handles = 1;
 }
 

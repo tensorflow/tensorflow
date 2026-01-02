@@ -285,7 +285,6 @@ REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 class GatherNdOp : public XlaOpKernel {
  public:
   explicit GatherNdOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    // Set batch_dims_ to 0 if the attribute does not exist.
     if (context->HasAttr("bad_indices_policy")) {
       OP_REQUIRES_OK(context, context->GetAttr("bad_indices_policy",
                                                &bad_indices_policy_));
@@ -339,17 +338,19 @@ class GatherNdOp : public XlaOpKernel {
           valid_mask = xla::And(valid_mask, indices_i_good);
         }
       }
-      auto gather_shape = builder->GetShape(gather);
-      OP_REQUIRES_OK(context, gather_shape.status());
+      auto gather_shape_status = builder->GetShape(gather);
+      OP_REQUIRES_OK(context, gather_shape_status.status());
+      auto gather_shape = gather_shape_status.value();
 
-      std::vector<int64_t> valid_mask_dims(
-          gather_shape->dimensions().begin(),
-          gather_shape->dimensions().end() - 1);
+      // The last dim of indices tensor is the index vector dimension, which is
+      // omitted from the gather tensor.
+      auto valid_mask_dims = indices_shape.dim_sizes();
+      valid_mask_dims.pop_back();
       valid_mask = xla::Reshape(valid_mask, valid_mask_dims);
-      if (indices_shape.dims() != gather_shape->dimensions().size()) {
+      if (indices_shape.dims() != gather_shape.dimensions().size()) {
         OP_REQUIRES(
             context,
-            gather_shape->dimensions().size() == indices_shape.dims() - 1,
+            gather_shape.dimensions().size() == indices_shape.dims() - 1,
             errors::InvalidArgument(
                 "Indices rank must be equal to output rank (with channel "
                 "dimension) or 1 less (w/o channel dimension)"));
@@ -358,14 +359,14 @@ class GatherNdOp : public XlaOpKernel {
         for (int i = 0; i < broadcast_dims.size(); ++i) {
           broadcast_dims[i] = i;
         }
-        valid_mask = xla::BroadcastInDim(valid_mask, gather_shape->dimensions(),
+        valid_mask = xla::BroadcastInDim(valid_mask, gather_shape.dimensions(),
                                          broadcast_dims);
       }
 
       gather =
           xla::Select(valid_mask, gather,
                       xla::Broadcast(XlaHelpers::Zero(builder, params_type),
-                                     gather_shape->dimensions()));
+                                     gather_shape.dimensions()));
     }
     context->SetOutput(0, gather);
   }

@@ -78,7 +78,7 @@ class RecvAtHostOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    string remote_device;
+    std::string remote_device;
     if (!device_ordinal_is_attr) {
       const Tensor& device_ordinal_tensor = ctx->input(1);
       OP_REQUIRES_ASYNC(
@@ -115,7 +115,7 @@ class RecvAtHostOp : public AsyncOpKernel {
         errors::InvalidArgument("Input shape ", input.shape().DebugString(),
                                 " is not a vector of length 3."),
         done);
-    string rendezvous_key_base;
+    std::string rendezvous_key_base;
     if (TensorShapeUtils::IsVector(input.shape())) {
       rendezvous_key_base = input.vec<tstring>()(1);
     } else {
@@ -136,7 +136,7 @@ class RecvAtHostOp : public AsyncOpKernel {
     // Make all the parsed keys before starting any rendezvous->Recv calls to
     // avoid having to deal with an error case after some Recv have been
     // started.
-    std::vector<string> rendezvous_key(ctx->num_outputs());
+    std::vector<std::string> rendezvous_key(ctx->num_outputs());
     std::vector<Rendezvous::ParsedKey> parsed_key(ctx->num_outputs());
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       rendezvous_key[i] = Rendezvous::CreateKey(
@@ -158,7 +158,7 @@ class RecvAtHostOp : public AsyncOpKernel {
       args.device_context = ctx->op_device_context();
       args.alloc_attrs = ctx->output_alloc_attr(i);
 
-      const string& key = rendezvous_key[i];
+      const std::string& key = rendezvous_key[i];
       VLOG(2) << "Recv " << key;
       ctx->rendezvous()->RecvAsync(
           parsed_key[i], args,
@@ -182,10 +182,10 @@ class RecvAtHostOp : public AsyncOpKernel {
   }
 
  private:
-  string key_;
-  string remote_device_;
-  string cpu_device_;
-  string device_type_;
+  std::string key_;
+  std::string remote_device_;
+  std::string cpu_device_;
+  std::string device_type_;
 
   // RecvAtHostOp is neither copyable nor movable.
   RecvAtHostOp(const RecvAtHostOp&) = delete;
@@ -281,7 +281,7 @@ class SendFromHostOp : public OpKernel {
                 errors::InvalidArgument("Key input shape ",
                                         key_input.shape().DebugString(),
                                         " is not a vector of length 3."));
-    string rendezvous_key_base;
+    std::string rendezvous_key_base;
     if (TensorShapeUtils::IsVector(key_input.shape())) {
       rendezvous_key_base = key_input.vec<tstring>()(1);
     } else {
@@ -298,7 +298,7 @@ class SendFromHostOp : public OpKernel {
       args.alloc_attrs = ctx->input_alloc_attr(i);
 
       // TODO(misard) Fix this once we have replication.
-      const string& rendezvous_key = Rendezvous::CreateKey(
+      const std::string& rendezvous_key = Rendezvous::CreateKey(
           cpu_device_, /*src_incarnation=*/1,
           device_ordinal_is_attr ? remote_device_ : remote_device,
           absl::StrCat(rendezvous_key_base, key_, "_htod_", i),
@@ -313,10 +313,10 @@ class SendFromHostOp : public OpKernel {
   }
 
  private:
-  string key_;
-  string cpu_device_;
-  string remote_device_;
-  string device_type_;
+  std::string key_;
+  std::string cpu_device_;
+  std::string remote_device_;
+  std::string device_type_;
 
   // SendFromHostOp is neither copyable nor movable.
   SendFromHostOp(const SendFromHostOp&) = delete;

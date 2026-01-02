@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
@@ -206,7 +206,7 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   }
   Executable* built_executable = executables_[0]->executable();
   Compiler* compiler = client_->xla_client()->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler->Export(built_executable));
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {

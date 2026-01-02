@@ -23,7 +23,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"

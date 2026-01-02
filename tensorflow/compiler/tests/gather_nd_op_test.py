@@ -157,6 +157,19 @@ class GatherNdTest(xla_test.XLATestCase):
     )
     self.assertAllEqual(expected, gather_nd_val)
 
+  def testIgnoreBadIndicesNoFeatureDim(self):
+    shape = (3, 4)
+    params = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+    indices = np.array([[[0, 0], [-1, 3]], [[2, 4], [2, 3]]], dtype=np.int32)
+    gather_nd_val = self._runGather(
+        params, indices, bad_indices_policy="IGNORE"
+    )
+    expected = np.array(
+        [[0, 0], [0, 11]],
+        dtype=np.int32,
+    )
+    self.assertAllEqual(expected, gather_nd_val)
+
 
 if __name__ == "__main__":
   test.main()

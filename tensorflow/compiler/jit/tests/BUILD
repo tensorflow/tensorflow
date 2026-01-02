@@ -49,6 +49,8 @@ tf_cc_test(
     deps = [
         ":auto_clustering_test_helper",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

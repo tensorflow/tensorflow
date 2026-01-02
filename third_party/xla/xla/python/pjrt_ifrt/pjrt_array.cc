@@ -416,7 +416,7 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
         static_cast<char*>(data), xla_shape);
   }
   auto* literal_ptr = literal.get();
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),

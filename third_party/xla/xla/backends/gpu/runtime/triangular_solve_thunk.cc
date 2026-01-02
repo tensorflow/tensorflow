@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/make_batch_pointers.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,11 +43,8 @@ namespace gpu {
 
 TriangularSolveThunk::TriangularSolveThunk(
     ThunkInfo thunk_info, const TriangularSolveOptions& options,
-    const BufferAllocation::Slice& a_buffer,
-    const BufferAllocation::Slice& b_buffer,
-    const BufferAllocation::Slice& temp_buffer,  //
-    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
-    int64_t a_batch_stride, int64_t b_batch_stride)
+    const ShapedSlice& a_buffer, const ShapedSlice& b_buffer,
+    const ShapedSlice& temp_buffer)
     : Thunk(Kind::kTriangularSolve, thunk_info),
       uplo_(options.lower() ? se::blas::UpperLower::kLower
                             : se::blas::UpperLower::kUpper),
@@ -57,12 +55,9 @@ TriangularSolveThunk::TriangularSolveThunk(
       a_buffer_(a_buffer),
       b_buffer_(b_buffer),
       temp_buffer_(temp_buffer),
-      type_(type),
-      batch_size_(batch_size),
-      m_(m),
-      n_(n),
-      a_batch_stride_(a_batch_stride),
-      b_batch_stride_(b_batch_stride) {
+      type_(b_buffer.shape.element_type()),
+      m_(b_buffer.shape.dimensions(b_buffer.shape.dimensions().size() - 2)),
+      n_(b_buffer.shape.dimensions(b_buffer.shape.dimensions().size() - 1)) {
   transpose_a_ = [&] {
     switch (options.transpose_a()) {
       case TriangularSolveOptions::NO_TRANSPOSE:
@@ -82,31 +77,30 @@ TriangularSolveThunk::TriangularSolveThunk(
 absl::Status TriangularSolveThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
-  return RunTriangularSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
-                            buffer_allocations.GetDeviceAddress(b_buffer_),
-                            buffer_allocations.GetDeviceAddress(temp_buffer_),
-                            uplo_, side_, unit_diagonal_, transpose_a_, type_,
-                            batch_size_, m_, n_, a_batch_stride_,
-                            b_batch_stride_, params.stream);
+  return RunTriangularSolve(
+      buffer_allocations.GetDeviceAddress(a_buffer_.slice),
+      buffer_allocations.GetDeviceAddress(b_buffer_.slice),
+      buffer_allocations.GetDeviceAddress(temp_buffer_.slice), uplo_, side_,
+      unit_diagonal_, transpose_a_, type_, batch_size(), m_, n_,
+      a_batch_stride(), b_batch_stride(), params.stream);
 }
 
 absl::StatusOr<std::unique_ptr<TriangularSolveThunk>>
 TriangularSolveThunk::FromProto(
     ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
     absl::Span<const BufferAllocation> allocations) {
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice a_buffer,
-      BufferAllocation::Slice::FromProto(proto.a_buffer(), allocations));
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice b_buffer,
-      BufferAllocation::Slice::FromProto(proto.b_buffer(), allocations));
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice temp_buffer,
-      BufferAllocation::Slice::FromProto(proto.temp_buffer(), allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice a_buffer,
+                      ShapedSlice::FromProto(proto.a_buffer(), allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice b_buffer,
+                      ShapedSlice::FromProto(proto.b_buffer(), allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice temp_buffer,
+                      ShapedSlice::FromProto(proto.temp_buffer(), allocations));
+
+  if (b_buffer.shape.dimensions().size() < 2) {
+    return absl::InvalidArgumentError("Unsupported shape for b");
+  }
   return std::make_unique<TriangularSolveThunk>(
-      thunk_info, proto.options(), a_buffer, b_buffer, temp_buffer,
-      proto.type(), proto.batch_size(), proto.m(), proto.n(),
-      proto.a_batch_stride(), proto.b_batch_stride());
+      thunk_info, proto.options(), a_buffer, b_buffer, temp_buffer);
 }
 
 absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
@@ -143,12 +137,6 @@ absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
                       b_buffer_.ToProto());
   TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
                       temp_buffer_.ToProto());
-  triangular_solve_thunk_proto->set_type(type_);
-  triangular_solve_thunk_proto->set_batch_size(batch_size_);
-  triangular_solve_thunk_proto->set_m(m_);
-  triangular_solve_thunk_proto->set_n(n_);
-  triangular_solve_thunk_proto->set_a_batch_stride(a_batch_stride_);
-  triangular_solve_thunk_proto->set_b_batch_stride(b_batch_stride_);
   return proto;
 }
 

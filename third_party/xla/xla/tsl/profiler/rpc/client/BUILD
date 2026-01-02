@@ -178,11 +178,11 @@ tsl_cc_test(
         "//xla/tsl/profiler/utils:file_system_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",
     ] + tf_protos_profiler_service(),
 )

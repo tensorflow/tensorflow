@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
-#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/gpu_topology.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"

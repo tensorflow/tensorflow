@@ -78,7 +78,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
       /* Mapping between function returns and function node outputs. */
       {{"x", "cx:output:0"}, {"y", "cy:output:0"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["key"].set_s("key-value");
   func_instantiation_attr["A"].set_type(DT_FLOAT);
   func_instantiation_attr["B"].set_type(DT_INT32);
@@ -86,7 +86,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   func_instantiation_attr["C"].mutable_list()->add_type(DT_INT32);
   func_instantiation_attr["D"].set_type(DT_DOUBLE);
 
-  absl::flat_hash_map<string, DataType> type_parameters;
+  absl::flat_hash_map<std::string, DataType> type_parameters;
   TF_EXPECT_OK(InstantiationTypeParameters(
       func, AttrSlice(&func_instantiation_attr), &type_parameters));
 
@@ -97,7 +97,7 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   EXPECT_EQ(DT_INT32, type_parameters["C:1"]);
   EXPECT_EQ(DT_DOUBLE, type_parameters["D"]);
 
-  absl::flat_hash_map<string, AttrValue> body_parameters;
+  absl::flat_hash_map<std::string, AttrValue> body_parameters;
   TF_EXPECT_OK(InstantiationBodyParameters(
       func, AttrSlice(&func_instantiation_attr), &body_parameters));
 
@@ -123,7 +123,7 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
@@ -204,7 +204,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
       // Nodes
       nodes);
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
@@ -365,7 +365,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
       // Mapping
       {{"out", "Exp:y:0"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
@@ -416,7 +416,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
       {{{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
        {{"o"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
@@ -456,7 +456,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
       {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_FLOAT}}},
        {{"update"}, "AssignAdd", {"x", "one"}, {{"T", DT_FLOAT}}}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
@@ -483,7 +483,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithControlOutputs) {
       },
       {}, {{"side_effects", "update"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
@@ -524,14 +524,15 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
       });
 
   // Add an attribute to _Arg 0;
-  const uint32 arg_index = 0;
-  const std::pair<string, string> arg_attr_key_and_value = {"_arg_attr", "abc"};
+  const uint32_t arg_index = 0;
+  const std::pair<std::string, std::string> arg_attr_key_and_value = {
+      "_arg_attr", "abc"};
   FunctionDef::ArgAttrs arg_attr;
   (*arg_attr.mutable_attr())[arg_attr_key_and_value.first].set_s(
       arg_attr_key_and_value.second);
   (*func.mutable_arg_attr())[arg_index] = arg_attr;
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
@@ -580,7 +581,7 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
       /* Mapping between function returns and function node outputs. */
       {{"z", "output:z:0"}});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
@@ -670,7 +671,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
        NDef("read_x", "Identity", {"x"}, {{"T", "float"}}),
        NDef("z_RetVal", "_Retval", {"read_x"}, {{"T", "float"}})});
 
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_FLOAT);
 
   FunctionDefLibrary lib_def;
@@ -717,7 +718,7 @@ TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<std::string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["T"].set_type(DT_INT32);
   TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
                                         AttrSlice(&func_instantiation_attr),

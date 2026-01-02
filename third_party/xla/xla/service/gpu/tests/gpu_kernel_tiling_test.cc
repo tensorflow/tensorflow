@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -69,6 +68,11 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
+  // This test is meant to test the native transpose emitter, not the triton
+  // emitter, so we disable autotuning.
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_autotune_level(0);
 
   auto expected_ir = R"(
 ; CHECK: call void BARRIER()

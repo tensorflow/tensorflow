@@ -93,7 +93,7 @@ TEST(CudaExecutorMultiGpuTest, PeerAccess) {
   EXPECT_TRUE(executors[0]->CanEnablePeerAccessTo(1));
   EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(0));
   EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(1));
-  EXPECT_FALSE(executors[0]->CanEnablePeerAccessTo(3));
+  EXPECT_FALSE(executors[0]->CanEnablePeerAccessTo(100));
 }
 
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryResubscriptionFails) {

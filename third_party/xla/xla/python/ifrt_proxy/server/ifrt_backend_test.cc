@@ -51,6 +51,7 @@
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/compiler.h"
@@ -945,6 +946,61 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
               absl_testing::IsOk());
   EXPECT_THAT(response->copy_arrays_response().array_handles(),
               SizeIs(copied_arrays.size()));
+}
+
+TEST_P(IfrtBackendHandlerTest, ReshardArrays) {
+  auto layout1 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(1));
+  auto layout2 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(2));
+
+  auto mock_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*mock_array, dtype()).WillByDefault(Return(DType(DType::kF32)));
+  Shape shape({2, 2});
+  ON_CALL(*mock_array, shape()).WillByDefault(ReturnRef(shape));
+  ON_CALL(*mock_array, pjrt_layout()).WillByDefault(Return(layout1));
+
+  const std::vector<xla::ifrt::ArrayRef> src_arrays{{mock_array}};
+
+  auto reshared_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*reshared_array, pjrt_layout()).WillByDefault(Return(layout2));
+  std::vector<xla::ifrt::ArrayRef> result_arrays;
+  result_arrays.push_back(reshared_array);
+
+  TF_ASSERT_OK_AND_ASSIGN(Device * device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
+
+  std::vector<ArraySpec> specs{{DType(DType::kF32), shape, sharding, layout2}};
+
+  EXPECT_CALL(*mock_client_, ReshardArrays(ElementsAreArray(src_arrays), _,
+                                           ArrayCopySemantics::kAlwaysCopy))
+      .WillOnce(Return(result_arrays));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  ReshardArraysRequest* reshard_arrays_request =
+      ifrt_request->mutable_reshard_arrays_request();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle, MakeTestArray(mock_array));
+  reshard_arrays_request->add_array_handles(src_array_handle);
+
+  for (const auto& spec : specs) {
+    TF_ASSERT_OK(spec.ToProto(*reshard_arrays_request->add_array_specs(),
+                              ifrt_serdes_version()));
+  }
+  reshard_arrays_request->set_copy_semantics(
+      proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
+  if (Version().protocol_version() >=
+      protocol_version::kClientHandlesOptimization2) {
+    reshard_arrays_request->add_result_handles(1);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
+
+  ASSERT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
+              absl_testing::IsOk());
+  EXPECT_THAT(response->reshard_arrays_response().array_handles(),
+              SizeIs(result_arrays.size()));
 }
 
 TEST_P(IfrtBackendHandlerTest, FullyReplicatedShardSuccess) {

@@ -39,6 +39,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -450,7 +451,7 @@ tsl::Future<> Array::GetReadyFuture() const {
   auto req = std::make_unique<CheckValueReadyRequest>();
   req->add_value_handles(handle_.handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   rpc_helper_->CheckValueReady(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
@@ -698,6 +699,24 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   return result;
 }
 
+absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(
+    absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics) {
+  ::google::protobuf::RepeatedField<uint64_t> handles;
+  handles.Reserve(arrays.size());
+  for (const auto& array : arrays) {
+    if (auto* proxy_array =
+            llvm::dyn_cast<xla::ifrt::proxy::Array>(array.get())) {
+      TF_ASSIGN_OR_RETURN(ArrayHandle handle,
+                          proxy_array->GetHandle(semantics));
+      handles.Add(handle.handle);
+    } else {
+      return absl::InvalidArgumentError(
+          "Operation only supports arrays created via IFRT Proxy client");
+    }
+  }
+  return handles;
+}
+
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Array::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics array_copy_semantics,
@@ -815,7 +834,7 @@ tsl::Future<> Array::CopyToStringHostBuffer(
 
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   auto on_ready = [promise = std::move(promise),
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
@@ -881,7 +900,7 @@ tsl::Future<> Array::CopyToHostBuffer(
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   auto on_ready = [host_buffer_store = rpc_helper_->host_buffer_store(),
                    promise = std::move(promise), host_buffer_handle,
                    mem_region = mem_region->mem_region()](
