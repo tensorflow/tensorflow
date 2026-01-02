@@ -36,8 +36,8 @@ void GetOptionsOp::Compute(OpKernelContext* ctx) {
   }
 }
 
-string GetOptionsOp::TraceString(const OpKernelContext& ctx,
-                                 bool verbose) const {
+std::string GetOptionsOp::TraceString(const OpKernelContext& ctx,
+                                      bool verbose) const {
   return tsl::profiler::TraceMeOp(name_view(), type_string_view());
 }
 

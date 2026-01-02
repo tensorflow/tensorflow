@@ -106,12 +106,15 @@ absl::Status RemoteProfilerSessionManager::Init() {
       session_created_ts +
       absl::Milliseconds(options_.max_session_duration_ms());
 
-  LOG(INFO) << "Deadline set to " << deadline
+  LOG(INFO) << "[CLIENT] Deadline set to " << deadline
             << " because max_session_duration_ms was "
             << options_.max_session_duration_ms()
             << " and session_creation_timestamp_ns was "
             << options_.session_creation_timestamp_ns() << " ["
             << session_created_ts << "]";
+
+  LOG(INFO) << "[CLIENT] RemoteProfilerSessionManagerOptions: "
+            << options_.DebugString();
 
   // Prepare a list of clients.
   clients_.reserve(options_.service_addresses().size());
@@ -132,19 +135,30 @@ absl::Status RemoteProfilerSessionManager::Init() {
           .set_string_value(override_hostnames_list[i]);
     }
 
+    LOG(INFO) << "[CLIENT] Sending ProfileRequest to "
+              << resolved_service_address << ": " << request.DebugString();
+    LOG(INFO) << "[CLIENT] Profiling options: device_tracer_level="
+              << request.opts().device_tracer_level()
+              << ", host_tracer_level=" << request.opts().host_tracer_level()
+              << ", python_tracer_level="
+              << request.opts().python_tracer_level();
+
     // Creation also issues Profile RPC asynchronously.
     auto client = RemoteProfilerSession::Create(resolved_service_address,
                                                 deadline, request);
     clients_.push_back(std::move(client));
   }
 
-  LOG(INFO) << "Issued Profile gRPC to " << clients_.size() << " clients";
+  LOG(INFO) << "[CLIENT] Issued Profile gRPC to " << clients_.size()
+            << " clients";
   return absl::OkStatus();
 }
 
 std::vector<RemoteProfilerSessionManager::Response>
 RemoteProfilerSessionManager::WaitForCompletion() {
   absl::MutexLock lock(mutex_);
+  LOG(INFO) << "[CLIENT] Waiting for " << clients_.size()
+            << " remote profiling sessions to complete.";
   std::vector<RemoteProfilerSessionManager::Response> remote_responses(
       clients_.size());
 
@@ -154,7 +168,16 @@ RemoteProfilerSessionManager::WaitForCompletion() {
     remote_response.profile_response =
         client->WaitForCompletion(remote_response.status);
     remote_response.service_address = std::string(client->GetServiceAddress());
+    if (remote_response.status.ok()) {
+      LOG(INFO) << "[CLIENT] Remote profiling session completed for service: "
+                << remote_response.service_address;
+    } else {
+      LOG(ERROR) << "[CLIENT] Remote profiling session failed for service: "
+                 << remote_response.service_address
+                 << " with status: " << remote_response.status;
+    }
   }
+  LOG(INFO) << "[CLIENT] All remote profiling sessions completed.";
   return remote_responses;
 }
 
