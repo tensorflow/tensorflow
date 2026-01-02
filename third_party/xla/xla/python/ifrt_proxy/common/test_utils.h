@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 
 namespace xla {
 namespace ifrt {
@@ -85,7 +86,7 @@ class TestQueue {
  private:
   const absl::Duration pop_timeout_;
 
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   std::deque<T> queue_ ABSL_GUARDED_BY(mu_);
   bool allow_non_empty_destruction_ ABSL_GUARDED_BY(mu_) = false;
 };

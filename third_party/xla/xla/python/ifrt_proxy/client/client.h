@@ -208,7 +208,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
 
   Compiler default_compiler_;
 
-  mutable absl::Mutex mu_;
+  mutable DebuggedMutex mu_;
   mutable absl::flat_hash_map<LayoutKey, std::shared_ptr<const xla::PjRtLayout>>
       layout_cache_ ABSL_GUARDED_BY(mu_);
 };

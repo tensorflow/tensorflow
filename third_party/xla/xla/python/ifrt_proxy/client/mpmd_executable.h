@@ -174,7 +174,7 @@ class MpmdLoadedExecutable final
   const absl::StatusOr<
       absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
       mpmd_addressable_devices_;
-  mutable absl::Mutex mpmd_cost_analysis_mu_;
+  mutable DebuggedMutex mpmd_cost_analysis_mu_;
   mutable std::optional<
       absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>>
       mpmd_cost_analysis_response_ ABSL_GUARDED_BY(mpmd_cost_analysis_mu_);

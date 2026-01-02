@@ -286,6 +286,7 @@ cc_library(
     hdrs = ["host_buffer.h"],
     deps = [
         "//xla/python/ifrt_proxy/common:transfer_util",
+        "//xla/python/ifrt_proxy/common:types",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base:core_headers",
@@ -310,6 +311,7 @@ cc_library(
         "//xla/pjrt:host_callback",
         "//xla/python/ifrt",
         "//xla/python/ifrt_proxy/common:proto_util",
+        "//xla/python/ifrt_proxy/common:types",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//xla/tsl/concurrency:future",

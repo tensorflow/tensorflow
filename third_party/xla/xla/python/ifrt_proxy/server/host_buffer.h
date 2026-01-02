@@ -29,6 +29,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 
 namespace xla {
 namespace ifrt {
@@ -66,7 +67,7 @@ class HostBufferStore {
   ~HostBufferStore() { Shutdown("HostBufferStore is being destroyed"); }
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
 
   absl::flat_hash_map<uint64_t, MemRegion> buffers_ ABSL_GUARDED_BY(mu_);
   std::optional<std::string> shutdown_msg_ ABSL_GUARDED_BY(mu_);

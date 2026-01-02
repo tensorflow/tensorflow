@@ -423,7 +423,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   std::shared_ptr<HostBufferStore> host_buffer_store_;
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   uint64_t current_op_id_ ABSL_GUARDED_BY(mu_) = 1;
   uint64_t current_host_buffer_handle_ = 1;
   xla::ifrt::AttributeMap client_attributes_{xla::ifrt::AttributeMap::Map(

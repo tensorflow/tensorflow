@@ -168,14 +168,14 @@ class LoadedExecutable final
   // The cached value of `GetCostAnalysis()`. The value is obtained from the
   // proxy-server the first time that the user invokes `GetCostAnalysis()`, and
   // is cached afterwards.
-  mutable absl::Mutex cost_analysis_mu_;
+  mutable DebuggedMutex cost_analysis_mu_;
   mutable std::optional<absl::StatusOr<xla::ifrt::AttributeMap>>
       cost_analysis_response_ ABSL_GUARDED_BY(cost_analysis_mu_);
 
   // The cached value of `GetHumanReadableProgramText()`. The value is obtained
   // from the proxy-server the first time that the user invokes
   // `GetHumanReadableProgramText()`, and is cached afterwards.
-  mutable absl::Mutex human_readable_program_text_mu_;
+  mutable DebuggedMutex human_readable_program_text_mu_;
   mutable std::optional<absl::StatusOr<std::string>>
       human_readable_program_text_
           ABSL_GUARDED_BY(human_readable_program_text_mu_);

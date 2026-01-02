@@ -46,5 +46,10 @@ int main(int argc, char** argv) {
 #endif
 
   testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  for (int i = 0; i < 30; ++i) {
+    if (RUN_ALL_TESTS() == 1) {
+      return 1;
+    }
+  }
+  return 0;
 }

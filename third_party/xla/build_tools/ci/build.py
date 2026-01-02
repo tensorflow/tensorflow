@@ -321,6 +321,7 @@ cpu_x86_tag_filter = (
     "-requires-gpu-nvidia",
     "-requires-gpu-amd",
     "-requires-gpu-intel",
+    "madthanuspecific",
 )
 Build(
     type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
@@ -329,7 +330,11 @@ Build(
     target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "config": "asan",
+        "//xla/tsl:ci_build": True,
+    },
 )
 
 windows_x86_tag_filter = (

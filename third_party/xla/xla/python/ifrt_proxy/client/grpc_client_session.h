@@ -35,6 +35,7 @@
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/platform/unbounded_work_queue.h"
@@ -116,7 +117,7 @@ class GrpcClientSession : public ClientSession {
 
   // A mutex that ensures serialization between various `Enqueue()` calls, since
   // only one thread is allowed to write to the gRPC stream at a time.
-  absl::Mutex writer_mu_;
+  DebuggedMutex writer_mu_;
 
   using OpId = uint64_t;
   OpId writer_next_op_id_ ABSL_GUARDED_BY(writer_mu_) = 1;

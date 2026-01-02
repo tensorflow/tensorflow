@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -103,9 +104,14 @@ class IfrtBackend final : public BackendInterface {
 
     void GenerateAtServerBulk(absl::Span<uint64_t> result_handles);
 
+    void Stop() {
+      absl::MutexLock lock(mu_);
+      current_ = std::numeric_limits<uint64_t>::max();
+    }
+
    private:
     IfrtBackend* const parent_;
-    absl::Mutex mu_;
+    DebuggedMutex mu_;
     uint64_t current_ ABSL_GUARDED_BY(mu_);
   };
 
@@ -140,6 +146,11 @@ class IfrtBackend final : public BackendInterface {
     std::vector<uint64_t> EraseAndReturnMissing(
         absl::Span<const uint64_t> handles);
 
+    void Clear() {
+      absl::MutexLock l(mu_);
+      arrays_.clear();
+    }
+
    private:
     HandleGenerator* const handle_generator_;
 
@@ -154,7 +165,7 @@ class IfrtBackend final : public BackendInterface {
     void Insert(absl::Span<const uint64_t> handles, const absl::Status& status)
         ABSL_LOCKS_EXCLUDED(mu_);
 
-    absl::Mutex mu_;
+    DebuggedMutex mu_;
     absl::flat_hash_map<uint64_t, absl::StatusOr<xla::ifrt::ArrayRef>> arrays_
         ABSL_GUARDED_BY(mu_);
   };
@@ -290,38 +301,38 @@ class IfrtBackend final : public BackendInterface {
   // Must not change during the life of this object.
   const IfrtProxyVersion version_;
   const uint64_t session_id_;
-  const std::shared_ptr<xla::ifrt::Client> client_;
-  const std::shared_ptr<HostBufferStore> host_buffer_store_;
+  std::shared_ptr<xla::ifrt::Client> client_;
+  std::shared_ptr<HostBufferStore> host_buffer_store_;
 
-  absl::Mutex futures_mutex_;
+  DebuggedMutex futures_mutex_;
   absl::flat_hash_map<uint64_t, tsl::Future<>> futures_
       ABSL_GUARDED_BY(futures_mutex_);
 
   ArrayStore array_store_;
 
-  absl::Mutex executables_mutex_;
+  DebuggedMutex executables_mutex_;
   absl::flat_hash_map<uint64_t, std::shared_ptr<LoadedExecutableWithInfo>>
       executables_ ABSL_GUARDED_BY(executables_mutex_);
 
-  absl::Mutex execute_results_mutex_;
+  DebuggedMutex execute_results_mutex_;
   absl::flat_hash_map<uint64_t, tsl::Future<ExecuteResult>> execute_results_
       ABSL_GUARDED_BY(execute_results_mutex_);
 
-  absl::Mutex host_callback_queues_mutex_;
+  DebuggedMutex host_callback_queues_mutex_;
   absl::flat_hash_map<uint64_t, std::shared_ptr<RemoteLoadedHostCallbackQueue>>
       host_callback_queues_ ABSL_GUARDED_BY(host_callback_queues_mutex_);
 
-  absl::Mutex host_callback_executions_mutex_;
+  DebuggedMutex host_callback_executions_mutex_;
   absl::flat_hash_map<uint64_t, RemoteLoadedHostCallbackQueue::ExecutionRequest>
       host_callback_executions_
           ABSL_GUARDED_BY(host_callback_executions_mutex_);
 
-  absl::Mutex in_flight_count_mutex_;
+  DebuggedMutex in_flight_count_mutex_;
   int64_t in_flight_count_ ABSL_GUARDED_BY(in_flight_count_mutex_) = 0;
 
   // Use a separate thread pool for compilation as XLA compilation often
   // requires a bigger stack.
-  tsl::thread::ThreadPool compile_thread_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
 
   class InOrderRequestsProcessor;
   std::unique_ptr<InOrderRequestsProcessor> in_order_requests_processor_;
@@ -332,7 +343,7 @@ class IfrtBackend final : public BackendInterface {
   // Uses a shared pointer because `IfrtBackendUserContext` may outlive the
   // `IfrtBackend`.
   struct DestroyedUserContextIds {
-    absl::Mutex mutex;
+    DebuggedMutex mutex;
     int64_t next_seq_num ABSL_GUARDED_BY(mutex) = 0;
     std::vector<UserContextId> ids ABSL_GUARDED_BY(mutex);
   };

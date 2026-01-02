@@ -199,7 +199,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const ArrayHandle handle_
       ABSL_DEPRECATED("Use GetHandle() function instead.");
 
-  mutable absl::Mutex mu_;
+  mutable DebuggedMutex mu_;
   enum class DeletionState {
     kUnknown,  // Need to ask the proxy-server whether the array is deleted.
     kDeleted,  // IsDeleted() will return true.
