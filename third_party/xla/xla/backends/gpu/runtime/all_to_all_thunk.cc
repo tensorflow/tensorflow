@@ -215,7 +215,7 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       {
         absl::MutexLock lock(pointer_maps_mutex_);
         recv_ptr = reinterpret_cast<uint64_t*>(
-            receive_pointer_maps_[executor]->opaque());
+            receive_pointer_maps_[executor]->address().opaque());
       }
       recv_ptr[config_.has_split_dimension ? peer_buffer_idx : peer] =
           (*rendezvous_results)[peer_buffer_idx].buffer;
@@ -237,7 +237,7 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
     {
       absl::MutexLock lock(pointer_maps_mutex_);
       receive_pointer_map = reinterpret_cast<uint64_t*>(
-          receive_pointer_maps_[stream.parent()]->opaque());
+          receive_pointer_maps_[stream.parent()]->address().opaque());
     }
     std::optional<RankId> rank =
         clique_key.rank(params.collective_params->global_device_id);

@@ -29,8 +29,8 @@ class ThreadpoolEventCollector : public tsl::tracing::EventCollector {
  public:
   explicit ThreadpoolEventCollector() = default;
 
-  void RecordEvent(uint64 arg) const override;
-  void StartRegion(uint64 arg) const override;
+  void RecordEvent(uint64_t arg) const override;
+  void StartRegion(uint64_t arg) const override;
   void StopRegion() const override;
 
   // Annotates the current thread with a name.

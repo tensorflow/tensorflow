@@ -74,6 +74,7 @@ cc_library(
         "//xla/pjrt/extensions/host_allocator:host_allocator_extension",
         "//xla/pjrt/extensions/host_allocator:host_allocator_interface_impl",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
         "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
@@ -120,6 +121,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
@@ -162,6 +164,7 @@ xla_cc_test(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",  # buildcleaner: keep
+        "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
