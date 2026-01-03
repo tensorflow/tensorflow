@@ -265,6 +265,38 @@ HloSharding GetShardingReplicatedOnWindowedDimension(
       sharding, dimensions_to_replicate);
 }
 
+PaddingConfig GetDynamicUpdateSlicePaddingConfig(
+    const HloInstruction* hlo, const HloInstruction* update_tensor,
+    int low = -1, int high = -1) {
+  PaddingConfig padding_config;
+  for (int64_t input_tensor_dim = 0;
+       input_tensor_dim < hlo->shape().dimensions().size();
+       ++input_tensor_dim) {
+    auto padding_dim = padding_config.add_dimensions();
+    padding_dim->set_interior_padding(0);
+
+    const HloInstruction* dus_index = hlo->operand(input_tensor_dim + 2);
+    CHECK(dus_index->IsConstant());
+
+    int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
+    int64_t end_index =
+        start_index + update_tensor->shape().dimensions(input_tensor_dim);
+    int64_t padding_high =
+        hlo->shape().dimensions(input_tensor_dim) - end_index;
+    if (low == -1) {
+      padding_dim->set_edge_padding_low(start_index);
+    } else {
+      padding_dim->set_edge_padding_low(low);
+    }
+    if (high == -1) {
+      padding_dim->set_edge_padding_high(padding_high);
+    } else {
+      padding_dim->set_edge_padding_high(high);
+    }
+  }
+  return padding_config;
+}
+
 }  // namespace
 
 HloInstruction* SpmdBuilder::AddInstruction(
@@ -1608,7 +1640,8 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
       shape, HloOpcode::kSelect, is_src_core, hlo(), zero_bcast));
   HloComputation* reduction =
       MakeBinaryAdd(shape.element_type(), state_.module);
-
+  std::cout << "Handling HLO which emits a cross-partition all-reduce: "
+            << hlo_->ToString() << "\n";
   auto result = state_.collective_ops_creator.create_cross_partition_all_reduce(
       state_.b, operand, reduction, CollectiveDeviceList(), NewChannel());
   result->set_sharding(HloSharding::Replicate());
@@ -3829,25 +3862,8 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
   auto add_hlo = [&](std::unique_ptr<HloInstruction> to_add) {
     return b_.AddInstruction(std::move(to_add));
   };
-  PaddingConfig padding_config;
-  for (int64_t input_tensor_dim = 0;
-       input_tensor_dim < hlo->shape().dimensions().size();
-       ++input_tensor_dim) {
-    auto padding_dim = padding_config.add_dimensions();
-    padding_dim->set_interior_padding(0);
-
-    const HloInstruction* dus_index = hlo->operand(input_tensor_dim + 2);
-    CHECK(dus_index->IsConstant());
-
-    int64_t start_index = dus_index->literal().GetIntegralAsS64({}).value();
-    int64_t end_index =
-        start_index + update_tensor->shape().dimensions(input_tensor_dim);
-    int64_t padding_high =
-        hlo->shape().dimensions(input_tensor_dim) - end_index;
-    padding_dim->set_edge_padding_low(start_index);
-    padding_dim->set_edge_padding_high(padding_high);
-  }
-
+  PaddingConfig padding_config =
+      GetDynamicUpdateSlicePaddingConfig(hlo, update_tensor);
   const Shape operand_pred_shape =
       ShapeUtil::ChangeElementType(hlo->shape(), PRED);
   const Shape update_pred_shape =
@@ -3871,9 +3887,138 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
 
   auto zeroElemOp = add_hlo(HloInstruction::CreateConstant(
       LiteralUtil::Zero(hlo->shape().element_type())));
-  HloInstruction* newOperand =
-      PadHelper(*this, GetPartitionedHlo(update_tensor), zeroElemOp,
-                padding_config, hlo->shape(), hlo->sharding());
+
+  auto shard_result_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
+
+  std::cout << " handling dus all partitioned slice dims have constant indices"
+            << hlo->ToString() << "\n";
+  std::cout << "  + update_tensor: " << update_tensor->ToString() << "\n";
+  HloInstruction* newOperand = nullptr;
+  if (update_tensor->opcode() == HloOpcode::kBroadcast) {
+    // Check if all of the dimensions where the update is not equal to the
+    // operand are broadcast dimensions.
+    bool legal = true;
+    absl::Span<const int64_t> broadcast_dims =
+        DynCast<HloBroadcastInstruction>(update_tensor)->dimensions();
+    for (int64_t input_tensor_dim = 0;
+         input_tensor_dim < hlo->shape().dimensions().size();
+         ++input_tensor_dim) {
+      if (padding_config.dimensions(input_tensor_dim).edge_padding_low() != 0 ||
+          padding_config.dimensions(input_tensor_dim).edge_padding_high() !=
+              0) {
+        if (!absl::c_linear_search(broadcast_dims, input_tensor_dim)) {
+          legal = false;
+          break;
+        }
+      }
+    }
+    // In that case, we just make a new broadcast to the corresponding final
+    // device-specific shape.
+    if (legal) {
+      HloInstruction* newBroadcast = add_hlo(HloInstruction::CreateBroadcast(
+          hlo->shape(), GetPartitionedHlo(update_tensor).hlo(),
+          broadcast_dims));
+      newBroadcast->set_sharding(hlo->sharding());
+      newOperand = newBroadcast;
+    }
+  } else if (update_tensor->opcode() == HloOpcode::kSlice) {
+    bool legal = true;
+    std::cout << " checking slice legality\n";
+    const xla::HloSliceInstruction* slice =
+        DynCast<HloSliceInstruction>(update_tensor);
+    const xla::HloDynamicUpdateSliceInstruction* dus =
+        DynCast<HloDynamicUpdateSliceInstruction>(hlo);
+
+    bool needs_slice = false;
+    bool needs_pad = false;
+
+    std::vector<int64_t> new_slice_starts(hlo->shape().dimensions().size(), 0);
+    std::vector<int64_t> new_slice_limits(hlo->shape().dimensions().size(), 0);
+    std::vector<int64_t> new_slice_strides(hlo->shape().dimensions().size(), 1);
+
+    PaddingConfig padding_config2;
+    for (int i = 0; i < hlo->shape().dimensions().size(); ++i) {
+      // for all dimensions, check
+      //   the slice start <= the dus start
+      //   the end of the slice operand - the slice start <= the end of the dus
+      //      operand - the dus start
+      //   strides are all 1
+      int slice_start = slice->slice_starts(i);
+      int slice_limit = slice->slice_limits(i);
+      int slice_stride = slice->slice_strides(i);
+      int dus_start =
+          dus->operand(i + 2)->literal().GetIntegralAsS64({}).value();
+
+      std::cout << " slice_start: " << slice_start
+                << " dus_start: " << dus_start << "\n";
+
+      std::cout << " slice_limit: " << slice_limit
+                << " dus_limit: " << dus->operand(0)->shape().dimensions(i)
+                << "\n";
+
+      if (slice_stride != 1) {
+        legal = false;
+        std::cout << " slice_stride != 1\n";
+        break;
+      }
+
+      new_slice_limits[i] = slice->operand(0)->shape().dimensions(i);
+
+      // The length of the operand we will pass to the pad op.
+      int64_t length_of_operand_to_pad =
+          slice->operand(0)->shape().dimensions(i);
+      auto padding_dim = padding_config2.add_dimensions();
+      if (slice_start > dus_start) {
+        needs_slice = true;
+        new_slice_starts[i] = slice_start - dus_start;
+        length_of_operand_to_pad -= new_slice_starts[i];
+        padding_dim->set_edge_padding_low(0);
+      } else {
+        if (slice_start != dus_start) {
+          needs_pad = true;
+        }
+        padding_dim->set_edge_padding_low(dus_start - slice_start);
+      }
+
+      if (padding_config.dimensions(i).edge_padding_high() <
+          (length_of_operand_to_pad - slice->shape().dimensions(i))) {
+        needs_slice = true;
+        new_slice_limits[i] -=
+            (length_of_operand_to_pad - slice->shape().dimensions(i)) -
+            (padding_config.dimensions(i).edge_padding_high());
+        padding_dim->set_edge_padding_high(0);
+      } else {
+        if (padding_config.dimensions(i).edge_padding_high() !=
+            length_of_operand_to_pad - slice->shape().dimensions(i)) {
+          needs_pad = true;
+        }
+        padding_dim->set_edge_padding_high(
+            padding_config.dimensions(i).edge_padding_high() -
+            (length_of_operand_to_pad - slice->shape().dimensions(i)));
+      }
+    }
+    if (legal) {
+      std::cout << " legal to do slice opt\n";
+
+      HloInstruction* replacement = GetPartitionedHlo(slice->operand(0)).hlo();
+      if (needs_slice) {
+        auto new_shape = slice->operand(0)->shape();  // double check this
+        replacement = add_hlo(HloInstruction::CreateSlice(
+            new_shape, replacement, new_slice_starts, new_slice_limits,
+            new_slice_strides));
+        replacement->set_sharding(hlo->sharding());
+      }
+
+      if (needs_pad) {
+        replacement = add_hlo(HloInstruction::CreatePad(
+            hlo->shape(), replacement, zeroElemOp, padding_config2));
+        replacement->set_sharding(hlo->sharding());
+      }
+
+      newOperand = replacement;
+    }
+  }
+
   if (!newOperand) {
     newOperand = add_hlo(HloInstruction::CreatePad(
         hlo->shape(), GetPartitionedHlo(update_tensor).hlo(), zeroElemOp,
@@ -3881,7 +4026,6 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
     newOperand->set_sharding(hlo->sharding());
   }
 
-  auto shard_result_shape = MakePartitionedShape(hlo->shape(), hlo->sharding());
   auto result = add_hlo(HloInstruction::CreateTernary(
       shard_result_shape, HloOpcode::kSelect, maskOp,
       GetPartitionedHlo(input_tensor).hlo(), newOperand));
@@ -3919,6 +4063,11 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
                                           new_indices, analysis.slice_dims,
                                           analysis.partitioned_slice_dims);
   }
+
+  std::cout << " dus to look at" << hlo->ToString() << "\n";
+  std::cout << "  * method: " << (int)analysis.method << " has comm opt: "
+            << module_->config().debug_options().xla_enable_enzyme_comms_opt()
+            << "\n";
 
   // All partitioned slice dimensions have compile-time constant indices. It is
   // currently enabled for enzyme only.
