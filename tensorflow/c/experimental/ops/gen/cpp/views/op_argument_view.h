@@ -27,16 +27,17 @@ class OpArgumentView {
  public:
   explicit OpArgumentView(ArgSpec arg);
   explicit OpArgumentView(AttrSpec attr);
-  explicit OpArgumentView(string type, string var, string def = "");
+  explicit OpArgumentView(std::string type, std::string var,
+                          std::string def = "");
 
-  string Declaration() const;
-  string Initializer() const;
+  std::string Declaration() const;
+  std::string Initializer() const;
   bool HasDefaultValue() const;
 
  private:
-  string type_name_;
-  string variable_name_;
-  string default_value_;
+  std::string type_name_;
+  std::string variable_name_;
+  std::string default_value_;
 };
 
 }  // namespace cpp
