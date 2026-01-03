@@ -87,7 +87,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import gen_log_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -96,7 +96,7 @@ from tensorflow.python.ops import tensor_math_operator_overrides  # pylint: disa
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import tf_log as log
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -105,7 +105,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
-
+from tensorflow.python.framework import config as cfg
 from tensorflow.python.platform import tf_log as log
 
 # Aliases for some automatically-generated names.
@@ -1071,7 +1071,7 @@ def cast(x, dtype, name=None):
       # strings.
       x = ops.convert_to_tensor(x, name="x")
       if x.dtype.is_complex and base_type.is_floating:
-        log.warn(
+        logging.warn(
             f"You are casting an input of type {x.dtype.name} to an "
             f"incompatible dtype {base_type.name}.  This will "
             "discard the imaginary part and may not be what you "
@@ -1130,7 +1130,7 @@ def saturate_cast(value, dtype, name=None):
       else:
         # Extract real component and fall through to clamp+cast.
         value = real(value)
-        log.warn("Casting complex to real discards imaginary part.")
+        logging.warn("Casting complex to real discards imaginary part.")
         in_dtype = in_dtype.real_dtype
 
     # in_dtype is real, but out_dtype could be complex.
@@ -2943,6 +2943,7 @@ def reduce_min_v1(input_tensor,
 
 
 @tf_export("math.reduce_min", "reduce_min", v1=[])
+# pylint: disable=redefined-outer-name
 @dispatch.add_dispatch_support
 def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the `tf.math.minimum` of elements across dimensions of a tensor.
@@ -3001,14 +3002,15 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   keepdims = False if keepdims is None else bool(keepdims)
 
   # Warn users when op determinism is enabled but reduce_min may still be nondeterministic.
-  
+  # pylint: disable=redefined-outer-name,import-outside-toplevel
+  from tensorflow.python.framework import config as cfg
   from tensorflow.python.platform import tf_log as log
 
   if cfg.is_op_determinism_enabled():
     log.warning(
-        "tf.reduce_min may produce nondeterministic results on some GPU "
-        "cfgurations even when op determinism is enabled."
-    )
+      "tf.reduce_min may produce nondeterministic results on some GPU "
+      "configurations even when op determinism is enabled."
+  )
 
   return _may_reduce_to_scalar(
       keepdims, axis,
@@ -3749,7 +3751,7 @@ def matmul(
           b_is_sparse=b_is_sparse,
           name=name)
       # sparse_matmul always returns float32, even with
-      # bfloat16 inputs. This prevents us from cfguring bfloat16 training.
+      # bfloat16 inputs. This prevents us from configuring bfloat16 training.
       # casting to bfloat16 also matches non-sparse matmul behavior better.
       if a.dtype == dtypes.bfloat16 and b.dtype == dtypes.bfloat16:
         ret = cast(ret, dtypes.bfloat16)
@@ -4971,7 +4973,7 @@ def sampled_addmm(
         output_shape,
     ]
 
-    gen_log_ops._assert(condition, data, None, name="Assert")
+    gen_logging_ops._assert(condition, data, None, name="Assert")
 
   # Extract row and column indices.
   batch_indices = indices[..., :-2]
