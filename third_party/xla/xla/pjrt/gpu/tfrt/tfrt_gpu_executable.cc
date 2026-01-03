@@ -503,7 +503,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(ordering_event));
   }
 
-  TF_ASSIGN_OR_RETURN(auto output_cuda_execute_event, CreateCudaEvent(device));
+  // Call `CreateCudaEvent` on a thread pool to avoid calling CUDA API inline.
+  // See the comments in `TfrtGpuStreamAccessorGuard` for more information about
+  // why this is necessary.
+  TF_ASSIGN_OR_RETURN(
+      auto output_cuda_execute_event,
+      RunOnAsyncWorkRunner(client_->non_blocking_thread_pool(),
+                           [&]() { return CreateCudaEvent(device); }));
 
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
