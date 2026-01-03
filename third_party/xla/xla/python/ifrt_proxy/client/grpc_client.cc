@@ -31,7 +31,6 @@
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client.h"
-#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
@@ -152,15 +151,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
   TF_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
-  bool reuse_control_path_stub_for_data_path =
-      GetGlobalClientFlags()->synchronous_host_buffer_store ||
-      (metadata.version().protocol_version() < 10);
-  auto data_path_stub = reuse_control_path_stub_for_data_path
-                            ? control_path_stub
-                            : CreateGrpcStub(server_address);
-
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
-      data_path_stub, metadata.version(), init_response->session_id());
+      CreateGrpcStub(server_address), metadata.version(),
+      init_response->session_id());
+
   rpc_helper->set_host_buffer_store(std::move(host_buffer_store));
 
   return Client::Create(std::move(rpc_helper), std::move(*init_response));

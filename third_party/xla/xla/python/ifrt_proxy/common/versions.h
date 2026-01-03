@@ -23,18 +23,9 @@ namespace proxy {
 namespace protocol_version {
 
 enum {
-  // Versions kAncient are named and are only referred to by their numbers. See
-  // VERSIONS.md to see the explanation of the numbers.
-  kAncient = 10,
-
-  // kClientHandlesOptimization2 introduces a set of performance optimizations
-  // where the client generates array handles.
-  kClientHandlesOptimization2 = 11,
-
-  // kClientHandlesExecutableOptimization introduces a set of performance
-  // optimizations where the client generates array handles for operations
-  // related to LoadedExecutable.
-  kClientHandlesExecutableOptimization = 12,
+  // There should not be any references to kAncient and earlier versions in the
+  // code base.
+  kAncient = 12,
 
   // kAssembleArrayFromSingleDeviceArraysWithDType adds a DType argument to
   // AssembleArrayFromSingleDeviceArrays to support non-addressable arrays.

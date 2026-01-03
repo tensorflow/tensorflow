@@ -870,6 +870,10 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   CHECK(request->has_make_array_from_host_buffer_request());
   auto* make_array_request =
       request->mutable_make_array_from_host_buffer_request();
+  const uint64_t host_buffer_handle = make_array_request->host_buffer_handle();
+  absl::Cleanup cleanup = [&] {
+    host_buffer_store_->Delete(host_buffer_handle).IgnoreError();
+  };
 
   TF_ASSIGN_OR_RETURN(
       auto sharding,
@@ -885,11 +889,6 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
                       Shape::FromProto(make_array_request->shape()));
   TF_ASSIGN_OR_RETURN(const auto dtype,
                       DType::FromProto(make_array_request->dtype()));
-
-  const uint64_t host_buffer_handle = make_array_request->host_buffer_handle();
-  absl::Cleanup cleanup = [&] {
-    host_buffer_store_->Delete(host_buffer_handle).IgnoreError();
-  };
   TF_ASSIGN_OR_RETURN(
       HostBufferStore::MemRegion host_buffer,
       host_buffer_store_->Lookup(host_buffer_handle,
