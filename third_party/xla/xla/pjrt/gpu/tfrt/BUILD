@@ -37,6 +37,7 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_event",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
@@ -75,6 +76,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:transpose",
@@ -178,6 +180,7 @@ xla_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/algorithm:container",
@@ -293,6 +296,13 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "thread_checker",
+    srcs = ["thread_checker.cc"],
+    hdrs = ["thread_checker.h"],
+    deps = ["@com_google_absl//absl/log:check"],
+)
+
 xla_cc_test(
     name = "tracked_gpu_device_buffer_test",
     srcs = ["tracked_gpu_device_buffer_test.cc"],
@@ -345,6 +355,7 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

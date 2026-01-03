@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PJRT_CLIENT_TEST_H_
-#define XLA_PJRT_PJRT_CLIENT_TEST_H_
-
-#include <functional>
-#include <memory>
-
-#include "absl/status/statusor.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/gpu/tfrt/thread_checker.h"
 
 namespace xla {
 
-void RegisterTestClientFactory(
-    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory);
-}
+thread_local int TfrtGpuThreadChecker::depth_ = 0;
 
-#endif  // XLA_PJRT_PJRT_CLIENT_TEST_H_
+}

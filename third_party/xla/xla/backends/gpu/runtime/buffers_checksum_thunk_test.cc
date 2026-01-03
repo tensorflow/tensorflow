@@ -100,7 +100,8 @@ class BuffersDebugChecksumThunkTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            stream_->parent());
 
     if (!executor_->GetDeviceDescription()
              .cuda_compute_capability()
@@ -115,7 +116,7 @@ class BuffersDebugChecksumThunkTest : public ::testing::Test {
   se::Platform* platform_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
-  std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<stream_executor::StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
@@ -229,7 +230,7 @@ TEST_F(BuffersDebugChecksumThunkTest,
   struct TestDevice {
     se::StreamExecutor* executor;
     std::unique_ptr<se::Stream> stream;
-    std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator;
+    std::unique_ptr<stream_executor::StreamExecutorAddressAllocator> allocator;
     BufferAllocations allocations;
   };
   auto setup_device = [this](int device_ordinal) -> absl::StatusOr<TestDevice> {
@@ -238,7 +239,8 @@ TEST_F(BuffersDebugChecksumThunkTest,
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                         executor->CreateStream());
     auto allocator =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(executor);
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            executor);
     BufferAllocations allocations(
         {executor->AllocateArray<uint8_t>(kLogSizeBytes + kInputSizeBytes)},
         executor->device_ordinal(), allocator.get());
