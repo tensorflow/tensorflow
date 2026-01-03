@@ -1065,7 +1065,7 @@ struct DeepConv2D<CPUDevice, T> {
           packed_tile_per_tile_size + gemm_out_per_tile_size;
 
       const int64_t num_tiles_cache = std::max(
-          int64{4}, (cache_size - total_fixed_cost) / total_per_tile_cost);
+          int64_t{4}, (cache_size - total_fixed_cost) / total_per_tile_cost);
       const int64_t num_tiles = std::min(num_tiles_cache, col_tiles);
 
       // Allocate temporary buffer 'buffer1', which is first used for copying
