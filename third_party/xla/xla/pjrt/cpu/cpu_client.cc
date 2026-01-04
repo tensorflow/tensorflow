@@ -1276,7 +1276,7 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
   } else if (allocation.is_constant() &&
              allocation.index() < constants.size()) {
     se::DeviceAddressBase constant =
-        constants[allocation.index()].AsDeviceMemoryBase();
+        constants[allocation.index()].AsDeviceAddress();
     buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(
         constant.opaque(), constant.size());
     buffer_info.owns_buffer = false;
