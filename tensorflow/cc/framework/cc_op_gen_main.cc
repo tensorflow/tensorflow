@@ -34,7 +34,7 @@ namespace {
 
 void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
                    bool include_internal,
-                   const std::vector<string>& api_def_dirs) {
+                   const std::vector<std::string>& api_def_dirs) {
   OpList ops;
   absl::StatusOr<ApiDefMap> api_def_map =
       LoadOpsAndApiDefs(ops, include_internal, api_def_dirs);
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
   }
 
   bool include_internal = absl::string_view("1") == argv[3];
-  std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
+  std::vector<std::string> api_def_dirs = tensorflow::str_util::Split(
       argv[4], ",", tensorflow::str_util::SkipEmpty());
   tensorflow::cc_op::PrintAllCCOps(argv[1], argv[2], include_internal,
                                    api_def_dirs);

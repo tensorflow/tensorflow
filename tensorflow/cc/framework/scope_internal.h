@@ -44,14 +44,14 @@ class Scope::Impl {
   // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
   // can share the same NameMap. For instance, a new scope created using
   // WithControlDependencies() would share the same NameMap with the parent.
-  typedef std::unordered_map<string, int> NameMap;
+  typedef std::unordered_map<std::string, int> NameMap;
 
   Impl(const std::shared_ptr<Graph>& graph,
        const std::shared_ptr<absl::Status>& status,
        const std::shared_ptr<NameMap>& name_map,
        const std::shared_ptr<ShapeRefiner>& refiner);
 
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
   const std::vector<Operation>& control_deps() const { return control_deps_; }
 
  private:
@@ -73,27 +73,29 @@ class Scope::Impl {
 
   Impl(Graph* graph, absl::Status* status, NameMap* name_map,
        ShapeRefiner* refiner, bool disable_shape_inference);
-  Impl(const Scope& other, Tags::ScopeName, const string& name,
+  Impl(const Scope& other, Tags::ScopeName, const std::string& name,
        bool copy_names);
-  Impl(const Scope& other, Tags::OpName, const string& name,
-       const string& op_name);
+  Impl(const Scope& other, Tags::OpName, const std::string& name,
+       const std::string& op_name);
   Impl(const Scope& other, Tags::ControlDeps,
        std::vector<Operation> control_deps, bool clear_control_deps);
-  Impl(const Scope& other, Tags::Device, const string& device);
-  Impl(const Scope& other, Tags::SingleUseScope, const string& op_name);
+  Impl(const Scope& other, Tags::Device, const std::string& device);
+  Impl(const Scope& other, Tags::SingleUseScope, const std::string& op_name);
   Impl(const Scope& other, Tags::ExitOnError);
-  Impl(const Scope& other, Tags::KernelLabel, const string& kernel_label);
+  Impl(const Scope& other, Tags::KernelLabel, const std::string& kernel_label);
   Impl(const Scope& other, Tags::Colocate, const Operation& colocate_with_op,
        bool clear_colocations);
-  Impl(const Scope& other, Tags::AssignedDevice, const string& assigned_device);
-  Impl(const Scope& other, Tags::XlaCluster, const string& xla_cluster);
+  Impl(const Scope& other, Tags::AssignedDevice,
+       const std::string& assigned_device);
+  Impl(const Scope& other, Tags::XlaCluster, const std::string& xla_cluster);
 
-  std::unordered_set<string> GetColocationConstraints(
+  std::unordered_set<std::string> GetColocationConstraints(
       const Operation& colocate_with_op) const;
 
   // Helper functions to get a unique names.
-  string GetUniqueName(const string& prefix, bool check_single_use) const;
-  string GetNameForOp(const string& default_name) const;
+  std::string GetUniqueName(const std::string& prefix,
+                            bool check_single_use) const;
+  std::string GetNameForOp(const std::string& default_name) const;
 
   bool single_use_scope() const { return scope_used_ != nullptr; }
 
@@ -115,14 +117,14 @@ class Scope::Impl {
 
   // The fully-qualified name of this scope (i.e. includes any parent scope
   // names).
-  const string name_ = "";
-  const string op_name_ = "";
+  const std::string name_ = "";
+  const std::string op_name_ = "";
   const bool exit_on_error_ = false;
-  const string kernel_label_ = "";
-  const string device_ = "";
-  const string assigned_device_ = "";
-  const string xla_cluster_ = "";
-  const std::unordered_set<string> colocation_constraints_;
+  const std::string kernel_label_ = "";
+  const std::string device_ = "";
+  const std::string assigned_device_ = "";
+  const std::string xla_cluster_ = "";
+  const std::unordered_set<std::string> colocation_constraints_;
 
   // If true, Scope::DoShapeInference() always returns Status:OK().
   // TODO(skyewm): remove this when possible

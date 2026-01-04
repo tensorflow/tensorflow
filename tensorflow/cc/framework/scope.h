@@ -113,7 +113,7 @@ class Scope {
   /// `name/child_scope_name` as the prefix. The actual name will be unique
   /// in the current scope. All other properties are inherited from the current
   /// scope. If `child_scope_name` is empty, the `/` is elided.
-  Scope NewSubScope(const string& child_scope_name) const;
+  Scope NewSubScope(const std::string& child_scope_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have
   /// names of the form `name/StrCat(fragments...)[_suffix]`
@@ -136,15 +136,15 @@ class Scope {
 
   /// Return a new scope. All ops created within the returned scope will have
   /// the device field set to 'device'.
-  Scope WithDevice(const string& device) const;
+  Scope WithDevice(const std::string& device) const;
 
   /// Returns a new scope.  All ops created within the returned scope will have
   /// their assigned device set to `assigned_device`.
-  Scope WithAssignedDevice(const string& assigned_device) const;
+  Scope WithAssignedDevice(const std::string& assigned_device) const;
 
   /// Returns a new scope.  All ops created within the returned scope will have
   /// their _XlaCluster attribute set to `xla_cluster`.
-  Scope WithXlaCluster(const string& xla_cluster) const;
+  Scope WithXlaCluster(const std::string& xla_cluster) const;
 
   /// Return a new scope. All ops created within the returned scope will be
   /// co-located on the device where op is placed.
@@ -164,13 +164,13 @@ class Scope {
 
   /// Return a new scope. All ops created with the new scope will have
   /// kernel_label as the value for their '_kernel' attribute;
-  Scope WithKernelLabel(const string& kernel_label) const;
+  Scope WithKernelLabel(const std::string& kernel_label) const;
 
   // The following functions are for scope object consumers.
 
   /// Return a unique name, using default_name if an op name has not been
   /// specified.
-  string GetUniqueNameForOp(const string& default_name) const;
+  std::string GetUniqueNameForOp(const std::string& default_name) const;
 
   /// Update the status on this scope.
   /// Note: The status object is shared between all children of this scope.
@@ -186,7 +186,8 @@ class Scope {
   void UpdateBuilder(NodeBuilder* builder) const;
   // END_SKIP_DOXYGEN
 
-  CompositeOpScopes GetCompositeOpScopes(const string& composite_op_name) const;
+  CompositeOpScopes GetCompositeOpScopes(
+      const std::string& composite_op_name) const;
 
   bool ok() const;
 
@@ -240,7 +241,7 @@ class Scope {
   // END_SKIP_DOXYGEN
 
  private:
-  Scope WithOpNameImpl(const string& op_name) const;
+  Scope WithOpNameImpl(const std::string& op_name) const;
 
   friend class InternalScope;
   std::unique_ptr<Impl> impl_;
@@ -260,7 +261,7 @@ struct CompositeOpScopes {
 // Creates a node of the given operation, with the given inputs, and assigns the
 // result to output. This does not support the ability to add additional
 // attributes.
-absl::Status CreateOutputWithScope(string op_name,
+absl::Status CreateOutputWithScope(std::string op_name,
                                    absl::Span<const ::tensorflow::Input> inputs,
                                    const Scope& scope, Output* output);
 /// @}

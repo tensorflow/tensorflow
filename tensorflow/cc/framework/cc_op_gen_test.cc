@@ -71,8 +71,8 @@ void ExpectDoesNotHaveSubstr(absl::string_view s, absl::string_view expected) {
       << "'" << s << "' contains '" << expected << "'";
 }
 
-void ExpectSubstrOrder(const string& s, const string& before,
-                       const string& after) {
+void ExpectSubstrOrder(const std::string& s, const std::string& before,
+                       const std::string& after) {
   int before_pos = s.find(before);
   int after_pos = s.find(after);
   ASSERT_NE(std::string::npos, before_pos);
@@ -84,9 +84,9 @@ void ExpectSubstrOrder(const string& s, const string& before,
 // Runs WriteCCOps and stores output in (internal_)cc_file_path and
 // (internal_)h_file_path.
 void GenerateCcOpFiles(Env* env, const OpList& ops,
-                       const ApiDefMap& api_def_map, string* h_file_text,
-                       string* internal_h_file_text) {
-  const string& tmpdir = testing::TmpDir();
+                       const ApiDefMap& api_def_map, std::string* h_file_text,
+                       std::string* internal_h_file_text) {
+  const std::string& tmpdir = testing::TmpDir();
 
   const auto h_file_path = io::JoinPath(tmpdir, "test.h");
   const auto cc_file_path = io::JoinPath(tmpdir, "test.cc");
@@ -101,7 +101,7 @@ void GenerateCcOpFiles(Env* env, const OpList& ops,
 }
 
 TEST(CcOpGenTest, TestVisibilityChangedToHidden) {
-  const string api_def = R"(
+  const std::string api_def = R"(
 op {
   graph_op_name: "Foo"
   visibility: HIDDEN
@@ -112,7 +112,7 @@ op {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
   ApiDefMap api_def_map(op_defs);
 
-  string h_file_text, internal_h_file_text;
+  std::string h_file_text, internal_h_file_text;
   // Without ApiDef
   GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
                     &internal_h_file_text);
@@ -128,7 +128,7 @@ op {
 }
 
 TEST(CcOpGenTest, TestArgNameChanges) {
-  const string api_def = R"(
+  const std::string api_def = R"(
 op {
   graph_op_name: "Foo"
   arg_order: "dim"
@@ -140,8 +140,8 @@ op {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
 
   ApiDefMap api_def_map(op_defs);
-  string cc_file_text, h_file_text;
-  string internal_cc_file_text, internal_h_file_text;
+  std::string cc_file_text, h_file_text;
+  std::string internal_cc_file_text, internal_h_file_text;
   // Without ApiDef
   GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
                     &internal_h_file_text);
@@ -155,7 +155,7 @@ op {
 }
 
 TEST(CcOpGenTest, TestEndpoints) {
-  const string api_def = R"(
+  const std::string api_def = R"(
 op {
   graph_op_name: "Foo"
   endpoint {
@@ -171,8 +171,8 @@ op {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
 
   ApiDefMap api_def_map(op_defs);
-  string cc_file_text, h_file_text;
-  string internal_cc_file_text, internal_h_file_text;
+  std::string cc_file_text, h_file_text;
+  std::string internal_cc_file_text, internal_h_file_text;
   // Without ApiDef
   GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
                     &internal_h_file_text);
