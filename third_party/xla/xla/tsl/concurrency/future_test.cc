@@ -1078,6 +1078,38 @@ TEST(FutureTest, MakeOnStateful) {
   }
 }
 
+TEST(FutureTest, MakeOnTypeInference) {
+  InlineExecutor e;
+
+  {
+    Future<> future = MakeFutureOn(e, [] { return absl::OkStatus(); });
+    EXPECT_EQ(future.Await(), absl::OkStatus());
+  }
+
+  {
+    Future<> future =
+        MakeFutureOn(e, [] { return absl::InternalError("test"); });
+    EXPECT_EQ(future.Await(), absl::InternalError("test"));
+  }
+
+  {
+    Future<int32_t> future = MakeFutureOn(e, [] { return 42; });
+    EXPECT_EQ(*future.Await(), 42);
+  }
+
+  {
+    Future<int32_t> future =
+        MakeFutureOn(e, []() -> absl::StatusOr<int32_t> { return 42; });
+    EXPECT_EQ(*future.Await(), 42);
+  }
+
+  {
+    Future<std::unique_ptr<int32_t>> future =
+        MakeFutureOn(e, [] { return std::make_unique<int32_t>(42); });
+    EXPECT_EQ(**std::move(future).Await(), 42);
+  }
+}
+
 TEST(FutureTest, OnReadyOnExecutor) {
   Future<> future0(absl::OkStatus());
   future0.OnReady(InlineExecutor::Instance(), [](absl::Status status) {

@@ -987,6 +987,17 @@ template <typename T, typename F, typename R = std::invoke_result_t<F>,
   return std::move(future);
 }
 
+// A `MakeFutureOn` overload that automatically infers the type of the future:
+//
+// - `T` is `void`              -> Future<>
+// - `R` is `absl::Status`      -> Future<>
+// - `R` is `absl::StatusOr<T>` -> Future<T>
+// - `R` is any other type      -> Future<R>
+template <typename F, typename R = std::invoke_result_t<F>>
+[[nodiscard]] auto MakeFutureOn(Executor& executor, F&& f) {
+  return MakeFutureOn<internal::map_result_t<R>>(executor, std::forward<F>(f));
+}
+
 //===----------------------------------------------------------------------===//
 // internal::FutureBase<T> implementation.
 //===----------------------------------------------------------------------===//
