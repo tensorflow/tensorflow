@@ -3495,7 +3495,7 @@ DECLARE_GPU_SPEC(Eigen::half, int32);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
 DECLARE_GPU_SPEC(float, int32);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 DECLARE_GPU_SPEC(complex64, int32);
 DECLARE_GPU_SPEC(complex64, int64_t);
