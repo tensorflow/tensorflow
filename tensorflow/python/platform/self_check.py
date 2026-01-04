@@ -51,8 +51,8 @@ def preload_check():
             "Could not find the DLL(s) %r. TensorFlow requires that these DLLs "
             "be installed in a directory that is named in your %%PATH%% "
             "environment variable. You may install these DLLs by downloading "
-            '"Microsoft C++ Redistributable for Visual Studio 2015, 2017 and '
-            '2019" for your platform from this URL: '
+            '"Microsoft C++ Redistributable for Visual Studio 2015, 2017, 2019, and '
+            '2022" for your platform from this URL: '
             "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
             % " or ".join(missing))
   else:

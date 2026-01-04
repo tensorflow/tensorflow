@@ -92,6 +92,13 @@ except ImportError:
       f'for some common causes and solutions.\n'
       f'If you need help, create an issue '
       f'at https://github.com/tensorflow/tensorflow/issues '
-      f'and include the entire stack trace above this error message.')
+      f'and include the entire stack trace above this error message.\n\n'
+      f'If you are on Windows, please check the following:\n'
+      f'1. If you see "DLL load failed: A dynamic link library (DLL) initialization routine failed", '
+      f'it is likely that your CPU does not support AVX instructions.\n'
+      f'   TensorFlow binaries (since v1.6) are compiled with AVX instruction support. '
+      f'You may need to build TensorFlow from source with AVX disabled or use an older version.\n'
+      f'2. Ensure that you have the latest Microsoft Visual C++ Redistributable installed.\n'
+      f'   You can get it from https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads')
 
 # pylint: enable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
