@@ -22,9 +22,11 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -62,29 +64,38 @@ namespace ifrt {
 namespace proxy {
 namespace {
 
+using ::testing::NiceMock;
+
 constexpr absl::StatusCode kInternal = absl::StatusCode::kInternal;
 
 constexpr absl::Duration kSomeTime = absl::Seconds(1);
 
-class MockArrayTest : public testing::Test {
+class ProxyWithMockBackend {
  public:
-  void SetUp() override {
-    std::string address =
-        absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
-    TF_ASSERT_OK_AND_ASSIGN(
-        server_, GrpcServer::CreateFromIfrtClientFactory(
-                     address, [this](AttributeMap initialization_data) {
-                       return CreateMockBackend();
-                     }));
-    TF_ASSERT_OK_AND_ASSIGN(client_,
-                            CreateClient(absl::StrCat("grpc://", address)));
-  }
+  explicit ProxyWithMockBackend() { CHECK_OK(Initialize()); }
 
-  absl::StatusOr<xla::ifrt::ArrayRef> NewArray() {
-    DType dtype(DType::kF32);
+  using Hook = absl::AnyInvocable<absl::Status()>;
+
+  absl::StatusOr<xla::ifrt::ArrayRef> NewArray(
+      std::optional<Hook> get_ready_hook, std::optional<Hook> copy_host_hook) {
+    int array_num;
+    {
+      absl::MutexLock l(mu_);
+      array_num = array_num_++;
+      if (get_ready_hook.has_value()) {
+        get_ready_hook_[array_num] = *std::move(get_ready_hook);
+      }
+      if (copy_host_hook.has_value()) {
+        copy_host_hook_[array_num] = *std::move(copy_host_hook);
+      }
+    }
+
+    DType dtype(DType::kU64);
     Shape shape({2, 3});
-    auto data = std::make_unique<std::vector<float>>(6);
-    absl::c_iota(*data, 0);
+
+    auto data = std::make_unique<std::vector<uint64_t>>(6);
+    (*data)[0] = array_num;
+
     xla::ifrt::Device* device = client_->addressable_devices().at(0);
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -99,62 +110,73 @@ class MockArrayTest : public testing::Test {
     return client_arr;
   }
 
-  std::unique_ptr<GrpcServer> server_;
-  std::unique_ptr<xla::ifrt::Client> client_;
+ private:
+  absl::Status InvokeGetReadyHook(uint64_t array_num) {
+    absl::MutexLock l(mu_);
+    auto it = get_ready_hook_.find(array_num);
+    if (it != get_ready_hook_.end()) {
+      return it->second();
+    }
+    return absl::OkStatus();
+  }
 
- protected:
-  absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateMockBackend() {
+  absl::Status InvokeCopyHostHook(uint64_t array_num) {
+    absl::MutexLock l(mu_);
+    auto it = copy_host_hook_.find(array_num);
+    if (it != copy_host_hook_.end()) {
+      return it->second();
+    }
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<xla::ifrt::ArrayRef> MockBackendMakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      ShardingRef sharding, Client::HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer) {
+    uint64_t array_num = *reinterpret_cast<const uint64_t*>(data);
+    TF_ASSIGN_OR_RETURN(auto delegated,
+                        mock_backend_->delegated()->MakeArrayFromHostBuffer(
+                            data, dtype, shape, byte_strides, sharding,
+                            semantics, on_done_with_host_buffer));
+    auto result = tsl::MakeRef<NiceMock<MockArray>>(delegated);
+    testing::Mock::AllowLeak(result.get());
+
+    ON_CALL(*result, GetReadyFuture)
+        .WillByDefault([this, delegated, array_num]() {
+          if (auto s = InvokeGetReadyHook(array_num); !s.ok()) {
+            return tsl::Future<>(s);
+          }
+          return delegated->GetReadyFuture();
+        });
+    ON_CALL(*result, CopyToHostBuffer)
+        .WillByDefault([this, delegated, array_num](
+                           auto data, auto byte_strides, auto semantics) {
+          if (auto s = InvokeCopyHostHook(array_num); !s.ok()) {
+            return tsl::Future<>(s);
+          }
+          return delegated->CopyToHostBuffer(data, byte_strides, semantics);
+        });
+    return result;
+  }
+
+  absl::Status Initialize() {
     // TODO(b/292339723): Use reference backend as the delegate while mocking.
     xla::CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
     TF_ASSIGN_OR_RETURN(auto pjrt_cpu_client,
                         xla::GetXlaPjrtCpuClient(std::move(options)));
-    auto mock_backend = std::make_unique<MockClient>(
+
+    mock_backend_ = std::make_unique<NiceMock<MockClient>>(
         /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client)));
+    testing::Mock::AllowLeak(mock_backend_.get());
 
-    ON_CALL(*mock_backend, MakeArrayFromHostBuffer)
-        .WillByDefault(
-            [this, mock_backend = mock_backend.get()](
-                const void* data, DType dtype, Shape shape,
-                std::optional<absl::Span<const int64_t>> byte_strides,
-                ShardingRef sharding, Client::HostBufferSemantics semantics,
-                std::function<void()> on_done_with_host_buffer)
-                -> absl::StatusOr<xla::ifrt::ArrayRef> {
-              TF_ASSIGN_OR_RETURN(
-                  auto delegated,
-                  mock_backend->delegated()->MakeArrayFromHostBuffer(
-                      data, dtype, shape, byte_strides, sharding, semantics,
-                      on_done_with_host_buffer));
-              auto result = tsl::MakeRef<MockArray>(delegated);
-              ON_CALL(*result, GetReadyFuture)
-                  .WillByDefault([this, delegated]() {
-                    absl::MutexLock l(mu_);
-                    if (get_ready_hook_) {
-                      absl::Status s = get_ready_hook_();
-                      if (!s.ok()) {
-                        return tsl::Future<>(s);
-                      }
-                    }
-                    return delegated->GetReadyFuture();
-                  });
-              ON_CALL(*result, CopyToHostBuffer)
-                  .WillByDefault([this, delegated](auto data, auto byte_strides,
-                                                   auto semantics) {
-                    absl::MutexLock l(mu_);
-                    if (copy_host_hook_) {
-                      absl::Status s = copy_host_hook_();
-                      if (!s.ok()) {
-                        return tsl::Future<>(s);
-                      }
-                    }
-                    return delegated->CopyToHostBuffer(data, byte_strides,
-                                                       semantics);
-                  });
-              return result;
-            });
+    ON_CALL(*mock_backend_, MakeArrayFromHostBuffer)
+        .WillByDefault(absl::bind_front(
+            &ProxyWithMockBackend::MockBackendMakeArrayFromHostBuffer, this));
 
-    ON_CALL(*mock_backend, GetReadyFuture)
+    ON_CALL(*mock_backend_, GetReadyFuture)
         .WillByDefault([](absl::Span<const ValueRef> values) {
           std::vector<tsl::Future<>> futures;
           futures.reserve(values.size());
@@ -164,26 +186,44 @@ class MockArrayTest : public testing::Test {
           return JoinFutures(futures);
         });
 
-    return mock_backend;
+    std::string address =
+        absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
+    TF_ASSIGN_OR_RETURN(server_,
+                        GrpcServer::CreateFromIfrtClientFactory(
+                            address, [this](AttributeMap initialization_data) {
+                              return this->mock_backend_;
+                            }));
+    TF_ASSIGN_OR_RETURN(client_,
+                        CreateClient(absl::StrCat("grpc://", address)));
+    return absl::OkStatus();
   }
+
+  std::shared_ptr<MockClient> mock_backend_;
+  std::unique_ptr<GrpcServer> server_;
+  std::unique_ptr<xla::ifrt::Client> client_;
 
   absl::Mutex mu_;
-  absl::AnyInvocable<absl::Status()> get_ready_hook_ ABSL_GUARDED_BY(mu_);
-  absl::AnyInvocable<absl::Status()> copy_host_hook_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<uint64_t, Hook> get_ready_hook_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<uint64_t, Hook> copy_host_hook_ ABSL_GUARDED_BY(mu_);
+  uint64_t array_num_ ABSL_GUARDED_BY(mu_) = 0;
 };
 
-TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+ProxyWithMockBackend* Singleton() {
+  static absl::NoDestructor<ProxyWithMockBackend> result;
+  return result.get();
+}
 
+TEST(MockArrayTest, ReadyFutureWaitsUntilReady) {
   absl::Notification wait_ready;
 
-  {
-    absl::MutexLock l(mu_);
-    get_ready_hook_ = [&]() {
-      wait_ready.WaitForNotification();
-      return absl::OkStatus();
-    };
-  }
+  auto get_ready_hook = [&]() {
+    wait_ready.WaitForNotification();
+    return absl::OkStatus();
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, Singleton()->NewArray(std::move(get_ready_hook),
+                                      /*copy_host_hook=*/std::nullopt));
 
   auto ready = arr->GetReadyFuture();
 
@@ -194,31 +234,26 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
   EXPECT_THAT(ready.Await(), absl_testing::IsOk());
 }
 
-TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+TEST(MockArrayTest, ReadyFuturePropagatesError) {
+  auto get_ready_hook = [&]() { return absl::InternalError("testing"); };
 
-  absl::Notification wait_ready;
-
-  {
-    absl::MutexLock l(mu_);
-    get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
-  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, Singleton()->NewArray(std::move(get_ready_hook),
+                                      /*copy_host_hook=*/std::nullopt));
 
   EXPECT_THAT(arr->GetReadyFuture().Await(), absl_testing::StatusIs(kInternal));
 }
 
-TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
-
+TEST(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   absl::Notification wait_ready;
+  auto copy_host_hook = [&]() {
+    wait_ready.WaitForNotification();
+    return absl::OkStatus();
+  };
 
-  {
-    absl::MutexLock l(mu_);
-    copy_host_hook_ = [&]() {
-      wait_ready.WaitForNotification();
-      return absl::OkStatus();
-    };
-  }
+  TF_ASSERT_OK_AND_ASSIGN(auto arr,
+                          Singleton()->NewArray(/*get_ready_hook=*/std::nullopt,
+                                                std::move(copy_host_hook)));
 
   char data[1000];
   auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
@@ -231,15 +266,12 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   EXPECT_THAT(copied.Await(), absl_testing::IsOk());
 }
 
-TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto arr, NewArray());
+TEST(MockArrayTest, CopyToHostFuturePropagatesError) {
+  auto copy_host_hook = [&]() { return absl::InternalError("testing"); };
 
-  absl::Notification wait_ready;
-
-  {
-    absl::MutexLock l(mu_);
-    copy_host_hook_ = [&]() { return absl::InternalError("testing"); };
-  }
+  TF_ASSERT_OK_AND_ASSIGN(auto arr,
+                          Singleton()->NewArray(/*get_ready_hook=*/std::nullopt,
+                                                std::move(copy_host_hook)));
 
   char data[1000];
   auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,

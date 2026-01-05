@@ -13,8 +13,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", "ifrt_proxy_cc_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/python/ifrt_proxy/common:ifrt_proxy.bzl", _ifrt_proxy_cc_test = "ifrt_proxy_cc_test", ifrt_proxy_cc_test = "ifrt_proxy_cc_test_madthanuspecific")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -38,6 +37,7 @@ cc_library(
         "//xla/python/pjrt_ifrt",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -58,8 +58,6 @@ ifrt_proxy_cc_test(
 ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
-    # TODO(b/396205547): Remove `linkstatic = False`.
-    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -77,11 +75,6 @@ ifrt_proxy_cc_test(
     env = {
         "IFRT_PROXY_GRPC_LARGE_TRANSFER_OPTIMIZATION_DIRECTORY": "$$$$TEST_TMPDIR$$$$",
     },
-    # TODO(b/396205547): Remove `linkstatic = False`.
-    linkstatic = False,
-    tags = [
-        "no_oss",  # TODO(b/450109296): flaky in OSS
-    ],
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -95,9 +88,6 @@ ifrt_proxy_cc_test(
     timeout = "moderate",
     srcs = ["executable_impl_test_tfrt_cpu.cc"],
     shuffle_tests = False,
-    tags = [
-        "no_oss",  # TODO(madthanu): flaky in OSS
-    ] + if_oss(["not_run:arm"]),  # TODO(b/394180263): reenable this.
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
@@ -110,8 +100,6 @@ ifrt_proxy_cc_test(
     name = "remap_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["remap_impl_test_tfrt_cpu.cc"],
-    # TODO(b/396205547): Remove `linkstatic = False`.
-    linkstatic = False,
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:remap_impl_test_lib",
@@ -122,10 +110,19 @@ ifrt_proxy_cc_test(
     ],
 )
 
-ifrt_proxy_cc_test(
+_ifrt_proxy_cc_test(
     name = "mock_array_test",
     size = "small",
     srcs = ["mock_array_test.cc"],
+    args = [
+        "--alsologtostderr",
+        "--v=2",
+    ],
+    env = {
+        "MALLOC_CHECK_": "2",
+        "LD_PRELOAD": "libc_malloc_debug.so.0",
+    },
+    tags = ["madthanuspecific2"],
     deps = [
         "//xla:future",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
@@ -142,9 +139,11 @@ ifrt_proxy_cc_test(
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
