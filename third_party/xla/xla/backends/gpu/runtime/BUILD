@@ -70,8 +70,8 @@ cc_library(
         ":collective_execution",
         ":collective_permute_thunk",
         ":collective_thunk",
-        ":copy_thunk",
         ":custom_call_thunk",
+        ":dynamic_memcpy_thunk",
         ":dynamic_slice_thunk",
         ":gpublas_lt_matmul_thunk",
         ":p2p_thunk_common",
@@ -601,8 +601,12 @@ tf_proto_library(
 tf_proto_library(
     name = "copy_thunk_proto",
     srcs = ["copy_thunk.proto"],
-    protodeps = [
-        # keep sorted
+)
+
+tf_proto_library(
+    name = "dynamic_memcpy_thunk_proto",
+    srcs = ["dynamic_memcpy_thunk.proto"],
+    deps = [
         "//xla/service:buffer_assignment_proto",
     ],
 )
@@ -612,11 +616,9 @@ cc_library(
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],
     deps = [
-        ":copy_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
-        ":while_thunk",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
@@ -630,13 +632,35 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "dynamic_memcpy_thunk",
+    srcs = ["dynamic_memcpy_thunk.cc"],
+    hdrs = ["dynamic_memcpy_thunk.h"],
+    deps = [
+        ":dynamic_memcpy_thunk_proto_cc",
+        ":thunk",
+        ":while_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:buffer_use",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -649,6 +673,21 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "dynamic_memcpy_thunk_test",
+    srcs = ["dynamic_memcpy_thunk_test.cc"],
+    deps = [
+        ":dynamic_memcpy_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:parse_text_proto",
@@ -2920,7 +2959,7 @@ tf_proto_library(
     protodeps = [
         # keep sorted
         ":convolution_filter_thunk_proto",
-        ":copy_thunk_proto",
+        ":dynamic_memcpy_thunk_proto",
         ":dynamic_slice_thunk_proto",
         ":shaped_slice_proto",
         "//xla:xla_data_proto",
@@ -2976,6 +3015,7 @@ cc_library(
         ":cudnn_thunk",
         ":custom_call_thunk",
         ":custom_kernel_thunk",
+        ":dynamic_memcpy_thunk",
         ":dynamic_slice_thunk",
         ":fft_thunk",
         ":gemm_thunk",

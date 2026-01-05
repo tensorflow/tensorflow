@@ -18,7 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
-import "xla/backends/gpu/runtime/copy_thunk.proto";
+import "xla/backends/gpu/runtime/dynamic_memcpy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";

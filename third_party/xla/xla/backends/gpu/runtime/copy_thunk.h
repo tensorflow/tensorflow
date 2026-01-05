@@ -1,4 +1,3 @@
-#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,11 +21,9 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -37,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -240,92 +236,6 @@ class CopyDoneThunk : public Thunk {
 //===----------------------------------------------------------------------===//
 // DynamicMemcpyThunk
 //===----------------------------------------------------------------------===//
-
-class DynamicMemcpyThunk : public Thunk {
- public:
-  // TODO(jreiffers): Move this to a more appropriate place.
-  struct MemcpyDescriptor {
-    struct DynamicOffset {
-      // The while loop whose induction variable defines the offset.
-      const HloInstruction* while_loop;
-      const HloInstruction* induction_variable;
-
-      // See documentation for ResolveFunctionalDependencyOnInductionVariable.
-      absl::flat_hash_map<const HloComputation*, absl::InlinedVector<bool, 1>>
-          required_parameters;
-
-      // All dependencies of `offset` must end in `induction_variable` or
-      // constants only.
-      const HloInstruction* offset;
-
-      // The size of the dimension that this offset corresponds to. As per HLO
-      // semantics, values of `offset` will be clamped to one less than this.
-      int64_t dimension_size;
-
-      // The stride with which to multiply the induction variable's value.
-      int64_t byte_stride;
-    };
-
-    std::vector<DynamicOffset> src_dynamic_offsets;
-    int64_t src_byte_static_offset = 0;
-
-    std::vector<DynamicOffset> dst_dynamic_offsets;
-    int64_t dst_byte_static_offset = 0;
-  };
-
-  struct Offsets {
-    bool depends_on_loop;
-    std::vector<int64_t> src_offsets;
-    std::vector<int64_t> dst_offsets;
-
-    DynamicMemcpyThunkProto::Offsets ToProto() const;
-    static absl::StatusOr<Offsets> FromProto(
-        const DynamicMemcpyThunkProto::Offsets& proto);
-
-    friend bool operator==(const Offsets& lhs, const Offsets& rhs) {
-      return std::tie(lhs.depends_on_loop, lhs.src_offsets, lhs.dst_offsets) ==
-             std::tie(rhs.depends_on_loop, rhs.src_offsets, rhs.dst_offsets);
-    }
-
-    friend bool operator!=(const Offsets& lhs, const Offsets& rhs) {
-      return !(lhs == rhs);
-    }
-  };
-
-  DynamicMemcpyThunk(ThunkInfo thunk_info,
-                     const BufferAllocation::Slice& source_buffer,
-                     const BufferAllocation::Slice& destination_buffer,
-                     uint64_t mem_size, Offsets offsets);
-  DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
-  DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
-
-  Offsets offsets() const { return offsets_; }
-  uint64_t mem_size() const { return mem_size_; }
-  const BufferAllocation::Slice& source() const { return source_buffer_; }
-  const BufferAllocation::Slice& destination() const {
-    return destination_buffer_;
-  }
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  BufferUses buffer_uses() const override {
-    return {
-        BufferUse::Read(source_buffer_),
-        BufferUse::Write(destination_buffer_),
-    };
-  }
-
-  absl::StatusOr<ThunkProto> ToProto() const override;
-  static absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>> FromProto(
-      ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
-
- private:
-  BufferAllocation::Slice source_buffer_;
-  BufferAllocation::Slice destination_buffer_;
-  uint64_t mem_size_;
-  Offsets offsets_;
-};
 
 }  // namespace gpu
 }  // namespace xla
