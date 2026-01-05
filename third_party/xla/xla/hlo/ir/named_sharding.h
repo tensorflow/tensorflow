@@ -155,9 +155,10 @@ class NamedSharding {
 
   bool IsReplicated() const {
     return !IsMaximal() &&
-           absl::c_all_of(dim_shardings_, [](const DimensionSharding& s) {
-             return s.axes().empty();
-           });
+           absl::c_all_of(
+               dim_shardings_,
+               [](const DimensionSharding& s) { return s.axes().empty(); }) &&
+           unreduced_axes_.empty();
   }
 
   bool IsMaximal() const { return mesh_.IsMaximal(); }
