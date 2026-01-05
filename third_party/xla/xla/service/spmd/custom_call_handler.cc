@@ -326,9 +326,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
               pairs.emplace_back(device,
                                  hlo->sharding().tile_assignment()(dst_idx));
             });
-        halo =
-            collective_ops_creator_.create_cross_partition_collective_permute(
-                &b_, halo, pairs, NewChannel());
+        halo = collective_ops_creator_.create_collective_permute(
+            &b_, halo, pairs, NewChannel());
       }
       concat_pieces.push_back(halo);
     }

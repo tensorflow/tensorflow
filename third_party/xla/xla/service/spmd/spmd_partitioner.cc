@@ -1609,7 +1609,7 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
   HloComputation* reduction =
       MakeBinaryAdd(shape.element_type(), state_.module);
 
-  auto result = state_.collective_ops_creator.create_cross_partition_all_reduce(
+  auto result = state_.collective_ops_creator.create_all_reduce(
       state_.b, operand, reduction, CollectiveDeviceList(), NewChannel());
   result->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(result, base_shape_, state_);
@@ -1738,14 +1738,13 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   std::optional<IotaReplicaGroupList> groups =
       GetIotaPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
                                              {group_size});
-  if (state_.collective_ops_creator
-          .create_cross_partition_all_to_all_with_iota_device_list &&
+  if (state_.collective_ops_creator.create_all_to_all_with_iota_device_list &&
       groups.has_value()) {
     // After the reshape, it is guaranteed to have at least 3 dimensions.
-    all_to_all = state_.collective_ops_creator
-                     .create_cross_partition_all_to_all_with_iota_device_list(
-                         state_.b, {reshape}, groups.value(),
-                         (*state_.next_channel_id)++, target_dim);
+    all_to_all =
+        state_.collective_ops_creator.create_all_to_all_with_iota_device_list(
+            state_.b, {reshape}, groups.value(), (*state_.next_channel_id)++,
+            target_dim);
   } else {
     VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
                "(list of vectors).";
@@ -1753,10 +1752,8 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
     CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
         temp_target, {target_dim}, {group_size});
     // After the reshape, it is guaranteed to have at least 3 dimensions.
-    all_to_all =
-        state_.collective_ops_creator.create_cross_partition_all_to_all(
-            state_.b, {reshape}, groups, (*state_.next_channel_id)++,
-            target_dim);
+    all_to_all = state_.collective_ops_creator.create_all_to_all(
+        state_.b, {reshape}, groups, (*state_.next_channel_id)++, target_dim);
   }
   CHECK_NE(all_to_all, nullptr);
 
@@ -1928,21 +1925,18 @@ PartitionedHlo PartitionedHlo::TryMultipleSourceTargetDims(
   std::optional<IotaReplicaGroupList> groups =
       GetIotaPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
                                              group_sizes);
-  if (state_.collective_ops_creator
-          .create_cross_partition_all_to_all_with_iota_device_list &&
+  if (state_.collective_ops_creator.create_all_to_all_with_iota_device_list &&
       groups.has_value()) {
     all_to_all =
-        state_.collective_ops_creator
-            .create_cross_partition_all_to_all_with_iota_device_list(
-                state_.b, {reshape_1}, *groups, (*state_.next_channel_id)++, 0);
+        state_.collective_ops_creator.create_all_to_all_with_iota_device_list(
+            state_.b, {reshape_1}, *groups, (*state_.next_channel_id)++, 0);
   } else {
     VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
                "(list of vectors).";
     CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
         temp_target, eligible_target_dims, group_sizes);
-    all_to_all =
-        state_.collective_ops_creator.create_cross_partition_all_to_all(
-            state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
+    all_to_all = state_.collective_ops_creator.create_all_to_all(
+        state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
   }
   // Step 3. Split sharding axes to multiple dimensions
   // 1. reshape_2 (8,16,8,16,8) -> (2,4,16,8,16,8)
@@ -2351,9 +2345,8 @@ PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
         int64_t dst_device = target.tile_assignment()(indices);
         src_dst_pairs.emplace_back(src_device, dst_device);
       });
-  auto cp =
-      state_.collective_ops_creator.create_cross_partition_collective_permute(
-          state_.b, hlo(), src_dst_pairs, (*state_.next_channel_id)++);
+  auto cp = state_.collective_ops_creator.create_collective_permute(
+      state_.b, hlo(), src_dst_pairs, (*state_.next_channel_id)++);
   cp->set_sharding(target);
   return PartitionedHlo(cp, base_shape_, state_);
 }
@@ -5042,7 +5035,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
           [](SpmdBuilder* b) {
             return b->AddInstruction(HloInstruction::CreatePartitionId());
           },
-      .create_cross_partition_all_reduce =
+      .create_all_reduce =
           [num_replicas, num_partitions](
               SpmdBuilder* b, HloInstruction* operand,
               HloComputation* reduction,
@@ -5051,7 +5044,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                operand, reduction, device_list,
                                                channel_id);
           },
-      .create_cross_partition_all_reduce_with_iota_device_list =
+      .create_all_reduce_with_iota_device_list =
           [num_replicas, num_partitions](
               SpmdBuilder* b, HloInstruction* operand,
               HloComputation* reduction,
@@ -5076,7 +5069,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                     /*use_global_device_ids=*/true));
             return all_reduce;
           },
-      .create_cross_partition_collective_permute =
+      .create_collective_permute =
           [num_partitions](
               SpmdBuilder* b, HloInstruction* operand,
               std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
@@ -5101,7 +5094,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
             return b->AddInstruction(HloInstruction::CreateCollectivePermute(
                 operand->shape(), operand, src_dst_pairs, channel_id));
           },
-      .create_cross_partition_all_to_all =
+      .create_all_to_all =
           [num_replicas, num_partitions](
               SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
@@ -5110,7 +5103,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                               operands, device_list, channel_id,
                                               split_dimension);
           },
-      .create_cross_partition_all_to_all_with_iota_device_list =
+      .create_all_to_all_with_iota_device_list =
           [num_replicas, num_partitions](
               SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
               const IotaReplicaGroupList& partition_group_list,
@@ -5132,7 +5125,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                     partition_group_list, num_replicas, num_partitions),
                 /*constrain_layout=*/false, channel_id, split_dimension));
           },
-      .create_cross_partition_all_gather =
+      .create_all_gather =
           [num_replicas, num_partitions](
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
@@ -5141,7 +5134,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                 num_replicas, num_partitions, b, operand, ag_shape, device_list,
                 channel_id, all_gather_dimension);
           },
-      .create_cross_partition_all_gather_with_iota_device_list =
+      .create_all_gather_with_iota_device_list =
           [num_replicas, num_partitions](
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const IotaReplicaGroupList& partition_group_list,
@@ -5200,23 +5193,21 @@ SpmdPartitioner::AllGatherShardsInternal(
       auto partition_group_list =
           GetIotaPartitionGroupsForReplication(sharding, {*it});
       if (partition_group_list.has_value() &&
-          collectives_creator
-              .create_cross_partition_all_gather_with_iota_device_list) {
+          collectives_creator.create_all_gather_with_iota_device_list) {
         result_shape.set_dimensions(
             *it, result_shape.dimensions(*it) *
                      partition_group_list.value().num_devices_per_group());
-        result = collectives_creator
-                     .create_cross_partition_all_gather_with_iota_device_list(
-                         b, result, result_shape, partition_group_list.value(),
-                         (*next_channel_id)++,
-                         /*all_gather_dimension=*/*it);
+        result = collectives_creator.create_all_gather_with_iota_device_list(
+            b, result, result_shape, partition_group_list.value(),
+            (*next_channel_id)++,
+            /*all_gather_dimension=*/*it);
       } else {
         auto partition_subgroups =
             GetPartitionGroupsForReplication(sharding, {*it});
         result_shape.set_dimensions(
             *it, result_shape.dimensions(*it) *
                      partition_subgroups.num_devices_per_group());
-        result = collectives_creator.create_cross_partition_all_gather(
+        result = collectives_creator.create_all_gather(
             b, result, result_shape, partition_subgroups, (*next_channel_id)++,
             /*all_gather_dimension=*/*it);
       }
@@ -5240,21 +5231,17 @@ SpmdPartitioner::AllGatherShardsInternal(
   auto partition_group_list =
       GetIotaPartitionGroupsForReplication(sharding, selected_dims);
   if (partition_group_list.has_value() &&
-      collectives_creator
-          .create_cross_partition_all_gather_with_iota_device_list) {
+      collectives_creator.create_all_gather_with_iota_device_list) {
     shape[0] *= partition_group_list.value().num_devices_per_group();
-    result =
-        collectives_creator
-            .create_cross_partition_all_gather_with_iota_device_list(
-                b, result,
-                ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-                partition_group_list.value(), (*next_channel_id)++,
-                /*all_gather_dimension=*/0);
+    result = collectives_creator.create_all_gather_with_iota_device_list(
+        b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
+        partition_group_list.value(), (*next_channel_id)++,
+        /*all_gather_dimension=*/0);
   } else {
     auto partition_subgroups =
         GetPartitionGroupsForReplication(sharding, selected_dims);
     shape[0] *= partition_subgroups.num_devices_per_group();
-    result = collectives_creator.create_cross_partition_all_gather(
+    result = collectives_creator.create_all_gather(
         b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
         partition_subgroups, (*next_channel_id)++,
         /*all_gather_dimension=*/0);
@@ -5335,16 +5322,14 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     auto partition_group_list =
         GetIotaPartitionGroupsForReplication(sharding, selected_dims);
     if (partition_group_list.has_value() &&
-        collectives_creator
-            .create_cross_partition_all_reduce_with_iota_device_list) {
-      return collectives_creator
-          .create_cross_partition_all_reduce_with_iota_device_list(
-              b, operand, reduction, partition_group_list.value(),
-              (*next_channel_id)++);
+        collectives_creator.create_all_reduce_with_iota_device_list) {
+      return collectives_creator.create_all_reduce_with_iota_device_list(
+          b, operand, reduction, partition_group_list.value(),
+          (*next_channel_id)++);
     }
     auto partition_subgroups =
         GetPartitionGroupsForReplication(sharding, selected_dims);
-    return collectives_creator.create_cross_partition_all_reduce(
+    return collectives_creator.create_all_reduce(
         b, operand, reduction, partition_subgroups, (*next_channel_id)++);
   }
 
@@ -5358,16 +5343,14 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     auto partition_group_list =
         GetIotaPartitionGroupsForReplication(sharding, {*it});
     if (partition_group_list.has_value() &&
-        collectives_creator
-            .create_cross_partition_all_reduce_with_iota_device_list) {
-      result = collectives_creator
-                   .create_cross_partition_all_reduce_with_iota_device_list(
-                       b, result, reduction, partition_group_list.value(),
-                       (*next_channel_id)++);
+        collectives_creator.create_all_reduce_with_iota_device_list) {
+      result = collectives_creator.create_all_reduce_with_iota_device_list(
+          b, result, reduction, partition_group_list.value(),
+          (*next_channel_id)++);
     } else {
       auto partition_subgroups =
           GetPartitionGroupsForReplication(sharding, {*it});
-      result = collectives_creator.create_cross_partition_all_reduce(
+      result = collectives_creator.create_all_reduce(
           b, result, reduction, partition_subgroups, (*next_channel_id)++);
     }
   }
