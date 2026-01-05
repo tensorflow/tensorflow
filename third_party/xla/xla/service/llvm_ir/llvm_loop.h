@@ -201,14 +201,14 @@ class ForLoopNest {
       absl::string_view suffix, llvm::Value* start_index,
       llvm::Value* end_index, llvm::Value* stride,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
-      bool prevent_vectorization = false);
+      bool prevent_vectorization = false, bool is_batch_dim = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
       absl::string_view suffix, llvm::Value* start_index,
       llvm::Value* end_index,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
-      bool prevent_vectorization = false);
+      bool prevent_vectorization = false, bool is_batch_dim = false);
 
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
@@ -216,13 +216,13 @@ class ForLoopNest {
       int64_t start_index, int64_t end_index, int64_t stride,
       absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
-      bool prevent_vectorization = false);
+      bool prevent_vectorization = false, bool is_batch_dim = false);
 
   // Like the above, except that it defaults to a stride of one.
   std::unique_ptr<ForLoop> AddLoop(
       int64_t start_index, int64_t end_index, absl::string_view suffix,
       UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
-      bool prevent_vectorization = false);
+      bool prevent_vectorization = false, bool is_batch_dim = false);
 
   // Add loops to iterate through the indices within the specified
   // shape. The returned index collects the induction variables of the

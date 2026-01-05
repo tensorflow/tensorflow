@@ -191,20 +191,29 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(absl::string_view suffix,
                                               llvm::Value* start_index,
                                               llvm::Value* end_index,
                                               UnrollMode unroll_mode,
-                                              bool prevent_vectorization) {
+                                              bool prevent_vectorization,
+                                              bool is_batch_dim) {
   return AddLoop(suffix, start_index, end_index, GetConstantWithIndexType(1),
-                 unroll_mode, prevent_vectorization);
+                 unroll_mode, prevent_vectorization, is_batch_dim);
 }
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(
     absl::string_view suffix, llvm::Value* start_index, llvm::Value* end_index,
-    llvm::Value* stride, UnrollMode unroll_mode, bool prevent_vectorization) {
+    llvm::Value* stride, UnrollMode unroll_mode, bool prevent_vectorization,
+    bool is_batch_dim) {
   if (inner_loop_body_bb_ != nullptr) {
     // Create this loop inside the previous one.
     b_->SetInsertPoint(&*inner_loop_body_bb_->getFirstInsertionPt());
   }
+  llvm::Value* actual_end = end_index;
+  if (is_batch_dim) {
+    // Get batch dim and compare with end_index to use minimum value
+    llvm::Value* batch_dim = GetBatchDimByName(b_);
+    actual_end = b_->CreateSelect(b_->CreateICmpULT(end_index, batch_dim),
+                                   end_index, batch_dim, "loop_end_min");
+  }
   std::unique_ptr<ForLoop> loop(new ForLoop(
-      /*prefix=*/name_, suffix, start_index, end_index, stride, unroll_mode,
+      /*prefix=*/name_, suffix, start_index, actual_end, stride, unroll_mode,
       prevent_vectorization));
   loop->Emit(b_);
 
@@ -225,35 +234,30 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
                                               int64_t end_index,
                                               absl::string_view suffix,
                                               UnrollMode unroll_mode,
-                                              bool prevent_vectorization) {
+                                              bool prevent_vectorization,
+                                              bool is_batch_dim) {
   CHECK_LE(start_index, end_index);
 
-  llvm::Value* batch_dim = GetBatchDimByName(b_);
-  // [Steven] Issue here because we do not have access to the shape we cannot
-  // check the multiplier.
-  llvm::Value* end =
-      (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
-
+  llvm::Value* end = is_batch_dim ? GetBatchDimByName(b_) : GetConstantWithIndexType(end_index);
+  is_batch_dim = false;
   return AddLoop(suffix, GetConstantWithIndexType(start_index), end,
-                 unroll_mode, prevent_vectorization);
+                 unroll_mode, prevent_vectorization, is_batch_dim);
 }
 
 std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64_t start_index,
                                               int64_t end_index, int64_t stride,
                                               absl::string_view suffix,
                                               UnrollMode unroll_mode,
-                                              bool prevent_vectorization) {
+                                              bool prevent_vectorization,
+                                              bool is_batch_dim) {
   CHECK_LE(start_index, end_index);
 
-  llvm::Value* batch_dim = GetBatchDimByName(b_);
-  // [Steven] Issue here because we do not have access to the shape we cannot
-  // check the multiplier.
-  llvm::Value* end =
-      (end_index == MAGIC) ? batch_dim : GetConstantWithIndexType(end_index);
+  llvm::Value* end = is_batch_dim ? GetBatchDimByName(b_) : GetConstantWithIndexType(end_index);
+  is_batch_dim = false;
 
   return AddLoop(suffix, GetConstantWithIndexType(start_index), end,
                  GetConstantWithIndexType(stride), unroll_mode,
-                 prevent_vectorization);
+                 prevent_vectorization, is_batch_dim);
 }
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
@@ -269,11 +273,14 @@ std::vector<llvm::Value*> ForLoopNest::AddLoopsForShapeOnDimensions(
     absl::string_view suffix) {
   std::vector<llvm::Value*> multi_index(shape.dimensions().size());
   for (int64_t dimension : dimensions) {
+    bool is_batch_dim = (dimension == 0) && shape.outer_multiplier() > 0;
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape.dimensions(dimension),
         /*suffix=*/
-        llvm_ir::IrName(suffix, absl::StrCat(dimension)));
+        llvm_ir::IrName(suffix, absl::StrCat(dimension)),
+        /*unroll_mode=*/llvm_ir::UnrollMode::kDefaultUnroll,
+        /*prevent_vectorization=*/false, is_batch_dim);
     multi_index[dimension] = loop->GetIndVarValue();
   }
   return multi_index;
