@@ -792,7 +792,7 @@ void RealMain(const Options& opts) {
 
     se::StreamExecutor* executor =
         platform->ExecutorForDevice(/*ordinal=*/0).value();
-    auto compiler = Compiler::GetForPlatform(platform).value();
+    auto compiler = Compiler::GetForPlatform(platform->id()).value();
     module = compiler
                  ->RunHloPasses(std::move(module), executor,
                                 /*device_allocator=*/nullptr)

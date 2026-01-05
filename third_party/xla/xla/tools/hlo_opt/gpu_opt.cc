@@ -204,7 +204,7 @@ class GpuOptProvider : public CompiledOptProvider {
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         PlatformUtil::GetPlatform(GetPlatformName()));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                        Compiler::GetForPlatform(platform));
+                        Compiler::GetForPlatform(platform->id()));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
     std::unique_ptr<gpu::GpuAliasInfo> alias_info =
