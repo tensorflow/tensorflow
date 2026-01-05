@@ -88,14 +88,14 @@ TEST(CApiSimple, LogSeverity) {
       TfLiteLoggerOptionsGetMinimumLogSeverity();
 
   // Set to VERBOSE
-  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(kTfLiteLogVerbose),
+  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(TFLITE_LOG_VERBOSE),
             old_severity);
-  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), kTfLiteLogVerbose);
+  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), TFLITE_LOG_VERBOSE);
 
   // Set to ERROR
-  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(kTfLiteLogError),
-            kTfLiteLogVerbose);
-  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), kTfLiteLogError);
+  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(TFLITE_LOG_ERROR),
+            TFLITE_LOG_VERBOSE);
+  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), TFLITE_LOG_ERROR);
 
   // Restore
   TfLiteLoggerOptionsSetMinimumLogSeverity(old_severity);

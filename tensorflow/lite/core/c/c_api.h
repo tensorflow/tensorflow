@@ -239,15 +239,15 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
 /// \warning This is an experimental API and subject to change.
 typedef enum TfLiteLogSeverity {
   /// Default log severity level.
-  kTfLiteLogVerbose = 0,
+  TFLITE_LOG_VERBOSE = 0,
   /// Log routine information.
-  kTfLiteLogInfo = 1,
+  TFLITE_LOG_INFO = 1,
   /// Log warning events that might cause problems.
-  kTfLiteLogWarning = 2,
+  TFLITE_LOG_WARNING = 2,
   /// Log error events that are likely to cause problems.
-  kTfLiteLogError = 3,
+  TFLITE_LOG_ERROR = 3,
   /// Silence logging
-  kTfLiteLogSilent = 4,
+  TFLITE_LOG_SILENT = 4,
 } TfLiteLogSeverity;
 
 /// Get the minimum severity level for logging. Default is INFO in prod
