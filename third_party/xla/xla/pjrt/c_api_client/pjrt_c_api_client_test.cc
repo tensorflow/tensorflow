@@ -681,7 +681,7 @@ TEST(PjRtCApiClientTest, CopyRawToHostFuture) {
           /*byte_strides=*/std::nullopt,
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->memory_spaces()[0], /*device_layout=*/nullptr));
-  auto [dst_promise, dst_future] = Future<void*>::MakePromise();
+  auto [dst_promise, dst_future] = MakePromise<void*>();
   ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
 
@@ -692,7 +692,7 @@ TEST(PjRtCApiClientTest, CopyRawToHostFuture) {
   EXPECT_THAT(recv_data, ElementsAreArray(data));
 
   // Test error case.
-  auto [error_dst_promise, error_dst_future] = Future<void*>::MakePromise();
+  auto [error_dst_promise, error_dst_future] = MakePromise<void*>();
   result = buffer->CopyRawToHostFuture(error_dst_future, 0, size);
   error_dst_promise.Set(absl::InternalError("Future error"));
   absl::Status status = result.Await();

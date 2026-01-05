@@ -227,7 +227,7 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
 }
 
 Future<> TrackedDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   definition_events.reserve(definition_events_.size());
   for (const auto& event : definition_events_) {

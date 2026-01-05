@@ -514,7 +514,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -702,8 +702,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto [literal_promise, literal_future] =
-      Future<MutableLiteralBase*>::MakePromise();
+  auto [literal_promise, literal_future] = MakePromise<MutableLiteralBase*>();
 
   // Literal is not ready.
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
@@ -757,8 +756,7 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto [literal_promise, literal_future] =
-      Future<MutableLiteralBase*>::MakePromise();
+  auto [literal_promise, literal_future] = MakePromise<MutableLiteralBase*>();
 
   absl::Notification n;
   buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
@@ -1242,7 +1240,7 @@ TEST(TfrtGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto [dst_promise, dst_future] = xla::Future<void*>::MakePromise();
+  auto [dst_promise, dst_future] = MakePromise<void*>();
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto ready = buffer->GetReadyFuture();

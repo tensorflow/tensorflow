@@ -100,7 +100,7 @@ Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,
 std::pair<Promise<>, Future<>> CommonPjRtClient::CreateLinkedUserPromise(
     PjRtMemorySpace* memory_space, const char* callee_type,
     const char* callee_method, absl::string_view debug_info) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   auto profiled_future = CreateProfiledFuture(memory_space, callee_type,
                                               callee_method, std::move(future));
   TrackFuture(memory_space, debug_info, profiled_future);

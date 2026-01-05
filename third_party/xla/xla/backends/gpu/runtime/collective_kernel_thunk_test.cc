@@ -328,7 +328,7 @@ RunCollectiveKernelThunkOnDevices(CollectiveKernelThunkMetadata& metadata,
   std::vector<tsl::Future<se::DeviceAddressBase>> futures;
   for (int device_number = 0; device_number < metadata.num_devices;
        ++device_number) {
-    futures.push_back(tsl::Future<se::DeviceAddressBase>::MakeOn(
+    futures.push_back(tsl::MakeFutureOn<se::DeviceAddressBase>(
         *thread_pool.AsExecutor(),
         [&metadata, device_number, emulate_multiprocess] {
           return RunCollectiveKernelThunk(metadata,

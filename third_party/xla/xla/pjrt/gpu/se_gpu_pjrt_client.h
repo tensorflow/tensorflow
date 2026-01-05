@@ -213,7 +213,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, std::vector<PjRtBuffer*> buffers,
       std::vector<PjRtGlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys,
-      std::vector<std::shared_ptr<Future<>::Promise>> promises);
+      std::vector<std::shared_ptr<Promise<>>> promises);
 
   struct PrepareReceiveBufferResult {
     std::unique_ptr<PjRtBuffer> buffer;

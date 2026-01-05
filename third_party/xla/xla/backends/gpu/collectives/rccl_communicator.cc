@@ -181,7 +181,7 @@ class RcclCommunicator::RcclRegisteredBufferHandle
         XLA_RCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm_, handle_));
         return comm_.PollUntilDone();
       };
-      return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
+      return executor_ ? MakeFutureOn<void>(*executor_, f).Await() : f();
 #else
       return Unimplemented(
           "[%d] RCCL version does not support ncclCommDeregister",
@@ -202,7 +202,7 @@ class RcclCommunicator::RcclRegisteredBufferHandle
             ncclCommWindowDeregister(comm_.comm_, *(ncclWindow_t*)(handle_)));
         return comm_.PollUntilDone();
       };
-      return executor_ ? Future<>::MakeOn(*executor_, f).Await() : f();
+      return executor_ ? MakeFutureOn<void>(*executor_, f).Await() : f();
 #else
       return Unimplemented(
           "[%d] RCCL version does not support ncclCommWindowDeregister",
@@ -249,7 +249,7 @@ absl::StatusOr<std::unique_ptr<RcclCommunicator>> RcclCommunicator::Create(
   // single threaded executor.
   auto executor = std::make_unique<SingleThreadedExecutor>(env);
   TF_ASSIGN_OR_RETURN(ncclComm_t comm,
-                      Future<ncclComm_t>::MakeOn(*executor, f).Await());
+                      MakeFutureOn<ncclComm_t>(*executor, f).Await());
   return absl::WrapUnique(new RcclCommunicator(comm, std::move(executor)));
 }
 
@@ -817,14 +817,14 @@ absl::Status RcclCommunicator::PollUntilDone() const {
 
 Future<> RcclCommunicator::Execute(
     absl::AnyInvocable<absl::Status() &&> f) const {
-  return executor_ ? Future<>::MakeOn(*executor_, std::move(f))
+  return executor_ ? MakeFutureOn<void>(*executor_, std::move(f))
                    : Future<>(std::move(f)());
 }
 
 template <typename T>
 Future<T> RcclCommunicator::Execute(
     absl::AnyInvocable<absl::StatusOr<T>() &&> f) const {
-  return executor_ ? Future<T>::MakeOn(*executor_, std::move(f))
+  return executor_ ? MakeFutureOn<T>(*executor_, std::move(f))
                    : Future<T>(std::move(f)());
 }
 

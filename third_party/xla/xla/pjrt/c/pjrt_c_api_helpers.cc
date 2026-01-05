@@ -465,7 +465,7 @@ xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise = std::move(promise).ToShared(), c_event,
        c_api](PJRT_Error* error) mutable {

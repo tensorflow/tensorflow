@@ -78,7 +78,7 @@ class ThreadSafePjRtChunkQueue {
   Future<PjRtChunk> Pop() {
     absl::MutexLock lock(mu_);
     if (queue_.empty()) {
-      auto [promise, future] = Future<PjRtChunk>::MakePromise();
+      auto [promise, future] = MakePromise<PjRtChunk>();
       promises_.push_back(std::move(promise));
       return std::move(future);
     }

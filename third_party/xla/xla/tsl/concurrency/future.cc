@@ -43,7 +43,7 @@ absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
 namespace {
 struct State {
   explicit State(int32_t size) : pending_count(size) {
-    std::tie(promise, future) = Future<>::MakePromise();
+    std::tie(promise, future) = MakePromise<>();
   }
 
   std::atomic<int32_t> pending_count;

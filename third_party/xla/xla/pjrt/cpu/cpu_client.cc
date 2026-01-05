@@ -1885,7 +1885,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   }
 
   if (fill_future) {
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise<>();
     returned_future_can_be_set_event.AndThen(
         [execute_event = std::move(execute_event),
          promise = std::move(promise)]() mutable {

@@ -734,7 +734,7 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferData(
       "PJRT_AsyncHostToDeviceTransferManager_TransferData_Args",
       PJRT_AsyncHostToDeviceTransferManager_TransferData_Args_STRUCT_SIZE,
       args->struct_size));
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   absl::AnyInvocable<void() &&> on_done_with_d2h_transfer =
       [promise = std::move(promise)]() mutable { promise.Set(); };
   PJRT_RETURN_IF_ERROR(
@@ -761,7 +761,7 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
       static_cast<const char*>(args->data), shape);
   xla::BorrowingLiteral* literal_ptr = literal.get();
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   absl::AnyInvocable<void() &&> on_done_with_d2h_transfer =
       [promise = std::move(promise), literal = std::move(literal)]() mutable {
         promise.Set();
@@ -1173,7 +1173,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     }
   }
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
 
   absl::AnyInvocable<void() &&> on_done_with_host_buffer =
       [promise = std::move(promise)]() mutable { promise.Set(); };
@@ -2320,7 +2320,7 @@ PJRT_Error* PJRT_Buffer_CopyRawToHostFuture(
       "PJRT_Buffer_CopyRawToHostFuture_Args",
       PJRT_Buffer_CopyRawToHostFuture_Args_STRUCT_SIZE, args->struct_size));
 
-  auto [promise, future] = xla::Future<void*>::MakePromise();
+  auto [promise, future] = xla::MakePromise<void*>();
   xla::Future<> wrapped_promise = args->buffer->buffer->CopyRawToHostFuture(
       future, args->offset, args->transfer_size);
   args->event = new PJRT_Event{std::move(wrapped_promise)};
@@ -2519,7 +2519,7 @@ PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
       PJRT_Buffer_DonateWithControlDependency_Args_STRUCT_SIZE,
       args->struct_size));
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   PJRT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtBuffer> out_buffer,
       args->buffer->buffer->DonateWithControlDependency(std::move(future)));

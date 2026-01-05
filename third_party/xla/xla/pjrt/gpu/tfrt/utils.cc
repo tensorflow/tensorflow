@@ -133,7 +133,7 @@ absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
 }
 
 Future<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   auto done_fn = [promise = std::move(promise), event]() mutable {
     if (const absl::Status* error = event.GetErrorIfPresent()) {
       VLOG(3) << "Setting future: " << *error;

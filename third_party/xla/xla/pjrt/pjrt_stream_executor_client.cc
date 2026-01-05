@@ -2143,7 +2143,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
 
   std::optional<Future<>> maybe_future;
   if (fill_future) {
-    auto [promise, future] = Future<>::MakePromise();
+    auto [promise, future] = MakePromise<>();
     maybe_future = std::move(future);
     compute_callbacks.push_back(
         [promise = std::move(promise)]() mutable { promise.Set(); });

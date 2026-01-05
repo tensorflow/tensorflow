@@ -281,7 +281,7 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
 }
 
 Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
 
   tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
       ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
