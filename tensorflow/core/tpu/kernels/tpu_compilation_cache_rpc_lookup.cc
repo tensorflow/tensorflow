@@ -57,7 +57,7 @@ TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
     : max_cache_size_(max_cache_size) {
   // Ensure that large TPU program can get sent over the channel.
   ::grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32_t>::max());
   auto channel =
       ::grpc::CreateCustomChannel(absl::StrCat("dns:///", server_address),
                                   CreateChannelCredentials(), args);
