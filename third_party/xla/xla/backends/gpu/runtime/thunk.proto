@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
+import "xla/backends/gpu/runtime/copy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
@@ -512,6 +513,7 @@ message ThunkProto {
     RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 41;
     CollectivePermuteStartThunkProto collective_permute_start_thunk = 42;
     SendThunkProto send_thunk = 43;
+    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 44;
   }
 }
 

@@ -598,11 +598,21 @@ tf_proto_library(
     deps = [":shaped_slice_proto"],
 )
 
+tf_proto_library(
+    name = "copy_thunk_proto",
+    srcs = ["copy_thunk.proto"],
+    protodeps = [
+        # keep sorted
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "copy_thunk",
     srcs = ["copy_thunk.cc"],
     hdrs = ["copy_thunk.h"],
     deps = [
+        ":copy_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
@@ -2910,6 +2920,7 @@ tf_proto_library(
     protodeps = [
         # keep sorted
         ":convolution_filter_thunk_proto",
+        ":copy_thunk_proto",
         ":dynamic_slice_thunk_proto",
         ":shaped_slice_proto",
         "//xla:xla_data_proto",

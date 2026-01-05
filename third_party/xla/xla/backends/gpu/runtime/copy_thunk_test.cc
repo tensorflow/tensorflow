@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -133,7 +134,7 @@ TEST(CopyThunkTest, FromProto) {
                 256));
 }
 
-TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
+TEST(DeviceToHostCopyThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
   thunk_info.execution_stream_id = 123;
@@ -187,7 +188,7 @@ TEST(DeviceToHostCopyThunkProtoTest, ToProto) {
               )pb"));
 }
 
-TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
+TEST(DeviceToHostCopyThunkTest, FromProto) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
@@ -252,7 +253,7 @@ TEST(DeviceToHostCopyThunkProtoTest, FromProto) {
                 /*instr=*/nullptr));
 }
 
-TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
+TEST(HostToDeviceCopyThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
   thunk_info.execution_stream_id = 123;
@@ -307,7 +308,7 @@ TEST(HostToDeviceCopyThunkProtoTest, ToProto) {
               )pb"));
 }
 
-TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
+TEST(HostToDeviceCopyThunkTest, FromProto) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
@@ -372,7 +373,7 @@ TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
                 /*instr=*/nullptr));
 }
 
-TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
+TEST(DeviceToDeviceCopyThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
   thunk_info.execution_stream_id = 123;
@@ -424,7 +425,7 @@ TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
               )pb"));
 }
 
-TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
+TEST(DeviceToDeviceCopyThunkTest, FromProto) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info {
@@ -485,6 +486,100 @@ TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
                                          /*size=*/256),
                  shape},
                 256));
+}
+
+TEST(DynamicMemcpyThunkTest, ToProto) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  DynamicMemcpyThunk thunk(thunk_info,
+                           /*source_buffer=*/
+                           {BufferAllocation::Slice(&buffer_allocations[0],
+                                                    /*offset=*/0,
+                                                    /*size=*/1024)},
+                           /*destination_buffer=*/
+                           {BufferAllocation::Slice(&buffer_allocations[1],
+                                                    /*offset=*/0,
+                                                    /*size=*/1024)},
+                           /*mem_size=*/256,
+                           {DynamicMemcpyThunk::Offsets{
+                               /*depends_on_loop=*/true,
+                               /*src_offsets=*/std::vector<int64_t>{4, 8},
+                               /*dst_offsets=*/std::vector<int64_t>{16, 32},
+                           }});
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  EXPECT_THAT(
+      proto, EqualsProto(R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        dynamic_memcpy_thunk {
+          source_buffer { offset: 0 size: 1024 buffer_allocation_index: 0 }
+          destination_buffer { offset: 0 size: 1024 buffer_allocation_index: 1 }
+          mem_size: 256
+          offsets {
+            depends_on_loop: true
+            src_offsets: 4
+            src_offsets: 8
+            dst_offsets: 16
+            dst_offsets: 32
+          }
+        }
+      )pb"));
+}
+
+TEST(DynamicMemcpyThunkTest, FromProto) {
+  auto dynamic_memcpy_thunk_proto =
+      ParseTextProtoOrDie<DynamicMemcpyThunkProto>(
+          R"pb(
+            source_buffer { offset: 0 size: 1024 buffer_allocation_index: 0 }
+            destination_buffer {
+              offset: 0
+              size: 1024
+              buffer_allocation_index: 1
+            }
+            mem_size: 256
+            offsets {
+              depends_on_loop: true
+              src_offsets: 4
+              src_offsets: 8
+              dst_offsets: 16
+              dst_offsets: 32
+            }
+          )pb");
+
+  Thunk::ThunkInfo thunk_info{};
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<DynamicMemcpyThunk> thunk,
+      DynamicMemcpyThunk::FromProto(thunk_info, dynamic_memcpy_thunk_proto,
+                                    buffer_allocations));
+
+  DynamicMemcpyThunk::Offsets reference_offsets{
+      /*depends_on_loop=*/true,
+      /*src_offsets=*/std::vector<int64_t>{4, 8},
+      /*dst_offsets=*/std::vector<int64_t>{16, 32}};
+  EXPECT_EQ(thunk->offsets(), reference_offsets);
+  EXPECT_EQ(thunk->source(), BufferAllocation::Slice(&buffer_allocations[0],
+                                                     /*offset=*/0,
+                                                     /*size=*/1024));
+  EXPECT_EQ(thunk->destination(),
+            BufferAllocation::Slice(&buffer_allocations[1],
+                                    /*offset=*/0,
+                                    /*size=*/1024));
+  EXPECT_EQ(thunk->mem_size(), 256);
 }
 
 }  // namespace
