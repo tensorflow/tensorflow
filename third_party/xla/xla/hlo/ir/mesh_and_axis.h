@@ -162,12 +162,11 @@ class AxisRef {
 
   static AxisRef FromProto(const AxisRefProto& proto);
 
-  bool CanCoexist(const AxisRef& other) const;
-  bool Overlaps(const AxisRef& other) const;
   bool CanCoexistWithoutOverlap(const AxisRef& other) const;
 
   // Validates that the given mesh is compatible for this axis ref.
   absl::Status Validate(const Mesh& mesh) const;
+
   int64_t mesh_axis_index() const { return mesh_axis_index_; }
   std::optional<SubAxis> sub_axis_info() const { return sub_axis_info_; }
 
