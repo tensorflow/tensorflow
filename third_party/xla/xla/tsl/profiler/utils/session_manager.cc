@@ -56,6 +56,20 @@ void SetOption(absl::string_view key,
   }
 }
 
+struct SetAdvancedOption {
+  tensorflow::ProfileOptions* options;
+  const std::string& key;
+  void operator()(int value) {
+    (*options->mutable_advanced_configuration())[key].set_int64_value(value);
+  }
+  void operator()(const std::string& value) {
+    (*options->mutable_advanced_configuration())[key].set_string_value(value);
+  }
+  void operator()(bool value) {
+    (*options->mutable_advanced_configuration())[key].set_bool_value(value);
+  }
+};
+
 // Sets gRPC deadline to a grace period based on the profiling duration.
 void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
   auto local_profiler_duration = options.profiler_options().duration_ms();
@@ -188,6 +202,10 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (absl::StartsWith(key, "tpu_")) {
+      std::visit(
+          SetAdvancedOption{options.mutable_profiler_options(), kw.first},
+          kw.second);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
