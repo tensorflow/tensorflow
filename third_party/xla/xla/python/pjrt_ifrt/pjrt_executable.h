@@ -177,6 +177,7 @@ class PjRtExecutable final
  protected:
   PjRtExecutable(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+      std::vector<int> donatable_input_indices,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
       std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
       std::vector<absl::string_view> output_memory_kinds,
@@ -184,6 +185,8 @@ class PjRtExecutable final
           output_layouts);
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
+
+  std::vector<int> donatable_input_indices_;
 
   // Output array specs.
   std::vector<DType> output_dtypes_;
@@ -245,8 +248,7 @@ class PjRtLoadedExecutable final
 
   absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
       const override {
-    return absl::UnimplementedError(
-        "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
+    return donatable_input_indices_;
   }
 
   UserContextRef user_context() const override { return user_context_; }
@@ -361,6 +363,7 @@ class PjRtLoadedExecutable final
       DeviceListRef devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
+      std::vector<int> donatable_input_indices,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
       std::vector<ShardingRef> output_shardings,
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
@@ -377,6 +380,8 @@ class PjRtLoadedExecutable final
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
+
+  std::vector<int> donatable_input_indices_;
 
   // Output array specs.
   std::vector<DType> output_dtypes_;
