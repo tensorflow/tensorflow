@@ -37,6 +37,7 @@ cc_library(
         ":save_profile",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
+        "//xla/tsl/profiler/convert:trace_container",
         "//xla/tsl/profiler/convert:trace_events_to_json",
         "//xla/tsl/profiler/convert:xplane_to_trace_events",
         "//xla/tsl/profiler/utils:session_manager",

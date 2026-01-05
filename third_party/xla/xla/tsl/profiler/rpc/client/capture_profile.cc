@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/profiler/convert/trace_container.h"
 #include "xla/tsl/profiler/convert/trace_events_to_json.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
