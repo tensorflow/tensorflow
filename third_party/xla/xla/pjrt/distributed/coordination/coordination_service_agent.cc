@@ -217,7 +217,7 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
   *request.mutable_source_task() = task_;
   request.set_incarnation(incarnation_id_.value());
   HeartbeatResponse response;
-  const absl::Duration heartbeat_interval = config_.heartbeat_timeout;
+  const absl::Duration heartbeat_interval = config_.heartbeat_timeout / 2;
   tsl::CallOptions call_opts;
   call_opts.SetTimeout(absl::ToInt64Milliseconds(heartbeat_interval));
 
@@ -261,7 +261,7 @@ void CoordinationServiceAgent::StartSendingHeartbeats() {
     {
       absl::MutexLock l(shutdown_mu_);
       shutdown_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
-                                    config_.heartbeat_timeout);
+                                    heartbeat_interval);
       if (shutting_down_) {
         return;
       }
