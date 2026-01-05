@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
 #include "llvm/include/llvm/Support/Debug.h"
-#define MAGIC 977
 
 namespace xla {
 namespace llvm_ir {

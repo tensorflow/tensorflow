@@ -316,17 +316,8 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
           builder->CreateMul(multidim_[i], GetConstantWithIndexType(stride)),
           GetConstantWithIndexType(starts[i]));
     } else {
-      // [Steven] Big problem here: there is no way to check the shape
-      // multiplier! Oops! Hacky solution is to check if multiple of 977.
-
-      llvm::Value* op2 = GetConstantWithIndexType(starts[i]);
-#define MAGIC 977
-      if ( starts[i] > 0 && (starts[i] % MAGIC) == 0) {
-        op2 = llvm_ir::GetBatchDimByName(builder, starts[i] / MAGIC);
-      }
-
       source_multi_index[i] =
-          builder->CreateAdd(multidim_[i], op2);
+          builder->CreateAdd(multidim_[i], GetConstantWithIndexType(starts[i]));
     }
   }
   return Index(source_multi_index, operand_shape, index_type_);
@@ -578,13 +569,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
 
   llvm::Value* gep;
 
-  if (shape_.outer_multiplier() > 0 || outerArray->getNumElements() == MAGIC) {
-
-    if (shape_.outer_multiplier() < 0){
-      llvm::errs() << "This should never happen... \n";
-      llvm::errs() << "Shape is " << shape_.ToString() << "\n";
-
-    }
+  if (shape_.outer_multiplier() > 0) {
 
     // Extract the inner array type: [N x T]
     llvm::Type* innerArray = outerArray->getElementType();
