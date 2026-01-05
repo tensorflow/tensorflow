@@ -65,7 +65,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* output;
     TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
     if ((value->type == kTfLiteUInt8 || value->type == kTfLiteInt8 ||
-         value->type == kTfLiteInt4) &&
+         value->type == kTfLiteInt4 || value->type == kTfLiteInt2) &&
         (output->type == kTfLiteFloat32)) {
       // EvalHybrid supports only symmetric quantization for now.
       TF_LITE_ENSURE(context, qparams->zero_point->data[0] == 0);
@@ -74,7 +74,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       // Per-axis quantization is supported by EvalHybrid only.
       TF_LITE_ENSURE(context, value->type == kTfLiteUInt8 ||
                                   value->type == kTfLiteInt8 ||
-                                  value->type == kTfLiteInt4);
+                                  value->type == kTfLiteInt4 ||
+                                  value->type == kTfLiteInt2);
       TF_LITE_ENSURE(context, output->type == kTfLiteFloat32);
       // Per-axis quantization must have quantized_dimension == 0 and correct
       // sizes for scale and zero_point.
@@ -130,13 +131,55 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
 
 void Unpack4Bit(double scaling_factor, int col_size, const int8_t* value_ptr,
                 float* output_ptr) {
-  for (int j = 0; j < col_size; j++) {
-    int i8_idx = j;
-    int i4_idx = i8_idx / 2;
-    bool even = i8_idx % 2 == 0;
+  float scaling_factor0 = scaling_factor / 16;
+  int j = 0;
+  int i4_idx = 0;
+  for (; j < col_size - 1; j += 2, ++i4_idx) {
     int8_t i4_val = value_ptr[i4_idx];
-    int8_t i8_val = even ? static_cast<int8_t>(i4_val << 4) >> 4 : i4_val >> 4;
-    output_ptr[j] = i8_val * scaling_factor;
+    int8_t i8_val0 = i4_val << 4;
+    int8_t i8_val1 = i4_val & 0xF0;
+
+    output_ptr[j] = i8_val0 * scaling_factor0;
+    output_ptr[j + 1] = i8_val1 * scaling_factor0;
+  }
+  if (col_size & 1) {
+    int8_t i4_val = value_ptr[i4_idx];
+    int8_t i8_val0 = i4_val << 4;
+    output_ptr[j] = i8_val0 * scaling_factor0;
+  }
+}
+
+void Unpack2Bit(double scaling_factor, int col_size, const int8_t* value_ptr,
+                float* output_ptr) {
+  float scaling_factor0 = scaling_factor / 64;  // 2**6
+
+  int j = 0;
+  int i2_idx = 0;
+  for (; j < col_size - 3; j += 4, ++i2_idx) {
+    int8_t i2_val = value_ptr[i2_idx];
+    int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
+    int8_t i8_val1 = static_cast<int8_t>(i2_val << 4) & 0xC0;
+    int8_t i8_val2 = static_cast<int8_t>(i2_val << 2) & 0xC0;
+    int8_t i8_val3 = i2_val & 0xC0;
+
+    output_ptr[j] = i8_val0 * scaling_factor0;
+    output_ptr[j + 1] = i8_val1 * scaling_factor0;
+    output_ptr[j + 2] = i8_val2 * scaling_factor0;
+    output_ptr[j + 3] = i8_val3 * scaling_factor0;
+  }
+  int rem = col_size - j;
+  if (rem) {
+    int8_t i2_val = value_ptr[i2_idx];
+    int8_t i8_val0 = static_cast<int8_t>(i2_val << 6);
+    output_ptr[j] = i8_val0 * scaling_factor0;
+    if (rem & 2) {
+      int8_t i8_val1 = static_cast<int8_t>(i2_val << 4) & 0xC0;
+      output_ptr[j + 1] = i8_val1 * scaling_factor0;
+      if (rem & 1) {
+        int8_t i8_val2 = static_cast<int8_t>(i2_val << 2) & 0xC0;
+        output_ptr[j + 2] = i8_val2 * scaling_factor0;
+      }
+    }
   }
 }
 
@@ -247,6 +290,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       if (value->type == kTfLiteInt4) {
         Unpack4Bit(scaling_factor, col_size, &value_ptr[idx * col_size / 2],
                    &output_ptr[i * col_size]);
+      } else if (value->type == kTfLiteInt2) {
+        Unpack2Bit(scaling_factor, col_size, &value_ptr[idx * col_size / 4],
+                   &output_ptr[i * col_size]);
       } else {
         for (int j = 0; j < col_size; j++) {
           output_ptr[j + i * col_size] =
@@ -270,6 +316,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       return EvalSimple(context, node, lookup, value, output);
     case kTfLiteInt4:
+    case kTfLiteInt2:
       return EvalHybrid(context, node, lookup, value, output);
     case kTfLiteUInt8:
     case kTfLiteInt8:

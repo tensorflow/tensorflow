@@ -512,5 +512,286 @@ TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple4DTestInt4) {
           kTestTolerance)));
 }
 
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple2DTestInt2) {
+  PerAxisHybridEmbeddingLookupOpModel m(
+      /*index_shape=*/{3}, /*weight_shape=*/{3, 4},
+      /*per_channel_quantization_scales=*/{0.001, 0.02, 0.3},
+      /*type=*/TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00,
+      -0.001,
+      -0.002,
+      0.001,  // Row 0
+      0.02,
+      -0.02,
+      0.00,
+      -0.04,  // Row 1
+      0.3,
+      -0.6,
+      0.0,
+      -0.3,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,
+                                            -0.02,
+                                            0.00,
+                                            -0.04,  // Row 1
+                                            0.00,
+                                            -0.001,
+                                            -0.002,
+                                            0.001,  // Row 0
+                                            0.3,
+                                            -0.6,
+                                            0.0,
+                                            -0.3,  // Row 2
+                                        },
+                                        kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple3DTestInt2) {
+  PerAxisHybridEmbeddingLookupOpModel m({3}, {3, 2, 2}, {0.001, 0.02, 0.3},
+                                        TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00,
+      -0.001,
+      -0.002,
+      0.001,  // Row 0
+      0.02,
+      -0.02,
+      0.00,
+      -0.04,  // Row 1
+      0.3,
+      -0.6,
+      0.0,
+      -0.3,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,
+                                            -0.02,
+                                            0.00,
+                                            -0.04,  // Row 1
+                                            0.00,
+                                            -0.001,
+                                            -0.002,
+                                            0.001,  // Row 0
+                                            0.3,
+                                            -0.6,
+                                            0.0,
+                                            -0.3,  // Row 2
+                                        },
+                                        kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple4DTestInt2) {
+  PerAxisHybridEmbeddingLookupOpModel m({3}, {3, 2, 2, 1}, {0.001, 0.02, 0.3},
+                                        TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00,
+      -0.001,
+      -0.002,
+      0.001,  // Row 0
+      0.02,
+      -0.02,
+      0.00,
+      -0.04,  // Row 1
+      0.3,
+      -0.6,
+      0.0,
+      -0.3,  // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,
+                                            -0.02,
+                                            0.00,
+                                            -0.04,  // Row 1
+                                            0.00,
+                                            -0.001,
+                                            -0.002,
+                                            0.001,  // Row 0
+                                            0.3,
+                                            -0.6,
+                                            0.0,
+                                            -0.3,  // Row 2
+                                        },
+                                        kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple2DTestInt2Rem) {
+  // Since our packing algorithm assumes the rem value is 0, this test ensures
+  // that the column size is a multiple of 4 and we have 0 paddings.
+  PerAxisHybridEmbeddingLookupOpModel m(
+      /*index_shape=*/{3}, /*weight_shape=*/{3, 4},
+      /*per_channel_quantization_scales=*/{0.001, 0.02, 0.3},
+      /*type=*/TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  // 0.001 * {0b00, 0b11, 0b10, padding 0b00} -> 0.001 * = 0b00101100
+  // 0.02 * {0b01, 0b11, 0b00, padding 0b00} -> 0.001 * = 0b00001101
+  // 0.3 * {0b01, 0b10, 0b00, padding 0b00} -> 0.001 * = 0b00001001
+  m.SetSignedWeight({
+      0.00,
+      -0.001,
+      -0.002,  // Row 0
+      0.00,    // Padding for row 0 serialization.
+      0.02,
+      -0.02,
+      0.00,  // Row 1
+      0.00,  // Padding for row 1 serialization.
+      0.3,
+      -0.6,
+      -0.3,  // Row 2
+      0.00,  // Padding for row 2 serialization.
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,
+                                            -0.02,
+                                            0.00,  // Row 1
+                                            0.00,  // Padding for row 1.
+                                            0.00,
+                                            -0.001,
+                                            -0.002,  // Row 0
+                                            0.0,     // Padding for row 0.
+                                            0.3,
+                                            -0.6,
+                                            -0.3,  // Row 2
+                                            0.0,   // Padding for row 2.
+                                        },
+                                        kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple3DTestInt2Rem) {
+  // We still need padding due to packing algorithm.
+  PerAxisHybridEmbeddingLookupOpModel m({3}, {3, 2, 4}, {0.001, 0.02, 0.3},
+                                        TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  // Each row has 2*3 = 6 elements with 2 * 1 zero paddings.
+  m.SetSignedWeight({
+      0.00,   -0.001,
+      -0.002,  // Row 00
+      0.00,    // Padding for row 00 serialization.
+      0.001,  -0.002,
+      0.001,  // Row 01
+      0.00,   // Padding for row 01 serialization.
+      0.02,   -0.02,
+      0.00,  // Row 10
+      0.00,  // Padding for row 10 serialization.
+      -0.04,  0.00,
+      -0.04,  // Row 11
+      0.00,   // Padding for row 11 serialization.
+      0.3,    -0.6,
+      0.0,   // Row 20
+      0.00,  // Padding for row 20 serialization.
+      -0.3,   0.0,
+      -0.3,  // Row 21
+      0.00,  // Padding for row 21 serialization.
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,   -0.02,
+                                            0.00,  // Row 10
+                                            0.00,  // Padding for row 10
+                                            -0.04,  0.00,
+                                            -0.04,  // Row 11
+                                            0.00,   // Padding for row 11
+                                            0.00,   -0.001,
+                                            -0.002,  // Row 00
+                                            0.00,    // Padding for row 00
+                                            0.001,  -0.002,
+                                            0.001,  // Row 01
+                                            0.00,   // Padding for row 01
+                                            0.3,    -0.6,
+                                            0.0,   // Row 20
+                                            0.00,  // Padding for row 20
+                                            -0.3,   0.0,
+                                            -0.3,  // Row 21
+                                            0.00,  // Padding for row 2
+                                        },
+                                        kTestTolerance)));
+}
+
+TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple4DTestInt2Rem) {
+  // We still need padding due to packing algorithm.
+  PerAxisHybridEmbeddingLookupOpModel m({3}, {3, 2, 4, 1}, {0.001, 0.02, 0.3},
+                                        TensorType_INT2);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00,    // Row 000
+      -0.001,  // Row 001
+      -0.002,  // Row 002
+      0.00,    // Padding for row 00
+      0.001,   // Row 010
+      -0.002,  // Row 011
+      0.001,   // Row 012
+      0.00,    // Padding for row 01
+      0.02,    // Row 100
+      -0.02,   // Row 101
+      0.00,    // Row 102
+      0.00,    // Padding for row 10
+      -0.04,   // Row 110
+      0.00,    // Row 111
+      -0.04,   // Row 112
+      0.00,    // Padding for row 11
+      0.3,     // Row 200
+      -0.6,    // Row 201
+      0.0,     // Row 202
+      0.00,    // Padding for row 20
+      -0.3,    // Row 210
+      0.0,     // Row 211
+      -0.3,    // Row 212
+      0.0,     // Padding for row 21
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(
+                                        {
+                                            0.02,    // Row 100
+                                            -0.02,   // Row 101
+                                            0.00,    // Row 102
+                                            0.00,    // Padding for row 10
+                                            -0.04,   // Row 110
+                                            0.00,    // Row 111
+                                            -0.04,   // Row 112
+                                            0.00,    // Padding for row 11
+                                            0.00,    // Row 000
+                                            -0.001,  // Row 001
+                                            -0.002,  // Row 002
+                                            0.00,    // Padding for row 00
+                                            0.001,   // Row 010
+                                            -0.002,  // Row 011
+                                            0.001,   // Row 012
+                                            0.00,    // Padding for row 01
+                                            0.3,     // Row 200
+                                            -0.6,    // Row 201
+                                            0.0,     // Row 202
+                                            0.00,    // Padding for row 20
+                                            -0.3,    // Row 210
+                                            0.0,     // Row 211
+                                            -0.3,    // Row 212
+                                            0.0,     // Padding for row 21
+                                        },
+                                        kTestTolerance)));
+}
 }  // namespace
 }  // namespace tflite
