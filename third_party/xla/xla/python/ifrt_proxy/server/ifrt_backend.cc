@@ -758,12 +758,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   init_resp->set_runtime_type(AsProtoStringData(client_->runtime_type()));
   init_resp->set_process_index(client_->process_index());
 
-  absl::Span<xla::ifrt::Device* const> all_devices;
-  if (protocol_version() < 7) {
-    all_devices = client_->devices();
-  } else {
-    all_devices = client_->GetAllDevices();
-  }
+  absl::Span<xla::ifrt::Device* const> all_devices = client_->GetAllDevices();
   for (auto* device : all_devices) {
     InitResponse::Device* d = init_resp->add_all_devices();
     d->set_id(device->Id().value());
@@ -1045,33 +1040,15 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
   TF_ASSIGN_OR_RETURN(
       auto array_copy_semantics,
       FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
-  SingleDeviceShardSemantics single_device_shard_semantics;
-  if (protocol_version() < 8) {
-    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
-  } else {
-    TF_ASSIGN_OR_RETURN(single_device_shard_semantics,
-                        FromSingleDeviceShardSemanticsProto(
-                            assemble_request.single_device_shard_semantics()));
-  }
-  IfrtArrayRef array;
-  if (protocol_version() <
-      protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-    if (arrays.empty()) {
-      return absl::InvalidArgumentError(
-          "AssembleArrayFromSingleDeviceArrays requires at least one array.");
-    }
-    TF_ASSIGN_OR_RETURN(array, client_->AssembleArrayFromSingleDeviceArrays(
-                                   std::move(shape), std::move(sharding),
-                                   absl::MakeSpan(arrays), array_copy_semantics,
-                                   single_device_shard_semantics));
-  } else {
-    TF_ASSIGN_OR_RETURN(DType dtype,
-                        DType::FromProto(assemble_request.dtype()));
-    TF_ASSIGN_OR_RETURN(array, client_->AssembleArrayFromSingleDeviceArrays(
-                                   dtype, std::move(shape), std::move(sharding),
-                                   absl::MakeSpan(arrays), array_copy_semantics,
-                                   single_device_shard_semantics));
-  }
+  TF_ASSIGN_OR_RETURN(auto single_device_shard_semantics,
+                      FromSingleDeviceShardSemanticsProto(
+                          assemble_request.single_device_shard_semantics()));
+  TF_ASSIGN_OR_RETURN(DType dtype, DType::FromProto(assemble_request.dtype()));
+  TF_ASSIGN_OR_RETURN(
+      IfrtArrayRef array,
+      client_->AssembleArrayFromSingleDeviceArrays(
+          dtype, std::move(shape), std::move(sharding), absl::MakeSpan(arrays),
+          array_copy_semantics, single_device_shard_semantics));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
@@ -1246,15 +1223,9 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
       request->disassemble_into_single_device_arrays_request();
   TF_ASSIGN_OR_RETURN(IfrtArrayRef array,
                       array_store_.Find(disassemble_request.array_handle()));
-  SingleDeviceShardSemantics single_device_shard_semantics;
-  if (protocol_version() < 8) {
-    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
-  } else {
-    TF_ASSIGN_OR_RETURN(
-        single_device_shard_semantics,
-        FromSingleDeviceShardSemanticsProto(
-            disassemble_request.single_device_shard_semantics()));
-  }
+  TF_ASSIGN_OR_RETURN(auto single_device_shard_semantics,
+                      FromSingleDeviceShardSemanticsProto(
+                          disassemble_request.single_device_shard_semantics()));
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
   TF_ASSIGN_OR_RETURN(auto single_device_arrays,
@@ -1347,23 +1318,13 @@ IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
   std::vector<uint64_t> bad_handles;
   std::vector<tsl::Future<>> deletion_futures;
 
-  auto delete_handle = [&](uint64_t handle) {
-    absl::StatusOr<IfrtArrayRef> array = array_store_.Find(handle);
+  for (auto array_handle : request->delete_array_request().array_handle()) {
+    absl::StatusOr<IfrtArrayRef> array = array_store_.Find(array_handle);
     if (array.ok()) {
       deletion_futures.push_back(array.value()->Delete());
     } else {
       deletion_futures.push_back(tsl::Future<>(array.status()));
     }
-  };
-
-  if (request->delete_array_request().has_array_handle_deprecated()) {
-    // TODO(b/296144873): After removing array_handle_deprecated(), move
-    // delete_handle's definition to the single place it is used.
-    delete_handle(request->delete_array_request().array_handle_deprecated());
-  }
-
-  for (auto array_handle : request->delete_array_request().array_handle()) {
-    delete_handle(array_handle);
   }
 
   uint64_t future_handle = handle_generator_.GenerateAtServer();
@@ -1394,15 +1355,6 @@ absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
   std::vector<uint64_t> missing_handles = array_store_.EraseAndReturnMissing(
       request->destruct_array_request().array_handle());
-
-  if (request->destruct_array_request().has_array_handle_deprecated()) {
-    auto missing = array_store_.EraseAndReturnMissing(
-        {request->destruct_array_request().array_handle_deprecated()});
-    if (!missing.empty()) {
-      CHECK_EQ(missing.size(), 1);
-      missing_handles.push_back(missing[0]);
-    }
-  }
 
   if (!missing_handles.empty()) {
     return absl::NotFoundError(absl::StrCat(
@@ -1844,12 +1796,6 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   TF_ASSIGN_OR_RETURN(auto execute_options,
                       xla::ifrt::LoadedExecutable::ExecuteOptions::FromProto(
                           execute.execute_options()));
-  // Force the old behavior where `fill_status` was implicitly true before
-  // protocol version 6. Can be cleaned up once version 6 is outside the
-  // compatibility window.
-  if (protocol_version() < 6) {
-    execute_options.fill_status = true;
-  }
 
   if (execute.result_status_handle() != 0) {
     TF_RET_CHECK(execute_options.fill_status);

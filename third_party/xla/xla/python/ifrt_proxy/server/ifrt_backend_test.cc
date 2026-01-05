@@ -508,15 +508,9 @@ TEST_P(IfrtBackendHandlerTest, Init) {
     EXPECT_EQ(device.memory_ids().size(), 1);
     EXPECT_EQ(device.memory_ids(0), device_canonical_num);
     std::string expected_name = absl::StrCat("device", device_canonical_num);
-    if (Version().protocol_version() <= 3) {
-      EXPECT_EQ(device.deprecated_attributes().size(), 1);
-      EXPECT_EQ(device.deprecated_attributes().at("name").string_value(),
-                expected_name);
-    } else {
-      EXPECT_EQ(device.attributes().attributes().size(), 1);
-      EXPECT_EQ(device.attributes().attributes().at("name").string_value(),
-                expected_name);
-    }
+    EXPECT_EQ(device.attributes().attributes().size(), 1);
+    EXPECT_EQ(device.attributes().attributes().at("name").string_value(),
+              expected_name);
   }
 
   EXPECT_EQ(init_response.memories().size(), 2);
@@ -527,9 +521,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
     EXPECT_EQ(memory.device_ids(0), memory_canonical_num);
   }
 
-  if (Version().protocol_version() > 7) {
-    EXPECT_THAT(init_response.primary_device_ids(), ElementsAre(0, 1));
-  }
+  EXPECT_THAT(init_response.primary_device_ids(), ElementsAre(0, 1));
 
   EXPECT_EQ(init_response.client_attributes().attributes().size(), 1);
   EXPECT_EQ(init_response.client_attributes()
@@ -680,15 +672,10 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     req->mutable_shape()->add_dims(2);
     req->mutable_shape()->add_dims(2);
     req->set_copy_semantics(proto::ARRAY_COPY_SEMANTICS_ALWAYS_COPY);
-    if (Version().protocol_version() > 8) {
-      req->set_single_device_shard_semantics(
-          proto::SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
-    }
+    req->set_single_device_shard_semantics(
+        proto::SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
     req->set_result_handle(1);
-    if (Version().protocol_version() >=
-        protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      dtype.ToProto(*req->mutable_dtype(), ifrt_serdes_version());
-    }
+    dtype.ToProto(*req->mutable_dtype(), ifrt_serdes_version());
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
     TF_ASSERT_OK(
@@ -708,17 +695,11 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
             ->mutable_assemble_array_from_single_device_arrays_request();
     assemble_array_from_single_device_arrays->add_single_device_array_handles(
         array_handle);
-    if (Version().protocol_version() >= 8) {
-      assemble_array_from_single_device_arrays
-          ->set_single_device_shard_semantics(
-              proto::SingleDeviceShardSemantics::
-                  SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
-    }
-    if (Version().protocol_version() >=
-        protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
-      dtype.ToProto(*assemble_array_from_single_device_arrays->mutable_dtype(),
-                    ifrt_serdes_version());
-    }
+    assemble_array_from_single_device_arrays->set_single_device_shard_semantics(
+        proto::SingleDeviceShardSemantics::
+            SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
+    dtype.ToProto(*assemble_array_from_single_device_arrays->mutable_dtype(),
+                  ifrt_serdes_version());
   }
 
   tsl::RCReference<xla::ifrt::MockArray> result =
@@ -882,11 +863,9 @@ TEST_P(IfrtBackendHandlerTest,
       disassemble_request
           ->mutable_disassemble_into_single_device_arrays_request();
   disassemble_into_single_device_arrays->set_array_handle(array_handle);
-  if (Version().protocol_version() >= 8) {
-    disassemble_into_single_device_arrays->set_single_device_shard_semantics(
-        proto::SingleDeviceShardSemantics::
-            SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
-  }
+  disassemble_into_single_device_arrays->set_single_device_shard_semantics(
+      proto::SingleDeviceShardSemantics::
+          SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
   ASSERT_THAT(CallBackend(std::move(disassemble_request)),
               absl_testing::StatusIs(absl::StatusCode::kUnknown,
                                      StrEq(kDisassembleErrorMessage)));

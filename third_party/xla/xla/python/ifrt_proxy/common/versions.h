@@ -25,18 +25,7 @@ namespace protocol_version {
 enum {
   // There should not be any references to kAncient and earlier versions in the
   // code base.
-  kAncient = 12,
-
-  // kAssembleArrayFromSingleDeviceArraysWithDType adds a DType argument to
-  // AssembleArrayFromSingleDeviceArrays to support non-addressable arrays.
-  kAssembleArrayFromSingleDeviceArraysWithDType = 13,
-
-  // kMakeArraysFromHostBufferShards adds Client::MakeArraysFromHostBufferShards
-  // support.
-  kMakeArraysFromHostBufferShards = 14,
-
-  // kSerDesVersioning users IFRT SerDes versioning for IFRT types.
-  kSerDesVersioning = 15,
+  kAncient = 15,
 
   // kExecutableDevices adds a devices() method to Executable.
   kExecutableDevices = 16,
@@ -75,12 +64,12 @@ constexpr int kCurrent = kSentiel - 1;
 
 // The minimum and maximum protocol_version that the current client code
 // understands.
-inline constexpr int kClientMin = kSerDesVersioning;
+inline constexpr int kClientMin = kExecutableDevices;
 inline constexpr int kClientMax = kCurrent;
 
 // The minimum and maximum protocol_version that the current server code
 // understands.
-inline constexpr int kServerMin = kMakeArraysFromHostBufferShards;
+inline constexpr int kServerMin = kExecutableDevices;
 inline constexpr int kServerMax = kCurrent;
 
 }  // namespace protocol_version

@@ -196,12 +196,6 @@ Array::MakeArraysFromHostBufferShards(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     absl::Span<xla::ifrt::Client::MakeArraysFromHostBufferShardsSpec> specs,
     xla::ifrt::Client::HostBufferSemantics semantics) {
-  if (rpc_helper->protocol_version() <
-      protocol_version::kMakeArraysFromHostBufferShards) {
-    return xla::ifrt::ClientMakeArraysFromHostBufferShards(client, specs,
-                                                           semantics);
-  }
-
   absl::InlinedVector<absl::InlinedVector<uint64_t, 1>, 1>
       host_buffer_handles_for_specs;
   auto cleanup = absl::MakeCleanup([&]() {

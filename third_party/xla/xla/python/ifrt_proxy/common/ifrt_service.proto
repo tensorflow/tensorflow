@@ -256,9 +256,9 @@ message InitResponse {
     repeated int32 memory_ids = 8;
     string debug_string = 4;
     string to_string = 5;
-    map<string, proto.Variant> deprecated_attributes = 6
-        [deprecated = true];            // Deprecated since Version 4.
-    AttributeMapProto attributes = 10;  // New in Version 4.
+    AttributeMapProto attributes = 10;
+
+    reserved 6;
   }
 
   repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
@@ -447,10 +447,9 @@ message FullyReplicatedShardResponse {
 // Deletes the given Array. Response contains the handle for a Future that
 // becomes ready when the deletion completes.
 message DeleteArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DeleteArrayResponse {
   fixed64 deletion_future_handle = 1;
@@ -464,10 +463,9 @@ message IsArrayDeletedResponse {
 }
 
 message DestructArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DestructArrayResponse {}
 
