@@ -24,12 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/client/local_client.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
@@ -45,21 +46,24 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -83,9 +87,6 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
     const Shape& on_host_shape, tsl::AsyncValueRef<GpuEvent> definition_event,
     TfrtGpuDevice* device, TfrtGpuClient* client, PjRtMemorySpace* memory_space,
     int64_t pack_size = 0);
-
-void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void() &&> callee);
 
 std::string MakeComputeCapabilityString(
     const stream_executor::DeviceDescription* desc);
@@ -124,8 +125,7 @@ const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
 
 // Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
 SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
-    int replica, const ExecuteOptions& options,
-    tsl::thread::ThreadPool* thread_pool);
+    int replica, const ExecuteOptions& options, AsyncWorkRunner* runner);
 
 RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int replica, const ExecuteOptions& options);
@@ -173,12 +173,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind);
-
-// Enqueue to a thread pool when all `values` are ready.
-void EnqueueWorkWhenReady(
-    tsl::thread::ThreadPool* pool,
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-    absl::AnyInvocable<void()> callee);
 
 absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
     absl::Span<PjRtDevice* const> devices,

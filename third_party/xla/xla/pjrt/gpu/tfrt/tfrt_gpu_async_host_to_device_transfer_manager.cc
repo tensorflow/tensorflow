@@ -244,7 +244,7 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
     CleanUp(buffer_index, std::move(on_done));
   };
   // Enqueue the transfer to the h2d thread.
-  EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
+  client_->blocking_thread_pool()->Schedule(std::move(h2d_copy));
   return absl::OkStatus();
 }
 
@@ -344,7 +344,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
   // Note: The ordering of transfers enqueued via this method is not
   // guaranteed.  If multiple transfers for the same buffer are submitted,
   // their execution order may vary.
-  EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
+  client_->blocking_thread_pool()->Schedule(std::move(h2d_copy));
   return absl::OkStatus();
 }
 
@@ -405,7 +405,7 @@ void TfrtGpuAsyncHostToDeviceTransferManager::CleanUp(
   // here is unsafe, as the manager instance could be destroyed after
   // `transfers_in_flight_` is decremented and the mutex released,
   // invalidating member access.
-  EnqueueWork(client->non_blocking_thread_pool(), std::move(on_done));
+  client->non_blocking_thread_pool()->Schedule(std::move(on_done));
 }
 
 }  // namespace xla
