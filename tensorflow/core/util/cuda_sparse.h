@@ -106,8 +106,7 @@ inline std::string ConvertGPUSparseErrorToString(
     RETURN_IF_STATUS(CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED)
 
     default:
-      return strings::StrCat("Unknown CUSPARSE error: ",
-                             static_cast<int>(status));
+      return absl::StrCat("Unknown CUSPARSE error: ", static_cast<int>(status));
 #elif TENSORFLOW_USE_ROCM
 
     RETURN_IF_STATUS(HIPSPARSE_STATUS_SUCCESS)
