@@ -973,11 +973,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       // 0 -> 1, 1 -> 2, 2 -> 3, ...
       pre_sd_pairs[source] = {source, (source + 1) % num_partitions};
     }
-    extra_buffer =
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                b, extra_buffer, pre_sd_pairs,
-                (*lhs.state().next_channel_id)++);
+    extra_buffer = lhs.state().collective_ops_creator.create_collective_permute(
+        b, extra_buffer, pre_sd_pairs, (*lhs.state().next_channel_id)++);
   }
 
   auto iteration = b->AddInstruction(
@@ -1469,10 +1466,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                         : windowed_op_is_lhs                 ? l
                                                              : r;
     auto ccw_cp_output =
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &body_b, ccw_cp_input, ccw_sd_pairs,
-                (*lhs.state().next_channel_id)++);
+        lhs.state().collective_ops_creator.create_collective_permute(
+            &body_b, ccw_cp_input, ccw_sd_pairs,
+            (*lhs.state().next_channel_id)++);
     if (operands_sharded_at_contracting_dims) {
       o = ccw_cp_output;
     } else if (windowed_op_is_lhs) {
@@ -1482,10 +1478,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
     }
     auto cw_cp_input = extra_inout;
     auto cw_cp_output =
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &body_b, cw_cp_input, cw_sd_pairs,
-                (*lhs.state().next_channel_id)++);
+        lhs.state().collective_ops_creator.create_collective_permute(
+            &body_b, cw_cp_input, cw_sd_pairs,
+            (*lhs.state().next_channel_id)++);
 
     TF_ASSIGN_OR_RETURN(
         auto outputs,
@@ -1504,10 +1499,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                    : windowed_op_is_lhs                 ? next_l
                                                         : next_r;
     ccw_cp_output =
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &body_b, ccw_cp_input, ccw_sd_pairs,
-                (*lhs.state().next_channel_id)++);
+        lhs.state().collective_ops_creator.create_collective_permute(
+            &body_b, ccw_cp_input, ccw_sd_pairs,
+            (*lhs.state().next_channel_id)++);
     if (operands_sharded_at_contracting_dims) {
       o = ccw_cp_output;
     } else if (windowed_op_is_lhs) {
@@ -1517,10 +1511,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
     }
     auto next_cw_cp_input = cw_cp_output;
     auto next_cw_cp_output =
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &body_b, next_cw_cp_input, cw_sd_pairs,
-                (*lhs.state().next_channel_id)++);
+        lhs.state().collective_ops_creator.create_collective_permute(
+            &body_b, next_cw_cp_input, cw_sd_pairs,
+            (*lhs.state().next_channel_id)++);
 
     TF_ASSIGN_OR_RETURN(outputs,
                         get_partial_bid_results(next_l, next_r, o, cw_cp_output,
@@ -1545,19 +1538,16 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
             source, (source - 2 + num_partitions) % num_partitions};
       }
 
-      o = lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  &body_b, o, output_sd_pairs,
-                  (*lhs.state().next_channel_id)++);
+      o = lhs.state().collective_ops_creator.create_collective_permute(
+          &body_b, o, output_sd_pairs, (*lhs.state().next_channel_id)++);
 
       TF_ASSIGN_OR_RETURN(extra_inout,
                           get_partial_unid_result(l, r, extra_inout, i));
 
       extra_inout =
-          lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  &body_b, extra_inout, output_sd_pairs,
-                  (*lhs.state().next_channel_id)++);
+          lhs.state().collective_ops_creator.create_collective_permute(
+              &body_b, extra_inout, output_sd_pairs,
+              (*lhs.state().next_channel_id)++);
 
       // i+2
       i = body_b.AddInstruction(HloInstruction::CreateBinary(
@@ -1585,10 +1575,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       auto next_r = r;
       auto cp_input = windowed_op_is_lhs ? l : r;
       auto cp_output =
-          lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  &body_b, cp_input, sd_pairs,
-                  (*lhs.state().next_channel_id)++);
+          lhs.state().collective_ops_creator.create_collective_permute(
+              &body_b, cp_input, sd_pairs, (*lhs.state().next_channel_id)++);
       if (windowed_op_is_lhs) {
         next_l = cp_output;
       } else {
@@ -1606,11 +1594,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       auto second_next_l = next_l;
       auto second_next_r = next_r;
       cp_input = windowed_op_is_lhs ? next_l : next_r;
-      cp_output =
-          lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  &body_b, cp_input, sd_pairs,
-                  (*lhs.state().next_channel_id)++);
+      cp_output = lhs.state().collective_ops_creator.create_collective_permute(
+          &body_b, cp_input, sd_pairs, (*lhs.state().next_channel_id)++);
       if (windowed_op_is_lhs) {
         second_next_l = cp_output;
       } else {
@@ -1672,9 +1657,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                               (source + loop_partitions - 1) % loop_partitions +
                                   (source / loop_partitions) * loop_partitions};
         }
-        lhs.state()
-            .collective_ops_creator.create_cross_partition_collective_permute(
-                &cp_b, p, sd_pairs, (*lhs.state().next_channel_id)++);
+        lhs.state().collective_ops_creator.create_collective_permute(
+            &cp_b, p, sd_pairs, (*lhs.state().next_channel_id)++);
       }
       SpmdBuilder ncp_b("last_iteration_noop", original_hlo);
       {
@@ -1754,16 +1738,13 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         extra_buffer->shape(), while_loop, 3));
     if (options.bidirectional_windowed_einsum && num_partitions % 4 == 0) {
       extra_result =
-          lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  b, extra_result, extra_sd_pairs,
-                  (*lhs.state().next_channel_id)++);
+          lhs.state().collective_ops_creator.create_collective_permute(
+              b, extra_result, extra_sd_pairs,
+              (*lhs.state().next_channel_id)++);
     }
     if (options.unroll_windowed_einsum && num_partitions % 2 == 0) {
-      result =
-          lhs.state()
-              .collective_ops_creator.create_cross_partition_collective_permute(
-                  b, result, extra_sd_pairs, (*lhs.state().next_channel_id)++);
+      result = lhs.state().collective_ops_creator.create_collective_permute(
+          b, result, extra_sd_pairs, (*lhs.state().next_channel_id)++);
     }
     result = b->AddInstruction(HloInstruction::CreateBinary(
         result->shape(), HloOpcode::kAdd, result, extra_result));

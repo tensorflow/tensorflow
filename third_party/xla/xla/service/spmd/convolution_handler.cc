@@ -512,7 +512,7 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
           PartitionedHlo(rhs_with_halo, rhs.base_shape(), rhs.state()), b,
           new_window));
 
-  auto ar = collective_ops_creator.create_cross_partition_all_reduce(
+  auto ar = collective_ops_creator.create_all_reduce(
       b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
       CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
@@ -738,10 +738,9 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
       create_sharded_conv(
           PartitionedHlo(lhs_with_halo, lhs.base_shape(), lhs.state()), rhs, b,
           new_window));
-  auto ar =
-      lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-          b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
-          CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
+  auto ar = lhs.state().collective_ops_creator.create_all_reduce(
+      b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
+      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)

@@ -548,7 +548,7 @@ std::optional<IotaReplicaGroupList> ExpandDeviceGroupsWithMeshAxes(
 }
 
 // Lambdas for creating SPMDCollectiveOps functions.
-decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_reduce)
+decltype(SPMDCollectiveOpsCreator::create_all_reduce)
 CreateCrossPartitionAllReduce(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -556,15 +556,14 @@ CreateCrossPartitionAllReduce(
              SpmdBuilder* b, HloInstruction* operand, HloComputation* reduction,
              const CollectiveDeviceListBase& partition_subgroups,
              int64_t channel_id) {
-    return creator.create_cross_partition_all_reduce(
+    return creator.create_all_reduce(
         b, operand, reduction,
         ExpandDeviceGroups(*device_groups_ptr, partition_subgroups),
         channel_id);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::
-             create_cross_partition_all_reduce_with_iota_device_list)
+decltype(SPMDCollectiveOpsCreator::create_all_reduce_with_iota_device_list)
 CreateCrossPartitionAllReduceWithIotaDeviceList(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -577,17 +576,17 @@ CreateCrossPartitionAllReduceWithIotaDeviceList(
     std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
         ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
     if (!expanded_iota_partition_group_list.has_value()) {
-      return creator.create_cross_partition_all_reduce(
+      return creator.create_all_reduce(
           b, operand, reduction,
           ExpandDeviceGroups(*device_groups_ptr, partition_group_list),
           channel_id);
     }
-    return creator.create_cross_partition_all_reduce_with_iota_device_list(
+    return creator.create_all_reduce_with_iota_device_list(
         b, operand, reduction, *expanded_iota_partition_group_list, channel_id);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::create_cross_partition_collective_permute)
+decltype(SPMDCollectiveOpsCreator::create_collective_permute)
 CreateCrossPartitionCollectivePermute(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -605,12 +604,12 @@ CreateCrossPartitionCollectivePermute(
                 device_groups_ptr->array()(g, src_dst_pairs[i].second)};
       }
     }
-    return creator.create_cross_partition_collective_permute(
-        b, operand, expanded_pairs, next_channel_id);
+    return creator.create_collective_permute(b, operand, expanded_pairs,
+                                             next_channel_id);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_to_all)
+decltype(SPMDCollectiveOpsCreator::create_all_to_all)
 CreateCrossPartitionAllToAll(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -618,15 +617,14 @@ CreateCrossPartitionAllToAll(
              SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
              const CollectiveDeviceListBase& partition_subgroups,
              int64_t channel_id, std::optional<int64_t> split_dimension) {
-    return creator.create_cross_partition_all_to_all(
+    return creator.create_all_to_all(
         b, operands,
         ExpandDeviceGroups(*device_groups_ptr, partition_subgroups), channel_id,
         split_dimension);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::
-             create_cross_partition_all_to_all_with_iota_device_list)
+decltype(SPMDCollectiveOpsCreator::create_all_to_all_with_iota_device_list)
 CreateCrossPartitionAllToAllWithIotaDeviceList(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -639,18 +637,18 @@ CreateCrossPartitionAllToAllWithIotaDeviceList(
     std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
         ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
     if (!expanded_iota_partition_group_list.has_value()) {
-      return creator.create_cross_partition_all_to_all(
+      return creator.create_all_to_all(
           b, operands,
           ExpandDeviceGroups(*device_groups_ptr, partition_group_list),
           channel_id, split_dimension);
     }
-    return creator.create_cross_partition_all_to_all_with_iota_device_list(
+    return creator.create_all_to_all_with_iota_device_list(
         b, operands, *expanded_iota_partition_group_list, channel_id,
         split_dimension);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::create_cross_partition_all_gather)
+decltype(SPMDCollectiveOpsCreator::create_all_gather)
 CreateCrossPartitionAllGather(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -658,15 +656,14 @@ CreateCrossPartitionAllGather(
              SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
              const CollectiveDeviceListBase& partition_subgroups,
              int64_t channel_id, int64_t all_gather_dimension) {
-    return creator.create_cross_partition_all_gather(
+    return creator.create_all_gather(
         b, operand, ag_shape,
         ExpandDeviceGroups(*device_groups_ptr, partition_subgroups), channel_id,
         all_gather_dimension);
   };
 }
 
-decltype(SPMDCollectiveOpsCreator::
-             create_cross_partition_all_gather_with_iota_device_list)
+decltype(SPMDCollectiveOpsCreator::create_all_gather_with_iota_device_list)
 CreateCrossPartitionAllGatherWithIotaDeviceList(
     const SPMDCollectiveOpsCreator& creator,
     std::shared_ptr<const DeviceGroupTileAssignment> device_groups_ptr) {
@@ -680,12 +677,12 @@ CreateCrossPartitionAllGatherWithIotaDeviceList(
     std::optional<IotaReplicaGroupList> expanded_iota_partition_group_list =
         ExpandDeviceGroupsWithIota(*device_groups_ptr, partition_group_list);
     if (!expanded_iota_partition_group_list.has_value()) {
-      return creator.create_cross_partition_all_gather(
+      return creator.create_all_gather(
           b, operand, ag_shape,
           ExpandDeviceGroups(*device_groups_ptr, partition_group_list),
           channel_id, all_gather_dimension);
     }
-    return creator.create_cross_partition_all_gather_with_iota_device_list(
+    return creator.create_all_gather_with_iota_device_list(
         b, operand, ag_shape, *expanded_iota_partition_group_list, channel_id,
         all_gather_dimension);
   };
@@ -713,24 +710,24 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     return GetInGroupPartitionId(creator.create_partition_id(b),
                                  *device_groups_ptr, b);
   };
-  result.create_cross_partition_all_reduce =
+  result.create_all_reduce =
       CreateCrossPartitionAllReduce(creator, device_groups_ptr);
-  result.create_cross_partition_all_reduce_with_iota_device_list =
+  result.create_all_reduce_with_iota_device_list =
       CreateCrossPartitionAllReduceWithIotaDeviceList(creator,
                                                       device_groups_ptr);
-  result.create_cross_partition_collective_permute =
+  result.create_collective_permute =
       CreateCrossPartitionCollectivePermute(creator, device_groups_ptr);
-  result.create_cross_partition_all_to_all =
+  result.create_all_to_all =
       CreateCrossPartitionAllToAll(creator, device_groups_ptr);
-  result.create_cross_partition_all_to_all_with_iota_device_list =
+  result.create_all_to_all_with_iota_device_list =
       CreateCrossPartitionAllToAllWithIotaDeviceList(creator,
                                                      device_groups_ptr);
-  if (creator.create_cross_partition_all_gather) {
-    result.create_cross_partition_all_gather =
+  if (creator.create_all_gather) {
+    result.create_all_gather =
         CreateCrossPartitionAllGather(creator, device_groups_ptr);
   }
-  if (creator.create_cross_partition_all_gather_with_iota_device_list) {
-    result.create_cross_partition_all_gather_with_iota_device_list =
+  if (creator.create_all_gather_with_iota_device_list) {
+    result.create_all_gather_with_iota_device_list =
         CreateCrossPartitionAllGatherWithIotaDeviceList(creator,
                                                         device_groups_ptr);
   }
@@ -1234,9 +1231,8 @@ std::optional<HloInstruction*> ExchangeHalo(
           source_halo_slice->shape().dimensions(dim);
       continue;
     }
-    auto left_halo =
-        collective_ops_creator.create_cross_partition_collective_permute(
-            b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
+    auto left_halo = collective_ops_creator.create_collective_permute(
+        b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
     concat_pieces.push_back(left_halo);
   }
   // Add the zero-bcasted left halo is not inserted yet.
@@ -1313,9 +1309,8 @@ std::optional<HloInstruction*> ExchangeHalo(
           source_halo_slice->shape().dimensions(dim);
       continue;
     }
-    auto right_halo =
-        collective_ops_creator.create_cross_partition_collective_permute(
-            b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
+    auto right_halo = collective_ops_creator.create_collective_permute(
+        b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
     concat_pieces.push_back(right_halo);
   }
   if (right_coalesced_zero_halo_size > 0) {
@@ -1527,7 +1522,7 @@ HloInstruction* ExchangeHaloCompact(
           HloInstruction::CreateSlice(halo_shape, hlo, halo_start_indices,
                                       halo_limit_indices, halo_slice_strides));
     }
-    HloInstruction* cp = g_creator.create_cross_partition_collective_permute(
+    HloInstruction* cp = g_creator.create_collective_permute(
         b, source_halo_slice, source_target_pairs, (*next_channel_id)++);
     VLOG(3) << "Halo collective-permute created: " << cp->ToString();
     cps.emplace_back(cp, start);

@@ -389,6 +389,7 @@ Build(
         "-//xla/backends/cpu:ynn_support",
         "-//xla/hlo/transforms/simplifiers:simplify_fp_conversions_test",
         "-@local_tsl//tsl/platform:net_test",
+        "-//xla/backends/cpu/benchmarks:dag_execution_benchmark_test",
         # eigen is not windows compatible
         "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
         "-//xla/codegen/intrinsic/cpp:eigen_unary_ll_generator",
