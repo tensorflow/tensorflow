@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -276,6 +277,19 @@ class DynamicMemcpyThunk : public Thunk {
     bool depends_on_loop;
     std::vector<int64_t> src_offsets;
     std::vector<int64_t> dst_offsets;
+
+    DynamicMemcpyThunkProto::Offsets ToProto() const;
+    static absl::StatusOr<Offsets> FromProto(
+        const DynamicMemcpyThunkProto::Offsets& proto);
+
+    friend bool operator==(const Offsets& lhs, const Offsets& rhs) {
+      return std::tie(lhs.depends_on_loop, lhs.src_offsets, lhs.dst_offsets) ==
+             std::tie(rhs.depends_on_loop, rhs.src_offsets, rhs.dst_offsets);
+    }
+
+    friend bool operator!=(const Offsets& lhs, const Offsets& rhs) {
+      return !(lhs == rhs);
+    }
   };
 
   DynamicMemcpyThunk(ThunkInfo thunk_info,
@@ -301,10 +315,15 @@ class DynamicMemcpyThunk : public Thunk {
     };
   }
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>> FromProto(
+      ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
  private:
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
-  const uint64_t mem_size_;
+  BufferAllocation::Slice source_buffer_;
+  BufferAllocation::Slice destination_buffer_;
+  uint64_t mem_size_;
   Offsets offsets_;
 };
 
