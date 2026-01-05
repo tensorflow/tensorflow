@@ -4,6 +4,8 @@
 
 **Type:** Runtime
 
+**XLA backed:** TPU
+
 ## Error log example
 
 ```
@@ -27,7 +29,7 @@ the runtime will evict already loaded programs from HBM to free up space. This
 can lead to a situation where a program that loaded successfully before now
 fails with an OOM error, because the HBM is now occupied with more data buffers.
 
-## How can a user fix their program when they do happen?
+## Potential fixes
 
 -   Reduce Buffer Memory Footprint: Freeing up memory used by data buffers will
     leave more room for the program itself:
@@ -56,7 +58,7 @@ fails with an OOM error, because the HBM is now occupied with more data buffers.
         intended. Holding on to `jax.Array` objects might prevent automatic
         de-allocation even after program compilation is completed.
 
-## How can a user debug these failures?
+## Debugging techniques
 
 -   Enable the `tpu_log_allocations_on_oom` flag for which the allocator will
     dump a detailed report of all current allocations when an OOM occurs, which

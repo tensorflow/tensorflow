@@ -37,7 +37,7 @@ a v5 TPU, or even for different pod slices of the same chip (e.g., 4x4x4 vs
 topology's layout, but at runtime it is scheduled on a different topology, or
 there is a bug in the compiler's layout logic for a specific piece of hardware.
 
-## How can a user fix their program when they do happen?
+## Potential fixes
 
 -   Ensure configuration consistency between model export and re-runs from
     checkpoints:

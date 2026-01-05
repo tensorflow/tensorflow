@@ -1,8 +1,10 @@
 # Error code: 0100
 
-**Category:** Buffer allocation failure - TPU
+**Category:** Buffer allocation failure
 
 **Type:** Runtime
+
+**XLA backend:** TPU
 
 ## Error log example
 
@@ -36,7 +38,7 @@ is available for the buffer.
 So an error encountered after the above mitigations typically require user
 action.
 
-## How can a user fix their program when they do happen?
+## Potential fixes
 
 -   Reduce your model's memory footprint:
     -   Decrease Batch Size: Reducing the batch size directly lowers memory
@@ -61,7 +63,7 @@ action.
         intended. Holding on to `jax.Array` objects might prevent automatic
         de-allocation even after program compilation is completed.
 
-## How can a user debug these failures?
+## Debugging techniques
 
 Enable the `tpu_log_allocations_on_oom` flag for which the allocator will dump a
 detailed report of all current allocations when an OOM occurs, which can be

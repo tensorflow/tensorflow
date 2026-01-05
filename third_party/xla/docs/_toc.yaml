@@ -31,10 +31,6 @@ toc:
     path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
-  - title: Error Codes
-    path: /xla/error_codes
-  - title: Errors Overview
-    path: /xla/errors_overview
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
@@ -66,6 +62,10 @@ toc:
   # This is the default tab for the Debugging section.
   - title: Dump HLO Computations
     path: /xla/hlo_dumps
+  - title: Errors Overview
+    path: /xla/errors_overview
+  - title: Error Codes
+    path: /xla/error_codes
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:
