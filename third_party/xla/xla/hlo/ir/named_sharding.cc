@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,57 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 namespace xla {
+
+std::optional<NamedSharding::DimensionSharding>
+NamedSharding::DimensionSharding::Slice(const Mesh& mesh, int64_t slice_size) {
+  if (slice_size == 1) {
+    return DimensionSharding({}, is_closed_);
+  }
+  if (getShardedSize(mesh) % slice_size != 0) {
+    return std::nullopt;
+  }
+
+  int64_t axis_index = 0;
+  std::vector<AxisRef> sliced_axes, remaining_axes;
+
+  for (; axis_index < axes().size(); ++axis_index) {
+    const AxisRef& curr_axis = axes()[axis_index];
+    int64_t curr_axis_size = curr_axis.size(mesh);
+
+    if (slice_size == curr_axis_size) {
+      sliced_axes =
+          std::vector<AxisRef>(axes().begin(), axes().begin() + axis_index + 1);
+      slice_size = 1;
+      break;
+    }
+    if (slice_size % curr_axis_size == 0) {
+      slice_size /= curr_axis_size;
+    } else if (curr_axis_size % slice_size == 0) {
+      sliced_axes =
+          std::vector<AxisRef>(axes().begin(), axes().begin() + axis_index);
+      int64_t sliced_axis_pre_size =
+          curr_axis.sub_axis_info() ? curr_axis.sub_axis_info()->pre_size : 1;
+      sliced_axes.push_back(AxisRef(curr_axis.mesh_axis_index(),
+                                    {sliced_axis_pre_size, slice_size}));
+      remaining_axes.push_back(AxisRef(
+          curr_axis.mesh_axis_index(),
+          {sliced_axis_pre_size * slice_size, curr_axis_size / slice_size}));
+      slice_size = 1;
+      break;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  if (slice_size != 1) {
+    return std::nullopt;
+  }
+
+  remaining_axes.insert(remaining_axes.end(), axes().begin() + axis_index + 1,
+                        axes().end());
+  axes_ = std::move(remaining_axes);
+  return NamedSharding::DimensionSharding(sliced_axes, is_closed_);
+}
 
 int64_t NamedSharding::DimensionSharding::getShardedSize(
     const Mesh& mesh) const {

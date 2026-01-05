@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_NAMED_SHARDING_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -48,6 +49,17 @@ class NamedSharding {
     absl::Span<const AxisRef> axes() const { return axes_; }
 
     int64_t getShardedSize(const Mesh& mesh) const;
+
+    // Slice axes of size `slice_size` from this dimension sharding and update
+    // this dimension sharding with remaining axes.
+    //
+    // Axes can only be sliced from major to minor.
+    // For example, given an input {a, b, c}, we can slice it as
+    // 1. {a} + {b, c}
+    // 2. {a, b} + {c}
+    // or other slices with sub-axis, we cannot slice it to {a, c} + {b}.
+    std::optional<DimensionSharding> Slice(const Mesh& mesh,
+                                           int64_t slice_size);
 
    private:
     std::vector<AxisRef> axes_;

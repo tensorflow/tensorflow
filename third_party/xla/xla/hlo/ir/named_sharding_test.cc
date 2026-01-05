@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/named_sharding.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/mesh_and_axis.h"
@@ -109,6 +111,98 @@ TEST(NamedShardingTest, Equality) {
   Mesh mesh_diff_shape({2, 4, 3, 9}, {"a", "b", "c", "d"});
   EXPECT_NE(base,
             NamedSharding(mesh_diff_shape, {ds_ab, ds_dc}, {axis_b}, {axis_c}));
+}
+
+class DimensionShardingSliceTest : public ::testing::Test {
+ protected:
+  Mesh mesh_{{2, 4, 3, 8, 1}, {"a", "b", "c", "d", "e"}};
+  AxisRef a_{0}, b_{1}, c_{2}, d_{3}, e_{4};
+  AxisRef b1_{1, {1, 2}}, b2_{1, {2, 2}};
+  AxisRef d1_{3, {1, 4}}, d2_{3, {4, 2}};
+};
+
+TEST_F(DimensionShardingSliceTest, SliceMajorAxis) {
+  DimensionSharding ds({a_, b_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 4);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre(a_, b1_));
+  EXPECT_THAT(ds.axes(), ElementsAre(b2_));
+}
+
+TEST_F(DimensionShardingSliceTest, SliceEntireAxis) {
+  DimensionSharding ds({a_, b_, c_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 24);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre(a_, b_, c_));
+  EXPECT_THAT(ds.axes(), ElementsAre());
+}
+
+TEST_F(DimensionShardingSliceTest, SliceByOne) {
+  DimensionSharding ds({a_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 1);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre());
+  EXPECT_THAT(ds.axes(), ElementsAre(a_));
+}
+
+TEST_F(DimensionShardingSliceTest, SliceSubAxis) {
+  DimensionSharding ds({d1_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 2);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre(AxisRef(3, {1, 2})));
+  EXPECT_THAT(ds.axes(), ElementsAre(AxisRef(3, {2, 2})));
+}
+
+TEST_F(DimensionShardingSliceTest, SliceFurtherAxisOfSize1) {
+  DimensionSharding ds({a_, e_, b_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 4);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre(a_, e_, b1_));
+  EXPECT_THAT(ds.axes(), ElementsAre(b2_));
+}
+
+TEST_F(DimensionShardingSliceTest, SliceFailsIfSizeNotDivisible) {
+  DimensionSharding ds({a_, b_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 3);
+  EXPECT_FALSE(slice.has_value());
+}
+
+TEST_F(DimensionShardingSliceTest, SliceFailsIfGcdIsOne) {
+  DimensionSharding ds({a_, c_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 3);
+  EXPECT_FALSE(slice.has_value());
+}
+
+TEST_F(DimensionShardingSliceTest, SliceFailsIfGcdIsOneForSecondAxis) {
+  DimensionSharding ds({a_, b1_, c_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 6);
+  EXPECT_FALSE(slice.has_value());
+}
+
+TEST_F(DimensionShardingSliceTest, SliceFailsIfAxisNotFullyDivisible) {
+  DimensionSharding ds({b_, c_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 6);
+  EXPECT_FALSE(slice.has_value());
+}
+
+TEST_F(DimensionShardingSliceTest, SequentialSlices) {
+  DimensionSharding ds({a_, b_, c_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice1 = ds.Slice(mesh_, 4);
+  ASSERT_TRUE(slice1.has_value());
+  EXPECT_THAT(slice1->axes(), ElementsAre(a_, b1_));
+  EXPECT_THAT(ds.axes(), ElementsAre(b2_, c_));
+  std::optional<DimensionSharding> slice2 = ds.Slice(mesh_, 2);
+  ASSERT_TRUE(slice2.has_value());
+  EXPECT_THAT(slice2->axes(), ElementsAre(b2_));
+  EXPECT_THAT(ds.axes(), ElementsAre(c_));
+}
+
+TEST_F(DimensionShardingSliceTest, SliceMajorAndSubAxis) {
+  DimensionSharding ds({b_, d_}, /*is_closed=*/true);
+  std::optional<DimensionSharding> slice = ds.Slice(mesh_, 16);
+  ASSERT_TRUE(slice.has_value());
+  EXPECT_THAT(slice->axes(), ElementsAre(b_, d1_));
+  EXPECT_THAT(ds.axes(), ElementsAre(d2_));
 }
 
 TEST(NamedShardingTest, GetShardedSize) {
