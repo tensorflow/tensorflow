@@ -159,6 +159,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (absl::Span<const ValueRef> values), (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
+  MOCK_METHOD(
+      void, CancelExecution,
+      (xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+       absl::Status error),
+      (final));
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));

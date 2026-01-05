@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -283,6 +282,10 @@ class CompileOnlyIfRtClient final
       absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
   }
+
+  void CancelExecution(
+      xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) override {}
 
   absl::string_view runtime_type() const override {
     return "compile_only_runtime";

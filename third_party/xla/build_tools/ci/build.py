@@ -392,6 +392,7 @@ Build(
         "-//xla/backends/cpu/benchmarks:dag_execution_benchmark_test",
         # eigen is not windows compatible
         "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
+        "-//xla/codegen/intrinsic/cpp:eigen_unary_ll_generator",
     ),
     build_tag_filters=windows_x86_tag_filter,
     test_tag_filters=windows_x86_tag_filter,
