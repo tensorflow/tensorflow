@@ -8209,6 +8209,28 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimensionWithEnzymeOpt) {
             op::Shape("s32[4]")));
 }
 
+TEST_P(SpmdPartitioningTest, DusOfSlice) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %arg0 = f32[20,1536,3072]{2,1,0} parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    update = f32[1,1520,3056]{2,1,0} slice(%arg0), slice={[8:9], [8:1528], [8:3064]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    dus_in = f32[20,1536,3056]{2,1,0} slice(%arg0), slice={[0:20], [0:1536], [8:3064]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c7 = s32[] constant(7)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,1536,3056]{2,1,0} dynamic-update-slice(dus_in, update, c7, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/true));
+  // std::cout << module->ToString() << "\n";
+}
+
 TEST_P(SpmdPartitioningTest,
        DynamicUpdateSliceSingleDimensionWithoutEnzymeOpt) {
   absl::string_view hlo_string = R"(
