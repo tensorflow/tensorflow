@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/SmallVector.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -248,7 +249,37 @@ struct RewriteXlaLoop : mlir::OpRewritePattern<LoopOp> {
               });
           return if_op.getResults();
         });
+
+    if (op.getDisableLoopUnrollingAttr().getValue()) {
+      // If the loop unrolling is disabled must set the llvm attribute for each
+      // of the nested loops which will be passed through each of the lowering
+      // steps.
+      for (const mlir::scf::ForOp& for_op : loop_nest.loops) {
+        for_op->setAttr(
+            b.getStringAttr(mlir::LLVM::LoopAnnotationAttr::getMnemonic()),
+            mlir::LLVM::LoopAnnotationAttr::get(
+                b.getContext(), /*disableNonforced=*/nullptr,
+                /*vectorize=*/nullptr,
+                /*interleave=*/nullptr,
+                mlir::LLVM::LoopUnrollAttr::get(
+                    b.getContext(), /*disable=*/b.getBoolAttr(true),
+                    /*count=*/nullptr,
+                    /*runtimeDisable=*/nullptr, /*full=*/nullptr,
+                    /*followupUnrolled=*/nullptr,
+                    /*followupRemainder=*/nullptr, /*followupAll*/ nullptr),
+                /*unrollAndJam=*/nullptr, /*licm=*/nullptr,
+                /*distribute=*/nullptr,
+                /*pipeline=*/nullptr, /*peeled=*/nullptr, /*unswitch=*/nullptr,
+                /*mustProgress=*/nullptr,
+                /*isVectorized=*/nullptr,
+                /*startLoc=*/nullptr,
+                /*endLoc=*/nullptr,
+                /*parallelAccesses=*/std::nullopt));
+      }
+    }
+
     rewriter.replaceOp(op, loop_nest.results);
+
     return mlir::success();
   }
 };

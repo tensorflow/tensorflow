@@ -750,7 +750,8 @@ void LoopOp::getAsmBlockArgumentNames(mlir::Region& region,
 
 void LoopOp::build(OpBuilder& builder, OperationState& result,
                    IndexingMapAttr indexing_map_attr, ValueRange dims,
-                   ValueRange inits, BodyBuilderFn bodyBuilder) {
+                   ValueRange inits, BodyBuilderFn bodyBuilder,
+                   bool disable_loop_unrolling) {
   OpBuilder::InsertionGuard guard(builder);
 
   int64_t num_ivs = indexing_map_attr.getRangeVars().size();
@@ -785,14 +786,17 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
         body_block->getArguments().drop_front(num_ivs).drop_back(num_inits),
         body_block->getArguments().take_back(num_inits));
   }
+  result.addAttribute(LoopOp::getDisableLoopUnrollingAttrName(opname),
+                      builder.getBoolAttr(disable_loop_unrolling));
 }
 
 void LoopOp::build(OpBuilder& builder, OperationState& result,
                    const IndexingMap& indexing_map, ValueRange dims,
-                   ValueRange inits, BodyBuilderFn bodyBuilder) {
+                   ValueRange inits, BodyBuilderFn bodyBuilder,
+                   bool disable_loop_unrolling) {
   build(builder, result,
         IndexingMapAttr::get(builder.getContext(), indexing_map), dims, inits,
-        bodyBuilder);
+        bodyBuilder, disable_loop_unrolling);
 }
 
 ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
@@ -998,9 +1002,11 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
       }
     }
 
-    auto new_loop_op =
-        rewriter.create<LoopOp>(loop_op.getLoc(), replacement->indexing_map,
-                                used_dims, loop_op.getInits());
+    auto new_loop_op = rewriter.create<LoopOp>(
+        loop_op.getLoc(), replacement->indexing_map, used_dims,
+        loop_op.getInits(), /*body_builder=*/nullptr,
+        loop_op.getDisableLoopUnrolling());
+
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();
     rewriter.mergeBlocks(original_block, new_block, new_block->getArguments());
@@ -1065,7 +1071,8 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
                                  new_constraints);
 
     auto new_loop_op = rewriter.create<LoopOp>(
-        loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits());
+        loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits(),
+        nullptr, loop_op.getDisableLoopUnrolling());
 
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();
