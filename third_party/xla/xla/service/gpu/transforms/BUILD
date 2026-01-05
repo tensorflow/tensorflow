@@ -1381,6 +1381,7 @@ cc_library(
     hdrs = ["gemm_workspace_rewriter.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:backend_configs_cc",
@@ -2728,6 +2729,7 @@ xla_test(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -52,12 +52,12 @@ std::vector<Node*> ToNodes(const std::vector<Output>& outputs) {
 // Manually generates the name of the `loop_var_idx`-th NextIteration node of a
 // loop being constructed with `scope`. This is used to define the backedge
 // before the NextIteration node is created.
-string NextIterationName(const Scope& scope, int loop_var_idx) {
-  string result;
-  const string& prefix = scope.impl()->name();
-  if (!prefix.empty()) strings::StrAppend(&result, prefix, "/");
-  strings::StrAppend(&result, "NextIteration");
-  if (loop_var_idx > 0) strings::StrAppend(&result, "_", loop_var_idx);
+std::string NextIterationName(const Scope& scope, int loop_var_idx) {
+  std::string result;
+  const std::string& prefix = scope.impl()->name();
+  if (!prefix.empty()) absl::StrAppend(&result, prefix, "/");
+  absl::StrAppend(&result, "NextIteration");
+  if (loop_var_idx > 0) absl::StrAppend(&result, "_", loop_var_idx);
   return result;
 }
 
@@ -76,7 +76,7 @@ absl::Status CreateMerge(const Scope& scope, int loop_var_idx,
                                   next_output_index, dtype);
 
   std::vector<NodeBuilder::NodeOut> input_list({enter_input, next_input});
-  const string unique_name = scope.GetUniqueNameForOp("Merge");
+  const std::string unique_name = scope.GetUniqueNameForOp("Merge");
   NodeBuilder builder = NodeBuilder(unique_name, "Merge").Input(input_list);
   scope.UpdateBuilder(&builder);
 
@@ -173,7 +173,7 @@ absl::Status BuildWhileLoop(const Scope& scope,
                             const std::vector<Output>& inputs,
                             const CondGraphBuilderFn& cond,
                             const BodyGraphBuilderFn& body,
-                            const string& frame_name, OutputList* outputs,
+                            const std::string& frame_name, OutputList* outputs,
                             bool create_while_ctx, Output* cond_output) {
   DCHECK(!inputs.empty());
   DCHECK(outputs != nullptr);
