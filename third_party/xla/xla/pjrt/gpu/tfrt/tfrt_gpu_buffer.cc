@@ -406,11 +406,20 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
         }
       }
 
+      const bool use_staging =
+          should_unpack || transpose != nullptr ||
+          (client->should_stage_host_to_device_transfers() &&
+           !client->IsDmaMapped(literal->untyped_data(), byte_size));
+
       HostMemoryAllocator::OwnedPtr staging_buffer;
       void* buffer_ptr;
       if (on_device_shape.IsArray()) {
-        staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
-        buffer_ptr = staging_buffer.get();
+        if (use_staging) {
+          staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
+          buffer_ptr = staging_buffer.get();
+        } else {
+          buffer_ptr = literal->untyped_data();
+        }
       } else {
         CHECK_EQ(byte_size, 0);
         buffer_ptr = nullptr;
@@ -488,7 +497,8 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
           tsl::port::AlignedFree(buffer);
         }
       }
-      if (on_device_shape.IsArray() && !should_unpack && transpose == nullptr) {
+      if (on_device_shape.IsArray() && staging_buffer != nullptr &&
+          !should_unpack && transpose == nullptr) {
         std::memcpy(literal->untyped_data(), buffer, literal->size_bytes());
       }
       return absl::OkStatus();
