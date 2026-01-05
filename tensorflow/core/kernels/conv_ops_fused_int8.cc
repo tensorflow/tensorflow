@@ -605,7 +605,7 @@ void operator()(
     LogFusedConvForwardAutotuneResults(
         type, conv_input_ptr, filter_ptr, output_ptr, bias_ptr, side_input_ptr,
         conv_input_desc, filter_desc, output_desc, conv_desc, conv_scale,
-        side_input_scale, dnn_activation_mode, stream->parent(), results);
+        side_input_scale, dnn_activation_mode, stream, results);
 
     // Two-level autotuning: Cudnn frontend supports two engine lists:
     // heuristics and fallback. Heuristics engines are normally faster.
@@ -645,7 +645,7 @@ void operator()(
       LogFusedConvForwardAutotuneResults(
           type, conv_input_ptr, filter_ptr, output_ptr, bias_ptr,
           side_input_ptr, conv_input_desc, filter_desc, output_desc, conv_desc,
-          conv_scale, side_input_scale, dnn_activation_mode, stream->parent(),
+          conv_scale, side_input_scale, dnn_activation_mode, stream,
           fallback_results);
 
       auto fallback_runners_or = BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(

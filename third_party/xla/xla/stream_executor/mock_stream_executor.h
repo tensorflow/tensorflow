@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -91,7 +90,6 @@ class MockStreamExecutor : public StreamExecutor {
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<DeviceDescription>>,
               CreateDeviceDescription, (), (const, override));
-  MOCK_METHOD(blas::BlasSupport*, AsBlas, (), (override));
   MOCK_METHOD(fft::FftSupport*, AsFft, (), (override));
   MOCK_METHOD(dnn::DnnSupport*, AsDnn, (), (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<CommandBuffer>>,

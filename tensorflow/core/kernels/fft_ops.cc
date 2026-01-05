@@ -820,7 +820,7 @@ class FFTGPUBase : public FFTBase {
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
-      auto blas = stream->parent()->AsBlas();
+      auto blas = stream->AsBlas();
       OP_REQUIRES(ctx, blas != nullptr,
                   absl::InternalError("No Blas for stream."));
       OP_REQUIRES(
@@ -1008,7 +1008,7 @@ class FFTNGPUBase : public FFTNBase {
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
-      auto blas = stream->parent()->AsBlas();
+      auto blas = stream->AsBlas();
       OP_REQUIRES(ctx, blas != nullptr,
                   absl::InternalError("No blas for stream."));
       OP_REQUIRES(

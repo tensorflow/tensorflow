@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -49,7 +48,7 @@ namespace cuda {
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(StreamExecutor *parent);
+  explicit CUDABlas(const Stream* stream);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -107,9 +106,9 @@ class CUDABlas : public blas::BlasSupport {
   // Guards the cuBLAS handle for this device.
   mutable absl::Mutex mu_;
 
-  // StreamExecutor which instantiated this CUDABlas.
+  // Stream which instantiated this CUDABlas.
   // Immutable post-initialization.
-  StreamExecutor *parent_;
+  const Stream* stream_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);

@@ -50,7 +50,7 @@ void TensorCuBlasGemm<T>::operator()(OpKernelContext* ctx, bool transa,
   auto b_ptr = AsDeviceMemory(b);
   auto c_ptr = AsDeviceMemory(c);
   auto* stream = ctx->op_device_context()->stream();
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   OP_REQUIRES(ctx, blas != nullptr, absl::InternalError("No BLAS for stream."));
 
   OP_REQUIRES_OK(

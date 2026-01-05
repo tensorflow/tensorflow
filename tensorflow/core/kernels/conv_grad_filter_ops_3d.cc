@@ -707,7 +707,7 @@ void LaunchConvBackpropFilterOpImpl(
         "with cuDNN on Ampere GPUs or later."));
     return;
   }
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   OP_REQUIRES(context, blas != nullptr,
               absl::InternalError("No BLAS for stream."));
 

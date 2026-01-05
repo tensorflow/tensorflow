@@ -34,9 +34,7 @@ namespace stream_executor {
 
 template <typename FactoryT>
 PluginKind GetPluginKind() {
-  if constexpr (std::is_same_v<FactoryT, PluginRegistry::BlasFactory>) {
-    return PluginKind::kBlas;
-  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
+  if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
     return PluginKind::kDnn;
   } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::FftFactory>) {
     return PluginKind::kFft;
@@ -46,9 +44,7 @@ PluginKind GetPluginKind() {
 }
 template <typename FactoryT>
 absl::string_view GetPluginName() {
-  if constexpr (std::is_same_v<FactoryT, PluginRegistry::BlasFactory>) {
-    return "BLAS";
-  } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
+  if constexpr (std::is_same_v<FactoryT, PluginRegistry::DnnFactory>) {
     return "DNN";
   } else if constexpr (std::is_same_v<FactoryT, PluginRegistry::FftFactory>) {
     return "FFT";
@@ -106,7 +102,6 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
   template absl::StatusOr<PluginRegistry::FACTORY_TYPE>          \
   PluginRegistry::GetFactory(Platform::Id platform_id) const;
 
-EMIT_PLUGIN_SPECIALIZATIONS(BlasFactory);
 EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory);
 EMIT_PLUGIN_SPECIALIZATIONS(FftFactory);
 

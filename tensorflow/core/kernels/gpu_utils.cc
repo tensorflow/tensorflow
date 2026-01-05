@@ -161,7 +161,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
                             const se::dnn::ConvolutionDescriptor& conv_desc,
-                            se::StreamExecutor* stream_exec,
+                            se::Stream* stream,
                             absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
@@ -178,12 +178,13 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
-  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
-  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
-  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream->parent());
+  *log.mutable_compute_capability() = GetComputeCapability(stream->parent());
+  log.set_device_pci_bus_id(
+      stream->parent()->GetDeviceDescription().pci_bus_id());
   {
     string blas_version;
-    if (auto* blas = stream_exec->AsBlas()) {
+    if (auto* blas = stream->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
       }
@@ -204,8 +205,7 @@ void LogFusedConvForwardAutotuneResults(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
     double side_value_scale, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec,
-    absl::Span<const xla::AutotuneResult> results) {
+    se::Stream* stream, absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     ConvolutionProto instr;
@@ -225,12 +225,13 @@ void LogFusedConvForwardAutotuneResults(
         reinterpret_cast<uint64>(side_input_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
-  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
-  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
-  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream->parent());
+  *log.mutable_compute_capability() = GetComputeCapability(stream->parent());
+  log.set_device_pci_bus_id(
+      stream->parent()->GetDeviceDescription().pci_bus_id());
   {
     string blas_version;
-    if (auto* blas = stream_exec->AsBlas()) {
+    if (auto* blas = stream->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
       }
@@ -248,8 +249,7 @@ void LogFusedMatmulAutotuneResults(
     se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
     bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
     int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec,
-    absl::Span<const xla::AutotuneResult> results) {
+    se::Stream* stream, absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     MatmulProto instr;
@@ -270,12 +270,13 @@ void LogFusedMatmulAutotuneResults(
     instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
-  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
-  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
-  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream->parent());
+  *log.mutable_compute_capability() = GetComputeCapability(stream->parent());
+  log.set_device_pci_bus_id(
+      stream->parent()->GetDeviceDescription().pci_bus_id());
   {
     string blas_version;
-    if (auto* blas = stream_exec->AsBlas()) {
+    if (auto* blas = stream->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
       }

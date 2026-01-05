@@ -657,12 +657,7 @@ absl::Status RocmExecutor::Init() {
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
   TF_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
-  // We initialize BLAS interfaces early here since otherwise it might create
-  // us problems during hipBlasLt initialization under graph capture.
-  // There is no real advantage of explicitly using 'lazy initialization' on
-  // ROCM platform because rocBLAS/hipBlasLt already use 'lazy initialization'
-  // internally
-  return InitBlas();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
@@ -964,21 +959,6 @@ void RocmExecutor::DeallocateStream(Stream* stream) {
   RocmStream* rocm_stream = static_cast<RocmStream*>(stream);
   absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(rocm_stream->stream_handle());
-}
-
-absl::Status RocmExecutor::InitBlas() {
-  absl::MutexLock lock(mu_);
-  PluginRegistry* registry = PluginRegistry::Instance();
-  TF_ASSIGN_OR_RETURN(
-      auto factory,
-      registry->GetFactory<PluginRegistry::BlasFactory>(rocm::kROCmPlatformId));
-  blas_.reset(factory(this));
-  return absl::OkStatus();
-}
-
-blas::BlasSupport* RocmExecutor::AsBlas() {
-  absl::MutexLock lock(mu_);
-  return blas_.get();
 }
 
 dnn::DnnSupport* RocmExecutor::AsDnn() {
