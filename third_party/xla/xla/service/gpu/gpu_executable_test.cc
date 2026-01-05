@@ -490,7 +490,8 @@ TEST(GpuExecutableTest, ProtoConversion) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
-      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM"));
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
+                               DebugOptions()));
   EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
   EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
   EXPECT_THAT(
@@ -646,7 +647,7 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               symbol_resolver));
+                               DebugOptions(), symbol_resolver));
 
   const CustomKernelThunk* custom_kernel_thunk =
       dynamic_cast<const CustomKernelThunk*>(
