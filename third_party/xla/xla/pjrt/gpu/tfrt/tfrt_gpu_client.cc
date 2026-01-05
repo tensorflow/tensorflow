@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -99,7 +101,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -125,6 +129,60 @@ limitations under the License.
 #endif
 
 namespace xla {
+
+namespace {
+
+class TfrtGpuAsyncWorkRunner : public AsyncWorkRunner {
+ public:
+  explicit TfrtGpuAsyncWorkRunner(tsl::Env* env) : env_(env) {}
+
+  ~TfrtGpuAsyncWorkRunner() override {
+    absl::MutexLock l(mu_);
+    mu_.Await(absl::Condition(
+        +[](int64_t* in_flight_count) { return *in_flight_count == 0; },
+        &in_flight_count_));
+  }
+
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    env_->SchedClosure(
+        [work = std::move(work), hold = AcquireInFlightHold()]() mutable {
+          std::move(work)();
+        });
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    tsl::RunWhenReady(values, [this, work = std::move(work),
+                               hold = AcquireInFlightHold()]() mutable {
+      env_->SchedClosure(
+          [hold = std::move(hold), work = std::move(work)]() mutable {
+            std::move(work)();
+          });
+    });
+  }
+
+ private:
+  // Increments the in-flight count and returns a hold that decrements it when
+  // destroyed.
+  std::shared_ptr<const void> AcquireInFlightHold() {
+    {
+      absl::MutexLock l(mu_);
+      ++in_flight_count_;
+    }
+    return std::shared_ptr<const void>(nullptr, [this](void*) {
+      absl::MutexLock l(mu_);
+      --in_flight_count_;
+    });
+  }
+
+  tsl::Env* const env_;
+
+  absl::Mutex mu_;
+  int64_t in_flight_count_ ABSL_GUARDED_BY(mu_) = 0;
+};
+
+}  // namespace
 
 TfrtGpuMemorySpace::TfrtGpuMemorySpace(int id, PjRtDevice* device,
                                        absl::string_view kind, int kind_id)
@@ -179,16 +237,8 @@ TfrtGpuClient::TfrtGpuClient(
           "TfrtGpuClient_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
           true)),
-      blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), tsl::ThreadOptions(),
-          "TfrtGpuClient_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
-          true)),
-      non_blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), tsl::ThreadOptions(),
-          "TfrtGpuClient_non_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
-          true)) {
+      async_work_runner_(
+          std::make_unique<TfrtGpuAsyncWorkRunner>(tsl::Env::Default())) {
   LOG(INFO) << "TfrtGpuClient created with " << addressable_devices_.size()
             << " / " << devices_.size() << " addressable devices.";
 }
@@ -1013,31 +1063,30 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       }
 
       // Copy the data from the staging buffer to GPU.
-      EnqueueWork(blocking_thread_pool_.get(),
-                  [h2d_do_copy(std::move(h2d_do_copy)),
-                   staging_buffer(std::move(staging_buffer))]() {
-                    h2d_do_copy(staging_buffer.get());
-                  });
+      async_work_runner_->Schedule(
+          [h2d_do_copy(std::move(h2d_do_copy)),
+           staging_buffer(std::move(staging_buffer))]() {
+            h2d_do_copy(staging_buffer.get());
+          });
     } else {
-      EnqueueWork(blocking_thread_pool_.get(),
-                  [h2d_do_copy(std::move(h2d_do_copy)), data,
-                   on_done_with_host_buffer =
-                       std::move(on_done_with_host_buffer)]() mutable {
-                    // Copy the data directly to GPU.
-                    h2d_do_copy(data);
+      async_work_runner_->Schedule([h2d_do_copy(std::move(h2d_do_copy)), data,
+                                    on_done_with_host_buffer = std::move(
+                                        on_done_with_host_buffer)]() mutable {
+        // Copy the data directly to GPU.
+        h2d_do_copy(data);
 
-                    // Call on_done_with_host_buffer to release the data buffer.
-                    if (on_done_with_host_buffer) {
-                      std::move(on_done_with_host_buffer)();
-                    }
-                  });
+        // Call on_done_with_host_buffer to release the data buffer.
+        if (on_done_with_host_buffer) {
+          std::move(on_done_with_host_buffer)();
+        }
+      });
     }
   };
 
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     h2d_copy();
   } else {
-    EnqueueWork(non_blocking_thread_pool_.get(), std::move(h2d_copy));
+    async_work_runner_->Schedule(std::move(h2d_copy));
   }
 
   return output_buffer;
@@ -1095,8 +1144,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // It is OK to capture `buffer` pointer because the `output_buffer` can't
   // be deleted until all the usage holds have gone away.
   VLOG(4) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
-  EnqueueWork(
-      non_blocking_thread_pool_.get(),
+  async_work_runner_->Schedule(
       [literal, definition_event, device_buffer, shape, this,
        device = tsl::down_cast<TfrtGpuDevice*>(device),
        usage_event = std::move(usage_event)]() mutable {
