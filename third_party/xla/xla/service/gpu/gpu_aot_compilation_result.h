@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -73,7 +74,8 @@ class GpuAotCompilationResult : public CompiledModule {
     };
     return GpuExecutable::FromProto(
         executable_, stream_exec->GetDeviceDescription(),
-        stream_exec->GetPlatform()->Name(), symbol_resolver);
+        stream_exec->GetPlatform()->Name(), GetDebugOptionsFromFlags(),
+        symbol_resolver);
   }
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); };
