@@ -415,8 +415,17 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
     llvm::SmallVector<int64_t> indices;
     indices.reserve(transpose_to - transpose_from);
     for (int64_t j = transpose_from; j < transpose_to; ++j) {
-      int64_t index = operand_inv_layout
-          [transpose_dims[transpose_shape.layout().minor_to_major(j)]];
+      int64_t dim_index = transpose_shape.layout().minor_to_major(j);
+      int64_t index = operand_inv_layout[transpose_dims[dim_index]];
+
+      if (transpose_shape.dimensions(dim_index) == 1) {
+        // Size-1 dimensions do not affect the physical layout, so we can ignore
+        // them for the purpose of checking contiguity. We mark them with an
+        // empty range in the operand_to_result_range map, so that they are
+        // dropped from the new bitcast/transpose shape.
+        operand_to_result_range[index] = {result_from, result_from};
+        continue;
+      }
 
       // Store the entire result dimension range in the minor-most dimension
       // index and an empty range in all others.
@@ -428,12 +437,10 @@ absl::StatusOr<BitcastParams> CalculateBitcastOfTransposeImpl(
     };
 
     if (indices.empty()) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Cannot hoist bitcast across ", transpose->ToString(),
-                       " because size-1 dims in bitcasts are not yet supported "
-                       "(b/466065483)."));
+      // If all dimensions are size 1, we can just drop them.
+      continue;
     }
-    if (indices.back() - indices.front() >= transpose_to - transpose_from ||
+    if (indices.back() - indices.front() >= indices.size() ||
         !absl::c_is_sorted(indices)) {
       return absl::InvalidArgumentError(
           absl::StrCat("Cannot hoist bitcast across ", transpose->ToString(),
