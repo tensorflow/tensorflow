@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.89
+
+* Add `PJRT_Event_Create` and `PJRT_Event_Set`.
+
 ## 0.88
 
 * Add `PJRT_Buffer_DonateWithControlDependency`.

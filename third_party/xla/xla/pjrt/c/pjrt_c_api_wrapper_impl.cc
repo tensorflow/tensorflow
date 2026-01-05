@@ -2660,6 +2660,25 @@ PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Event_Create(PJRT_Event_Create_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Event_Create", PJRT_Event_Create_Args_STRUCT_SIZE,
+      args->struct_size));
+  auto [promise, future] = xla::Future<>::MakePromise();
+  args->event = new PJRT_Event{std::move(future), std::move(promise)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Event_Set(PJRT_Event_Set_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Event_Set", PJRT_Event_Set_Args_STRUCT_SIZE, args->struct_size));
+  absl::Status status(
+      PjrtErrorCodeToStatusCode(args->error_code),
+      absl::string_view(args->error_message, args->error_message_size));
+  args->event->promise.Set(std::move(status));
+  return nullptr;
+}
+
 // ------------------------------ Device Topology ------------------------------
 
 PJRT_Error* PJRT_TopologyDescription_Destroy(
@@ -3336,6 +3355,9 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Executable_GetCompileOptions,
       /*PJRT_Buffer_DonateWithControlDependency=*/
       pjrt::PJRT_Buffer_DonateWithControlDependency,
+
+      /*PJRT_Event_Create=*/pjrt::PJRT_Event_Create,
+      /*PJRT_Event_Set=*/pjrt::PJRT_Event_Set,
   };
 }
 

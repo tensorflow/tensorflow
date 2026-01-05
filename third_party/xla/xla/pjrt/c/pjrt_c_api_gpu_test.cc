@@ -405,6 +405,50 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   MakeErrorDeleter(api_)(unmap_error);
 }
 
+TEST_F(PjrtCApiGpuTest, CreateAndSetEvent) {
+  // Create an event.
+  PJRT_Event_Create_Args event_create_args;
+  event_create_args.struct_size = PJRT_Event_Create_Args_STRUCT_SIZE;
+  event_create_args.extension_start = nullptr;
+  PJRT_Error* error = api_->PJRT_Event_Create(&event_create_args);
+  EXPECT_EQ(error, nullptr);
+
+  // Check that the event is not ready prior to setting it.
+  PJRT_Event_IsReady_Args event_is_ready_args;
+  event_is_ready_args.struct_size = PJRT_Event_IsReady_Args_STRUCT_SIZE;
+  event_is_ready_args.extension_start = nullptr;
+  event_is_ready_args.event = event_create_args.event;
+  PJRT_Error* event_is_ready_error =
+      api_->PJRT_Event_IsReady(&event_is_ready_args);
+  EXPECT_EQ(event_is_ready_error, nullptr);
+  EXPECT_EQ(event_is_ready_args.is_ready, 0);
+
+  // Set the event to ready.
+  PJRT_Event_Set_Args event_set_args;
+  event_set_args.struct_size = PJRT_Event_Set_Args_STRUCT_SIZE;
+  event_set_args.extension_start = nullptr;
+  event_set_args.event = event_create_args.event;
+  event_set_args.error_code = PJRT_Error_Code_OK;
+  event_set_args.error_message = nullptr;
+  event_set_args.error_message_size = 0;
+  PJRT_Error* promise_set_error = api_->PJRT_Event_Set(&event_set_args);
+  EXPECT_EQ(promise_set_error, nullptr);
+
+  // Check that the event is ready.
+  event_is_ready_error = api_->PJRT_Event_IsReady(&event_is_ready_args);
+  EXPECT_EQ(event_is_ready_error, nullptr);
+  EXPECT_EQ(event_is_ready_args.is_ready, 1);
+
+  // Destroy the event.
+  PJRT_Event_Destroy_Args event_destroy_args;
+  event_destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+  event_destroy_args.extension_start = nullptr;
+  event_destroy_args.event = event_create_args.event;
+  PJRT_Error* event_destroy_error =
+      api_->PJRT_Event_Destroy(&event_destroy_args);
+  EXPECT_EQ(event_destroy_error, nullptr);
+}
+
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
   xla::Shape host_shape =
       xla::ShapeUtil::MakeShape(xla::F32, /*dimensions=*/{8});
