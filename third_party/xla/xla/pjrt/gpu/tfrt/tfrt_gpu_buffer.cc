@@ -406,10 +406,9 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
         }
       }
 
-      const bool use_staging =
-          should_unpack || transpose != nullptr ||
-          (client->should_stage_host_to_device_transfers() &&
-           !client->IsDmaMapped(literal->untyped_data(), byte_size));
+      const bool use_staging = should_unpack || transpose != nullptr ||
+                               client->ShouldStageHostToDeviceTransfers(
+                                   literal->untyped_data(), byte_size);
 
       HostMemoryAllocator::OwnedPtr staging_buffer;
       void* buffer_ptr;
@@ -589,8 +588,8 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
     }
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
-    const bool use_staging = client->should_stage_host_to_device_transfers() &&
-                             !client->IsDmaMapped(dst, transfer_size);
+    const bool use_staging =
+        client->ShouldStageHostToDeviceTransfers(dst, transfer_size);
 
     if (use_staging) {
       staging_buffer = client->host_memory_allocator()->Allocate(transfer_size);

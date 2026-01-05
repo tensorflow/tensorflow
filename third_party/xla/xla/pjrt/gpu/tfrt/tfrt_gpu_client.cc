@@ -950,14 +950,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   bool must_use_staging_buffer =
       host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
       !host_and_device_strides_equal || packed_size != byte_size;
-
-  // Allocating multigigabyte pinned buffers can be very slow. In that case,
-  // using a staging buffer is probably worse than not using one.
-  bool should_stage_transfers = !IsDmaMapped(data, packed_size) &&
-                                should_stage_host_to_device_transfers() &&
-                                packed_size < (int64_t{1} << 30);
-
-  bool use_staging_buffer = must_use_staging_buffer || should_stage_transfers;
+  bool use_staging_buffer = must_use_staging_buffer ||
+                            ShouldStageHostToDeviceTransfers(data, packed_size);
 
   auto copy_to_staging_buffer = [allocator = host_memory_allocator(), byte_size,
                                  type, packed_size,

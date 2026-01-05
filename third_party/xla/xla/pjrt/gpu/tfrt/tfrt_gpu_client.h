@@ -158,8 +158,13 @@ class TfrtGpuClient final : public PjRtClient {
 
   se::DeviceAddressAllocator* allocator() { return allocator_.get_mutable(); }
 
-  bool should_stage_host_to_device_transfers() const {
-    return should_stage_host_to_device_transfers_;
+  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) {
+    // Disable staging buffers for large transfers because allocation and extra
+    // memcpy overheads for multi-gigabyte buffers will likely offset the
+    // benefit of using a staging buffer. The current threshold is arbitrarily
+    // chosen and may need to be adjusted in the future.
+    return should_stage_host_to_device_transfers_ &&
+           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
   HostMemoryAllocator* host_memory_allocator() const {

@@ -549,9 +549,10 @@ TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
   auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
-  EXPECT_TRUE(staging_client->should_stage_host_to_device_transfers());
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
+  EXPECT_TRUE(staging_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(int32_t) * data.size()));
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -574,9 +575,10 @@ TEST(TfrtGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
   auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
-  EXPECT_FALSE(staging_client->should_stage_host_to_device_transfers());
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
+  EXPECT_FALSE(staging_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(int32_t) * data.size()));
   Shape shape = ShapeUtil::MakeShape(S32, {256});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
