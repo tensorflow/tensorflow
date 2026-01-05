@@ -101,6 +101,21 @@ Compiler::GetPlatformCompilers() {
   return it->second();
 }
 
+/* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
+    se::Platform::Id platform_id, absl::string_view platform_name) {
+  absl::MutexLock lock(platform_compiler_mutex_);
+
+  auto* factories = GetPlatformCompilerFactories();
+  auto it = factories->find(platform_id);
+  if (it == factories->end()) {
+    return NotFound(
+        "could not find registered compiler for platform %s -- was support for "
+        "that platform linked in?",
+        platform_name);
+  }
+  return it->second();
+}
+
 // Default implementation
 // TODO(b/256849421) Replace with non-null instantiation of MetricsHookInterface
 // with empty implementations.
