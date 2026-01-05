@@ -580,7 +580,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
 
   if (shape_.outer_multiplier() > 0 || outerArray->getNumElements() == MAGIC) {
 
-    if (shape_.outer_multiplier() <= 0){
+    if (shape_.outer_multiplier() < 0){
       llvm::errs() << "This should never happen... \n";
       llvm::errs() << "Shape is " << shape_.ToString() << "\n";
 
