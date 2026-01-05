@@ -955,7 +955,6 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/kernels:custom_kernel_fusion_pattern",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor/gpu:gpu_init_impl",
         "@com_google_googletest//:gtest_main",
     ],
 )
