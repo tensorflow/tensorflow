@@ -736,6 +736,7 @@ xla_cc_test(
     deps = [
         ":tuple_simplifier",
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
