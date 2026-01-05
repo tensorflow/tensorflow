@@ -56,8 +56,8 @@ struct CollectiveConfig {
 
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
-  CollectiveOpGroupMode group_mode;
-  bool use_symmetric_buffer;
+  CollectiveOpGroupMode group_mode = COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  bool use_symmetric_buffer = false;
 
   CollectiveConfigProto ToProto() const;
   static CollectiveConfig FromProto(const CollectiveConfigProto& proto);
