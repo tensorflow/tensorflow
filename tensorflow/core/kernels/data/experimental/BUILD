@@ -877,6 +877,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -924,6 +925,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:dataset_options_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
