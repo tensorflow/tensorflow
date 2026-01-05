@@ -965,14 +965,14 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
                                    GetModuleConfigForTest()));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
   ASSERT_THAT(aot_results, SizeIs(1));
 
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           std::move(aot_results[0])->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       compiler_->LoadAotCompilationResult(serialized_aot_result));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
@@ -1009,7 +1009,7 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
       std::unique_ptr<Executable> executable,
       compiler_->RunBackend(std::move(add_1_hlo), stream_exec_,
                             /*device_allocator=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> aot_result,
                           compiler_->Export(executable.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> new_executable,
@@ -1045,11 +1045,10 @@ TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
   aot_options_->set_early_exit_point(
       AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler_->CompileAheadOfTime(std::move(add_1_hlo), *aot_options_));
-  EXPECT_THAT(aot_results,
-              ElementsAre(Pointee(Property(
-                  &AotCompilationResult::optimized_module, NotNull()))));
+  EXPECT_THAT(aot_results, ElementsAre(Pointee(Property(
+                               &CompiledModule::optimized_module, NotNull()))));
 }
 
 class KernelCacheTest : public HloTestBase {
@@ -1194,13 +1193,13 @@ ENTRY e {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo));
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+        std::vector<std::unique_ptr<CompiledModule>> aot_results,
         compiler->CompileAheadOfTime(std::move(module), aot_options));
 
     TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                             aot_results[0]->SerializeAsString());
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<AotCompilationResult> aot_result,
+        std::unique_ptr<CompiledModule> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
     TF_ASSERT_OK_AND_ASSIGN(

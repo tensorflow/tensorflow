@@ -44,7 +44,7 @@ namespace gpu {
 // This class is considered legacy and is expected to be replaced by a
 // new AOT result type as part of the runtime split. The new type will
 // encapsulate the compilation up to the Thunks generation stage.
-class LegacyGpuAotCompilationResult : public AotCompilationResult {
+class LegacyGpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<LegacyGpuAotCompilationResult>>
   FromModule(const HloModule* hlo_module,
@@ -91,7 +91,7 @@ class LegacyGpuAotCompilationResult : public AotCompilationResult {
   Compiler* compiler_;
 };
 
-class EarlyExitCompilationResult : public AotCompilationResult {
+class EarlyExitCompilationResult : public CompiledModule {
  public:
   explicit EarlyExitCompilationResult(std::unique_ptr<HloModule> module)
       : module_(std::move(module)) {}
