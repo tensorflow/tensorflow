@@ -501,6 +501,9 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
 
+  // Cached list of memory spaces per output.
+  std::vector<int> output_memory_space_kind_ids_;
+
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.
   bool cheap_computation_;

@@ -1109,6 +1109,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
   // switch time (~5us).
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
+  output_memory_space_kind_ids_.resize(result_buffer_indices_.size(), 0);
   const auto& computation_layout =
       cpu_executable_->module().entry_computation_layout();
   if (computation_layout.parameter_count() == 0) {
@@ -1319,15 +1320,21 @@ static absl::StatusOr<std::vector<BufferInfo>> CreateBufferTable(
   return std::move(buffer_table);
 }
 
-static absl::InlinedVector<BufferInfo, 4> CreateResultBufferInfo(
-    absl::Span<const BufferAllocation::Index> buffer_indices,
-    absl::Span<const BufferInfo> buffer_table) {
-  absl::InlinedVector<BufferInfo, 4> output_buffer_info;
-  output_buffer_info.reserve(buffer_indices.size());
+static absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+CreateResultBufferInfo(absl::Span<const BufferAllocation::Index> buffer_indices,
+                       absl::Span<const BufferInfo> buffer_table,
+                       xla::PjRtDevice* device) {
+  auto* memory_space = *device->default_memory_space();
+  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+      output_leaf_buffers;
+  output_leaf_buffers.reserve(buffer_indices.size());
   for (int i = 0; i < buffer_indices.size(); ++i) {
-    output_buffer_info.push_back(buffer_table[buffer_indices[i]]);
+    const auto& result_buffer_info = buffer_table[buffer_indices[i]];
+    output_leaf_buffers.push_back(tsl::MakeRef<CpuRawBuffer>(
+        memory_space, std::move(result_buffer_info.buffer),
+        result_buffer_info.buffer_size, result_buffer_info.owns_buffer));
   }
-  return output_buffer_info;
+  return output_leaf_buffers;
 }
 
 absl::Status PjRtCpuExecutable::CheckBufferCompatibilities(
@@ -1529,8 +1536,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                         cpu_executable->constants(), tracked_buffers,
                         buffer_alloc, buffer_alloc_and_copy,
                         tuple_index_table));
-  auto result_buffers_info =
-      CreateResultBufferInfo(result_buffer_indices_, buffer_table);
+  auto output_leaf_buffers =
+      CreateResultBufferInfo(result_buffer_indices_, buffer_table, device);
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -1850,40 +1857,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         });
   }
 
-  // Create output buffers.
-  const Shape& result_shape = cpu_executable_->result_shape();
-  std::vector<std::unique_ptr<PjRtBuffer>> res;
-  auto* memory_space = *device->default_memory_space();
-  if (result_shape.IsTuple()) {
-    res.reserve(result_buffers_info.size());
-    for (int i = 0; i < result_buffers_info.size(); ++i) {
-      // Program execution writes to output buffers so it's a definition event.
-      auto leaf_tracked_device_buffer =
-          std::make_unique<TrackedCpuDeviceBuffer>(
-              tsl::MakeRef<CpuRawBuffer>(
-                  memory_space, std::move(result_buffers_info[i].buffer),
-                  result_buffers_info[i].buffer_size,
-                  result_buffers_info[i].owns_buffer),
-              execute_event.CopyRef());
-      auto leaf_buffer = std::make_unique<CommonPjRtBufferImpl>(
-          result_shape.tuple_shapes(i), std::move(leaf_tracked_device_buffer),
-          memory_space);
-      res.push_back(std::move(leaf_buffer));
-    }
-  } else {
-    CHECK_EQ(result_buffers_info.size(), 1);
-    // Program execution writes to output buffers so it's a definition event.
-    auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-        tsl::MakeRef<CpuRawBuffer>(memory_space,
-                                   std::move(result_buffers_info[0].buffer),
-                                   result_buffers_info[0].buffer_size,
-                                   result_buffers_info[0].owns_buffer),
-        /*definition_event=*/execute_event);
-    auto output_buffer = std::make_unique<CommonPjRtBufferImpl>(
-        result_shape, std::move(tracked_device_buffer), memory_space);
-    res.push_back(std::move(output_buffer));
-  }
-
+  auto res = client_->CreateOutputs(
+      cpu_executable_->result_shape(), std::move(execute_usage_event), device,
+      output_memory_space_kind_ids_, std::move(output_leaf_buffers),
+      /*is_predetermined_error=*/false);
   if (fill_future) {
     auto [promise, future] = MakePromise<>();
     returned_future_can_be_set_event.AndThen(
