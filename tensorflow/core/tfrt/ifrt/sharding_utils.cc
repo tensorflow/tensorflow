@@ -477,8 +477,7 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   VLOG(2) << "Create tensor from array based on sharding: "
           << hlo_sharding.ToString();
 
-  auto [promise, output_tensor_future] =
-      tsl::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise, output_tensor_future] = tsl::MakePromise<tensorflow::Tensor>();
 
   if (hlo_sharding.IsReplicated()) {
     VLOG(1) << "Fast path for replication";

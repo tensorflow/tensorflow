@@ -588,7 +588,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
     // Only create promise and future when cache missed.
     std::tie(promise, future) =
-        tsl::Future<SharedCachedExecutableBundle>::MakePromise();
+        tsl::MakePromise<SharedCachedExecutableBundle>();
 
     executable_bundles_.emplace(key, future);
     // Clone the module to avoid race condition between Freeze() and

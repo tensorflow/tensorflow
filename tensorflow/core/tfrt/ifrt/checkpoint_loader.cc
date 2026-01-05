@@ -245,7 +245,7 @@ absl::Status RunShard(RestoreVariableShard shard,
       fallback_request_state.process_function_library_runtime());
 
   for (int i = 0; i < num_outputs; ++i) {
-    auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
+    auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
     const ResourceHandle& var_handle =
         shard.var_handles[i].tensor().scalar<tensorflow::ResourceHandle>()();
 

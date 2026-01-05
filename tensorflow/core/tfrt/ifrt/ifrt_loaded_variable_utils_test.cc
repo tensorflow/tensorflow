@@ -83,7 +83,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
@@ -127,7 +127,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto [promise, future] = tsl::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,

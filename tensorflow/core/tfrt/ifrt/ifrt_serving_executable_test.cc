@@ -300,7 +300,7 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   for (int i = 0; i < GetParam().in_tensors.size(); i++) {
     if (GetParam().is_variable[i]) {
       auto [input_tensor_promise, input_tensor_future] =
-          tsl::Future<tensorflow::Tensor>::MakePromise();
+          tsl::MakePromise<tensorflow::Tensor>();
       IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
           .dtype_and_shape{.dtype = GetParam().in_tensors[i].dtype(),
                            .shape = GetParam().in_tensors[i].shape()},
