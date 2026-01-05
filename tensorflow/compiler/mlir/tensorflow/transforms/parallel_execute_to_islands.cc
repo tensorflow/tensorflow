@@ -117,14 +117,14 @@ void ExpandParallelExecuteToIslands(
     // Replace terminator with tf_executor.YieldOp.
     Operation* terminator = execute_block.getTerminator();
     builder->setInsertionPoint(terminator);
-    auto yield = builder->create<tf_executor::YieldOp>(
-        terminator->getLoc(), terminator->getOperands());
+    auto yield = tf_executor::YieldOp::create(*builder, terminator->getLoc(),
+                                              terminator->getOperands());
     terminator->erase();
 
     // Create new island for each region.
     builder->setInsertionPoint(island_op);
-    auto execute_island = builder->create<tf_executor::IslandOp>(
-        island_op.getLoc(), yield.getOperandTypes(),
+    auto execute_island = tf_executor::IslandOp::create(
+        *builder, island_op.getLoc(), yield.getOperandTypes(),
         island_op.getControl().getType(), island_op.getControlInputs());
 
     // Move over tf_device.parallel_execute body region into newly the created

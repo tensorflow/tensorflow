@@ -124,15 +124,15 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
     if (is_packed)  // reduce the duplicates to one input for packed vars
       operands_per_replica.erase(operands_per_replica.begin() + 1,
                                  operands_per_replica.end());
-    auto replicate_op = builder.create<TF::TPUReplicatedInputOp>(
-        replicated_input.getLoc(), replicated_input.getType(),
+    auto replicate_op = TF::TPUReplicatedInputOp::create(
+        builder, replicated_input.getLoc(), replicated_input.getType(),
         operands_per_replica, replicated_input->getAttrs());
     replicate_op.setIsPacked(is_packed);
     operands_per_core.push_back(replicate_op);
   }
 
-  auto pi = builder.create<TF::TPUPartitionedInputV2Op>(
-      first_partitioned_input.getLoc(), replicated_input.getType(),
+  auto pi = TF::TPUPartitionedInputV2Op::create(
+      builder, first_partitioned_input.getLoc(), replicated_input.getType(),
       operands_per_core, first_partitioned_input->getAttrs());
   pi.setIsPacked(false);  // inputs are now ops--not resources
   replicated_input.replaceAllUsesWith(pi.getOutput());
