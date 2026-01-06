@@ -1309,3 +1309,14 @@ py_strict_test(
         "//tensorflow/python/platform:resource_loader",
     ],
 )
+
+cuda_py_strict_test(
+    name = "jit_compiler_issue_test",
+    srcs = ["jit_compiler_issue_test.py"],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
