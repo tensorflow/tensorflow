@@ -244,8 +244,8 @@ size_t TpuCompilationCacheInterface::RemoveEntry(const std::string& key) {
     return erased;
   }
   session_key_map_.erase(
-      strings::StrCat(parsed_key.prefix, parsed_key.session_handle));
-  fingerprint_key_map_.erase(strings::StrCat(
+      absl::StrCat(parsed_key.prefix, parsed_key.session_handle));
+  fingerprint_key_map_.erase(absl::StrCat(
       parsed_key.prefix, parsed_key.guaranteed_const_fingerprint()));
   return erased;
 }
@@ -360,10 +360,10 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
     return;
   }
   session_key_map_.insert(std::make_pair(
-      strings::StrCat(parsed_key.prefix, parsed_key.session_handle), key));
+      absl::StrCat(parsed_key.prefix, parsed_key.session_handle), key));
   fingerprint_key_map_.insert(
-      std::make_pair(strings::StrCat(parsed_key.prefix,
-                                     parsed_key.guaranteed_const_fingerprint()),
+      std::make_pair(absl::StrCat(parsed_key.prefix,
+                                  parsed_key.guaranteed_const_fingerprint()),
                      key));
 }
 
@@ -393,11 +393,11 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
     return subgraph_key.prefix;
   }
   auto iter = session_key_map_.find(
-      strings::StrCat(subgraph_key.prefix, subgraph_key.session_handle));
+      absl::StrCat(subgraph_key.prefix, subgraph_key.session_handle));
   if (iter != session_key_map_.end()) {
     return iter->second;
   }
-  iter = fingerprint_key_map_.find(strings::StrCat(
+  iter = fingerprint_key_map_.find(absl::StrCat(
       subgraph_key.prefix, subgraph_key.guaranteed_const_fingerprint()));
   if (iter != fingerprint_key_map_.end()) {
     return iter->second;
@@ -447,7 +447,7 @@ absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     // internal::ScopedTpuCompileDisabler.
     if (!stream_executor::tpu::OpsApiFn()
              ->TpuCompile_IsTpuCompilationEnabledFn()) {
-      const std::string error_msg = strings::StrCat(
+      const std::string error_msg = absl::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",
           session_name, ") Debug String: ", subgraph_key.debug_string);
