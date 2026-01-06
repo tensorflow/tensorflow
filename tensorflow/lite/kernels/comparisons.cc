@@ -16,11 +16,11 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -180,6 +180,10 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::EqualFn>(input1, input2, output,
                                                 requires_broadcast);
       break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::EqualFn>(input1, input2, output,
+                                                      requires_broadcast);
+      break;
     case kTfLiteInt16:
       if (input1->quantization.type == kTfLiteNoQuantization) {
         Comparison<int16_t, reference_ops::EqualFn>(input1, input2, output,
@@ -239,6 +243,10 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::NotEqualFn>(input1, input2, output,
                                                    requires_broadcast);
       break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::NotEqualFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::NotEqualFn>(input1, input2, output,
                                                      requires_broadcast);
@@ -291,6 +299,10 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::GreaterFn>(input1, input2, output,
                                                   requires_broadcast);
       break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::GreaterFn>(input1, input2, output,
+                                                        requires_broadcast);
+      break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::GreaterFn>(input1, input2, output,
                                                     requires_broadcast);
@@ -331,6 +343,10 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       Comparison<float, reference_ops::GreaterEqualFn>(input1, input2, output,
                                                        requires_broadcast);
+      break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::GreaterEqualFn>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt16:
       Comparison<int16_t, reference_ops::GreaterEqualFn>(input1, input2, output,
@@ -429,6 +445,10 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       Comparison<float, reference_ops::LessEqualFn>(input1, input2, output,
                                                     requires_broadcast);
+      break;
+    case kTfLiteFloat16:
+      Comparison<Eigen::half, reference_ops::LessEqualFn>(
+          input1, input2, output, requires_broadcast);
       break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::LessEqualFn>(input1, input2, output,
