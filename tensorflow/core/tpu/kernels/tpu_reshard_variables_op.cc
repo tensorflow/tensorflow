@@ -197,7 +197,7 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
   shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](const xla::MaybeOwningDeviceMemory& buffer) {
+      [](const xla::MaybeOwningDeviceAddress& buffer) {
         return buffer.AsDeviceAddress();
       }));
 
