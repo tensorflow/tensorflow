@@ -455,8 +455,8 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   absl::Status CheckBufferCompatibilities(
-      absl::Span<std::pair<bool, TrackedCpuDeviceBuffer*> const> input_buffers)
-      const;
+      absl::Span<const CommonPjRtBuffer::ScopedHold> input_buffers,
+      absl::Span<PjRtBuffer* const> argument_handles) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
