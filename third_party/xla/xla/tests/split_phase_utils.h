@@ -26,17 +26,17 @@ limitations under the License.
 
 namespace xla {
 
-// Constructs a HloRunnerPjRt depending on the value of
-// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
-// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
-// returns a standard HloRunnerPjRt.
+// Constructs a HloRunnerPjRt depending on the value of env vars
+// XLA_TEST_HLO_RUNNER_SPLIT_PHASE_MODE and XLA_TEST_HLO_RUNNER_SPLIT_PHASE_DIR
+// If XLA_TEST_HLO_RUNNER_SPLIT_PHASE_MODE is not set / set to "disabled", this
+// function returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client);
 
-// Constructs an InterpreterClient depending on the value of
-// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
-// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
-// returns a standard InterpreterClient.
+// Constructs an InterpreterClient depending on the value of env vars
+// XLA_TEST_HLO_RUNNER_SPLIT_PHASE_MODE and XLA_TEST_HLO_RUNNER_SPLIT_PHASE_DIR
+// If XLA_TEST_HLO_RUNNER_SPLIT_PHASE_MODE is not set / set to "disabled", this
+// function returns a standard InterpreterClient.
 std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
     absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
         hlo_evaluator_factory);

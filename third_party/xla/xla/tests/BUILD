@@ -4101,8 +4101,9 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/interpreter:interpreter_client",
         "//xla/service:hlo_runner_pjrt",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
