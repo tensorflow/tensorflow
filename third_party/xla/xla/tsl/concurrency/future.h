@@ -525,9 +525,6 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       "Future<T> already has an implicit absl::StatusOr<T> semantics");
 
  public:
-  // Deprecated alias for `tsl::Promise<T>`.
-  using Promise = ::tsl::Promise<T>;
-
   Future() = default;
 
   // Constructs an immediately available future with the given value.
@@ -543,22 +540,6 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
       std::enable_if_t<std::is_constructible_v<T, U> &&
                        !std::is_convertible_v<U, absl::StatusOr<T>>>* = nullptr>
   explicit Future(U&& value) : Base(std::forward<U>(value)) {}
-
-  ABSL_DEPRECATED("Use `tsl::MakePromise<T>` instead")
-  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<T>> MakePromise(
-      FutureHelpers::OnBlockStart on_block_start = nullptr,
-      FutureHelpers::OnBlockEnd on_block_end = nullptr);
-
-  ABSL_DEPRECATED("Use `tsl::MakePromise<T>` instead")
-  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<T>> MakePromise(
-      Executor& executor, FutureHelpers::OnBlockStart on_block_start = nullptr,
-      FutureHelpers::OnBlockEnd on_block_end = nullptr);
-
-  template <typename F, typename R = std::invoke_result_t<F>,
-            std::enable_if_t<std::is_constructible_v<absl::StatusOr<T>, R>>* =
-                nullptr>
-  ABSL_DEPRECATED("Use `tsl::MakeFutureOn<T>` instead")
-  static Future<T> MakeOn(Executor& executor, F&& f);
 
   using Base::Await;
   using Base::Detach;
@@ -680,7 +661,7 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
 
   // Wraps a map functor into a callback compatible with Future<>::OnReady.
   template <typename R, typename U, bool rvalue = false, typename F>
-  static auto SetPromise(typename Future<R>::Promise promise, F&& f);
+  static auto SetPromise(Promise<R> promise, F&& f);
 
   // Bring FutureBase constructors in scope.
   using Base::Base;
@@ -746,9 +727,6 @@ class Future<void> : public internal::FutureBase<absl::Status> {
   using Base = internal::FutureBase<absl::Status>;
 
  public:
-  // Deprecated alias for `tsl::Promise<>`.
-  using Promise = ::tsl::Promise<>;
-
   Future() = default;
 
   // Constructor for a future that is immediately ready with a given status.
@@ -768,21 +746,6 @@ class Future<void> : public internal::FutureBase<absl::Status> {
             std::enable_if_t<std::is_convertible_v<U, absl::Status>>* = nullptr>
   Future(U&& status)  // NOLINT
       : Future(absl::Status(std::forward<U>(status))) {}
-
-  ABSL_DEPRECATED("Use `tsl::MakePromise<>` instead")
-  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
-      FutureHelpers::OnBlockStart on_block_start = nullptr,
-      FutureHelpers::OnBlockEnd on_block_end = nullptr);
-
-  ABSL_DEPRECATED("Use `tsl::MakePromise<>` instead")
-  static ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise, Future<>> MakePromise(
-      Executor& executor, FutureHelpers::OnBlockStart on_block_start = nullptr,
-      FutureHelpers::OnBlockEnd on_block_end = nullptr);
-
-  template <typename F, typename R = std::invoke_result_t<F>,
-            std::enable_if_t<internal::is_status_v<R>>* = nullptr>
-  ABSL_DEPRECATED("Use `tsl::MakeFutureOn<void>` instead")
-  static Future<> MakeOn(Executor& executor, F&& f);
 
   using Base::Await;
   using Base::BlockUntilReady;
@@ -863,7 +826,7 @@ class Future<void> : public internal::FutureBase<absl::Status> {
 
   // Wraps a map functor into a callback compatible with Future<>::OnReady.
   template <typename R, typename U, typename F>
-  static auto SetPromise(typename Future<R>::Promise promise, F&& f);
+  static auto SetPromise(Promise<R> promise, F&& f);
 
   // A promise that is immediately ready with OK status. Async value allocated
   // in the static storage and is not reference-counted.
@@ -1076,30 +1039,6 @@ Future<> FutureBase<T, is_move_only>::GetReadyFuture() const {
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise<T>, Future<T>>
-Future<T>::MakePromise(FutureHelpers::OnBlockStart on_block_start,
-                       FutureHelpers::OnBlockEnd on_block_end) {
-  return ::tsl::MakePromise<T>(std::move(on_block_start),
-                               std::move(on_block_end));
-}
-
-template <typename T>
-ABSL_ATTRIBUTE_ALWAYS_INLINE std::pair<Promise<T>, Future<T>>
-Future<T>::MakePromise(Executor& executor,
-                       FutureHelpers::OnBlockStart on_block_start,
-                       FutureHelpers::OnBlockEnd on_block_end) {
-  return ::tsl::MakePromise<T>(executor, std::move(on_block_start),
-                               std::move(on_block_end));
-}
-
-template <typename T>
-template <typename F, typename R,
-          std::enable_if_t<std::is_constructible_v<absl::StatusOr<T>, R>>*>
-[[nodiscard]] Future<T> Future<T>::MakeOn(Executor& executor, F&& f) {
-  return ::tsl::MakeFutureOn<T>(executor, std::forward<F>(f));
-}
-
-template <typename T>
 template <typename R, typename F, typename U, internal::Mappable<R, U>*>
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<T>::Map(
     F&& f) const& {
@@ -1224,7 +1163,7 @@ template <typename R, typename F, typename U, internal::Mappable<R, U>*>
 
 template <typename T>
 template <typename R, typename U, bool rvalue, typename F>
-auto Future<T>::SetPromise(typename Future<R>::Promise promise, F&& f) {
+auto Future<T>::SetPromise(Promise<R> promise, F&& f) {
   // For copyable types bind to const reference, so that we don't
   // accidentally move the value from the underlying async value storage.
   // Move-only types are passed by value into the `OnReady` callback.
@@ -1256,27 +1195,6 @@ auto Future<T>::SetPromise(typename Future<R>::Promise promise, F&& f) {
 //===----------------------------------------------------------------------===//
 // Future<void> implementation.
 //===----------------------------------------------------------------------===//
-
-ABSL_ATTRIBUTE_ALWAYS_INLINE
-inline std::pair<Promise<>, Future<>> Future<void>::MakePromise(
-    FutureHelpers::OnBlockStart on_block_start,
-    FutureHelpers::OnBlockEnd on_block_end) {
-  return ::tsl::MakePromise<>(std::move(on_block_start),
-                              std::move(on_block_end));
-}
-
-ABSL_ATTRIBUTE_ALWAYS_INLINE inline std::pair<Promise<>, Future<>>
-Future<void>::MakePromise(Executor& executor,
-                          FutureHelpers::OnBlockStart on_block_start,
-                          FutureHelpers::OnBlockEnd on_block_end) {
-  return ::tsl::MakePromise<>(executor, std::move(on_block_start),
-                              std::move(on_block_end));
-}
-
-template <typename F, typename R, std::enable_if_t<internal::is_status_v<R>>*>
-[[nodiscard]] inline Future<> Future<void>::MakeOn(Executor& executor, F&& f) {
-  return ::tsl::MakeFutureOn<void>(executor, std::forward<F>(f));
-}
 
 template <typename R, typename F, typename U, internal::Mappable<R, U>*>
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<void>::Map(
@@ -1325,7 +1243,7 @@ template <typename R, typename F, typename U, internal::Mappable<R, U>*>
 }
 
 template <typename R, typename U, typename F>
-auto Future<void>::SetPromise(typename Future<R>::Promise promise, F&& f) {
+auto Future<void>::SetPromise(Promise<R> promise, F&& f) {
   return [promise = std::move(promise),
           f = std::forward<F>(f)](const absl::Status& status) mutable {
     // Do not compute `f` if the result is unused.
