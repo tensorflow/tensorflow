@@ -406,18 +406,14 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
         }
       }
 
-      const bool use_staging = should_unpack || transpose != nullptr ||
-                               client->ShouldStageHostToDeviceTransfers(
-                                   literal->untyped_data(), byte_size);
-
       HostMemoryAllocator::OwnedPtr staging_buffer;
       void* buffer_ptr;
       if (on_device_shape.IsArray()) {
-        if (use_staging) {
+        buffer_ptr = literal->untyped_data();
+        if (should_unpack || transpose != nullptr ||
+            client->ShouldStageHostToDeviceTransfers(buffer_ptr, byte_size)) {
           staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
           buffer_ptr = staging_buffer.get();
-        } else {
-          buffer_ptr = literal->untyped_data();
         }
       } else {
         CHECK_EQ(byte_size, 0);
