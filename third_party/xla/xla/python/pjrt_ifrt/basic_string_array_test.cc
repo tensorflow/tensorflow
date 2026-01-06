@@ -433,8 +433,9 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
   }
 
   return client->AssembleArrayFromSingleDeviceArrays(
-      Shape({2, 1}), std::move(sharding), absl::MakeSpan(arrays),
-      ArrayCopySemantics::kAlwaysCopy);
+      DType(DType::kString), Shape({2, 1}), std::move(sharding),
+      absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+      xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
 }
 
 TEST(AssembleArrayFromSingleDeviceArraysTest,
@@ -475,8 +476,9 @@ TEST(AssembleArrayFromSingleDeviceArraysTest, FailsWithNonStringArrays) {
                                                  client.get(), devices[1]));
 
   EXPECT_THAT(client->AssembleArrayFromSingleDeviceArrays(
-                  Shape({2}), std::move(opaque_sharding),
-                  absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy),
+                  DType(DType::kString), Shape({2}), std::move(opaque_sharding),
+                  absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+                  xla::ifrt::SingleDeviceShardSemantics::kAddressableShards),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -500,8 +502,9 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
                                                  client.get(), devices[1]));
 
   EXPECT_THAT(client->AssembleArrayFromSingleDeviceArrays(
-                  Shape({2}), std::move(opaque_sharding),
-                  absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy),
+                  DType(DType::kString), Shape({2}), std::move(opaque_sharding),
+                  absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+                  xla::ifrt::SingleDeviceShardSemantics::kAddressableShards),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -538,9 +541,11 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   promises.push_back(std::move(ret.second));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array, client->AssembleArrayFromSingleDeviceArrays(
-                      Shape({1}), std::move(opaque_sharding),
-                      absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy));
+      auto array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          DType(DType::kString), Shape({1}), std::move(opaque_sharding),
+          absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   tsl::Env::Default()->SchedClosure(([&]() mutable {
     promises[0].Set(buffers0);
@@ -586,9 +591,11 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
 
   // Make a sharded BasicStringArray out of the single device arrays.
   TF_ASSERT_OK_AND_ASSIGN(
-      auto array, client->AssembleArrayFromSingleDeviceArrays(
-                      Shape({1}), std::move(opaque_sharding),
-                      absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy));
+      auto array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          DType(DType::kString), Shape({1}), std::move(opaque_sharding),
+          absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   // Make the single device arrays become ready with an error.
   absl::Notification done_readying_single_device_arrays;
