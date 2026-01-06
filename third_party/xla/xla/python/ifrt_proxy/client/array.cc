@@ -112,42 +112,42 @@ absl::StatusOr<uint64_t> MakeHostBuffer(
 
   const uint64_t host_buffer_handle = rpc_helper->NextHandle();
 
-    // Asynchronously send data.
+  // Asynchronously send data.
 
-    if (semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
-      char* alloc = static_cast<char*>(malloc(mem_region.size()));
-      memcpy(alloc, mem_region.data(), mem_region.size());
-      mem_region = absl::string_view(alloc, mem_region.size());
-      if (on_done_with_host_buffer != nullptr) {
-        std::move(on_done_with_host_buffer)();
-      }
-      on_done_with_host_buffer = [alloc]() { free(alloc); };
+  if (semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
+    char* alloc = static_cast<char*>(malloc(mem_region.size()));
+    memcpy(alloc, mem_region.data(), mem_region.size());
+    mem_region = absl::string_view(alloc, mem_region.size());
+    if (on_done_with_host_buffer != nullptr) {
+      std::move(on_done_with_host_buffer)();
     }
+    on_done_with_host_buffer = [alloc]() { free(alloc); };
+  }
 
-    // If the async-send results in an error, ignoring it may mean that the
-    // control-path hangs forever. Instead, we explicitly ensure the
-    // control-path gets disconnected (and so the entire session ends).
-    //
-    // While there are more fine-grained approaches to handle errors, we do not
-    // expect an error except for one that indicates being already disconnected
-    // from the server.
-    rpc_helper->host_buffer_store()
-        ->Store(host_buffer_handle, mem_region)
-        .OnReady([on_done = std::move(on_done_with_host_buffer),
-                  rpc_helper = std::weak_ptr<RpcHelper>(rpc_helper)](
-                     absl::Status s) mutable {
-          if (!s.ok()) {
-            LOG(WARNING) << "Handling error in background data-transfer by "
-                         << "disconnecting from server (if not already "
-                         << "disconnected), error: " << s;
-            if (auto locked = rpc_helper.lock()) {
-              locked->Disconnect();
-            }
-          };
-          if (on_done != nullptr) {
-            std::move(on_done)();
+  // If the async-send results in an error, ignoring it may mean that the
+  // control-path hangs forever. Instead, we explicitly ensure the
+  // control-path gets disconnected (and so the entire session ends).
+  //
+  // While there are more fine-grained approaches to handle errors, we do not
+  // expect an error except for one that indicates being already disconnected
+  // from the server.
+  rpc_helper->host_buffer_store()
+      ->Store(host_buffer_handle, mem_region)
+      .OnReady([on_done = std::move(on_done_with_host_buffer),
+                rpc_helper = std::weak_ptr<RpcHelper>(rpc_helper)](
+                   absl::Status s) mutable {
+        if (!s.ok()) {
+          LOG(WARNING) << "Handling error in background data-transfer by "
+                       << "disconnecting from server (if not already "
+                       << "disconnected), error: " << s;
+          if (auto locked = rpc_helper.lock()) {
+            locked->Disconnect();
           }
-        });
+        };
+        if (on_done != nullptr) {
+          std::move(on_done)();
+        }
+      });
   return host_buffer_handle;
 }
 
@@ -322,7 +322,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
 }
 
 void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
-    rpc_helper->Batch(RpcHelper::kDestructArray, handle);
+  rpc_helper->Batch(RpcHelper::kDestructArray, handle);
 }
 
 tsl::Future<> Array::GetReadyFuture() const {
@@ -523,7 +523,6 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     }
   }
 
-
   std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(plan.output_specs.size());
   for (int i = 0; i < plan.output_specs.size(); ++i) {
@@ -569,7 +568,10 @@ Array::DisassembleIntoSingleDeviceArrays(
   req->set_single_device_shard_semantics(
       ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
-  TF_ASSIGN_OR_RETURN(auto shape_and_shardings, sharding_->Disassemble(shape_));
+  TF_ASSIGN_OR_RETURN(
+      auto shape_and_shardings,
+      sharding_->Disassemble(
+          shape_, xla::ifrt::SingleDeviceShardSemantics::kAllShards));
 
   std::vector<xla::ifrt::ArrayRef> result;
   result.reserve(shape_and_shardings.size());
