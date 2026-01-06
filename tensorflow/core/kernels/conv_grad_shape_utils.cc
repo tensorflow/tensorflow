@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <array>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
