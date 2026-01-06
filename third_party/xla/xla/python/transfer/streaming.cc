@@ -77,7 +77,7 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
  private:
   absl::Mutex mu_;
   std::vector<std::pair<size_t, std::string>> chunks_;
-  tsl::Future<std::string>::Promise dest_;
+  tsl::Promise<std::string> dest_;
 };
 
 std::pair<tsl::Future<std::string>, tsl::RCReference<ChunkDestination>>

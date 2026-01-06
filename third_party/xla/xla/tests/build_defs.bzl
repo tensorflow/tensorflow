@@ -331,6 +331,9 @@ def xla_test(
     # precompile_test is not supported in OSS.
     kwargs.pop("precompile_test", None)
 
+    # TODO: b/382779188 - Remove this once all legacy tests have had this kwarg added.
+    kwargs.pop("use_legacy_runtime", None)
+
     test_names = []
     if not backends:
         backends = _DEFAULT_BACKENDS
