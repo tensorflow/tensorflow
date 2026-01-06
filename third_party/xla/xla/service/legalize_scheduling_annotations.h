@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 #define XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -47,6 +48,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool deannotate_unsupported_groups = false;
     bool check_gap_only = false;
     bool check_non_mitigatable_gap_only = false;
+    std::string debug_str;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -65,6 +67,8 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
       bool dry_run = false);
 
   absl::Status Verify(HloModule* module);
+
+  void LogConfig(int64_t level);
 
  protected:
   absl::StatusOr<bool> RunImpl(
