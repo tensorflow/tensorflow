@@ -477,6 +477,7 @@ cc_library(
         ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
