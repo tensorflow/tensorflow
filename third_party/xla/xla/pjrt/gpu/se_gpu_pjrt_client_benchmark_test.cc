@@ -84,7 +84,7 @@ static void BM_AddTwoScalars(benchmark::State& state) {
     CHECK_EQ(result->size(), 1) << "Expected 1 result buffer";
 
     PjRtBuffer* result_buffer = result->front().get();
-    auto literal = result_buffer->ToLiteralSync();
+    auto literal = result_buffer->ToLiteral().Await();
     CHECK_OK(literal) << "Failed to convert buffer to literal";
     VLOG(10) << "Result: " << **literal;
   }
@@ -154,7 +154,7 @@ static void BM_AddManyScalars(benchmark::State& state) {
 
     for (size_t i = 0; i < 5; ++i) {
       PjRtBuffer* result_buffer = (*result)[i].get();
-      auto literal = result_buffer->ToLiteralSync();
+      auto literal = result_buffer->ToLiteral().Await();
       CHECK_OK(literal) << "Failed to convert buffer to literal";
       VLOG(10) << "Result [" << i << "]: " << **literal;
     }
