@@ -2325,6 +2325,7 @@ xla_cc_test(
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
     shard_count = 12,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triangular_solve_expander",
         "//xla:array2d",
@@ -2784,6 +2785,7 @@ cc_library(
 xla_cc_test(
     name = "scan_loop_accumulator_input_unification_test",
     srcs = ["scan_loop_accumulator_input_unification_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":scan_loop_accumulator_input_unification",
@@ -2843,6 +2845,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_unroller_test",
     srcs = ["while_loop_unroller_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scheduling_annotations_util",
         ":while_loop_unroller",
@@ -3074,6 +3077,8 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":dynamic_dimension_inference",
         ":dynamic_padder",
@@ -3369,7 +3374,10 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_mac_arm64",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3908,6 +3916,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_layout",
         ":hlo_verifier",
@@ -3965,6 +3974,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_cse",
         ":pattern_matcher",
@@ -4206,7 +4216,9 @@ xla_test(
     ],
     tags = [
         "no_windows",  # TODO(b/152037541)
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":elemental_ir_emitter",
         ":hlo_module_config",
@@ -5072,6 +5084,7 @@ cc_library(
 xla_cc_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":map_inliner",
         "//xla:literal",
@@ -5353,6 +5366,7 @@ cc_library(
 xla_cc_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         ":topk_rewriter",
