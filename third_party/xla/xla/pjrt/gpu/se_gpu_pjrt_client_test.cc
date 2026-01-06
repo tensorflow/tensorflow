@@ -145,7 +145,7 @@ absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
   TF_RET_CHECK(result->size() == 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
-  auto literal_or = result_buffers[0]->ToLiteralSync();
+  auto literal_or = result_buffers[0]->ToLiteral().Await();
   if (!literal_or.status().ok()) {
     return literal_or.status();
   }
@@ -284,7 +284,7 @@ TEST(StreamExecutorGpuClientTest, CreateErrorBuffer) {
         auto buffer,
         client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
     EXPECT_THAT(
-        buffer->ToLiteralSync(),
+        buffer->ToLiteral().Await(),
         absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     EXPECT_EQ(buffer->memory_space(), memory_space);
   }
@@ -961,7 +961,8 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
     }
     offset = end;
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> lit, buf->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> lit,
+                          buf->ToLiteral().Await());
   EXPECT_THAT(lit->data<float>(), ElementsAreArray(data));
 }
 
@@ -1020,15 +1021,17 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
-  void* dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  void* dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 
   auto result = buffer->CopyRawToHost(dst, 0, size);
   TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
-  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+  tsl::port::AlignedSizedFree(
+      dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
@@ -1040,14 +1043,16 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
-  void* dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  void* dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 
   auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
   TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
 
-  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+  tsl::port::AlignedSizedFree(
+      dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
@@ -1059,14 +1064,16 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
-  void* dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  void* dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 
   auto result = buffer->CopyRawToHost(dst, 1, size);
   EXPECT_THAT(result.Await(),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
                                      HasSubstr("invalid offset 1")));
-  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+  tsl::port::AlignedSizedFree(
+      dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 
   // The future returned by buffer->CopyRawToHost() may be resolve to an error
   // before the prior buffer->BufferFromHostLiteral() is done. Make sure
@@ -1094,8 +1101,9 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   buffer.reset();
   ready.OnReady([dst_promise = std::move(dst_promise),
                  size](absl::Status status) mutable {
-    void* dst =
-        tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+    void* dst = tsl::port::AlignedMalloc(
+        size,
+        static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
     dst_promise.Set(dst);
   });
 
@@ -1104,7 +1112,9 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
-  tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
+  tsl::port::AlignedSizedFree(
+      dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
@@ -1325,7 +1335,7 @@ TEST(PjRtCpuClientTest, CopyToMemorySpace) {
         auto buffer, client->BufferFromHostLiteral(literal, memory_space));
     TF_ASSERT_OK_AND_ASSIGN(buffer,
                             buffer->CopyToMemorySpace(buffer->memory_space()));
-    TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+    TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
     EXPECT_THAT(received_literal->data<int32_t>(),
                 ElementsAreArray(literal.data<int32_t>()));
   }
@@ -1374,7 +1384,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
           client_staging->addressable_devices()[0]->memory_spaces()[0],
           /*device_layout=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
 }
@@ -1403,7 +1413,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
           client_no_staging->addressable_devices()[0]->memory_spaces()[0],
           /*device_layout=*/nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *literal, LiteralUtil::CreateR1<float>(std::vector<float>(1024, 1.0f))));
 }
@@ -1518,7 +1528,7 @@ TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
   EXPECT_EQ(buffer->memory_space()->kind(), "pinned_host");
   EXPECT_TRUE(buffer->IsOnCpu());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
@@ -1548,7 +1558,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
   EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
   EXPECT_TRUE(result->IsOnCpu());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
@@ -1579,7 +1589,7 @@ TEST(StreamExecutorGpuClientTest, CopyFromPinnedHostMemorySpace) {
 
   EXPECT_EQ(result->memory_space()->kind(), "device");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
   std::vector<int32_t> expected{1, 2, 3, 4};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
@@ -1609,7 +1619,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
   EXPECT_EQ(result->memory_space()->kind(), "pinned_host");
   EXPECT_TRUE(result->IsOnCpu());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
   std::vector<xla::s4> expected{xla::s4(1), xla::s4(2), xla::s4(3), xla::s4(4)};
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<xla::s4>(expected),
                                      *literal));
@@ -1669,7 +1679,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   EXPECT_THAT(hbm_buf->HostShape(), absl_testing::IsOkAndHolds(shape));
   TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                          hbm_buf->ToLiteralSync());
+                          hbm_buf->ToLiteral().Await());
   EXPECT_THAT(literal->data<float>(), ElementsAreArray(float_data));
 }
 
@@ -2603,10 +2613,12 @@ TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
       tensorflow::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
   size_t dma_size = 1024;
   size_t alignment = 4096;
-  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
   auto host_dma_ptr_cleanup =
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
-        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
@@ -2641,10 +2653,12 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
-  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
   auto host_dma_ptr_cleanup =
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
-        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
 
@@ -2660,7 +2674,7 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
       0, host_dma_ptr, 0, size, true, []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteral().Await());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
@@ -2694,8 +2708,10 @@ TEST(StreamExecutorGpuClientTest, RawBuffer) {
 
   std::vector<int32_t> data2(256);
   absl::c_iota(data2, 47);
-  auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
-  auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
+  auto* dst1 =
+      tsl::port::AlignedMalloc(1024, static_cast<std::align_val_t>(1024));
+  auto* dst2 =
+      tsl::port::AlignedMalloc(1024, static_cast<std::align_val_t>(1024));
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
   TF_EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
   TF_EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
@@ -2753,10 +2769,12 @@ ENTRY main.5 {
 
   size_t dma_size = 4 * 1024;
   size_t alignment = 1024;
-  auto host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  auto host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
   auto host_dma_ptr_deleter =
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
-        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
       });
   TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
   memset(host_dma_ptr, 0, dma_size);
@@ -2804,7 +2822,7 @@ ENTRY main.5 {
   std::vector<int32_t> expected;
   std::vector<int32_t> actual;
   for (int32_t i = 0; i < static_cast<int32_t>(res_lst.size()); ++i) {
-    TF_ASSERT_OK_AND_ASSIGN(auto lit, res_lst[i]->ToLiteralSync());
+    TF_ASSERT_OK_AND_ASSIGN(auto lit, res_lst[i]->ToLiteral().Await());
     expected.push_back(i);
     actual.push_back(lit->data<int32_t>()[0]);
   }
@@ -2885,7 +2903,7 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
           raw_buffer));
   promise->Set(std::move(definition_event));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto new_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto new_literal, buffer->ToLiteral().Await());
   ASSERT_EQ(literal, *new_literal);
 }
 
@@ -3203,7 +3221,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
       LOG(INFO) << log_prefix << ": receive " << i << " completed";
 
       TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> recv_literal,
-                          receive_buffers[i]->ToLiteralSync());
+                          receive_buffers[i]->ToLiteral().Await());
 
       EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, *recv_literal));
       LOG(INFO) << log_prefix << ": verification of receive " << i

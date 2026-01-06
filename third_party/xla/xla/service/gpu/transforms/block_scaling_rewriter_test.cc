@@ -21,17 +21,19 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-using BlockScalingRewriterTest = HloTestBase;
+using BlockScalingRewriterTest = HloHardwareIndependentTestBase;
 
 TEST_F(BlockScalingRewriterTest, ExpandQuantizeCustomCall) {
   constexpr absl::string_view hlo_string = R"(
@@ -257,40 +259,6 @@ ENTRY main {
   CHECK-SAME: lhs_batch_dims={0}, lhs_contracting_dims={2}
   CHECK-SAME: rhs_batch_dims={0}, rhs_contracting_dims={2}
 })");
-}
-
-TEST_F(BlockScalingRewriterTest, QuantizeDequantizeCompare) {
-  constexpr absl::string_view hlo_test = R"(
-HloModule test
-ENTRY main {
-  %input = f32[256,256] parameter(0)
-  %quantized = (f8e4m3fn[256,256], f8e5m2[256,16]) custom-call(%input),
-      custom_call_target="__op$quantize"
-  %values = f8e4m3fn[256,256] get-tuple-element(%quantized), index=0
-  %scales = f8e5m2[256,16] get-tuple-element(%quantized), index=1
-  ROOT %dequantized = f32[256,256] custom-call(%values, %scales),
-      custom_call_target="__op$dequantize"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto test_module,
-                          ParseAndReturnUnverifiedModule(hlo_test));
-
-  BlockScalingRewriter pass(se::dnn::VersionInfo{});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto changed, pass.Run(test_module.get(), /*execution_threads=*/{}));
-  EXPECT_TRUE(changed);
-
-  constexpr absl::string_view hlo_reference = R"(
-HloModule reference
-ENTRY main {
-  ROOT %input = f32[256,256] parameter(0)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto reference_module,
-                          ParseAndReturnUnverifiedModule(hlo_reference));
-
-  EXPECT_TRUE(RunAndCompareTwoModules(std::move(test_module),
-                                      std::move(reference_module),
-                                      ErrorSpec(/*aabs=*/0.01, /*arel=*/0.07),
-                                      /*run_hlo_passes=*/false));
 }
 
 TEST_F(BlockScalingRewriterTest, CudnnScaledDotSimple) {
