@@ -134,7 +134,7 @@ TEST(CustomCallThunkTest, SimpleCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
                                           target, {}, {}, ""));
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr);
@@ -154,7 +154,7 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   // Setup the additional streams.
   Thunk::ExecutionStreamIdMap additional_compute_streams = {};
   additional_compute_streams[ExecutionStreamId(1)] = extra_stream.get();
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr, additional_compute_streams);
@@ -206,7 +206,7 @@ TEST(CustomCallThunkTest, ResolvesFFICustomCall) {
           /*called_computation=*/nullptr,
           /*platform_name=*/executor->GetPlatform()->Name()));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations empty_unused_allocations({}, 0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), empty_unused_allocations,
@@ -248,7 +248,7 @@ TEST(CustomCallThunkTest, ResolvesLegacyCustomCall) {
           CustomCallApiVersion::API_VERSION_STATUS_RETURNING,
           /*platform_name=*/executor->GetPlatform()->Name()));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations empty_unused_allocations({}, 0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), empty_unused_allocations,
@@ -298,7 +298,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   CollectiveCliqueRequests clique_requests;
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({}, 0, &allocator);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
                                       &multimem_registry, executor,
@@ -362,7 +362,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
   CollectiveCliqueRequests clique_requests;
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({}, 0, &allocator);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
                                       &multimem_registry, executor,
@@ -392,7 +392,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutExecute) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                           executor->CreateStream());
   CustomCallThunk::OwnedHandlerBundle bundle;  // all handlers null
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr);
@@ -486,7 +486,7 @@ TEST(CustomCallThunkTest, ProtoConversion) {
       CustomCallThunk::FromProto(Thunk::ThunkInfo(), proto.custom_call_thunk(),
                                  allocations, &hlo_module, kTestPlatformName));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations device_allocations(
       {stream_executor::DeviceAddressBase(
            absl::bit_cast<void*>(static_cast<intptr_t>(0xDEADBEEF)), 1024),
@@ -619,7 +619,7 @@ TEST(CustomCallThunkTest, LegacyCustomCallRoundTrip) {
                                  /*hlo_module=*/nullptr,
                                  executor->GetPlatform()->Name()));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations empty_unused_allocations({}, 0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), empty_unused_allocations,
