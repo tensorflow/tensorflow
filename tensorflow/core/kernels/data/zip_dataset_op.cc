@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/zip_dataset_op.h"
 
-#include <functional>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
