@@ -329,14 +329,32 @@ xla_cc_test(
     srcs = ["block_scaling_rewriter_test.cc"],
     deps = [
         ":block_scaling_rewriter",
-        "//xla:error_spec",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
-        "//xla/tests:hlo_test_base",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/stream_executor:dnn",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "block_scaling_rewriter_execution_test",
+    srcs = ["block_scaling_rewriter_execution_test.cc"],
+    backends = ["b200"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        ":block_scaling_rewriter",
+        "//xla:error_spec",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/stream_executor:dnn",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

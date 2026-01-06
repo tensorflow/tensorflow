@@ -209,7 +209,7 @@ struct PJRT_FulfillAliasBufferCallback {
 
 struct PJRT_Event {
   xla::Future<> future;
-  xla::Future<>::Promise promise;
+  xla::Promise<> promise;
 };
 
 struct PJRT_SerializedExecutable {

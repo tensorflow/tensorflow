@@ -403,7 +403,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   }
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
-                      result_buffers[0]->ToLiteralSync());
+                      result_buffers[0]->ToLiteral().Await());
 
   if (test_case == "collective_permute") {
     switch (data_type) {
