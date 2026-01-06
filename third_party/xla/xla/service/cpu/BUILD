@@ -455,6 +455,7 @@ xla_test(
 xla_cc_test(
     name = "cpu_compiler_internals_test",
     srcs = ["cpu_compiler_internals_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_compiler_pure",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitter_config",
@@ -480,6 +481,8 @@ xla_test(
     backends = [
         "cpu",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":cpu_aot_compilation_result",
         ":test_header_helper",
