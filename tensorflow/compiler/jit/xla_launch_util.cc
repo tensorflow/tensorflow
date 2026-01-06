@@ -155,7 +155,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
                                          se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
-  xla::MaybeOwningDeviceMemory* in_buffer =
+  xla::MaybeOwningDeviceAddress* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
     // Here we pass ownership of the buffer to execution_input without releasing

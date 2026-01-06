@@ -177,7 +177,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   }
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
