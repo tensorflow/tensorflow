@@ -53,7 +53,8 @@ def preload_check():
             "environment variable. You may install these DLLs by downloading "
             '"Microsoft C++ Redistributable for Visual Studio 2015, 2017 and '
             '2019" for your platform from this URL: '
-            "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
+            "https://support.microsoft.com/help/2977003/"
+            "the-latest-supported-visual-c-downloads"
             % " or ".join(missing))
   else:
     # Load a library that performs CPU feature guard checking.  Doing this here
