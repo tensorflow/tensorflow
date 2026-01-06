@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -36,6 +37,10 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
+#include "third_party/tensorflow/core/framework/summary.pb.h"
+#include "third_party/tensorflow/core/util/event.pb.h"
+#include "third_party/tensorflow/core/util/events_writer.h"
+#include "tsl/platform/path.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla::gpu {
@@ -57,6 +62,42 @@ bool IsMemoryAllocation(int64_t event_type) {
 
 bool IsMemoryDeallocation(int64_t event_type) {
   return event_type == tsl::profiler::HostEventType::kMemoryDeallocation;
+}
+
+void WriteScalarToEvent(tensorflow::Event* event, const std::string& tag,
+                        double value) {
+  tensorflow::Summary::Value* v = event->mutable_summary()->add_value();
+  v->set_tag(tag);
+  v->set_simple_value(static_cast<float>(value));
+}
+
+void WriteTensorboardStats(absl::string_view output_dir,
+                           const std::optional<GpuDeviceStats>& gpu_stats,
+                           const std::optional<CpuStats>& cpu_stats) {
+  std::string file_prefix = tsl::io::JoinPath(output_dir, "events");
+  tensorflow::EventsWriter writer(file_prefix);
+  if (!writer.Init().ok()) {
+    LOG(ERROR) << "Failed to initialize EventsWriter for " << file_prefix;
+    return;
+  }
+
+  tensorflow::Event event;
+  event.set_wall_time(static_cast<double>(tsl::Env::Default()->NowMicros()) /
+                      1e6);
+
+  if (gpu_stats.has_value()) {
+    WriteScalarToEvent(&event, "Device Time (us)", gpu_stats->device_time_us);
+    WriteScalarToEvent(&event, "Device Memcpy Time (us)",
+                       gpu_stats->device_memcpy_time_us);
+    WriteScalarToEvent(&event, "Peak Memory (bytes)",
+                       gpu_stats->peak_memory_usage_bytes);
+  }
+  if (cpu_stats.has_value()) {
+    WriteScalarToEvent(&event, "CPU Time (us)", cpu_stats->cpu_time_us);
+    WriteScalarToEvent(&event, "Wall Time (us)", cpu_stats->wall_time_us);
+  }
+
+  writer.WriteEvent(event);
 }
 
 }  // namespace
@@ -272,6 +313,7 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
 
   LOG(INFO) << "Successfully parsed XSpace proto.";
 
+  const char* tb_output_dir = std::getenv("TENSORBOARD_OUTPUT_DIR");
   // Any change in the format of the output needs to reflect in
   // .github/workflows/benchmarks/run_benchmark.sh
   if (device_type == "GPU") {
@@ -287,6 +329,9 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
                                  stats->device_memcpy_time_us)
               << absl::StrFormat("Peak Memory: %d bytes\n",
                                  stats->peak_memory_usage_bytes);
+    if (tb_output_dir != nullptr) {
+      WriteTensorboardStats(tb_output_dir, *stats, std::nullopt);
+    }
   } else if (device_type == "CPU") {
     absl::StatusOr<CpuStats> cpu_stats = CalculateCpuStats(xspace_proto);
     if (!cpu_stats.ok()) {
@@ -296,6 +341,9 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
     std::cout << absl::StrFormat("CPU Time: %.2f us\n", cpu_stats->cpu_time_us)
               << absl::StrFormat("Wall Time: %.2f us\n",
                                  cpu_stats->wall_time_us);
+    if (tb_output_dir != nullptr) {
+      WriteTensorboardStats(tb_output_dir, std::nullopt, *cpu_stats);
+    }
   } else {
     return absl::InvalidArgumentError("Device type must be GPU or CPU.");
   }
