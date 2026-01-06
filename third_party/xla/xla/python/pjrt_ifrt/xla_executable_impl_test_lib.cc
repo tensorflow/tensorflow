@@ -831,10 +831,12 @@ TEST(ExecutableTest, ExecutableSerialization) {
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
-  TF_ASSERT_OK_AND_ASSIGN(input_arrays.emplace_back(),
-                          client->AssembleArrayFromSingleDeviceArrays(
-                              shape, input1_sharding, absl::MakeSpan(shards),
-                              xla::ifrt::ArrayCopySemantics::kDonateInput));
+  TF_ASSERT_OK_AND_ASSIGN(
+      input_arrays.emplace_back(),
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, shape, input1_sharding, absl::MakeSpan(shards),
+          xla::ifrt::ArrayCopySemantics::kDonateInput,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   // Input 2 : [0, 1, 2, 3, 4, 5] replicated on device 0 and 1.
   xla::ifrt::ShardingRef input2_sharding =
