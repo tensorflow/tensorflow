@@ -57,7 +57,7 @@ class LocalService : public Service {
   // Same as CompileExecutables() above, but return AotCompilationResult objects
   // (instead of Executable objects), which can be persisted to later load
   // Executable objects.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAotResults(const XlaComputation& computation,
                     const absl::Span<const Shape* const> argument_layouts,
                     const ExecutableBuildOptions& build_options);

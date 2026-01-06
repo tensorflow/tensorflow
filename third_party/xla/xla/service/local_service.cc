@@ -122,7 +122,7 @@ LocalService::CompileExecutables(
   }
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 LocalService::CompileAotResults(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,

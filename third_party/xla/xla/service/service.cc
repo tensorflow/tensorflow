@@ -290,7 +290,7 @@ Service::BuildExecutables(const HloModuleProto* module_proto,
   return std::move(executables);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 Service::BuildAotResults(
     const HloModuleProto* module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -311,7 +311,7 @@ Service::BuildAotResults(
   aot_options.set_run_backend_only(run_backend_only);
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
   return std::move(aot_results);
 }

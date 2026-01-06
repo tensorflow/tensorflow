@@ -304,13 +304,11 @@ class Service {
   // Same as BuildExecutable() above, but builds a list of
   // AotCompilationResult(s), which can be persisted to later load Executable
   // objects.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  BuildAotResults(const HloModuleProto* module_proto,
-                  std::unique_ptr<HloModuleConfig> module_config,
-                  Backend* backend,
-                  std::vector<std::vector<se::StreamExecutor*>> executors,
-                  const Compiler::CompileOptions& options,
-                  bool run_backend_only = false);
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>> BuildAotResults(
+      const HloModuleProto* module_proto,
+      std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+      std::vector<std::vector<se::StreamExecutor*>> executors,
+      const Compiler::CompileOptions& options, bool run_backend_only = false);
 
   // Runs the given executable with the given arguments and register the result
   // in the allocation tracker. The handle of the result from the tracker is
