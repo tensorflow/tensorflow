@@ -24,8 +24,8 @@ TpuFingerprintLookup* TpuFingerprintLookup::Create() {
   return new TpuFingerprintLookup();
 }
 
-void TpuFingerprintLookup::RegisterKeyAndIntermediatePair(uint64 key,
-                                                          uint64 intermediate) {
+void TpuFingerprintLookup::RegisterKeyAndIntermediatePair(
+    uint64_t key, uint64_t intermediate) {
   absl::MutexLock lock(mu_);
   auto [it, emplaced] = intermediate_to_key_.try_emplace(intermediate, key);
   if (it->second != key) {
@@ -35,8 +35,8 @@ void TpuFingerprintLookup::RegisterKeyAndIntermediatePair(uint64 key,
   }
 }
 
-bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(uint64 intermediate,
-                                                            std::string value) {
+bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(
+    uint64_t intermediate, std::string value) {
   absl::MutexLock lock(mu_);
   auto it = intermediate_to_key_.find(intermediate);
   if (it == intermediate_to_key_.end()) {
@@ -44,7 +44,7 @@ bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(uint64 intermediate,
             << "). A RegisterKeyAndIntermediatePair must precedes.";
     return false;
   } else {
-    uint64 key = it->second;
+    uint64_t key = it->second;
     bool is_successful = false;
     VLOG(2) << "registering key (" << key << ") with value: " << value;
     auto it = key_to_value_.find(key);
@@ -82,7 +82,7 @@ bool TpuFingerprintLookup::RegisterIntermediateAndValuePair(uint64 intermediate,
   }
 }
 
-std::optional<absl::string_view> TpuFingerprintLookup::Lookup(uint64 key) {
+std::optional<absl::string_view> TpuFingerprintLookup::Lookup(uint64_t key) {
   absl::MutexLock lock(mu_);
   auto it = key_to_value_.find(key);
   if (it == key_to_value_.end()) {
