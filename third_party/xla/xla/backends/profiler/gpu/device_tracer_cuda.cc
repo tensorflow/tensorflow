@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/util/env_var.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
