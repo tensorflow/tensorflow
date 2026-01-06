@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -30,7 +29,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/nullability.h"
@@ -103,7 +101,6 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
-#include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
@@ -119,7 +116,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/shape.h"
-#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -1082,24 +1078,6 @@ static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
   return avs;
 }
 
-static std::vector<Shape> GetParameterShapes(const ComputationLayout& layout) {
-  // For now, TPU programs compiled with multiple arguments cannot use tuples
-  // for any of their arguments, so we can assume that a tuple can only arise
-  // when there is a single argument.
-  std::vector<Shape> shapes;
-  if (layout.parameter_count() == 1 && layout.parameter_shape(0).IsTuple()) {
-    shapes.reserve(layout.parameter_shape(0).tuple_shapes().size());
-    absl::c_copy(layout.parameter_shape(0).tuple_shapes(),
-                 std::back_inserter(shapes));
-  } else {
-    shapes.reserve(layout.parameter_count());
-    for (const ShapeLayout& sl : layout.parameter_layouts()) {
-      shapes.push_back(sl.shape());
-    }
-  }
-  return shapes;
-}
-
 PjRtCpuExecutable::PjRtCpuExecutable(
     int num_replicas, int num_partitions,
     std::shared_ptr<DeviceAssignment> device_assignment,
@@ -1116,8 +1094,6 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
       compile_options_(std::move(compile_options)),
       cpu_executable_(std::move(cpu_executable)),
-      parameter_device_shapes_(GetParameterShapes(
-          cpu_executable_->module().entry_computation_layout())),
       result_buffer_indices_(std::move(result_buffer_indices)),
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
@@ -1435,16 +1411,88 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   auto returned_future_can_be_set_event =
       tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
-  bool is_error = false;
   absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
-  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4> input_buffers;
-  CpuTrackedDeviceEventSet input_deps(argument_handles.size());
-  TF_RETURN_IF_ERROR(client()->PrepareArguments(
-      options, argument_handles, parameters_that_must_be_donated_, input_deps,
-      input_deps, input_buffers, device_buffers, device, replica, partition,
-      parameter_device_shapes_, is_error));
+  device_buffers.reserve(argument_handles.size());
+  // To avoid clobbering inputs, we must ensure that
+  //   `extra_deps` = inputs' definition events + donated inputs' usage events.
+  // This also ensures that the returned `execute_event` dominates all inputs'
+  // events, and thus output buffer only need to contain `execute_event` as the
+  // single definition event.
+  std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps;
+  input_deps.reserve(argument_handles.size());
 
-  CHECK(!is_error) << "CpuClient does not support is_error.";
+  auto donate_it = parameters_that_must_be_donated_.begin();
+
+  // State for `TestBufferDonationClashes`.
+  absl::flat_hash_map<const void*, std::pair<bool, int>> donation_clashes;
+  donation_clashes.reserve(argument_handles.size());
+  for (int i = 0; i < argument_handles.size(); ++i) {
+    PjRtBuffer* handle = argument_handles[i];
+    auto* cpu_buffer = tsl::down_cast<CommonPjRtBuffer*>(handle);
+    if (cpu_buffer->device() != device) {
+      return InvalidArgument(
+          "Buffer passed to Execute() as argument %d to replica %d is on "
+          "device %s, but replica is assigned to device %s.",
+          i, replica, cpu_buffer->device()->DebugString(),
+          device->DebugString());
+    }
+
+    TrackedCpuDeviceBuffer* tracked_buffer;
+    auto get_buffer = [&](int i) -> absl::Status {
+      bool must_donate = donate_it != parameters_that_must_be_donated_.end() &&
+                         *donate_it == i &&
+                         !options.non_donatable_input_indices.contains(i);
+      TF_RETURN_IF_ERROR(TestBufferDonationClashes(
+          cpu_buffer, donation_clashes, must_donate, i, replica, partition));
+      if (must_donate) {
+        ++donate_it;
+        CommonPjRtBuffer::ScopedHold donation_transaction =
+            cpu_buffer->GetBufferWithHold(
+                CommonPjRtBuffer::ScopedHold::kDonation);
+        // On CPU, we allow donation to succeed by introducing a copy. This was
+        // added when enabling buffer donation on CPU since it turned out that a
+        // number of users were holding external references to buffers that were
+        // supposed to be donated. We may wish to tighten those semantics in the
+        // future.
+        if (donation_transaction.ok()) {
+          tracked_buffer = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(
+              donation_transaction.buffer());
+          // After acquiring the buffer for donation, we retrieve the dependent
+          // usage events. Note that we don't need any locking here as
+          // AcquireDonation() is supposed to synchronize with other usages.
+          for (const auto& ev : tracked_buffer->UsageEvents()) {
+            if (!ev.IsAvailable()) {
+              input_deps.push_back(ev.CopyRCRef());
+            }
+          }
+          device_buffers.push_back(std::move(donation_transaction));
+          return absl::OkStatus();
+        }
+      }
+      {
+        CommonPjRtBuffer::ScopedHold usage_transaction =
+            cpu_buffer->GetBufferWithHold(CommonPjRtBuffer::ScopedHold::kUsage);
+        if (!usage_transaction.ok()) {
+          return InvalidArgument(
+              "Invalid buffer passed: buffer has been deleted or donated.");
+        }
+        tracked_buffer = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(
+            usage_transaction.buffer());
+        device_buffers.push_back(std::move(usage_transaction));
+      }
+      return absl::OkStatus();
+    };
+    TF_RETURN_IF_ERROR(get_buffer(i));
+
+    // Definition events are never modified after buffer construction. If they
+    // are available and have no error, they can be skipped in input deps.
+    // In contrast, already known errors in the input are taken as deps so that
+    // they can poison output buffers.
+    const auto& definition_event = tracked_buffer->definition_event();
+    if (!definition_event.IsAvailable() || definition_event.IsError()) {
+      input_deps.push_back(definition_event.CopyRCRef());
+    }
+  }
   TF_RETURN_IF_ERROR(
       CheckBufferCompatibilities(device_buffers, argument_handles));
 
@@ -1535,7 +1583,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   // Add additional dependency conditioned on whether this is a collective
   // launch or not.
   if (is_a_collective_launch) {
-    input_deps.AddEvent(std::move(last_collective_launch_event.first));
+    input_deps.push_back(std::move(last_collective_launch_event.first));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
@@ -1548,7 +1596,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           [last_enqueue_done_event = last_enqueue_done_event.CopyRef()]() {
             last_enqueue_done_event.emplace();
           });
-      input_deps.AddEvent(std::move(last_enqueue_done_event));
+      input_deps.push_back(std::move(last_enqueue_done_event));
     }
   }
   if (options.context != nullptr) {
@@ -1567,7 +1615,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   }
 
   absl::Status inline_result_status;
-  if (input_deps.events().empty() && execute_inline) {
+  if (input_deps.empty() && execute_inline) {
     // Synchronously call generated function or thunk sequence.
 
     // Set denormal and rounding behavior to match the default TF
@@ -1673,27 +1721,26 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         stream_event_map->Clear(execution_stream_id, self);
       });
     }
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_avs_ref =
-        input_deps.events();
+    std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
+        CopyAsyncValues(input_deps);
     CpuScopedAsyncExecution scoped_async_execution =
         device->async_execution_tracker()->NewAsyncExecution(
             run_id.ToInt(), std::move(ready_on_exit).Release());
     client()->async_work_runner()->ScheduleWhenReady(
-        events_avs_ref,
-        [cpu_executable, buffer_alloc = std::move(buffer_alloc),
-         buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
-         buffer_table = std::move(buffer_table),
-         run_options = std::move(run_options),
-         device_assignment = std::move(device_assignment),
-         cpu_run_options = std::move(cpu_run_options),
-         compute_reservation = std::move(compute_reservation),
-         tuple_index_table = std::move(tuple_index_table),
-         scoped_async_execution = std::move(scoped_async_execution),
-         input_deps_avs = std::move(input_deps).Consume(),
-         allocator = client()->allocator(),
-         eigen_device = client()->eigen_intraop_device(),
-         returned_future_can_be_set_event =
-             returned_future_can_be_set_event.CopyRef()]() mutable {
+        input_deps, [cpu_executable, buffer_alloc = std::move(buffer_alloc),
+                     buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
+                     buffer_table = std::move(buffer_table),
+                     run_options = std::move(run_options),
+                     device_assignment = std::move(device_assignment),
+                     cpu_run_options = std::move(cpu_run_options),
+                     compute_reservation = std::move(compute_reservation),
+                     tuple_index_table = std::move(tuple_index_table),
+                     scoped_async_execution = std::move(scoped_async_execution),
+                     input_deps_avs = std::move(input_deps_avs_copy),
+                     allocator = client()->allocator(),
+                     eigen_device = client()->eigen_intraop_device(),
+                     returned_future_can_be_set_event =
+                         returned_future_can_be_set_event.CopyRef()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,
           // when it is ready, all input buffers must have been allocated. So,
           // we are safe to allocate and copy memory here. Since `execute_event`

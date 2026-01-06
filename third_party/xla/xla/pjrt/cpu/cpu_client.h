@@ -474,8 +474,6 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
 
   std::shared_ptr<Executable> cpu_executable_;
 
-  std::vector<Shape> parameter_device_shapes_;
-
   // Caching `result_buffer_indices_` to avoid lookup
   // HLO dataflow analysis data structures in program execution critical path.
 
