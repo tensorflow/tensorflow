@@ -197,14 +197,14 @@ struct InputBuffers {
     xla::ShapedBuffer shaped_buffer(std::move(host_shape), buffers.shape(),
                                     device_ordinal);
     shaped_buffer.set_buffers(buffers.Map<se::DeviceMemoryBase>(
-        [](const xla::MaybeOwningDeviceMemory& buffer) {
+        [](const xla::MaybeOwningDeviceAddress& buffer) {
           return buffer.AsDeviceAddress();
         }));
     return shaped_buffer;
   }
 
   // Describes the buffer tree.
-  xla::ShapeTree<xla::MaybeOwningDeviceMemory> buffers;
+  xla::ShapeTree<xla::MaybeOwningDeviceAddress> buffers;
 
   // Information about resource variables passed directly to TPUExecute.
   std::vector<VariableInfo> variables;
