@@ -16,7 +16,7 @@
 
 import ctypes
 # importing hashlib to avoid a linkage issue. refer b/372709714
-import hashlib
+import hashlib  # pylint: disable=unused-import
 import sys
 import traceback
 
@@ -24,7 +24,7 @@ import traceback
 # TODO(vam): Override boringssl static linking by explicitly importing openssl
 # Please refer to b/304394983 for more information.
 try:
-  import ssl
+  import ssl  # pylint: disable=unused-import
 except ImportError:
   print(f'{traceback.format_exc()}')
   print('\nWarning: Failed to load ssl module. Continuing without ssl support.')
@@ -64,7 +64,7 @@ try:
 
   # Python2.7 does not have a ModuleNotFoundError.
   try:
-    ModuleNotFoundError
+    ModuleNotFoundError  # pylint: disable=used-before-assignment
   except NameError:
     ModuleNotFoundError = ImportError  # pylint: disable=redefined-builtin
 

@@ -83,6 +83,24 @@ TEST(CApiSimple, SchemaVersion) {
   EXPECT_EQ(TfLiteSchemaVersion(), 3);
 }
 
+TEST(CApiSimple, LogSeverity) {
+  const TfLiteLogSeverity old_severity =
+      TfLiteLoggerOptionsGetMinimumLogSeverity();
+
+  // Set to VERBOSE
+  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(TFLITE_LOG_VERBOSE),
+            old_severity);
+  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), TFLITE_LOG_VERBOSE);
+
+  // Set to ERROR
+  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(TFLITE_LOG_ERROR),
+            TFLITE_LOG_VERBOSE);
+  EXPECT_EQ(TfLiteLoggerOptionsGetMinimumLogSeverity(), TFLITE_LOG_ERROR);
+
+  // Restore
+  TfLiteLoggerOptionsSetMinimumLogSeverity(old_severity);
+}
+
 TEST(CApiSimple, Smoke) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");

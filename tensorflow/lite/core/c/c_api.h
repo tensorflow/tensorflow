@@ -233,6 +233,34 @@ TFL_CAPI_EXPORT extern TfLiteInterpreterOptions* TfLiteInterpreterOptionsCopy(
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
     TfLiteInterpreterOptions* options);
 
+// --------------------------------------------------------------------------
+/// The severity level of a TFLite log message.
+///
+/// \warning This is an experimental API and subject to change.
+typedef enum TfLiteLogSeverity {
+  /// Default log severity level.
+  TFLITE_LOG_VERBOSE = 0,
+  /// Log routine information.
+  TFLITE_LOG_INFO = 1,
+  /// Log warning events that might cause problems.
+  TFLITE_LOG_WARNING = 2,
+  /// Log error events that are likely to cause problems.
+  TFLITE_LOG_ERROR = 3,
+  /// Silence logging
+  TFLITE_LOG_SILENT = 4,
+} TfLiteLogSeverity;
+
+/// Get the minimum severity level for logging. Default is INFO in prod
+/// builds and VERBOSE in debug builds.
+/// Note: Default is always VERBOSE on Android.
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteLogSeverity TfLiteLoggerOptionsGetMinimumLogSeverity();
+
+/// Set the minimum severity level for logging, returning the old severity.
+/// \warning This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteLogSeverity TfLiteLoggerOptionsSetMinimumLogSeverity(
+    TfLiteLogSeverity new_severity);
+
 /// Sets the number of CPU threads to use for the interpreter.
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
     TfLiteInterpreterOptions* options, int32_t num_threads);
