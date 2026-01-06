@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"

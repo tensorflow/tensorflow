@@ -216,10 +216,10 @@ class ThreadLocalRecorder {
   // the originating thread, the bottom 32 bits name the event within a thread.
   // IDs may be reused after 4 billion events on one thread, or 2 billion
   // threads.
-  static std::atomic<int32> thread_counter(1);  // avoid kUntracedActivity
+  static std::atomic<int32_t> thread_counter(1);  // avoid kUntracedActivity
   const thread_local static int32_t thread_id =
       thread_counter.fetch_add(1, std::memory_order_relaxed);
-  thread_local static uint32 per_thread_activity_id = 0;
+  thread_local static uint32_t per_thread_activity_id = 0;
   return static_cast<int64_t>(thread_id) << 32 | per_thread_activity_id++;
 }
 
