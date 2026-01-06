@@ -1,3 +1,6 @@
+#include <memory>
+
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
@@ -44,12 +47,25 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
   const CollectiveConfig& config() const override { return config_; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
-  static const char* GetHloOpName() { return "collective-broadcast-start"; }
+  static absl::string_view GetHloOpName() {
+    return "collective-broadcast-start";
+  }
 
   CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
                                 const HloCollectiveBroadcastInstruction* instr,
                                 std::vector<Buffer> buffers,
                                 bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastStartThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                                std::shared_ptr<AsyncEvents> async_events,
+                                std::vector<Buffer> buffers);
+
+  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastStartThunk>>
+  FromProto(ThunkInfo thunk_info,
+            const CollectiveBroadcastStartThunkProto& thunk_proto,
+            absl::Span<const BufferAllocation> buffer_allocations,
+            CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,

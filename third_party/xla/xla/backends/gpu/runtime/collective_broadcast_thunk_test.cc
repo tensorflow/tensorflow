@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -55,6 +57,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
+using ::tsl::proto_testing::EqualsProto;
 
 class GpuCollectiveBroadcastTest : public HloTestBase {};
 
@@ -206,6 +209,44 @@ ENTRY test_computation {
   EXPECT_THAT(kinds, ElementsAre(Kind::kReplicaId, Kind::kKernel,
                                  Kind::kCollectiveBroadcastStart,
                                  Kind::kCollectiveBroadcastDone));
+}
+
+TEST(CollectiveThunkTest, ProtoRoundTrip) {
+  ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info {
+          profile_annotation: "partition_id_profile_annotation"
+          execution_stream_id: 2
+        }
+        collective_broadcast_start_thunk {
+          async_events_unique_id: 3
+          collective_config {}
+        }
+      )pb");
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
+  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
+      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
+          proto.thunk_info().execution_stream_id())};
+
+  CollectiveThunk::AsyncEventsMap async_events_map;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveBroadcastStartThunk> thunk,
+                       CollectiveBroadcastStartThunk::FromProto(
+                           thunk_info, proto.collective_broadcast_start_thunk(),
+                           buffer_allocations, async_events_map));
+  ASSERT_NE(thunk->async_events(), nullptr);
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+
+  // Ids are unique and expected to differ.
+  proto.mutable_collective_broadcast_start_thunk()->set_async_events_unique_id(
+      round_trip_proto.collective_broadcast_start_thunk()
+          .async_events_unique_id());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace
