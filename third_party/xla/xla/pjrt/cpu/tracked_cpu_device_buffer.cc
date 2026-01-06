@@ -328,4 +328,22 @@ absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
   return absl::OkStatus();
 }
 
+bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
+    PjRtDeviceEventSet& events) {
+  if (!definition_event_.IsAvailable() || definition_event_.IsError()) {
+    tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+        definition_event_.CopyRCRef());
+  }
+  return false;
+}
+
+void TrackedCpuDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
+  for (const auto& ev : usage_events_) {
+    if (!ev.IsAvailable()) {
+      tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+          ev.CopyRCRef());
+    }
+  }
+}
+
 }  // namespace xla

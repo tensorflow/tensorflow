@@ -171,7 +171,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
                                     /*options=*/{});
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(),
-              HasSubstr("buffer has been deleted or donated."));
+              HasSubstr("Donation requested for invalid buffer"));
 }
 
 TEST(PjRtCpuClientTest, RuntimeDonationDenial) {
