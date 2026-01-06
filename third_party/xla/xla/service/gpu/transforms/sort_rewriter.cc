@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>

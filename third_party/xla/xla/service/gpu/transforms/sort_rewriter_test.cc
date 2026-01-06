@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
