@@ -92,6 +92,28 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
   const char* callee_method_;
 };
 
+class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
+ public:
+  explicit CpuTrackedDeviceEventSet(size_t reservation) {
+    events_.reserve(reservation);
+  }
+
+  void AddEvent(tsl::RCReference<tsl::AsyncValue> event) {
+    events_.push_back(std::move(event));
+  }
+
+  absl::Span<const tsl::RCReference<tsl::AsyncValue>> events() const {
+    return events_;
+  }
+
+  std::vector<tsl::RCReference<tsl::AsyncValue>> Consume() && {
+    return std::move(events_);
+  }
+
+ private:
+  std::vector<tsl::RCReference<tsl::AsyncValue>> events_;
+};
+
 class CpuRawBuffer : public CommonPjRtRawBuffer {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,

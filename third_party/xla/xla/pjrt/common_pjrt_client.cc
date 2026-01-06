@@ -440,7 +440,8 @@ absl::Status CommonPjRtClient::PrepareArguments(
         input_buffers,
     absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
     PjRtDevice* device, int replica, int partition,
-    absl::Span<const Shape> parameter_device_shapes, bool& is_error) {
+    absl::Span<const Shape> parameter_device_shapes, bool& is_error,
+    bool allow_fallback_for_donation) {
   input_buffers.reserve(argument_handles.size());
   device_buffers.reserve(argument_handles.size());
   auto donate_it = donated_params.begin();
@@ -464,6 +465,9 @@ absl::Status CommonPjRtClient::PrepareArguments(
       }
       const bool donated_param =
           donate_it != donated_params.end() && *donate_it == i;
+      if (donated_param) {
+        ++donate_it;
+      }
       const bool donation_denied_at_runtime =
           options.non_donatable_input_indices.contains(i);
       if (donated_param && donation_denied_at_runtime &&
@@ -475,19 +479,28 @@ absl::Status CommonPjRtClient::PrepareArguments(
             "`ExecuteOptions::non_donatable_input_indices`");
       }
       bool must_donate = donated_param && !donation_denied_at_runtime;
-      if (must_donate) {
-        ++donate_it;
-        if (VLOG_IS_ON(1)) {
-          TF_ASSIGN_OR_RETURN(size_t on_device_size,
-                              tfrt_buffer->GetOnDeviceSizeInBytes());
-          donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
-        }
-      }
       TF_RETURN_IF_ERROR(TestBufferDonationClashes(
           tfrt_buffer, donation_clashes, must_donate, i, replica, partition));
-      device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
-          must_donate ? CommonPjRtBuffer::ScopedHold::kDonation
-                      : CommonPjRtBuffer::ScopedHold::kUsage));
+      if (allow_fallback_for_donation && must_donate) {
+        // On CPU, we allow donation to succeed by introducing a copy. This was
+        // added when enabling buffer donation on CPU since it turned out that a
+        // number of users were holding external references to buffers that were
+        // supposed to be donated. We may wish to tighten those semantics in the
+        // future.
+        device_buffers.emplace_back([&]() -> CommonPjRtBuffer::ScopedHold {
+          auto result = tfrt_buffer->GetBufferWithHold(
+              CommonPjRtBuffer::ScopedHold::kDonation);
+          if (!result.ok()) {
+            return tfrt_buffer->GetBufferWithHold(
+                CommonPjRtBuffer::ScopedHold::kUsage);
+          }
+          return result;
+        }());
+      } else {
+        device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
+            must_donate ? CommonPjRtBuffer::ScopedHold::kDonation
+                        : CommonPjRtBuffer::ScopedHold::kUsage));
+      }
       CommonPjRtBuffer::ScopedHold& hold = device_buffers.back();
       if (!hold.ok()) {
         return InvalidArgument(
@@ -534,7 +547,12 @@ absl::Status CommonPjRtClient::PrepareArguments(
       // mutated. Usage holds on this buffer are excluded during a donation hold
       // so we know that its usage events won't be modified while we are
       // enqueueing, but we ignore any errors from usage events.
-      if (must_donate) {
+      if (hold.type() == CommonPjRtBuffer::ScopedHold::kDonation) {
+        if (VLOG_IS_ON(1)) {
+          TF_ASSIGN_OR_RETURN(size_t on_device_size,
+                              tfrt_buffer->GetOnDeviceSizeInBytes());
+          donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
+        }
         device_buffer->AddUsageEventsToSet(control_deps);
       }
     }

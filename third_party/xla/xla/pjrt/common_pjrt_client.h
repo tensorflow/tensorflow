@@ -253,7 +253,8 @@ class CommonPjRtClient : public PjRtClient {
           input_buffers,
       absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
       PjRtDevice* device, int replica, int partition,
-      absl::Span<const Shape> parameter_device_shapes, bool& is_error);
+      absl::Span<const Shape> parameter_device_shapes, bool& is_error,
+      bool allow_fallback_for_donation = false);
 
   absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
   AllocateOutputBuffersWithInputReuse(
