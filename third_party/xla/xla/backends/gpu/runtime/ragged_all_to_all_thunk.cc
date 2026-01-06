@@ -559,8 +559,8 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   absl::InlinedVector<int64_t*, 8> ragged_metadata_allocs;
   ragged_metadata_allocs.reserve(kNumRaggedMetadataOperands);
   for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-    ragged_metadata_allocs.push_back(
-        reinterpret_cast<int64_t*>(state->host_buffer_allocs[i]->opaque()));
+    ragged_metadata_allocs.push_back(reinterpret_cast<int64_t*>(
+        state->host_buffer_allocs[i]->address().opaque()));
   }
 
   RETURN_IF_ERROR(
