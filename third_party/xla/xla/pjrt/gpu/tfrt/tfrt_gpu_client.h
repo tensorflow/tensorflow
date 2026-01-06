@@ -120,7 +120,7 @@ class TfrtGpuClient final : public PjRtClient {
                 bool should_stage_host_to_device_transfers,
                 bool abort_collectives_on_failure,
                 MaybeOwning<se::DeviceAddressAllocator> allocator,
-                std::shared_ptr<HostMemoryAllocator> host_memory_allocator,
+                HostMemoryAllocator::Factory host_memory_allocator_factory,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<KeyValueStoreInterface> kv_store,
                 std::shared_ptr<const GpuTopology> gpu_topology);
@@ -389,6 +389,7 @@ class TfrtGpuClient final : public PjRtClient {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_TFRT_GPU_CLIENT_H_

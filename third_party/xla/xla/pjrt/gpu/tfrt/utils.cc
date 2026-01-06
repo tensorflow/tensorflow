@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
+#include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -662,8 +663,39 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
 
     // The stream in the allocator will be used during compilation.
     se::Stream* stream = device->stream();
-    TF_ASSIGN_OR_RETURN(auto allocator,
-                        CreateAllocatorForDevice(executor, allocator_config));
+
+    std::unique_ptr<tsl::Allocator> allocator;
+    if ((allocator_config.kind == GpuAllocatorConfig::Kind::kDefault ||
+         allocator_config.kind == GpuAllocatorConfig::Kind::kBFC) &&
+        allocator_config.preallocate) {
+      GpuAllocatorConfig device_allocator_config = allocator_config;
+      // Assert that CUDA alloc/free calls are not made on the caller thread.
+      auto visitor = [](void*, int index, size_t) {
+        TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+      };
+      device_allocator_config.sub_allocator_alloc_visitors.push_back(visitor);
+      device_allocator_config.sub_allocator_free_visitors.push_back(visitor);
+
+      TF_ASSIGN_OR_RETURN(allocator, CreateAllocatorForDevice(
+                                         executor, device_allocator_config));
+
+      // Immediately expand the allocator instead of on the first allocation so
+      // that we can control the thread on which the expansion happens. This
+      // works because the BFC allocator with preallocation expands its pool to
+      // the configured size on first allocation.
+      allocator->DeallocateRaw(
+          allocator->AllocateRaw(tsl::Allocator::kAllocatorAlignment, 1));
+    } else {
+#ifdef PLATFORM_GOOGLE
+      LOG(WARNING)
+          << "TFRT GPU is running without preallocation; this may cause CUDA "
+             "calls to happen inline on the calling thread any time the "
+             "allocator runs out of memory and has to expand synchronously, "
+             "which is problematic if the calling thread is a fiber";
+#endif
+      TF_ASSIGN_OR_RETURN(allocator,
+                          CreateAllocatorForDevice(executor, allocator_config));
+    }
     allocators.emplace_back(
         std::move(allocator), stream,
         /*memory_space=*/static_cast<int>(se::MemoryType::kDevice),
