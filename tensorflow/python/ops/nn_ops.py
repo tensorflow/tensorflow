@@ -4886,9 +4886,10 @@ def max_pool(value,
     The max pooled output tensor.
 
   Note:
-    The gradient of max pooling (arg max) is not translation invariant due to floating
-    point precision limits. Large constant shifts in input values may change the arg max
-    selection when values are very close (within float32 ULP), affecting the backward pass.
+    The gradient of max pooling (arg max) is not translation invariant due to
+    floating point precision limits. Large constant shifts in input values may
+    change the arg max selection when values are very close (within float32
+    ULP), affecting the backward pass.
   """
   value = deprecation.deprecated_argument_lookup("input", input, "value", value)
   with ops.name_scope(name, "MaxPool", [value]) as name:
