@@ -16,8 +16,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -60,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 
 namespace tensorflow {
@@ -369,7 +368,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
 
   TF_ASSIGN_OR_RETURN(auto index_domains,
                       sharding->IndexDomains(
-                          xla::ifrt::Shape(input_tensor.shape().dim_sizes())));
+                          xla::ifrt::Shape(input_tensor.shape().dim_sizes()),
+                          xla::ifrt::SingleDeviceShardSemantics::kAllShards));
 
   TF_ASSIGN_OR_RETURN(int index_domain_replicas,
                       VerifyIndexDomainsAndGetReplicas(
@@ -460,9 +460,11 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
   }
 
   return ifrt_client.AssembleArrayFromSingleDeviceArrays(
+      rearranged_arrays[0]->dtype(),
       xla::ifrt::Shape(input_tensor.shape().dim_sizes()), std::move(sharding),
       absl::MakeSpan(rearranged_arrays),
-      xla::ifrt::ArrayCopySemantics::kDonateInput);
+      xla::ifrt::ArrayCopySemantics::kDonateInput,
+      xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
 }
 
 absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
@@ -539,7 +541,9 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
       device_list, xla::ifrt::MemoryKind(), hlo_sharding);
 
   TF_ASSIGN_OR_RETURN(auto index_domains,
-                      ifrt_sharding->IndexDomains(ToIfrtShape(tensor_shape)));
+                      ifrt_sharding->IndexDomains(
+                          ToIfrtShape(tensor_shape),
+                          xla::ifrt::SingleDeviceShardSemantics::kAllShards));
 
   TF_RETURN_IF_ERROR(VerifyIndexDomainsAndGetReplicas(
                          absl::MakeSpan(index_domains), tensor_shape)

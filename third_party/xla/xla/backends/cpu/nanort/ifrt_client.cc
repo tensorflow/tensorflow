@@ -349,7 +349,10 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     }
 
     // The array is sharded, copy the appropriate sub-arrays.
-    TF_ASSIGN_OR_RETURN(auto index_domains, sharding().IndexDomains(shape()));
+    TF_ASSIGN_OR_RETURN(
+        auto index_domains,
+        sharding().IndexDomains(
+            shape(), xla::ifrt::SingleDeviceShardSemantics::kAllShards));
     TF_RET_CHECK(index_domains.size() == sharding().devices()->size());
     std::vector<tsl::RCReference<NanoArray>> shards;
     shards.reserve(index_domains.size());
@@ -685,7 +688,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
       return shards_[0];
     }
 
-    TF_ASSIGN_OR_RETURN(auto index_domains, sharding->IndexDomains(shape()));
+    TF_ASSIGN_OR_RETURN(
+        auto index_domains,
+        sharding->IndexDomains(
+            shape(), xla::ifrt::SingleDeviceShardSemantics::kAllShards));
     if (ABSL_PREDICT_FALSE(index_domains.size() != shards_.size())) {
       return absl::FailedPreconditionError(
           absl::StrCat("Number of index domains ", index_domains.size(),

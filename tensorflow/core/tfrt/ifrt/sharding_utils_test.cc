@@ -133,9 +133,11 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   TF_ASSERT_OK_AND_ASSIGN(
       assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
+          split_arrays[0]->dtype(),
           ToIfrtShape(GetParam().expected_out_tensor.shape()),
           std::move(ifrt_sharding), absl::MakeSpan(split_arrays),
-          xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
