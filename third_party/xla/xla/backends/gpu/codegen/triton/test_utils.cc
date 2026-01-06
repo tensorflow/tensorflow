@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

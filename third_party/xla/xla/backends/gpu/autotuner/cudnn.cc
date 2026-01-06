@@ -265,7 +265,8 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       GetDNNDataTypeFromPrimitiveType(gpu_conv_config.output_type));
   se::dnn::DnnSupport* dnn = stream_executor->AsDnn();
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSIGN_OR_RETURN(se::Stream * stream,
                       allocator->GetStream(stream_executor->device_ordinal()));
   bool allow_tf32 = absl::c_all_of(
