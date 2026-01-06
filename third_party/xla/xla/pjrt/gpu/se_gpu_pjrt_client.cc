@@ -1491,10 +1491,10 @@ GetStreamExecutorGpuDeviceAllocator(
     TF_ASSIGN_OR_RETURN(
         auto host_allocator,
         GetGpuHostAllocator(ordinal_and_device.second->executor()));
-    allocators.emplace_back(std::move(host_allocator),
-                            ordinal_and_device.second->compute_stream(),
-                            /*memory_space=*/
-                            static_cast<int>(se::MemoryType::kHost));
+    allocators.emplace_back(
+        std::move(host_allocator), ordinal_and_device.second->compute_stream(),
+        /*memory_space=*/
+        static_cast<int>(stream_executor::MemorySpace::kHost));
   }
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
