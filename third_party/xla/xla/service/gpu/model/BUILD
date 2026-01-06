@@ -83,6 +83,7 @@ cc_library(
 xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_interpolator",
         ":sol_gpu_cost_model",
@@ -157,6 +158,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
@@ -295,6 +298,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_hlo_cost_analysis_test",
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profiles",
@@ -827,6 +831,8 @@ xla_test(
     args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla:xla_data_proto_cc",

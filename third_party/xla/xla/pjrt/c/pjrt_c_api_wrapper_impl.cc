@@ -2664,7 +2664,7 @@ PJRT_Error* PJRT_Event_Create(PJRT_Event_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Event_Create", PJRT_Event_Create_Args_STRUCT_SIZE,
       args->struct_size));
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   args->event = new PJRT_Event{std::move(future), std::move(promise)};
   return nullptr;
 }
