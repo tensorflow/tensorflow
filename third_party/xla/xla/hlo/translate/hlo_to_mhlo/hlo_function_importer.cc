@@ -188,12 +188,12 @@ Operation* CreateReturnOp(mlir::OpBuilder& builder, mlir::Location loc,
                           << parent_dialect->getNamespace() << '\n');
   if (llvm::isa<mlir::mhlo::MhloDialect>(parent_dialect)) {
     // Potentially unused, but if future MHLO ops have bodies, will be needed.
-    return builder.create<mlir::mhlo::ReturnOp>(loc, operands);
+    return mlir::mhlo::ReturnOp::create(builder, loc, operands);
   }
   if (llvm::isa<mlir::stablehlo::StablehloDialect>(parent_dialect)) {
-    return builder.create<mlir::stablehlo::ReturnOp>(loc, operands);
+    return mlir::stablehlo::ReturnOp::create(builder, loc, operands);
   }
-  return builder.create<mlir::func::ReturnOp>(loc, operands);
+  return mlir::func::ReturnOp::create(builder, loc, operands);
 }
 
 Operation* WrapInTuple(mlir::OpBuilder* builder, Operation* op) {

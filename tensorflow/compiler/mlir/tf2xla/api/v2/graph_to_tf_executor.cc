@@ -1510,8 +1510,8 @@ absl::Status ImporterBase::Convert(
   builder_ = mlir::OpBuilder(function.getBody());
 
   // Create the graph operation in which we will convert the individual nodes.
-  auto graph = builder_.create<mlir::tf_executor::GraphOp>(
-      function.getLoc(), func_type.getResults());
+  auto graph = mlir::tf_executor::GraphOp::create(builder_, function.getLoc(),
+                                                  func_type.getResults());
   builder_.createBlock(&graph.getBody());
 
   for (const Node* node : ordered_nodes_) {
@@ -1661,11 +1661,11 @@ absl::Status ImporterBase::ConvertFunctionArgAndRets(
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
   builder_.setInsertionPointToEnd(&graph_op.getBody().front());
-  builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
-                                              inst_to_return);
+  mlir::tf_executor::FetchOp::create(builder_, graph_op.getLoc(),
+                                     inst_to_return);
   builder_.setInsertionPointToEnd(bb);
-  builder_.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                        graph_op.getResults());
+  mlir::func::ReturnOp::create(builder_, mlir::UnknownLoc::get(context_),
+                               graph_op.getResults());
 
   func.setAllArgAttrs(
       llvm::to_vector<4>(llvm::map_range(arg_attrs, [&](NamedAttrList& list) {
@@ -1815,15 +1815,15 @@ mlir::Operation* ImporterBase::CreateOperation(
     // Switch and _SwitchN both are in switch class, differentiate based on
     // op name.
     if (node.op_def().name() == "_SwitchN") {
-      return builder_.create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
-                                                           result.attributes);
+      return mlir::tf_executor::SwitchNOp::create(builder_, loc, types,
+                                                  operands, result.attributes);
     }
-    return builder_.create<mlir::tf_executor::SwitchOp>(loc, types, operands,
-                                                        result.attributes);
+    return mlir::tf_executor::SwitchOp::create(builder_, loc, types, operands,
+                                               result.attributes);
   }
   if (node.IsMerge()) {
-    return builder_.create<mlir::tf_executor::MergeOp>(loc, types, operands,
-                                                       result.attributes);
+    return mlir::tf_executor::MergeOp::create(builder_, loc, types, operands,
+                                              result.attributes);
   }
   if (node.IsNextIteration()) {
     // NextIteration is a bit special, we create a pair of operations that are
@@ -1832,31 +1832,30 @@ mlir::Operation* ImporterBase::CreateOperation(
     // the block.
     mlir::OpBuilder builder_at_begin(builder_.getBlock(),
                                      builder_.getBlock()->begin());
-    auto source_op =
-        builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
-            loc, operands[0].getType(), result.attributes);
-    return builder_.create<mlir::tf_executor::NextIterationSinkOp>(
-        loc, source_op.getToken(), operands, result.attributes);
+    auto source_op = mlir::tf_executor::NextIterationSourceOp::create(
+        builder_at_begin, loc, operands[0].getType(), result.attributes);
+    return mlir::tf_executor::NextIterationSinkOp::create(
+        builder_, loc, source_op.getToken(), operands, result.attributes);
   }
   if (node.IsLoopCond()) {
-    return builder_.create<mlir::tf_executor::LoopCondOp>(loc, types, operands,
-                                                          result.attributes);
+    return mlir::tf_executor::LoopCondOp::create(builder_, loc, types, operands,
+                                                 result.attributes);
   }
   if (node.IsEnter()) {
-    return builder_.create<mlir::tf_executor::EnterOp>(loc, types, operands,
-                                                       result.attributes);
+    return mlir::tf_executor::EnterOp::create(builder_, loc, types, operands,
+                                              result.attributes);
   }
   if (node.IsExit()) {
-    return builder_.create<mlir::tf_executor::ExitOp>(loc, types, operands,
-                                                      result.attributes);
+    return mlir::tf_executor::ExitOp::create(builder_, loc, types, operands,
+                                             result.attributes);
   }
   if (node.IsControlTrigger()) {
-    return builder_.create<mlir::tf_executor::ControlTriggerOp>(
-        loc, mlir::ValueRange(operands), result.attributes);
+    return mlir::tf_executor::ControlTriggerOp::create(
+        builder_, loc, mlir::ValueRange(operands), result.attributes);
   }
   // Regular TensorFlow operation are wrapped in a tf_executor.island.
-  auto island = builder_.create<mlir::tf_executor::IslandOp>(
-      result.location, types, control_operands,
+  auto island = mlir::tf_executor::IslandOp::create(
+      builder_, result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.getBody().push_back(new mlir::Block);
   mlir::OpBuilder island_builder =
@@ -1949,8 +1948,8 @@ mlir::Operation* ImporterBase::CreateOperation(
   }
 
   // Add the terminator for the island
-  island_builder.create<mlir::tf_executor::YieldOp>(result.location,
-                                                    inner_op->getResults());
+  mlir::tf_executor::YieldOp::create(island_builder, result.location,
+                                     inner_op->getResults());
   return island.getOperation();
 }
 

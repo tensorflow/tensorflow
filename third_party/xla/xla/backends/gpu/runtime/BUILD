@@ -956,6 +956,8 @@ xla_test(
     name = "gpublas_lt_matmul_thunk_test",
     srcs = ["gpublas_lt_matmul_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpublas_lt_matmul_thunk",
         ":thunk",
@@ -1635,6 +1637,8 @@ xla_test(
     name = "collective_broadcast_thunk_test",
     srcs = ["collective_broadcast_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":collective_broadcast_thunk",
         ":collective_thunk",
@@ -1719,6 +1723,8 @@ xla_test(
     name = "collective_permute_thunk_test",
     srcs = ["collective_permute_thunk_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":collective_permute_thunk",
         ":collective_thunk",
@@ -3595,6 +3601,8 @@ xla_test(
     name = "runtime_intrinsics_test",
     srcs = ["runtime_intrinsics_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":runtime_intrinsics",
         "//xla:literal",

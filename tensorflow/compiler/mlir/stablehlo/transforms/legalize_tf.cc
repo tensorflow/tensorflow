@@ -340,7 +340,7 @@ static Value StaticBinaryBroadcast(Location loc, Value x, Value y,
                                    broadcast_dims);
     }
   }
-  return builder.create<BinaryOp>(loc, x, y);
+  return BinaryOp::create(builder, loc, x, y);
 }
 
 // Gets a 1D tensor type suitable for expressing extents of the given tensor
