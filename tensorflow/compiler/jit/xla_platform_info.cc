@@ -255,6 +255,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     return platform.status();
   }
 
+  // TODO: b/465773559 - Use the GetForPlatform PlatformId overload instead.
   absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
