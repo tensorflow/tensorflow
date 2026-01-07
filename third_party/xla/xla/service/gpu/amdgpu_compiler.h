@@ -81,6 +81,13 @@ class AMDGPUCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       se::StreamExecutor* stream_executor) override;
 
+  absl::Status AddFusionAutotuningPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      const Compiler::GpuTargetConfig* target_config,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
+
  private:
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;
   AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;

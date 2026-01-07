@@ -21,15 +21,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/native_emitter.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -61,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
@@ -319,6 +325,71 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store,
                                          mlir_context());
+  return absl::OkStatus();
+}
+
+namespace {
+
+// Returns true if the instruction is a fusion that would go through the native
+// emitter, but may benefit from going through the block-level emitter.
+// Currently, we only do this for reductions and transposes.
+bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
+  if (instruction.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  auto fusion = Cast<const HloFusionInstruction>(&instruction);
+  // kCustom fusions have already been assigned to a backend and we don't want
+  // to override it.
+  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  // Scatter can't go through the block-level emitter and runs into comparator
+  // issues in the autotuner as different runs can produce different results.
+  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
+                     HloPredicateIsOp<HloOpcode::kScatter>)) {
+    return false;
+  }
+  return absl::c_any_of(
+      fusion->fused_instructions_computation()->instructions(),
+      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+}
+
+}  // namespace
+
+absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    const Compiler::GpuTargetConfig* target_config,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+  if (stream_executor == nullptr) {
+    return absl::OkStatus();
+  }
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  if (debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
+    return absl::OkStatus();
+  }
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  auto native_backend = std::make_unique<NativeEmitterBackend>(
+      &debug_options, this, target_config);
+  native_backend->AllowRegisterSpills();
+  backends.push_back(std::move(native_backend));
+  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
+      &debug_options, this, shape_size_fn, target_config,
+      /*use_default_config=*/true);
+  ble_backend->AllowRegisterSpills();
+  backends.push_back(std::move(ble_backend));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
+                            thread_pool, ShouldAutotuneBetweenFusionEmitters,
+                            target_config, options.device_allocator,
+                            /*optimize_scratch_bytes=*/false));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
