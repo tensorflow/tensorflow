@@ -2402,6 +2402,7 @@ absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
       normalized_shape.dimensions().begin(),
       normalized_shape.dimensions().end());
   if (segments.size() == 1) {
+    permutation.push_back(0);
     return normalized_dims;
   }
   // Derive the permutation from the segments.
