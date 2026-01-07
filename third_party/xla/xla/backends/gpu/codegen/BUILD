@@ -82,7 +82,11 @@ xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         "//xla:comparison_util",
         "//xla:debug_options_flags",
@@ -207,6 +211,8 @@ xla_test(
         ],
     },
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
