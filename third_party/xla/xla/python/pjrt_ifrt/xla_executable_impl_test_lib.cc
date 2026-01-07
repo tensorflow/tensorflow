@@ -325,11 +325,6 @@ TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
   absl::StatusOr<absl::Span<const int>> donatable_input_indices =
       loaded_executable->GetDonatableInputIndices();
 
-  if (absl::IsUnimplemented(donatable_input_indices.status())) {
-    GTEST_SKIP() << "GetDonatableInputIndices() returned unimplemented error: "
-                 << donatable_input_indices.status();
-  }
-
   EXPECT_THAT(donatable_input_indices,
               IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
