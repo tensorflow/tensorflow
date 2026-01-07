@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/stream_executor/device_address.h"
@@ -85,52 +86,77 @@ class FloatCheckKernelTest : public ::testing::Test {
     return device_memory;
   }
 
-  template <typename Kernel, typename InputType, typename BufferType>
+  template <typename InputType, typename BufferType>
   absl::Status AppendFloatCheckOnDevice(
-      BufferDebugLogEntryId entry_id, const std::vector<InputType>& input,
-      se::gpu::BufferDebugLog<BufferType>& buffer_debug_log,
-      stream_executor::BlockDim block_dim = stream_executor::BlockDim(1, 1, 1),
-      size_t temp_buffer_size_elements = 1024) {
+      const BufferDebugLogEntryId entry_id, const std::vector<InputType>& input,
+      se::gpu::BufferDebugLog<BufferType>& buffer_debug_log) {
+    return AppendFloatChecksOnDevice<InputType, BufferType>(
+        absl::MakeConstSpan(&entry_id, 1), absl::MakeConstSpan(&input, 1),
+        buffer_debug_log);
+  }
+
+  template <typename InputType, typename BufferType>
+  absl::Status AppendFloatChecksOnDevice(
+      absl::Span<const BufferDebugLogEntryId> entry_ids,
+      absl::Span<const std::vector<InputType>> inputs,
+      se::gpu::BufferDebugLog<BufferType>& buffer_debug_log) {
+    EXPECT_EQ(inputs.size(), entry_ids.size());
+
     // Load kernel
     gpu::GpuKernelRegistry registry =
         gpu::GpuKernelRegistry::GetGlobalRegistry();
-    TF_ASSIGN_OR_RETURN(auto kernel, registry.LoadKernel<Kernel>(executor_));
     TF_ASSIGN_OR_RETURN(
-        auto reduce_kernel,
-        registry
-            .LoadKernel<gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
-                executor_));
-
-    // Setup device buffers
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceAddress<InputType> device_input,
-        CheckNotNull(executor_->AllocateArray<InputType>(input.size()),
-                     "input"));
-    auto cleanup_input =
-        absl::MakeCleanup([&]() { executor_->Deallocate(&device_input); });
+        auto append_kernel,
+        registry.LoadKernel<gpu::BufferDebugAppendFloatCheckResultsKernel>(
+            executor_));
 
     TF_ASSIGN_OR_RETURN(
-        se::DeviceAddress<xla::gpu::FloatCheckResult> device_tmp,
-        CheckNotNull(executor_->AllocateArray<xla::gpu::FloatCheckResult>(
-                         temp_buffer_size_elements),
-                     "tmp"));
-    auto cleanup_tmp =
-        absl::MakeCleanup([&]() { executor_->Deallocate(&device_tmp); });
+        se::DeviceAddress<xla::gpu::FloatCheckResult> device_results,
+        CheckNotNull(
+            executor_->AllocateArray<xla::gpu::FloatCheckResult>(inputs.size()),
+            "results"));
+    std::vector<se::DeviceAddressBase> temp_allocs;
+    temp_allocs.push_back(device_results);
+    auto cleanup_results = absl::MakeCleanup([&]() {
+      for (auto alloc : temp_allocs) {
+        executor_->Deallocate(&alloc);
+      }
+    });
 
-    const se::ThreadDim thread_dim(1024, 1, 1);
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      const auto& input = inputs[i];
+      se::DeviceAddress<xla::gpu::FloatCheckResult> device_result =
+          device_results.GetSlice(i, 1);
 
-    // Call kernel
-    TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
-                                       input.size() * sizeof(input[0])));
-    TF_RETURN_IF_ERROR(kernel.Launch(thread_dim, block_dim, stream_.get(),
-                                     device_input, device_input.ElementCount(),
-                                     device_tmp, device_tmp.ElementCount()));
-    TF_RETURN_IF_ERROR(reduce_kernel.Launch(
-        thread_dim, se::BlockDim(1, 1, 1), stream_.get(), device_tmp,
-        std::min(device_tmp.ElementCount(),
-                 block_dim.x * block_dim.y * block_dim.z),
-        entry_id, buffer_debug_log.GetDeviceHeader(),
-        buffer_debug_log.GetDeviceEntries()));
+      // Setup device buffers
+      TF_ASSIGN_OR_RETURN(
+          se::DeviceAddress<InputType> device_input,
+          CheckNotNull(executor_->AllocateArray<InputType>(input.size()),
+                       "input"));
+      temp_allocs.push_back(device_input);
+
+      // Call kernel
+      TF_RETURN_IF_ERROR(stream_->Memcpy(&device_input, input.data(),
+                                         input.size() * sizeof(input[0])));
+      TF_RETURN_IF_ERROR(se::gpu::CheckFloats<InputType>(
+          device_input, device_result, stream_.get()));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceAddress<xla::gpu::BufferDebugLogEntryId> device_ids,
+        CheckNotNull(executor_->AllocateArray<xla::gpu::BufferDebugLogEntryId>(
+                         entry_ids.size()),
+                     "ids"));
+    temp_allocs.push_back(device_ids);
+    TF_RETURN_IF_ERROR(
+        stream_->Memcpy(&device_ids, entry_ids.data(),
+                        entry_ids.size() * sizeof(entry_ids[0])));
+
+    TF_RETURN_IF_ERROR(
+        append_kernel.Launch(se::ThreadDim(1, 1, 1), se::BlockDim(1, 1, 1),
+                             stream_.get(), device_results, device_ids,
+                             inputs.size(), buffer_debug_log.GetDeviceHeader(),
+                             buffer_debug_log.GetDeviceEntries()));
     TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
 
     // The result gets stored in `buffer_debug_log`.
@@ -157,8 +183,8 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
-      BufferDebugLogEntryId{123}, input, device_log));
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{123}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -182,8 +208,8 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
-      BufferDebugLogEntryId{0}, input, device_log));
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
@@ -224,15 +250,10 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, log_mem));
 
-  int64_t threads_per_block;
-  int64_t num_blocks;
-  CalculateDimensionality(executor_->GetDeviceDescription(), input.size(),
-                          &threads_per_block, &num_blocks);
-  const se::BlockDim block_dim(num_blocks);
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
-      BufferDebugLogEntryId{0}, input, device_log, block_dim));
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
-      BufferDebugLogEntryId{0}, input, device_log, block_dim));
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{0}, input, device_log));
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
@@ -244,23 +265,75 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   EXPECT_EQ(host_log[1].zero_count, kNumZeros);
 }
 
-TEST_F(FloatCheckKernelTest, ReduceFloatCheckResults) {
-  static constexpr size_t kNumNaNs = 100;
-  static constexpr size_t kNumInfs = 200;
-  static constexpr size_t kNumZeros = 300;
-  static constexpr size_t kIntermediateResults = 16 * 1024;
+TEST_F(FloatCheckKernelTest, AppendsMultipleDistinctBuffersToLog) {
+  std::vector<float> input1 = {1.0f, std::numeric_limits<float>::quiet_NaN()};
+  std::vector<float> input2 = {std::numeric_limits<float>::infinity(), 0.0f,
+                               std::numeric_limits<float>::infinity()};
 
-  std::vector<xla::gpu::FloatCheckResult> results(kIntermediateResults);
-  for (size_t i = 0; i < kIntermediateResults; ++i) {
-    results[i].nan_count = i < kNumNaNs ? 1 : 0;
-    results[i].inf_count = i < kNumInfs ? 1 : 0;
-    results[i].zero_count = i < kNumZeros ? 1 : 0;
-  }
+  se::DeviceAddress<uint8_t> log_mem = executor_->AllocateArray<uint8_t>(1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
+          *stream_, log_mem));
+
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{101}, input1, device_log));
+  TF_EXPECT_OK(
+      AppendFloatCheckOnDevice(BufferDebugLogEntryId{102}, input2, device_log));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_GE(host_log.size(), 2);
+
+  EXPECT_EQ(host_log[0].entry_id, 101);
+  EXPECT_EQ(host_log[0].nan_count, 1);
+  EXPECT_EQ(host_log[0].inf_count, 0);
+  EXPECT_EQ(host_log[0].zero_count, 0);
+
+  EXPECT_EQ(host_log[1].entry_id, 102);
+  EXPECT_EQ(host_log[1].nan_count, 0);
+  EXPECT_EQ(host_log[1].inf_count, 2);
+  EXPECT_EQ(host_log[1].zero_count, 1);
+}
+
+TEST_F(FloatCheckKernelTest, AppendsBatchedFloatChecksToLog) {
+  std::vector<float> input1 = {1.0f, std::numeric_limits<float>::quiet_NaN()};
+  std::vector<float> input2 = {std::numeric_limits<float>::infinity(), 0.0f,
+                               std::numeric_limits<float>::infinity()};
+  std::vector<std::vector<float>> inputs = {input1, input2};
+  std::vector<BufferDebugLogEntryId> ids = {BufferDebugLogEntryId{201},
+                                            BufferDebugLogEntryId{202}};
+
+  se::DeviceAddress<uint8_t> log_mem = executor_->AllocateArray<uint8_t>(1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
+          *stream_, log_mem));
+
+  TF_EXPECT_OK((AppendFloatChecksOnDevice<float, BufferDebugFloatCheckEntry>(
+      ids, inputs, device_log)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
+  ASSERT_GE(host_log.size(), 2);
+
+  EXPECT_EQ(host_log[0].entry_id, 201);
+  EXPECT_EQ(host_log[0].nan_count, 1);
+
+  EXPECT_EQ(host_log[1].entry_id, 202);
+  EXPECT_EQ(host_log[1].inf_count, 2);
+}
+
+TEST_F(FloatCheckKernelTest, AppendFloatCheckResult) {
+  const xla::gpu::FloatCheckResult result{
+      /*nan_count=*/111,
+      /*inf_count=*/222,
+      /*zero_count=*/333,
+  };
+  static constexpr size_t kCheckedBuffersCount = 1;
 
   gpu::GpuKernelRegistry registry = gpu::GpuKernelRegistry::GetGlobalRegistry();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto reduce_kernel,
-      registry.LoadKernel<gpu::BufferDebugAppendReducedFloatCheckResultsKernel>(
+      auto append_kernel,
+      registry.LoadKernel<gpu::BufferDebugAppendFloatCheckResultsKernel>(
           executor_));
 
   se::DeviceAddress<uint8_t> log_mem = executor_->AllocateArray<uint8_t>(1024);
@@ -271,23 +344,27 @@ TEST_F(FloatCheckKernelTest, ReduceFloatCheckResults) {
   TF_ASSERT_OK_AND_ASSIGN(
       se::DeviceAddress<xla::gpu::FloatCheckResult> device_results,
       CheckNotNull(executor_->AllocateArray<xla::gpu::FloatCheckResult>(
-                       kIntermediateResults),
+                       kCheckedBuffersCount),
                    "results"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      se::DeviceAddress<xla::gpu::BufferDebugLogEntryId> device_ids,
+      CheckNotNull(executor_->AllocateArray<xla::gpu::BufferDebugLogEntryId>(
+                       kCheckedBuffersCount),
+                   "ids"));
   auto cleanup_results =
       absl::MakeCleanup([&]() { executor_->Deallocate(&device_results); });
 
-  TF_ASSERT_OK(stream_->Memcpy(&device_results, results.data(),
-                               results.size() * sizeof(results[0])));
-  TF_ASSERT_OK(reduce_kernel.Launch(
-      se::ThreadDim(1024, 1, 1), se::BlockDim(1, 1, 1), stream_.get(),
-      device_results, device_results.ElementCount(), BufferDebugLogEntryId{0},
+  TF_ASSERT_OK(stream_->Memcpy(&device_results, &result, sizeof(result)));
+  TF_ASSERT_OK(append_kernel.Launch(
+      se::ThreadDim(1, 1, 1), se::BlockDim(1, 1, 1), stream_.get(),
+      device_results, device_ids, kCheckedBuffersCount,
       device_log.GetDeviceHeader(), device_log.GetDeviceEntries()));
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
 
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].nan_count, kNumNaNs);
-  EXPECT_EQ(host_log[0].inf_count, kNumInfs);
-  EXPECT_EQ(host_log[0].zero_count, kNumZeros);
+  EXPECT_EQ(host_log[0].nan_count, result.nan_count);
+  EXPECT_EQ(host_log[0].inf_count, result.inf_count);
+  EXPECT_EQ(host_log[0].zero_count, result.zero_count);
 }
 
 }  // namespace

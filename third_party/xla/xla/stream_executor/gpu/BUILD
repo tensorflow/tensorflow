@@ -949,6 +949,8 @@ cc_library(
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
     ],
 )
 

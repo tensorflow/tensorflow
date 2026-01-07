@@ -76,36 +76,6 @@ constexpr size_t kLogSizeBytes = 64 * 1024;
 
 namespace {
 
-size_t CalculateTempBufferSize(const Thunk& thunk) {
-  size_t max_buffer_size_bytes = 0;
-  for (const BufferUse& use : thunk.buffer_uses()) {
-    if (use.HasDefinedContentsOnInput() || use.HasDefinedContentsOnOutput()) {
-      max_buffer_size_bytes =
-          std::max<size_t>(max_buffer_size_bytes, use.slice().size());
-    }
-  }
-
-  // We're doing the float checks in 2 steps:
-  // - parallel aggregation: one thread block writes partial result into the
-  //   temp buffer. The number of thread blocks used will be limtied by the size
-  //   calculated here.
-  // - reduction of the temp buffer on a single thread block
-  // To optimize for time, we want to do as much computation in parallel as we
-  // can, but also consider the overhead of single-block reduction step.
-
-  // Avoid making the reduction step use less than a block's worth of data. We
-  // can't go any faster than that anyway.
-  static constexpr size_t kMinElements = 1024;
-  // Arbitrary limit of 1Mi elements. This should be enough to accomodate the
-  // max number of thread blocks available on any supported GPU.
-  static constexpr size_t kMaxElements = 1024 * 1024;
-  const size_t size_elems =
-      xla::CeilOfRatio(max_buffer_size_bytes, sizeof(uint32_t));
-  const size_t sqrt_size_elems = std::sqrt(size_elems);
-  return std::clamp(xla::CeilOfRatio(size_elems, sqrt_size_elems), kMinElements,
-                    kMaxElements);
-}
-
 absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
     std::unique_ptr<Thunk> thunk, BufferAllocation::Slice log_slice,
     const Thunk& predecessor_thunk, Thunk& successor_thunk,
@@ -155,11 +125,16 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
     return thunk;
   }
 
-  const size_t temp_buffer_size_bytes =
-      CalculateTempBufferSize(*thunk) * sizeof(xla::gpu::FloatCheckResult);
+  const size_t results_buffer_size_bytes =
+      buffers_to_check.size() * sizeof(xla::gpu::FloatCheckResult);
   TF_ASSIGN_OR_RETURN(BufferAllocation * tmp_alloc,
-                      allocator.NewEmptyAllocation(temp_buffer_size_bytes));
-  BufferAllocation::Slice tmp_slice(tmp_alloc, 0, tmp_alloc->size());
+                      allocator.NewEmptyAllocation(results_buffer_size_bytes));
+  BufferAllocation::Slice results_slice(tmp_alloc, 0, tmp_alloc->size());
+  const size_t ids_buffer_size_bytes =
+      buffers_to_check.size() * sizeof(xla::gpu::BufferDebugLogEntryId);
+  TF_ASSIGN_OR_RETURN(BufferAllocation * ids_alloc,
+                      allocator.NewEmptyAllocation(ids_buffer_size_bytes));
+  BufferAllocation::Slice ids_slice(ids_alloc, 0, ids_alloc->size());
 
   VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
           << " with float check thunk due to presence of buffers: "
@@ -169,8 +144,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
   thunk_and_checks.push_back(std::move(thunk));
   auto buffer_debug_float_check_thunk =
       std::make_unique<BuffersDebugFloatCheckThunk>(
-          Thunk::ThunkInfo(), thunk_ptr->thunk_info(), log_slice, tmp_slice,
-          std::move(buffers_to_check), std::move(metadata_store));
+          Thunk::ThunkInfo(), thunk_ptr->thunk_info(), log_slice, results_slice,
+          ids_slice, std::move(buffers_to_check), std::move(metadata_store));
   buffer_debug_float_check_thunk->add_control_predecessor(thunk_ptr);
   thunk_and_checks.push_back(std::move(buffer_debug_float_check_thunk));
   auto wrapped_thunk = std::make_unique<SequentialThunk>(

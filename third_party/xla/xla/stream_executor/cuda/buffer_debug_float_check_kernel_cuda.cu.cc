@@ -22,14 +22,23 @@ limitations under the License.
 #include <optional>
 #include <tuple>
 
+#include "cub/cub.cuh"
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace se = stream_executor;
 
@@ -46,11 +55,6 @@ static constexpr uint64_t kBlockSize = 1024;
 // warpSize at runtime.
 static constexpr uint64_t kWarpSize = 32;
 static constexpr uint64_t kMaxWarpsPerBlock = kBlockSize / kWarpSize;
-template <typename T>
-static constexpr uint64_t kElementsPerMemoryAccess =
-    std::max<uint64_t>(16 / sizeof(T), 1);
-template <typename T>
-using Chunk = std::array<T, kElementsPerMemoryAccess<T>>;
 
 __device__ unsigned int ThreadIdx() {
   return threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x +
@@ -124,160 +128,117 @@ __device__ inline bool IsZero(__nv_bfloat16 v) {
   return v == __nv_bfloat16(0.0f);
 }
 
-// Get a part of the input buffer current thread block is responsible for
-// processing, assuming the load is spread up to max_blocks across the entire
-// grid. If max_blocks is not provided, the entire grid is used.
-template <typename T>
-__device__ inline std::tuple<const T*, uint64_t> GetBlockInput(
-    const T* input, uint64_t input_size,
-    std::optional<uint64_t> max_blocks = std::nullopt) {
-  size_t grid_size = gridDim.x * gridDim.y * gridDim.z;
-  if (max_blocks.has_value()) {
-    grid_size = std::min<size_t>(grid_size, *max_blocks);
-  }
-  const uint64_t max_block_input_size = xla::RoundUpTo(
-      xla::CeilOfRatio(input_size, grid_size), kElementsPerMemoryAccess<T>);
-  const uint64_t block_input_offset = BlockIdx() * max_block_input_size;
-  const uint64_t block_input_size =
-      std::min(max_block_input_size, input_size - block_input_offset);
-  return {input + block_input_offset, block_input_size};
-}
-
-template <typename T>
-__device__ FloatCheckResult CheckFloats(const T* input, uint64_t input_size,
-                                        uint64_t max_blocks) {
-  const unsigned int tid = ThreadIdx();
-  const auto [block_input, block_input_size] =
-      GetBlockInput(input, input_size, max_blocks);
-
-  const Chunk<T>* chunked_input =
-      reinterpret_cast<const Chunk<T>*>(block_input);
-  const uint64_t input_chunks =
-      xla::FloorOfRatio(block_input_size, kElementsPerMemoryAccess<T>);
-  // This may be less than block_input_size only for the last block.
-  const uint64_t chunked_input_size =
-      xla::RoundDownTo(block_input_size, kElementsPerMemoryAccess<T>);
-
-  FloatCheckResult result{};
-  for (uint64_t i = tid; i < input_chunks; i += kBlockSize) {
-    Chunk<T> values = chunked_input[i];
-    for (const T value : values) {
-      result.nan_count += IsNan(value);
-      result.inf_count += IsInf(value);
-      result.zero_count += IsZero(value);
-    }
-  }
-
-  if (tid == 0 && chunked_input_size < block_input_size) {
-    const size_t rest = block_input_size - chunked_input_size;
-    for (uint64_t j = 0; j < rest; ++j) {
-      const T value = block_input[input_chunks + j];
-      result.nan_count += IsNan(value);
-      result.inf_count += IsInf(value);
-      result.zero_count += IsZero(value);
-    }
-  }
-
-  return BlockReduceSum(tid, result);
-}
-
-__device__ FloatCheckResult ReduceResults(const FloatCheckResult* input,
-                                          uint64_t input_size) {
-  const unsigned int tid = ThreadIdx();
-  const auto [block_input, block_input_size] = GetBlockInput(input, input_size);
-
-  FloatCheckResult result{};
-  for (uint64_t i = tid; i < input_size; i += kBlockSize) {
-    const FloatCheckResult value = block_input[i];
-    result.nan_count += value.nan_count;
-    result.inf_count += value.inf_count;
-    result.zero_count += value.zero_count;
-  }
-
-  // Now reduce a block worth of values into a single one.
-  return BlockReduceSum(tid, result);
-}
-
-// Count the number of floats for NaNs, Infs and zeros in input buffer and store
-// partially accumulated results in the tmp array.
-template <typename T>
-__global__ void FloatCheck(const T* input, uint64_t input_size,
-                           xla::gpu::FloatCheckResult* tmp, uint64_t tmp_size) {
-  assert(blockDim.x * blockDim.y * blockDim.z == kBlockSize);
-  assert(BlockIdx() < tmp_size);
-  if (BlockIdx() >= tmp_size) {
-    return;
-  }
-
-  const FloatCheckResult result = CheckFloats(input, input_size, tmp_size);
-  if (ThreadIdx() == 0) {
-    tmp[BlockIdx()] = result;
-  }
-}
-
-// Reduce the partially accumulated results from `FloatCheck` invocations and
-// append the result to the buffer debug log.
-__global__ void ReduceFloatCheckResults(
-    xla::gpu::FloatCheckResult* tmp, uint64_t tmp_size,
-    xla::gpu::BufferDebugLogEntryId entry_id,
+// Append the results from `FloatCheck` invocation to the buffer debug log.
+__global__ void AppendFloatCheckResults(
+    xla::gpu::FloatCheckResult* results,
+    xla::gpu::BufferDebugLogEntryId* entry_ids, uint64_t num_entries,
     xla::gpu::BufferDebugLogHeader* log_header,
     xla::gpu::BufferDebugFloatCheckEntry* log_entries) {
-  assert(blockDim.x * blockDim.y * blockDim.z == kBlockSize);
   assert(BlockIdx() == 0);
-  if (BlockIdx() >= 1) {
-    return;
-  }
+  assert(ThreadIdx() == 0);
 
-  assert(tmp_size > 0);
-  FloatCheckResult total = ReduceResults(tmp, tmp_size);
-
-  if (BlockIdx() == 0 && ThreadIdx() == 0) {
-    cuda::atomic_ref<uint32_t, cuda::thread_scope_system> log_write_idx(
-        log_header->write_idx);
+  cuda::atomic_ref<uint32_t, cuda::thread_scope_system> log_write_idx(
+      log_header->write_idx);
 #if __CUDA_ARCH__ >= 600
-    const uint32_t write_idx = log_write_idx.fetch_add(1);
-    if (write_idx < log_header->capacity) {
-      log_entries[write_idx] = xla::gpu::BufferDebugFloatCheckEntry{
-          entry_id, total.nan_count, total.inf_count, total.zero_count};
-    }
-#else
-    // Our toolchains generate a fetch_add PTX instructions with system scope,
-    // which is not supported on pre-Pascal architectures.
-    (void)total;
-    assert(false);
-#endif
+  const uint32_t write_idx = log_write_idx.fetch_add(num_entries);
+  for (int i = 0; i < num_entries; ++i) {
+    log_entries[write_idx + i] = xla::gpu::BufferDebugFloatCheckEntry{
+        entry_ids[i], results[i].nan_count, results[i].inf_count,
+        results[i].zero_count};
   }
+#else
+  // Our toolchains generate a fetch_add PTX instructions with system scope,
+  // which is not supported on pre-Pascal architectures.
+  (void)results;
+  (void)entry_ids;
+  (void)num_entries;
+  (void)log_entries;
+  assert(false);
+#endif
 }
 
-se::KernelLoaderSpec GetFloatCheckF32KernelSpec(int arity) {
+se::KernelLoaderSpec GetAppendFloatCheckResultsKernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&FloatCheck<float>),
-      "BufferDebugFloatCheckF32Kernel", arity);
+      absl::bit_cast<void*>(&AppendFloatCheckResults),
+      "AppendFloatCheckResultsKernel", arity);
 }
 
-se::KernelLoaderSpec GetFloatCheckBf16KernelSpec(int arity) {
-  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&FloatCheck<__nv_bfloat16>),
-      "BufferDebugFloatCheckBf16Kernel", arity);
-}
+template <typename T>
+struct CheckFloat {
+  __device__ FloatCheckResult operator()(const T input) {
+    FloatCheckResult result{};
+    result.nan_count += IsNan(input);
+    result.inf_count += IsInf(input);
+    result.zero_count += IsZero(input);
+    return result;
+  }
+};
 
-se::KernelLoaderSpec GetReduceFloatCheckResultsKernelSpec(int arity) {
-  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&ReduceFloatCheckResults),
-      "BufferDebugReduceFloatCheckResultsKernel", arity);
+template <typename T>
+CheckFloat<T> check_float{};
+
+struct ReduceFloatCheckResults {
+  __device__ FloatCheckResult operator()(FloatCheckResult a,
+                                         FloatCheckResult b) {
+    a.nan_count += b.nan_count;
+    a.inf_count += b.inf_count;
+    a.zero_count += b.zero_count;
+    return a;
+  }
+};
+
+ReduceFloatCheckResults reduce_float_check_results{};
+
+template <typename T>
+absl::Status CheckFloatsImpl(
+    se::DeviceAddress<T> input,
+    se::DeviceAddress<xla::gpu::FloatCheckResult> result, se::Stream* stream) {
+  se::gpu::CudaStream* cuda_stream = dynamic_cast<se::gpu::CudaStream*>(stream);
+  if (cuda_stream == nullptr) {
+    return absl::InvalidArgumentError("Stream is not a CUDA stream");
+  }
+
+  size_t tmp_size;
+  RETURN_IF_ERROR(se::cuda::ToStatus(
+      cub::DeviceReduce::TransformReduce(
+          nullptr, tmp_size, input.base(), result.base(), input.ElementCount(),
+          reduce_float_check_results, check_float<T>, FloatCheckResult{},
+          cuda_stream->stream_handle()),
+      "required temp storage for TransformReduce failed"));
+
+  se::DeviceAddressBase tmp = stream->parent()->Allocate(tmp_size);
+  auto tmp_cleanup =
+      absl::MakeCleanup([&]() { stream->parent()->Deallocate(&tmp); });
+
+  return se::cuda::ToStatus(
+      cub::DeviceReduce::TransformReduce(
+          tmp.opaque(), tmp_size, input.base(), result.base(),
+          input.ElementCount(), reduce_float_check_results, check_float<T>,
+          FloatCheckResult{}, cuda_stream->stream_handle()),
+      "TransformReduce failed");
 }
 
 }  // namespace
 
-GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
-    BufferDebugFloatCheckF32Kernel, se::gpu::BufferDebugFloatCheckF32Kernel,
-    se::cuda::kCudaPlatformId, GetFloatCheckF32KernelSpec);
+namespace stream_executor::gpu {
+
+#define CHECK_FLOATS_CUB_IMPL(T)                            \
+  template <>                                               \
+  absl::Status CheckFloats<T>(                              \
+      se::DeviceAddress<T> input,                           \
+      se::DeviceAddress<xla::gpu::FloatCheckResult> result, \
+      se::Stream * stream) {                                \
+    return CheckFloatsImpl<T>(input, result, stream);       \
+  }
+
+CHECK_FLOATS_CUB_IMPL(float)
+CHECK_FLOATS_CUB_IMPL(Eigen::bfloat16)
+
+#undef CHECK_FLOATS_CUB_IMPL
+
+}  // namespace stream_executor::gpu
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
-    BufferDebugFloatCheckBf16Kernel, se::gpu::BufferDebugFloatCheckBf16Kernel,
-    se::cuda::kCudaPlatformId, GetFloatCheckBf16KernelSpec);
-
-GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
-    BufferDebugReduceFloatCheckResultsKernel,
-    se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel,
-    se::cuda::kCudaPlatformId, GetReduceFloatCheckResultsKernelSpec);
+    BufferDebugAppendFloatCheckResultsKernel,
+    se::gpu::BufferDebugAppendFloatCheckResultsKernel,
+    se::cuda::kCudaPlatformId, GetAppendFloatCheckResultsKernelSpec);

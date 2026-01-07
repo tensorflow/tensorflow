@@ -106,20 +106,27 @@ class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
 TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   static constexpr size_t kLogSize =
       BufferDebugLog<BufferDebugFloatCheckEntry>::RequiredSizeForEntries(10);
-  static constexpr size_t kTmpSizeElems = 1024;
-  static constexpr size_t kTmpSizeBytes = kTmpSizeElems * sizeof(uint32_t);
+  static constexpr size_t kResultsSizeElems = 1024;
+  static constexpr size_t kResultsSizeBytes =
+      kResultsSizeElems * sizeof(uint32_t);
+  static constexpr size_t kIdsSizeElems = 1024;
+  static constexpr size_t kIdsSizeBytes =
+      kIdsSizeElems * sizeof(BufferDebugLogEntryId);
   static constexpr size_t kInputElems = 1024;
   static constexpr size_t kInputSizeInBytes = kInputElems * sizeof(float);
   static constexpr size_t kTotalDeviceMemoryBytes =
-      kLogSize + kTmpSizeBytes + kInputSizeInBytes * 2;
+      kLogSize + kResultsSizeBytes + kIdsSizeBytes + kInputSizeInBytes * 2;
   // Setup memory allocations for the log and inputs
   BufferAllocation alloc(/*index=*/0,
                          /*size=*/kTotalDeviceMemoryBytes,
                          /*color=*/0);
   int64_t input_offset = kLogSize;
   BufferAllocation::Slice log_slice(&alloc, /*offset=*/0, kLogSize);
-  BufferAllocation::Slice tmp_slice(&alloc, /*offset=*/kLogSize, kTmpSizeBytes);
-  input_offset += kLogSize + kTmpSizeBytes;
+  BufferAllocation::Slice results_slice(&alloc, /*offset=*/kLogSize,
+                                        kResultsSizeBytes);
+  BufferAllocation::Slice ids_slice(
+      &alloc, /*offset=*/kLogSize + kResultsSizeBytes, kIdsSizeBytes);
+  input_offset += kLogSize + kResultsSizeBytes;
 
   BufferAllocation::Slice inputs[2];
   int64_t input_size_bf16 = kInputElems * sizeof(Eigen::bfloat16);
@@ -181,8 +188,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   Thunk::ThunkInfo checked_thunk_info;
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
-      {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice, results_slice,
+      ids_slice, {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
   TF_ASSERT_OK(thunk.Prepare(prepare_params));
@@ -226,9 +233,11 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
 
   static constexpr size_t kLogOffset = 0;
   static constexpr size_t kLogSizeBytes = 1024;
-  static constexpr size_t kTmpOffset = kLogOffset + kLogSizeBytes;
-  static constexpr size_t kTmpSizeBytes = 1024 * sizeof(uint32_t);
-  static constexpr size_t kInputOffset = kTmpOffset + kTmpSizeBytes;
+  static constexpr size_t kResultsOffset = kLogOffset + kLogSizeBytes;
+  static constexpr size_t kResultsSizeBytes = 1024 * sizeof(uint32_t);
+  static constexpr size_t kIdsOffset = kResultsOffset + kResultsSizeBytes;
+  static constexpr size_t kIdsSizeBytes = 1024 * sizeof(BufferDebugLogEntryId);
+  static constexpr size_t kInputOffset = kIdsOffset + kIdsSizeBytes;
   static constexpr size_t kInputSizeBytes = 1024;
   static constexpr size_t kTotalDeviceMemory = kInputOffset + kInputSizeBytes;
 
@@ -257,7 +266,9 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
   BufferAllocation allocation(/*index=*/0, kTotalDeviceMemory, /*color=*/0);
   BufferAllocation::Slice log_slice(&allocation, kLogOffset, kLogSizeBytes);
-  BufferAllocation::Slice tmp_slice(&allocation, kTmpOffset, kTmpSizeBytes);
+  BufferAllocation::Slice results_slice(&allocation, kResultsOffset,
+                                        kResultsSizeBytes);
+  BufferAllocation::Slice ids_slice(&allocation, kIdsOffset, kIdsSizeBytes);
   BufferAllocation::Slice f32_slice(&allocation, kInputOffset, kInputSizeBytes,
                                     PrimitiveType::F32);
   BufferAllocation::Slice bf16_slice(&allocation, kInputOffset, kInputSizeBytes,
@@ -265,7 +276,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   Thunk::ThunkInfo checked_thunk_info;
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice, results_slice,
+      ids_slice,
       {{/*buffer_idx=*/0, f32_slice}, {/*buffer_idx=*/1, bf16_slice}},
       std::make_shared<BufferDebugLogEntryMetadataStore>());
 
