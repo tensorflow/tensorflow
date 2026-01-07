@@ -529,6 +529,9 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kLog1p:
       return mm::Log1pOp::create(b, inputs[0]);
     case HloOpcode::kPower:
+      if (is_integer) {
+        return mm::IPowIOp::create(b, inputs[0], inputs[1]);
+      }
       return mm::PowFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
       if (is_integer) {
