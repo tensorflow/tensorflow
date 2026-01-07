@@ -1543,59 +1543,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
   return thunk_sequence;
 }
 
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
-    const HloSortInstruction* sort) {
-  std::string op_name(sort->name());
-  const Shape& keys_shape = sort->operand(0)->shape();
-  ThunkSequence thunks;
-  for (int64_t i = 0; i < sort->operand_count(); ++i) {
-    ShapeIndex shape_index =
-        sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
-    // We assume that the layout of all involved operands and
-    // outputs is the same.
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-        keys_shape, sort->operand(i)->shape(),
-        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
-        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
-
-    BufferAllocation::Slice destination_buffer;
-    BufferAllocation::Slice source_address;
-
-    // If possible, we share buffers. If that is not possible, we
-    // need to copy the values, because the emitter does the sorting
-    // in-place.
-    TF_ASSIGN_OR_RETURN(destination_buffer,
-                        GetAllocationSliceForHlo(sort, shape_index));
-    TF_ASSIGN_OR_RETURN(source_address,
-                        GetAllocationSliceForHlo(sort->operand(i), {}));
-
-    if (destination_buffer != source_address) {
-      // TODO(b/26783907): Figure out why we never seem to share
-      // buffers for key/value sort.
-      VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
-      thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              sort, ir_emitter_context_->GetNextThunkId()),
-          /*source_buffer=*/
-          ShapedSlice{source_address, sort->operand(i)->shape()},
-          /*destination_buffer=*/
-          ShapedSlice{destination_buffer, sort->operand(i)->shape()},
-          ShapeUtil::ByteSizeOf(sort->operand(i)->shape())));
-    }
-  }
-
-  auto local_llvm_module = ir_emitter_context_->CreateLLVMModule(op_name);
-
-  TF_ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
-                      EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
-                                            ir_emitter_context_));
-  AppendThunkSequence(thunks, sort_thunks);
-  kernel_modules_.push_back(std::move(local_llvm_module));
-  return thunks;
-}
-
 template <typename ThunkType>
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReplicaOrPartitionId(
     const HloInstruction* instr) {
@@ -2799,8 +2746,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSendDone:
       return EmitSendDoneThunk(Cast<HloSendDoneInstruction>(hlo));
 
-    case HloOpcode::kSort:
-      return EmitSort(Cast<HloSortInstruction>(hlo));
     case HloOpcode::kWhile:
       return EmitWhile(hlo);
     case HloOpcode::kCopyStart:

@@ -199,8 +199,6 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitSendThunk(const HloSendInstruction* hlo,
                                               bool emit_group_thunks);
 
-  absl::StatusOr<ThunkSequence> EmitSort(const HloSortInstruction* sort);
-
   absl::StatusOr<ThunkSequence> EmitTopKCustomCall(
       const HloCustomCallInstruction* hlo);
 
