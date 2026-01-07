@@ -76,11 +76,11 @@ class GpuTopology {
   }
 
  private:
-  const std::string platform_version_;
-  const int32_t num_partitions_;
-  const int32_t num_hosts_per_partition_;
-  const int32_t num_devices_per_host_;
-  const std::optional<gpu::GpuTargetConfig> gpu_target_config_;
+  std::string platform_version_;
+  int32_t num_partitions_;
+  int32_t num_hosts_per_partition_;
+  int32_t num_devices_per_host_;
+  std::optional<gpu::GpuTargetConfig> gpu_target_config_;
 
   bool is_topology_symmetric() const {
     return num_partitions_ != -1 && num_hosts_per_partition_ != -1 &&
@@ -91,6 +91,10 @@ class GpuTopology {
 absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
     absl::string_view platform_version, int32_t num_partitions,
     int32_t num_hosts_per_partition, int32_t num_devices_per_host);
+
+GpuTopology GetSingleDeviceGpuTopology(
+    absl::string_view platform_version,
+    const gpu::GpuTargetConfig& gpu_target_config);
 
 }  // namespace xla
 
