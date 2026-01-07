@@ -286,6 +286,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
+    case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return ThunkSequence::Empty();
 
@@ -385,7 +386,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
-    case HloOpcode::kTranspose:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
