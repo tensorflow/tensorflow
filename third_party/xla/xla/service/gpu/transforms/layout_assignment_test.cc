@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -54,28 +53,15 @@ namespace {
 namespace m = ::xla::match;
 using ::testing::NotNull;
 
-class LayoutAssignmentTest : public HloTestBase {
- public:
-  const se::DeviceDescription& GetDeviceDescription() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-
-  se::RocmComputeCapability GetRocmComputeCapability() {
-    return GetDeviceDescription().rocm_compute_capability();
-  }
-
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return GetDeviceDescription().cuda_compute_capability();
-  }
-
-  const se::GpuComputeCapability& GetGpuComputeCapability() {
-    return GetDeviceDescription().gpu_compute_capability();
-  }
-
-  se::dnn::VersionInfo GetDnnVersion() {
-    return GetDnnVersionInfoOrDefault(backend().default_stream_executor(),
-                                      se::dnn::VersionInfo{8, 9, 0});
-  }
+class LayoutAssignmentTest : public HloHardwareIndependentTestBase {
+ protected:
+  const se::CudaComputeCapability default_cuda_cc_ =
+      se::CudaComputeCapability();
+  const se::GpuComputeCapability default_gpu_cc_ = se::GpuComputeCapability();
+  const se::dnn::VersionInfo default_dnn_version_ =
+      se::dnn::VersionInfo{8, 9, 0};
+  const se::DeviceDescription default_device_description_ =
+      se::DeviceDescription();
 };
 
 TEST_F(LayoutAssignmentTest, Elementwise) {
@@ -115,8 +101,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-            GetDeviceDescription());
+            &computation_layout, default_gpu_cc_, default_dnn_version_,
+            default_device_description_);
         EXPECT_THAT(layout_assignment.Run(module.get()),
                     absl_testing::IsOkAndHolds(true));
 
@@ -146,9 +132,9 @@ TEST_F(LayoutAssignmentTest, DotLayoutUnchangedIfValid) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -174,9 +160,9 @@ TEST_F(LayoutAssignmentTest, DotLayoutSetToDefaultIfDefaultValid) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -197,9 +183,9 @@ e {
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
 
@@ -227,9 +213,9 @@ TEST_F(LayoutAssignmentTest, DotOperandLayoutSetToBatchRowsColsOtherwise) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -255,9 +241,9 @@ TEST_F(LayoutAssignmentTest, DotOperandInconsistentDimLayouts) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -285,9 +271,9 @@ TEST_F(LayoutAssignmentTest, TransposedDotLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -320,9 +306,9 @@ TEST_F(LayoutAssignmentTest, TransposedDotOfDotLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -358,9 +344,9 @@ TEST_F(LayoutAssignmentTest, DotLayoutS8) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -395,9 +381,9 @@ TEST_F(LayoutAssignmentTest, SameLayoutOnOperandsAndOutputsOfSort) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -426,9 +412,9 @@ TEST_F(LayoutAssignmentTest,
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -472,9 +458,9 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -497,9 +483,9 @@ e {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
@@ -520,9 +506,9 @@ e {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -548,9 +534,9 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -578,9 +564,9 @@ ENTRY entry {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
 
@@ -612,9 +598,9 @@ ENTRY entry {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
 
@@ -641,9 +627,9 @@ ENTRY entry {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
 
@@ -673,7 +659,7 @@ ENTRY entry {
       &computation_layout,
       se::GpuComputeCapability{
           se::RocmComputeCapability::EarliestRDNASupport()},
-      GetDnnVersion(), GetDeviceDescription());
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -712,7 +698,7 @@ ENTRY entry {
       &computation_layout,
       se::GpuComputeCapability{
           se::RocmComputeCapability::EarliestRDNASupport()},
-      GetDnnVersion(), GetDeviceDescription());
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -754,7 +740,7 @@ ENTRY entry {
       &computation_layout,
       se::GpuComputeCapability{
           se::RocmComputeCapability::EarliestCDNASupport()},
-      GetDnnVersion(), GetDeviceDescription());
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -796,7 +782,7 @@ ENTRY entry {
       &computation_layout,
       se::GpuComputeCapability{
           se::RocmComputeCapability::EarliestCDNASupport()},
-      GetDnnVersion(), GetDeviceDescription());
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -831,8 +817,8 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::CudaComputeCapability::Hopper(), GetDnnVersion(),
-      GetDeviceDescription());
+      &computation_layout, se::CudaComputeCapability::Hopper(),
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -867,8 +853,8 @@ ENTRY entry {
       hlo_module->entry_computation()->ComputeProgramShape());
 
   GpuLayoutAssignment layout_assignment(
-      &computation_layout, se::CudaComputeCapability::Hopper(), GetDnnVersion(),
-      GetDeviceDescription());
+      &computation_layout, se::CudaComputeCapability::Hopper(),
+      default_dnn_version_, default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
               absl_testing::IsOkAndHolds(true));
@@ -907,9 +893,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   auto reduce = m->entry_computation()->root_instruction();
@@ -938,9 +924,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   auto reduce = m->entry_computation()->root_instruction();
@@ -966,9 +952,9 @@ TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
@@ -999,9 +985,9 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorLhs) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
               GmockMatch(m::Parameter(0).WithShape(S4, {5120, 128}, {0, 1})));
@@ -1033,9 +1019,9 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorRhs) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
               GmockMatch(m::Parameter(0).WithShape(BF16, {5120, 128}, {1, 0})));
@@ -1070,9 +1056,9 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotFollowingTheChain) {
       m->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
 
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   ASSERT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
               GmockMatch(m::Parameter(0).WithShape(S4, {3072, 128}, {0, 1})));
@@ -1107,9 +1093,9 @@ TEST_F(LayoutAssignmentTest, DotSetsNonMandatoryConstraintIfAutoLayout) {
       m->entry_computation()->ComputeProgramShape(),
       /*ignore_layouts=*/false);
 
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(RunFileCheck(m->ToString(), R"(
 // CHECK: p1 = f16[40,20,50]{1,2,0} parameter(1)
@@ -1144,9 +1130,9 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(module_str));
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   auto reduce = m->entry_computation()->root_instruction();
@@ -1206,8 +1192,8 @@ ENTRY %main {
 
   RunAndFilecheckHloRewrite(
       hlo,
-      GpuLayoutAssignment{&computation_layout, GetGpuComputeCapability(),
-                          GetDnnVersion(), GetDeviceDescription()},
+      GpuLayoutAssignment{&computation_layout, default_gpu_cc_,
+                          default_dnn_version_, default_device_description_},
       R"(
 // CHECK: (f32[100,100]{1,0}, u32[], token[]) recv
 // CHECK:  (f32[100,100]{1,0}, token[]) recv-done
@@ -1235,9 +1221,9 @@ TEST_F(LayoutAssignmentTest, RaggedAllToAllLayoutSetRaggedDimToMajor) {
 
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
-  GpuLayoutAssignment layout_assignment(
-      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
-      GetDeviceDescription());
+  GpuLayoutAssignment layout_assignment(&computation_layout, default_gpu_cc_,
+                                        default_dnn_version_,
+                                        default_device_description_);
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   auto ragged_all_to_all = FindInstruction(m.get(), HloOpcode::kRaggedAllToAll);
