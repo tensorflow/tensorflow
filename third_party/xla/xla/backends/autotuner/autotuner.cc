@@ -371,7 +371,8 @@ absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
         absl::StrCat("Autotuning failed for HLO: ", instr->ToString(),
                      " with error: ", best_result.status().ToString()));
   }
-  VLOG(1) << "Picked best config: " << best_result.value().ToString();
+  VLOG(1) << "Picked best config: "
+          << best_result.value().ToString(/*verbose=*/true);
   return std::move(best_result.value().config);
 }
 
