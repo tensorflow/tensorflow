@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/local_device_state.h"
@@ -79,7 +80,7 @@ class RawSEDeviceMemory {
   // Returns a definition event (or nullptr if the definition is known to be in
   // the past).
   virtual absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
-      tsl::thread::ThreadPool* thread_pool, bool nullptr_if_past) const {
+      AsyncWorkRunner* async_work_runner, bool nullptr_if_past) const {
     return BufferSequencingEventRef();
   }
 

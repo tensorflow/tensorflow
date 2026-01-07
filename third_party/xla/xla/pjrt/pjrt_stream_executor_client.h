@@ -354,8 +354,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
     return gpu_run_options_.get();
   }
 
-  tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
-
   virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
       std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
@@ -513,7 +511,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
-  tsl::thread::ThreadPool thread_pool_;
+  tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
   absl::Mutex transpose_mu_;

@@ -2837,9 +2837,9 @@ ENTRY main.5 {
 TEST(StreamExecutorGpuClientTest, EventCaching) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
-  auto* thread_pool =
+  auto* async_work_runner =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get())
-          ->thread_pool();
+          ->async_work_runner();
   const auto& device = client->addressable_devices()[0];
   LocalDeviceState* local_device_state =
       tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
@@ -2848,14 +2848,14 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
   size_t sync_point0 = local_device_state->GetNextComputeStreamSyncPoint();
   TF_ASSERT_OK_AND_ASSIGN(auto event0,
                           local_device_state->GetEventForComputeStreamSyncPoint(
-                              sync_point0, thread_pool));
+                              sync_point0, async_work_runner));
   TF_ASSERT_OK_AND_ASSIGN(auto event1,
                           local_device_state->GetEventForComputeStreamSyncPoint(
-                              sync_point0, thread_pool));
+                              sync_point0, async_work_runner));
   size_t sync_point1 = local_device_state->GetNextComputeStreamSyncPoint();
   TF_ASSERT_OK_AND_ASSIGN(auto event2,
                           local_device_state->GetEventForComputeStreamSyncPoint(
-                              sync_point1, thread_pool));
+                              sync_point1, async_work_runner));
   // Events are getting cached.
   EXPECT_EQ(&*event0, &*event1);
   // New events are getting assigned.
@@ -2864,7 +2864,7 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
   // sync_point1 is ready, so it is the most recent event.
   TF_ASSERT_OK_AND_ASSIGN(auto event3,
                           local_device_state->GetEventForComputeStreamSyncPoint(
-                              sync_point0, thread_pool));
+                              sync_point0, async_work_runner));
   EXPECT_EQ(&*event3, &*event2);
 }
 

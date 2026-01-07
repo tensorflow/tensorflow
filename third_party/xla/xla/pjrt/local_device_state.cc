@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_address.h"
@@ -325,7 +326,7 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
 
 absl::StatusOr<BufferSequencingEventRef>
 LocalDeviceState::GetEventForComputeStreamSyncPoint(
-    size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+    size_t sync_point, AsyncWorkRunner* async_work_runner,
     bool nullptr_if_past) {
   mu_.lock();
   size_t cur_sync_point = next_compute_stream_sync_point_.load();
@@ -343,7 +344,7 @@ LocalDeviceState::GetEventForComputeStreamSyncPoint(
     return event;
   }
   next_compute_stream_sync_point_.store(cur_sync_point + 1);
-  auto event = BufferSequencingEvent::Create(thread_pool);
+  auto event = BufferSequencingEvent::Create(async_work_runner);
   auto status = AllocateAndRecordEvent(event, compute_stream());
   if (!status.ok()) {
     mu_.unlock();

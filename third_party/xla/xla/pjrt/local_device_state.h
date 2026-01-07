@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -224,7 +225,7 @@ class LocalDeviceState {
   // which only incur the expense of constructing a cuda event if they're really
   // needed. This allows constructing a definition event per buffer.
   absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
-      size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+      size_t sync_point, AsyncWorkRunner* async_work_runner,
       bool nullptr_if_past = false);
 
  private:

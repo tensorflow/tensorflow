@@ -219,6 +219,7 @@ cc_library(
         "local_device_state.h",
     ],
     deps = [
+        ":async_work_runner",
         ":event_pool",
         ":pjrt_common",
         ":semaphore",
@@ -676,6 +677,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tracked_device_buffer",
+        ":async_work_runner",
         ":common_pjrt_client",
         ":device_event",
         ":event_pool",
@@ -1263,10 +1265,12 @@ cc_library(
 
 cc_library(
     name = "async_work_runner",
+    srcs = ["async_work_runner.cc"],
     hdrs = ["async_work_runner.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
@@ -1284,6 +1288,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:unbounded_work_queue",
     ],
 )
 

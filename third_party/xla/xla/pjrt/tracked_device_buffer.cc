@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/local_device_state.h"
@@ -93,11 +94,10 @@ class AllocatedRawSEDeviceMemory : public RawSEDeviceMemory {
   void UnsafeReleaseMemory() override { allocator_ = nullptr; }
 
   absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
-      tsl::thread::ThreadPool* thread_pool,
-      bool nullptr_if_past) const override {
+      AsyncWorkRunner* async_work_runner, bool nullptr_if_past) const override {
     if (sync_point_ != std::numeric_limits<size_t>::max()) {
       return local_device_->GetEventForComputeStreamSyncPoint(
-          sync_point_, thread_pool, nullptr_if_past);
+          sync_point_, async_work_runner, nullptr_if_past);
     }
     return BufferSequencingEventRef();
   }
@@ -195,7 +195,7 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
   absl::InlinedVector<BufferSequencingEventRef, 4> definition_events;
 
   auto definition_event_for_status =
-      BufferSequencingEvent::Create(se_client->thread_pool());
+      BufferSequencingEvent::Create(se_client->async_work_runner());
   // definition_event_for_status must be the first one so that it blocks other
   // actions like D2H transfer from execution before the buffer is ready.
   definition_events.push_back(definition_event_for_status);
