@@ -15,12 +15,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_COPY_H_
 #define XLA_BACKENDS_GPU_CODEGEN_COPY_H_
 
-#include <utility>
-#include <vector>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"

@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
