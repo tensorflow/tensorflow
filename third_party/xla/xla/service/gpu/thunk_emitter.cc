@@ -844,9 +844,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
     TF_ASSIGN_OR_RETURN(dscale_slice, GetAllocationSliceForHlo(instr, {1}));
     TF_ASSIGN_OR_RETURN(dbias_slice, GetAllocationSliceForHlo(instr, {2}));
   }
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
-                      GetAllocationSliceForHlo(
-                          instr, {instr->shape().tuple_shapes_size() - 1}));
+  TF_ASSIGN_OR_RETURN(
+      ShapedSlice scratch_slice,
+      GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
 
   GpuNormDescriptor descriptor;
   descriptor.backend_config = backend_config;
@@ -854,6 +854,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
   descriptor.x_shape = instr->operand(0)->shape();
   descriptor.scale_shape = instr->operand(1)->shape();
   descriptor.y_or_dx_shape = ShapeUtil::GetSubshape(instr->shape(), {0});
+  descriptor.scratch_shape = scratch_slice.shape;
+
   if (backend_config.kind() ==
           xla::gpu::CudnnNormBackendConfig::LAYER_FWD_INFER ||
       backend_config.kind() ==
@@ -880,7 +882,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNormThunk(
                         std::move(descriptor), x_slice, scale_slice,
                         y_or_dx_slice, bias_slice, expectation_slice,
                         norm_factor_slice, dy_slice, dscale_slice, dbias_slice,
-                        scratch_slice));
+                        scratch_slice.slice));
   return GetThunkSequence(std::move(thunk));
 }
 

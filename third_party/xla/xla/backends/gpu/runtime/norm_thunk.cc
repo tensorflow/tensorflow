@@ -154,29 +154,30 @@ absl::Status NormThunk::Initialize(const InitializeParams& params) {
 
 Thunk::BufferUses NormThunk::buffer_uses() const {
   Thunk::BufferUses res{
-      BufferUse::Read(x_buffer_),
-      BufferUse::Read(scale_buffer_),
-      BufferUse::Write(y_or_dx_buffer_),
+      BufferUse::Read(x_buffer_, descriptor_.x_shape),
+      BufferUse::Read(scale_buffer_, descriptor_.scale_shape),
+      BufferUse::Write(y_or_dx_buffer_, descriptor_.y_or_dx_shape),
+      BufferUse::Scratch(scratch_buffer_, descriptor_.scratch_shape),
   };
-  res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
-                   BufferUse::ContentValidity::kUndefined);
   if (bias_buffer_.has_value()) {
-    res.push_back(BufferUse::Read(*bias_buffer_));
+    res.push_back(BufferUse::Read(*bias_buffer_, *descriptor_.bias_shape));
   }
   if (expectation_buffer_.has_value()) {
-    res.push_back(BufferUse::Write(*expectation_buffer_));
+    res.push_back(
+        BufferUse::Write(*expectation_buffer_, *descriptor_.expectation_shape));
   }
   if (norm_factor_buffer_.has_value()) {
-    res.push_back(BufferUse::Write(*norm_factor_buffer_));
+    res.push_back(
+        BufferUse::Write(*norm_factor_buffer_, *descriptor_.norm_factor_shape));
   }
   if (dy_buffer_.has_value()) {
-    res.push_back(BufferUse::Read(*dy_buffer_));
+    res.push_back(BufferUse::Read(*dy_buffer_, *descriptor_.dy_shape));
   }
   if (dscale_buffer_.has_value()) {
-    res.push_back(BufferUse::Write(*dscale_buffer_));
+    res.push_back(BufferUse::Write(*dscale_buffer_, *descriptor_.dscale_shape));
   }
   if (dbias_buffer_.has_value()) {
-    res.push_back(BufferUse::Write(*dbias_buffer_));
+    res.push_back(BufferUse::Write(*dbias_buffer_, *descriptor_.dbias_shape));
   }
   return res;
 }
