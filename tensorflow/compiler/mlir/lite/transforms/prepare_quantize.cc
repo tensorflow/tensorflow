@@ -199,10 +199,10 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(func::FuncOp func) {
             builder.getF64FloatAttr(min_max.second.value()),
             /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
-        auto q_op = builder.create<quantfork::QuantizeCastOp>(
-            loc, params.getValue(), arg);
-        auto dq_op = builder.create<quantfork::DequantizeCastOp>(
-            loc, input_type, q_op.getResult());
+        auto q_op = quantfork::QuantizeCastOp::create(builder, loc,
+                                                      params.getValue(), arg);
+        auto dq_op = quantfork::DequantizeCastOp::create(
+            builder, loc, input_type, q_op.getResult());
         arg.replaceAllUsesWith(dq_op.getResult());
         q_op.setOperand(arg);
       }

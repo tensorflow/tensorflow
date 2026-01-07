@@ -189,8 +189,8 @@ absl::Status XlaCallModuleLoader::SetPlatformIndex(
   bool is_32_bit = arg_ranked_type.getElementType().isSignlessInteger(32);
   auto const_attr = is_32_bit ? op_builder.getI32IntegerAttr(platform_index)
                               : op_builder.getI64IntegerAttr(platform_index);
-  auto platform_index_op = op_builder.create<mlir::stablehlo::ConstantOp>(
-      platform_index_arg.getLoc(), const_attr);
+  auto platform_index_op = mlir::stablehlo::ConstantOp::create(
+      op_builder, platform_index_arg.getLoc(), const_attr);
   platform_index_arg.replaceAllUsesWith(platform_index_op);
 
   CHECK(llvm::succeeded(main_.eraseArgument(0)));

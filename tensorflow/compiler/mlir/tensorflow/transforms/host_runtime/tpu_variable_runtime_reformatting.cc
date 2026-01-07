@@ -256,8 +256,8 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   new_replicated_inputs.emplace_back(new_input_values,
                                      new_input_values.front().getType());
   OpBuilder builder(replicate);
-  auto new_replicate = builder.create<tf_device::ReplicateOp>(
-      replicate.getLoc(), num_replicas, devices, new_replicated_inputs,
+  auto new_replicate = tf_device::ReplicateOp::create(
+      builder, replicate.getLoc(), num_replicas, devices, new_replicated_inputs,
       new_packed_inputs,
       replicate.GetBody().getTerminator()->getOperandTypes());
   for (auto arg : replicate.GetBody().getArguments()) {
@@ -410,8 +410,9 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   reformat_operands.push_back(replicate.GetBody().getArgument(
       replicate.GetNumReplicatedBlockArguments() - 1));
   builder.setInsertionPoint(execute_launch);
-  auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands);
+  auto reformat_op = TF::TPUReshardVariablesOp::create(
+      builder, execute_launch.getLoc(), llvm::ArrayRef<Type>{},
+      reformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
                  execute_launch.getDevice());
 
@@ -441,13 +442,13 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
   default_key_tensor.vec<tensorflow::tstring>()(0) = kDefaultShardingValue;
   default_key_tensor.vec<tensorflow::tstring>()(1) = kDefaultShardingValue;
   default_key_tensor.vec<tensorflow::tstring>()(2) = kDefaultShardingValue;
-  auto default_state_key = builder.create<TF::ConstOp>(
-      while_op.getLoc(),
+  auto default_state_key = TF::ConstOp::create(
+      builder, while_op.getLoc(),
       tensorflow::ConvertTensor(default_key_tensor, &builder).value());
   // With all replicated inputs, now build the replicate op.
-  auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
-      while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,
-      unformat_packed_operands, TypeRange{});
+  auto unformat_replicate = tf_device::ReplicateOp::create(
+      builder, while_op.getLoc(), num_replicas, devices,
+      unformat_replicate_operands, unformat_packed_operands, TypeRange{});
   // Then build the unformat op in the replicate op.
   builder.setInsertionPointToEnd(&unformat_replicate.GetBody());
   llvm::SmallVector<Value, 8> unformat_operands;
@@ -467,11 +468,11 @@ bool HandleReplicateOp(TF::WhileRegionOp while_op,
       unformat_operands.begin() + unformat_operands.size() - 1,
       default_state_key.getResult());
   // Unformat op.
-  auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
-      while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
+  auto unformat_op = TF::TPUReshardVariablesOp::create(
+      builder, while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands);
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
                  execute_launch.getDevice());
-  builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
+  tf_device::ReturnOp::create(builder, while_op.getLoc(), ArrayRef<Value>{});
 
   return true;
 }

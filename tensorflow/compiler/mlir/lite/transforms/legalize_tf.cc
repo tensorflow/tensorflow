@@ -129,11 +129,12 @@ Value CreateInt32ConstOrCast(Value val, Location loc,
         new_shape_array_i32.push_back(
             ShapedType::isDynamic(size) ? -1 : static_cast<int32_t>(size));
       }
-      return rewriter.create<arith::ConstantOp>(
-          loc, DenseIntElementsAttr::get(
-                   RankedTensorType::get(new_shape_array_i32.size(),
-                                         rewriter.getIntegerType(32)),
-                   new_shape_array_i32));
+      return arith::ConstantOp::create(
+          rewriter, loc,
+          DenseIntElementsAttr::get(
+              RankedTensorType::get(new_shape_array_i32.size(),
+                                    rewriter.getIntegerType(32)),
+              new_shape_array_i32));
     }
   }
 
@@ -149,7 +150,7 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
         RankedTensorType::get(static_shape.size(), rewriter.getIntegerType(64));
     auto static_shape_attr =
         mlir::DenseIntElementsAttr::get(static_shape_type, static_shape);
-    return rewriter.create<TF::ConstOp>(loc, static_shape_attr).getOutput();
+    return TF::ConstOp::create(rewriter, loc, static_shape_attr).getOutput();
   }
 
   // If the shape is not static, create a new ShapeOp.
@@ -292,8 +293,8 @@ bool ConvertTFBatchMatMulOp2TFLFullyConnectedOp(Operation* bmm_op,
     // to X and Z dimension.
     std::iter_swap(permute.begin() + input_rank - 1,
                    permute.begin() + input_rank - 2);
-    auto permutation_tensor_op = rewriter.create<arith::ConstantOp>(
-        op->getLoc(), permuation_tensor_type,
+    auto permutation_tensor_op = arith::ConstantOp::create(
+        rewriter, op->getLoc(), permuation_tensor_type,
         DenseElementsAttr::get(permuation_tensor_type, permute));
 
     auto input_shape = input_type.getShape();
@@ -302,8 +303,8 @@ bool ConvertTFBatchMatMulOp2TFLFullyConnectedOp(Operation* bmm_op,
     // Swaps z dimension and x dimension to get permuted shape.
     std::iter_swap(permuted_shape.begin() + input_rank - 1,
                    permuted_shape.begin() + input_rank - 2);
-    return rewriter.create<TFL::TransposeOp>(
-        op->getLoc(),
+    return TFL::TransposeOp::create(
+        rewriter, op->getLoc(),
         RankedTensorType::get(permuted_shape, input_type.getElementType()),
         input, permutation_tensor_op.getResult());
   };
@@ -324,10 +325,10 @@ bool ConvertTFBatchMatMulOp2TFLFullyConnectedOp(Operation* bmm_op,
       !op.getAdjY() ? create_z_x_transpose_op(input_rhs) : input_rhs;
 
   Type output_type = op.getResult().getType();
-  auto no_input = rewriter.create<TFL::NoValueOp>(
-      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
-  auto fc_op = rewriter.create<TFL::FullyConnectedOp>(
-      op->getLoc(), ArrayRef<Type>{output_type},
+  auto no_input = TFL::NoValueOp::create(
+      rewriter, op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+  auto fc_op = TFL::FullyConnectedOp::create(
+      rewriter, op->getLoc(), ArrayRef<Type>{output_type},
       /*input=*/legalized_lhs, /*filter=*/legalized_rhs, /*bias=*/no_input,
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
       /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -374,13 +375,14 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
 
     auto permute_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({2}, rewriter.getI32Type()), {1, 0});
-    auto permute = rewriter.create<arith::ConstantOp>(
-        op->getLoc(), permute_attr.getType(), permute_attr);
+    auto permute = arith::ConstantOp::create(
+        rewriter, op->getLoc(), permute_attr.getType(), permute_attr);
     llvm::SmallVector<int64_t, 2> new_shape{type.getShape()[1],
                                             type.getShape()[0]};
-    auto output = rewriter.create<TFL::TransposeOp>(
-        op->getLoc(), RankedTensorType::get(new_shape, type.getElementType()),
-        input, permute);
+    auto output = TFL::TransposeOp::create(
+        rewriter, op->getLoc(),
+        RankedTensorType::get(new_shape, type.getElementType()), input,
+        permute);
     return {success(), output};
   };
 
@@ -397,10 +399,10 @@ LogicalResult ConvertTFMatMulOp::matchAndRewrite(
   }
 
   Type output_type = tf_matmul_op.getResult().getType();
-  auto no_input = rewriter.create<TFL::NoValueOp>(
-      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
-  auto fc_op = rewriter.create<FullyConnectedOp>(
-      op->getLoc(), ArrayRef<Type>{output_type},
+  auto no_input = TFL::NoValueOp::create(
+      rewriter, op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+  auto fc_op = FullyConnectedOp::create(
+      rewriter, op->getLoc(), ArrayRef<Type>{output_type},
       /*input=*/lhs, /*filter=*/rhs, /*bias=*/no_input,
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
       /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -492,8 +494,8 @@ LogicalResult ConvertTFConv3DOp::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<TFL::NoValueOp>(
-      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+  Value none = TFL::NoValueOp::create(
+      rewriter, op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   rewriter.replaceOpWithNewOp<TFL::Conv3DOp>(
       op, tf_op.getType(), tf_op.getInput(), tf_op.getFilter(),
@@ -532,8 +534,8 @@ LogicalResult ConvertTFConv3DBackpropInputV2Op::matchAndRewrite(
 
   // TensorFlow Conv3D has no bias, optimization patterns will fuse Conv3D
   // with other ops can fill the bias.
-  Value none = rewriter.create<TFL::NoValueOp>(
-      op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+  Value none = TFL::NoValueOp::create(
+      rewriter, op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
   Value output_shape =
       CreateCastToInt32(tf_op.getInputSizes(), op->getLoc(), rewriter);
@@ -652,8 +654,8 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     }
 
     // Optional input placeholder.
-    Value none = rewriter.create<TFL::NoValueOp>(
-        op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+    Value none = TFL::NoValueOp::create(
+        rewriter, op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
 
     // Populate inputs.
     // UnidirectionalSequenceLstm is expected to have 24 inputs.
@@ -692,8 +694,8 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     attributes.push_back(
         rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
 
-    Value lstm_result = rewriter.create<TFL::UnidirectionalSequenceLSTMOp>(
-        op->getLoc(), result_types, inputs, attributes);
+    Value lstm_result = TFL::UnidirectionalSequenceLSTMOp::create(
+        rewriter, op->getLoc(), result_types, inputs, attributes);
 
     // Rewire the output.
     rewriter.replaceOp(op, {nullptr, nullptr, lstm_result});
@@ -750,8 +752,8 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
     attributes.push_back(
         rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
 
-    Value rnn_result = rewriter.create<TFL::UnidirectionalSequenceRNNOp>(
-        op->getLoc(), result_types, inputs, attributes);
+    Value rnn_result = TFL::UnidirectionalSequenceRNNOp::create(
+        rewriter, op->getLoc(), result_types, inputs, attributes);
 
     // Rewire the output.
     rewriter.replaceOp(op, {nullptr, rnn_result});
@@ -855,7 +857,8 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
     auto new_shape_attr = mlir::DenseIntElementsAttr::get(
         RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64)),
         result_shape);
-    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+    auto new_shape =
+        TF::ConstOp::create(rewriter, op->getLoc(), new_shape_attr);
 
     // Apply BroadcastTo ops to each input.
     auto broadcast_type = RankedTensorType::get(
@@ -1001,7 +1004,8 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
         RankedTensorType::get(result_shape.size(), rewriter.getIntegerType(64));
     auto new_shape_attr =
         mlir::DenseIntElementsAttr::get(shape_type, result_shape);
-    auto new_shape = rewriter.create<TF::ConstOp>(op->getLoc(), new_shape_attr);
+    auto new_shape =
+        TF::ConstOp::create(rewriter, op->getLoc(), new_shape_attr);
 
     // Apply BroadcastTo ops to each input.
     auto cond_result_type =

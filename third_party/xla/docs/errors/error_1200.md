@@ -1,6 +1,6 @@
 # Error code: 1200
 
-**Category:** Host Offload Output Mismatch
+**Category:**Compile Time: Host Offload Output Mismatch
 
 This error occurs when a tensor explicitly offloaded to host memory is returned
 as a program output, but the program's output signature is not configured to
@@ -39,7 +39,7 @@ To resolve this error, determine whether you intended for this tensor to be an
 output on the Host or if it should have been moved back to the Device before
 returning.
 
-### Verify Output Intent & Trace Path {#verify-intent}
+### Verify Output Intent & Trace Path
 
 * **Intended to return on Host:**
 If you explicitly want this tensor to be returned in host memory (avoiding

@@ -41,10 +41,8 @@ std::unique_ptr<xla::CoordinationService> EnableCoordinationService(
   config.cluster_register_with_barrier = true;
   config.heartbeat_timeout = options.heartbeat_timeout;
   config.shutdown_barrier_timeout = options.shutdown_timeout;
-  tensorflow::CoordinatedJob job;
-  job.set_name(job_name);
-  job.set_num_tasks(options.num_nodes);
-  config.coordinated_job_list.push_back(job);
+  config.job_name = job_name;
+  config.num_tasks = options.num_nodes;
   auto service =
       std::make_unique<xla::CoordinationService>(options.env, config);
   return service;

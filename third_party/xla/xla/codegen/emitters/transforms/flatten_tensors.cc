@@ -158,8 +158,8 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
       if (IsScalarOrFlat(operand_type)) continue;
       mlir::BlockArgument func_argument = op.getArgument(index);
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, operand_type, func_argument);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, operand_type, func_argument);
       func_argument.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                          cast_to_orig_type);
       operand_type = GetFlattenedType(operand_type);
@@ -201,8 +201,8 @@ struct RewritePureCall : OpRewritePattern<PureCallOp> {
       flat_result_types.push_back(GetFlattenedType(result_type));
     }
     Location loc = op.getLoc();
-    auto new_call_op = rewriter.create<PureCallOp>(
-        loc, flat_result_types, op.getCalleeAttr(), flat_operands);
+    auto new_call_op = PureCallOp::create(rewriter, loc, flat_result_types,
+                                          op.getCalleeAttr(), flat_operands);
     SmallVector<Value> new_results;
     new_results.reserve(op.getNumResults());
     for (auto [index, new_result] : llvm::enumerate(new_call_op.getResults())) {
@@ -210,8 +210,8 @@ struct RewritePureCall : OpRewritePattern<PureCallOp> {
         new_results.push_back(new_result);
         continue;
       }
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, op.getResult(index).getType(), new_result);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, op.getResult(index).getType(), new_result);
       new_results.push_back(cast_to_orig_type.getResult(0));
     }
     rewriter.replaceOp(op, new_results);
@@ -250,9 +250,9 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     auto flat_type = GetFlattenedType(tensor_type);
     Location loc = op.getLoc();
     Value new_op =
-        rewriter.create<gpu::AllocateSharedOp>(op.getLoc(), flat_type);
+        gpu::AllocateSharedOp::create(rewriter, op.getLoc(), flat_type);
     auto cast_to_orig_type =
-        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+        UnrealizedConversionCastOp::create(rewriter, loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -269,10 +269,10 @@ struct RewriteCpuLoad : OpRewritePattern<cpu::LoadOp> {
     }
     auto flat_type = GetFlattenedType(tensor_type);
     Location loc = op.getLoc();
-    Value new_op = rewriter.create<cpu::LoadOp>(
-        op.getLoc(), flat_type, op.getCallFrame(), op.getIndex());
+    Value new_op = cpu::LoadOp::create(rewriter, op.getLoc(), flat_type,
+                                       op.getCallFrame(), op.getIndex());
     auto cast_to_orig_type =
-        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+        UnrealizedConversionCastOp::create(rewriter, loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -289,8 +289,8 @@ struct RewriteConstant : OpRewritePattern<mlir::arith::ConstantOp> {
     }
     auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
     auto new_type = GetFlattenedType(op.getType());
-    Value new_constant = rewriter.create<mlir::arith::ConstantOp>(
-        op.getLoc(), dense_attr.reshape(new_type));
+    Value new_constant = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(), dense_attr.reshape(new_type));
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
                                                             new_constant);
     return mlir::success();
@@ -522,8 +522,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     // Create new ForOp with updated init args.
     Location loc = op.getLoc();
     auto new_for_op =
-        rewriter.create<ForOp>(loc, op.getLowerBound(), op.getUpperBound(),
-                               op.getStep(), new_init_args);
+        ForOp::create(rewriter, loc, op.getLowerBound(), op.getUpperBound(),
+                      op.getStep(), new_init_args);
     new_for_op->setAttrs(op->getAttrs());
 
     // Insert casts for the block arguments.
@@ -610,14 +610,14 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       for (auto&& [result, type] :
            llvm::zip(else_yield->getOpOperands(), new_result_types)) {
         if (result.get().getType() == type) continue;
-        result.set(
-            rewriter.create<UnrealizedConversionCastOp>(loc, type, result.get())
-                .getResult(0));
+        result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
+                                                      result.get())
+                       .getResult(0));
       }
     }
     // Create new IfOp and move the old op's regions to the new one.
-    auto new_if_op = rewriter.create<IfOp>(loc, new_result_types,
-                                           op.getCondition(), has_else_region);
+    auto new_if_op = IfOp::create(rewriter, loc, new_result_types,
+                                  op.getCondition(), has_else_region);
     rewriter.inlineRegionBefore(op.getThenRegion(),
                                 &new_if_op.getThenRegion().back());
     rewriter.eraseBlock(&new_if_op.getThenRegion().back());
@@ -634,7 +634,7 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       Type old_type = op->getResult(index).getType();
       if (result.getType() == old_type) continue;
       result =
-          rewriter.create<UnrealizedConversionCastOp>(loc, old_type, result)
+          UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -679,14 +679,15 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       for (auto&& [result, type] :
            llvm::zip(yield->getOpOperands(), new_result_types)) {
         if (result.get().getType() == type) continue;
-        result.set(
-            rewriter.create<UnrealizedConversionCastOp>(loc, type, result.get())
-                .getResult(0));
+        result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
+                                                      result.get())
+                       .getResult(0));
       }
     }
     // Create new IndexSwitchOp and move the old op's regions to the new one.
-    auto new_index_switch = rewriter.create<IndexSwitchOp>(
-        loc, new_result_types, op.getArg(), op.getCases(), op.getNumCases());
+    auto new_index_switch =
+        IndexSwitchOp::create(rewriter, loc, new_result_types, op.getArg(),
+                              op.getCases(), op.getNumCases());
     for (auto&& [old_region, new_region] :
          llvm::zip(op.getRegions(), new_index_switch.getRegions())) {
       rewriter.inlineRegionBefore(*old_region, *new_region, new_region->end());
@@ -698,7 +699,7 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       Type old_type = op->getResult(index).getType();
       if (result.getType() == old_type) continue;
       result =
-          rewriter.create<UnrealizedConversionCastOp>(loc, old_type, result)
+          UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -731,8 +732,8 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
                   loc, GetFlattenedType(tensor_type), operand.get())
               .getResult(0));
     }
-    auto new_op = rewriter.create<gpu::SyncThreadsOp>(
-        loc, TypeRange(new_operands), new_operands);
+    auto new_op = gpu::SyncThreadsOp::create(
+        rewriter, loc, TypeRange(new_operands), new_operands);
     SmallVector<Value> new_results;
     new_results.reserve(op.getNumResults());
     for (auto [index, result] : llvm::enumerate(new_op.getResults())) {
@@ -740,8 +741,8 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
         new_results.push_back(result);
         continue;
       }
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, result.getType(), result);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, result.getType(), result);
       new_results.push_back(cast_to_orig_type.getResult(0));
     }
     rewriter.replaceOp(op, new_results);

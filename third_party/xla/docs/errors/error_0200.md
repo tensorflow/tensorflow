@@ -1,6 +1,6 @@
 # Error Code: E0200
 
-**Category:** Core Halted Unexpectedly
+**Category:** Runtime: Core Halted Unexpectedly
 
 This error indicates that a TPU core stopped executing
 instructions prematurely. This is a fatal error state where the hardware forces
@@ -14,7 +14,7 @@ INTERNAL: Accelerator device halted prematurely, perhaps due to an on-device che
 
 ```
 
-**XLA Backends:** TPU
+**XLA backed:** TPU
 
 ## Overview
 
@@ -74,7 +74,7 @@ This indicates that a compiler-generated assertion in the compiled
 program failed during execution. Analyze the specific
 error message to determine the sub-type:
 
-#### A. Launch Group Mismatch
+#### Scenario 3.A: Launch Group Mismatch
 
 **Sample Error Message:**
 
@@ -94,7 +94,7 @@ than the current group leader, suggesting inconsistent programs across hosts.
 * **Consistent Jax Programs:** Check that all hosts are executing identical
 Jax program. verify docker images, libtpu versions etc.
 
-#### B. Bounds Check Failure
+#### Scenario 3.B: Bounds Check Failure
 
 **Sample Error Message:**
 
@@ -114,7 +114,7 @@ to validate tensor indices.
 * **Check Sharding:** Ensure sharding annotations are consistent with tensor
 shapes.
 
-#### C. Mosaic/Pallas Synchronization
+#### Scenario 3.C: Mosaic/Pallas Synchronization
 
 **Sample Error Message:**
 

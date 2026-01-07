@@ -92,7 +92,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::AddV2Op>(loc, x, y).getOperation();
+             return mlir::TF::AddV2Op::create(opb, loc, x, y).getOperation();
            });
 
   py::class_<mlir::TF::AnyOp>(m, "Tf_AnyOp")
@@ -111,7 +111,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               mlir::Attribute value) -> mlir::Operation* {
-             return opb.create<mlir::TF::ConstOp>(loc, value).getOperation();
+             return mlir::TF::ConstOp::create(opb, loc, value).getOperation();
            });
 
   // mlir::TF::EqualOp
@@ -129,7 +129,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::GreaterEqualOp>(loc, x, y)
+             return mlir::TF::GreaterEqualOp::create(opb, loc, x, y)
                  .getOperation();
            });
 
@@ -138,7 +138,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::GreaterOp>(loc, x, y).getOperation();
+             return mlir::TF::GreaterOp::create(opb, loc, x, y).getOperation();
            });
 
   // mlir::TF::LegacyCallOp
@@ -158,18 +158,19 @@ void init_ops(py::module& m) {
 
   // mlir::TF::LessEqualOp
   py::class_<mlir::TF::LessEqualOp>(m, "Tf_LessEqualOp")
-      .def("create",
-           [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
-              mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::LessEqualOp>(loc, x, y).getOperation();
-           });
+      .def(
+          "create",
+          [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
+             mlir::Value y) -> mlir::Operation* {
+            return mlir::TF::LessEqualOp::create(opb, loc, x, y).getOperation();
+          });
 
   // mlir::TF::LessOp
   py::class_<mlir::TF::LessOp>(m, "Tf_LessOp")
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::LessOp>(loc, x, y).getOperation();
+             return mlir::TF::LessOp::create(opb, loc, x, y).getOperation();
            });
 
   // mlir::TF::NegOp
@@ -177,7 +178,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               mlir::Value x) -> mlir::Operation* {
-             return opb.create<mlir::TF::NegOp>(loc, x).getOperation();
+             return mlir::TF::NegOp::create(opb, loc, x).getOperation();
            });
 
   py::class_<mlir::TF::NotEqualOp>(m, "Tf_NotEqualOp")
@@ -194,6 +195,6 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc, mlir::Value x,
               mlir::Value y) -> mlir::Operation* {
-             return opb.create<mlir::TF::SubOp>(loc, x, y).getOperation();
+             return mlir::TF::SubOp::create(opb, loc, x, y).getOperation();
            });
 }
