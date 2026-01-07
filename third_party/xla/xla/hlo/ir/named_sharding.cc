@@ -29,6 +29,24 @@ limitations under the License.
 
 namespace xla {
 
+void NamedSharding::DimensionSharding::Append(
+    const NamedSharding::DimensionSharding& other, const Mesh& mesh) {
+  if (other.axes_.empty()) {
+    return;
+  }
+  if (axes_.empty()) {
+    axes_ = other.axes_;
+    return;
+  }
+
+  // Merge last element of `axes_` with first element of `other.axes_`
+  if (!axes_.back().Merge(other.axes_.front(), mesh)) {
+    axes_.push_back(other.axes_.front());
+  }
+
+  axes_.insert(axes_.end(), other.axes_.begin() + 1, other.axes_.end());
+}
+
 std::optional<NamedSharding::DimensionSharding>
 NamedSharding::DimensionSharding::Slice(const Mesh& mesh, int64_t slice_size) {
   if (slice_size == 1) {

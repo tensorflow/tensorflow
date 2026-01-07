@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -265,6 +266,29 @@ bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
 
   // Sub-axes don't overlap, check if the gap is valid.
   return max_pre_size % min_next_pre_size == 0;
+}
+
+bool AxisRef::CanMerge(const AxisRef& other) const {
+  if (mesh_axis_index_ != other.mesh_axis_index()) {
+    return false;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    return false;
+  }
+  return sub_axis_info_->next_pre_size() == other.sub_axis_info_->pre_size;
+}
+
+bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
+  if (!CanMerge(other)) {
+    return false;
+  }
+
+  sub_axis_info_->size *= other.sub_axis_info_->size;
+  if (sub_axis_info_->size == mesh.axis_size(mesh_axis_index_)) {
+    assert(sub_axis_info_->pre_size == 1);
+    sub_axis_info_ = std::nullopt;
+  }
+  return true;
 }
 
 absl::Status AxisRef::Validate(const Mesh& mesh) const {

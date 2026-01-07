@@ -113,6 +113,76 @@ TEST(NamedShardingTest, Equality) {
             NamedSharding(mesh_diff_shape, {ds_ab, ds_dc}, {axis_b}, {axis_c}));
 }
 
+TEST(NamedShardingTest, DimensionShardingAppend) {
+  Mesh mesh{{2, 4, 8}, {"a", "b", "c"}};
+  AxisRef a(0), b(1), c(2);
+  AxisRef b1(1, {1, 2}), b2(1, {2, 2});
+
+  {
+    DimensionSharding ds1({}, /*is_closed=*/true);
+    DimensionSharding ds2({}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre());
+  }
+
+  {
+    DimensionSharding ds1({a}, /*is_closed=*/true);
+    DimensionSharding ds2({}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a));
+
+    DimensionSharding ds3({}, /*is_closed=*/false);
+    DimensionSharding ds4({a}, /*is_closed=*/true);
+    ds3.Append(ds4, mesh);
+    EXPECT_THAT(ds3.axes(), ElementsAre(a));
+    EXPECT_FALSE(ds3.is_closed());
+  }
+
+  {
+    DimensionSharding ds1({a}, /*is_closed=*/true);
+    DimensionSharding ds2({b}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a, b));
+  }
+
+  {
+    DimensionSharding ds1({a}, /*is_closed=*/true);
+    DimensionSharding ds2({b}, /*is_closed=*/false);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a, b));
+    EXPECT_TRUE(ds1.is_closed());
+  }
+
+  {
+    DimensionSharding ds1({a}, /*is_closed=*/false);
+    DimensionSharding ds2({b}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a, b));
+    EXPECT_FALSE(ds1.is_closed());
+  }
+
+  {
+    DimensionSharding ds1({b1}, /*is_closed=*/true);
+    DimensionSharding ds2({b2}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(b));
+  }
+
+  {
+    DimensionSharding ds1({a, b1}, /*is_closed=*/true);
+    DimensionSharding ds2({b2, c}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a, b, c));
+  }
+
+  {
+    DimensionSharding ds1({a, b1}, /*is_closed=*/true);
+    DimensionSharding ds2({c, b2}, /*is_closed=*/true);
+    ds1.Append(ds2, mesh);
+    EXPECT_THAT(ds1.axes(), ElementsAre(a, b1, c, b2));
+  }
+}
+
 class DimensionShardingSliceTest : public ::testing::Test {
  protected:
   Mesh mesh_{{2, 4, 3, 8, 1}, {"a", "b", "c", "d", "e"}};
