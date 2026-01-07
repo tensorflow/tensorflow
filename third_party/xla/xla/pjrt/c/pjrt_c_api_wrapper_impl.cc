@@ -397,7 +397,7 @@ void PJRT_Error_Message(PJRT_Error_Message_Args* args) {
   if (!struct_size_check.ok()) {
     LOG(ERROR) << struct_size_check.message();
   }
-  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Destroy_Args, error)) {
+  if (args->struct_size >= PJRT_STRUCT_SIZE(PJRT_Error_Message_Args, error)) {
     const absl::Status* status = &args->error->status;
     args->message = status->message().data();
     args->message_size = status->message().size();
