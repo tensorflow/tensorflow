@@ -133,7 +133,7 @@ LogicalResult HandlePad(TF::PadOp op, int32_t kernel_size, int32_t block_size) {
                                     pad_beg, pad_end, 0,       0};
   auto paddings = DenseIntElementsAttr::get(padding_type, values);
   // Update pad_op paddings.
-  op.setOperand(1, builder.create<TF::ConstOp>(loc, paddings));
+  op.setOperand(1, TF::ConstOp::create(builder, loc, paddings));
 
   // Set input type.
   auto input = op.getOperand(0);
@@ -302,8 +302,8 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
 
   auto input = backprop.getInput();
   // Get new filter size from new_filter_shape.
-  auto new_filter_sizes = builder.create<TF::ConstOp>(
-      backprop.getLoc(),
+  auto new_filter_sizes = TF::ConstOp::create(
+      builder, backprop.getLoc(),
       DenseIntElementsAttr::get(
           RankedTensorType::get({4}, builder.getIntegerType(32)),
           new_filter_shape));
@@ -324,11 +324,11 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
 
   // Build new BackPropFilterOp.
   auto loc = backprop.getLoc();
-  auto new_backprop = builder.create<TF::Conv2DBackpropFilterOp>(
-      loc, new_result_type, input, new_filter_sizes, backprop.getOutBackprop(),
-      strides, backprop.getUseCudnnOnGpu(), backprop.getPadding(),
-      backprop.getExplicitPaddings(), backprop.getDataFormat(),
-      backprop.getDilations());
+  auto new_backprop = TF::Conv2DBackpropFilterOp::create(
+      builder, loc, new_result_type, input, new_filter_sizes,
+      backprop.getOutBackprop(), strides, backprop.getUseCudnnOnGpu(),
+      backprop.getPadding(), backprop.getExplicitPaddings(),
+      backprop.getDataFormat(), backprop.getDilations());
 
   // For example, if new filter shape is [4, 4, 12, 64], old filter shape
   // is [7, 7, 3, 64] with block_size 2.
@@ -392,8 +392,8 @@ TF::SpaceToDepthOp BuildSpaceToDepth(tf_device::ClusterFuncOp cluster_func,
       input_shape[3] * block_size * block_size};
   auto transform_result_type =
       RankedTensorType::get(transform_shape, getElementTypeOrSelf(input));
-  return builder.create<TF::SpaceToDepthOp>(
-      cluster_func.getLoc(), transform_result_type, input, block_size);
+  return TF::SpaceToDepthOp::create(builder, cluster_func.getLoc(),
+                                    transform_result_type, input, block_size);
 }
 
 // Performs transformation for a non-replicated input.

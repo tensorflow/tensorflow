@@ -145,8 +145,8 @@ class ValueMapManager {
             "considered control dep");
 
       // Create a tfg.get_result for this output.
-      value_info[output_num] = builder_.create<GetResultOp>(
-          loc_, base_operation[1], output_name, output_num);
+      value_info[output_num] = GetResultOp::create(
+          builder_, loc_, base_operation[1], output_name, output_num);
     }
     return value_info[output_num];
   }
@@ -518,9 +518,9 @@ Status ImportGenericFunction(
         indexed_val.index());
   }
   MutableArrayRef<Value> operands = ret_vals;
-  ReturnOp ret_op = body_builder.create<ReturnOp>(
-      unknown_loc, operands.slice(0, func.ret_size()),
-      operands.slice(func.ret_size()));
+  ReturnOp ret_op = ReturnOp::create(body_builder, unknown_loc,
+                                     operands.slice(0, func.ret_size()),
+                                     operands.slice(func.ret_size()));
 
   // Now that we have all the types, set the function signature as the
   // "function_type" attribute.
