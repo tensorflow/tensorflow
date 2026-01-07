@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 
@@ -49,7 +48,7 @@ class GemmThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
-  GemmConfig config() const { return config_; }
+  const GemmConfig& config() const { return config_; }
   BufferAllocation::Slice lhs_buffer() const { return lhs_buffer_; }
   BufferAllocation::Slice rhs_buffer() const { return rhs_buffer_; }
   BufferAllocation::Slice output_buffer() const { return output_buffer_; }
@@ -58,13 +57,7 @@ class GemmThunk : public Thunk {
   }
   bool deterministic() const { return deterministic_; }
 
-  BufferUses buffer_uses() const override {
-    return {
-        BufferUse::Read(lhs_buffer_),
-        BufferUse::Read(rhs_buffer_),
-        BufferUse::Write(output_buffer_),
-    };
-  }
+  BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<GemmThunk>> FromProto(
       ThunkInfo thunk_info, const GemmThunkProto& proto,
