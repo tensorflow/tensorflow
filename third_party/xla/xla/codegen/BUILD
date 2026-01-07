@@ -36,6 +36,24 @@ cc_library(
 )
 
 cc_library(
+    name = "ir_printing",
+    srcs = ["ir_printing.cc"],
+    hdrs = ["ir_printing.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dump",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
     name = "kernel_spec",
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
