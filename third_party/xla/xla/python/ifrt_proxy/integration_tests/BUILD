@@ -58,8 +58,12 @@ ifrt_proxy_cc_test(
 ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
-    # TODO(b/396205547): Remove `linkstatic = False`.
+    args = ["--alsologtostderr"],
+    env = {
+        "IFRT_PROXY_DEBUGGED_MUTEX": "false",
+    },
     linkstatic = False,
+    tags = ["madthanuspecific"],
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -72,16 +76,13 @@ ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu_with_grpc_large_transfer_optimization",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
     args = [
+        "--alsologtostderr",
         "--ifrt_proxy_grpc_large_transfer_optimization_threshold_bytes=0",
     ],
     env = {
         "IFRT_PROXY_GRPC_LARGE_TRANSFER_OPTIMIZATION_DIRECTORY": "$$$$TEST_TMPDIR$$$$",
+        "IFRT_PROXY_DEBUGGED_MUTEX": "false",
     },
-    # TODO(b/396205547): Remove `linkstatic = False`.
-    linkstatic = False,
-    tags = [
-        "no_oss",  # TODO(b/450109296): flaky in OSS
-    ],
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -110,8 +111,10 @@ ifrt_proxy_cc_test(
     name = "remap_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["remap_impl_test_tfrt_cpu.cc"],
-    # TODO(b/396205547): Remove `linkstatic = False`.
-    linkstatic = False,
+    args = ["--alsologtostderr"],
+    env = {
+        "IFRT_PROXY_DEBUGGED_MUTEX": "false",
+    },
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:remap_impl_test_lib",
@@ -126,6 +129,10 @@ ifrt_proxy_cc_test(
     name = "mock_array_test",
     size = "small",
     srcs = ["mock_array_test.cc"],
+    args = ["--alsologtostderr"],
+    env = {
+        "IFRT_PROXY_DEBUGGED_MUTEX": "false",
+    },
     deps = [
         "//xla:future",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",

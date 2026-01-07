@@ -32,6 +32,7 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -74,7 +75,7 @@ class RemoteLoadedHostCallbackQueue {
   void Close();
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   bool closed_ ABSL_GUARDED_BY(mu_) = false;
   std::deque<ExecutionRequest> requests_ ABSL_GUARDED_BY(mu_);
 };

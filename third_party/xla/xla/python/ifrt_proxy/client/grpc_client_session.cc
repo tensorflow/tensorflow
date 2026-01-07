@@ -88,7 +88,7 @@ class GrpcClientSession::ResponseCallbackTable {
   }
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   absl::flat_hash_map<OpId, ResponseCallback> table_ ABSL_GUARDED_BY(mu_);
 };
 

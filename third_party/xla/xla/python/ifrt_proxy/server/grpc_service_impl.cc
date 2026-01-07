@@ -119,7 +119,7 @@ namespace proxy {
     return xla::ToGrpcStatus(backend.status());
   }
 
-  absl::Mutex writer_mu;
+  DebuggedMutex writer_mu;
   bool first_request_read = false;
   while (true) {
     auto request = std::make_unique<IfrtRequest>();

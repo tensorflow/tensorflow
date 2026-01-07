@@ -96,7 +96,7 @@ class BatchedOps {
   }
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   std::array<std::vector<ArrayHandle>, BatchOperation::kSentinelDoNotUse>
       batched_ ABSL_GUARDED_BY(mu_);
 };
@@ -166,7 +166,7 @@ class UserContextsReferencedByProxyServer {
     int ref_count = 0;
   };
 
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   absl::flat_hash_map<UserContextId, TrackedUserContextRefWithRefCount>
       user_contexts_ ABSL_GUARDED_BY(mu_);
   int64_t next_seq_num_to_process_ ABSL_GUARDED_BY(mu_) = 0;
@@ -322,7 +322,7 @@ class RpcHelper::Batcher {
 
   BatchedOps batched_;
 
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   bool finished_ ABSL_GUARDED_BY(mu_) = false;
   std::optional<tsl::thread::ThreadPool> thread_pool_;
 };

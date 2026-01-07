@@ -1,3 +1,9 @@
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/base/macros.h"
+#include "absl/debugging/stacktrace.h"
+#include "absl/debugging/symbolize.h"
+#include "tsl/platform/stacktrace.h"
 /*
  * Copyright 2023 The OpenXLA Authors.
  *
@@ -21,6 +27,7 @@
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
@@ -31,6 +38,12 @@
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+class DebuggedMutex : public absl::Mutex {
+ public:
+  explicit DebuggedMutex();
+  ~DebuggedMutex() = default;
+};
 
 struct ArrayHandle {
   uint64_t handle;

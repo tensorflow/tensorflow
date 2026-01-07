@@ -167,7 +167,7 @@ class MockArrayTest : public testing::Test {
     return mock_backend;
   }
 
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   absl::AnyInvocable<absl::Status()> get_ready_hook_ ABSL_GUARDED_BY(mu_);
   absl::AnyInvocable<absl::Status()> copy_host_hook_ ABSL_GUARDED_BY(mu_);
 };

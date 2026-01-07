@@ -100,7 +100,7 @@ class GrpcServiceImpl : public grpc::GrpcIfrtService::Service {
   BackendFactory backend_factory_;
   std::atomic<uint64_t> next_session_id_ = 1;
 
-  absl::Mutex host_buffer_store_mu_;
+  DebuggedMutex host_buffer_store_mu_;
   absl::flat_hash_map<uint64_t,
                       std::shared_ptr<xla::ifrt::proxy::HostBufferStore>>
       host_buffer_stores_ ABSL_GUARDED_BY(host_buffer_store_mu_);

@@ -50,7 +50,7 @@ void PausePeriodicFlushes() {
   // background flushes to complete. To achieve (b), we wait until the flusher
   // thread asks for the value of `paused` at least once.
   struct AtomicBool {
-    absl::Mutex mu;
+    DebuggedMutex mu;
     bool b = false;
   };
 

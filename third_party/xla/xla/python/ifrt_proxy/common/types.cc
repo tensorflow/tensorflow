@@ -15,24 +15,64 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+ABSL_CONST_INIT absl::Mutex d_mu(absl::kConstInit);
+ABSL_CONST_INIT int d_i = 0;
+ABSL_CONST_INIT char d_names[10000][10];
+
+static bool EnableDebuggedMutex() {
+  static bool answer = []() {
+    if (const char* valptr = std::getenv("IFRT_PROXY_DEBUGGED_MUTEX")) {
+      std::string val(valptr);
+      bool result;
+      QCHECK(absl::SimpleAtob(val, &result))
+          << " IFRT_PROXY_DEBUGGED_MUTEX:'" << val << "'";
+      return result;
+    }
+    return false;
+  }();
+  return answer;
+}
+
+DebuggedMutex::DebuggedMutex() {
+  if (!EnableDebuggedMutex()) {
+    return;
+  }
+
+  // absl::MutexLock l(d_mu);
+  // absl::SNPrintF(d_names[d_i], sizeof(d_names[d_i]), "d_%d", d_i);
+  LOG(INFO) << "DebuggedMutex " << this << ": " << tsl::CurrentStackTrace();
+  // EnableDebugLog(d_names[d_i]);
+  // d_i++;
+}
 
 absl::StatusOr<xla::PjRtValueType> FromVariantProto(
     const proto::Variant& variant_proto) {

@@ -174,7 +174,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
   const OnSessionStart on_session_start_;
 
   // Keeps track of `::grpc::ServerContext` for all ongoing sessions.
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   absl::flat_hash_set<::grpc::ServerContext*> contexts_ ABSL_GUARDED_BY(mu_);
 };
 

@@ -50,7 +50,7 @@ class Overrides {
   }
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   absl::flat_hash_map<TestHookName, std::function<void(bool*)>> overrides_
       ABSL_GUARDED_BY(mu_);
 };

@@ -191,7 +191,7 @@ class RpcHelper {
 
   std::atomic<uint64_t> next_handle_ = 1;
 
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   uint64_t next_op_id_ ABSL_GUARDED_BY(mu_) = 1;
 };
 

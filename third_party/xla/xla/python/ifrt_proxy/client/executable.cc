@@ -334,7 +334,7 @@ class LoadedExecutable::OutputSpecCache {
   }
 
  private:
-  absl::Mutex mu_;
+  DebuggedMutex mu_;
   std::optional<std::vector<ArraySpec>> data_ ABSL_GUARDED_BY(mu_);
   LoadedExecutable* const parent_;
 };

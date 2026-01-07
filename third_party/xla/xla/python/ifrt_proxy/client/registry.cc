@@ -31,6 +31,7 @@
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt_proxy/client/global_flags.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 
 namespace xla {
 namespace ifrt {
@@ -43,7 +44,7 @@ using FactoryFn =
         absl::string_view, const ClientConnectionOptions&)>;
 
 struct Registry {
-  absl::Mutex mu;
+  DebuggedMutex mu;
   absl::flat_hash_map<std::string, FactoryFn> factories ABSL_GUARDED_BY(mu);
 };
 
