@@ -354,6 +354,13 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
+  // TODO(b/474103597): we might be able to do this using negative strides,
+  // but this feature is rarely used and considered for deprecation.
+  if ((window.dimensions(0).window_reversal() != 0) ||
+      (window.dimensions(1).window_reversal() != 0)) {
+    return false;
+  }
+
   return true;
 }
 
