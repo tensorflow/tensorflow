@@ -283,7 +283,7 @@ class Compiler {
   // Returns the compiler singleton pointer if it is available for the given
   // platform, or an error status if it is not.
   static absl::StatusOr<std::unique_ptr<Compiler>> GetForPlatform(
-      const se::Platform* platform);
+      se::Platform::Id platform_id);
 
   // Returns a function that computes the size in bytes of the logical
   // buffer that contains a shape.

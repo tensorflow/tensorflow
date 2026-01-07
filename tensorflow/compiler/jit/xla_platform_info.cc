@@ -256,7 +256,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
   }
 
   absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.value());
+      xla::Compiler::GetForPlatform(platform.value()->id());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation

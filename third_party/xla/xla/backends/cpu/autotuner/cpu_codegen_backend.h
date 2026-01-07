@@ -1,3 +1,4 @@
+#include "xla/stream_executor/platform_manager.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -28,10 +28,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -46,7 +45,7 @@ class CpuCodegenBackend : public CodegenBackend {
     TF_ASSIGN_OR_RETURN(
         auto platform,
         stream_executor::PlatformManager::PlatformWithName("host", true));
-    return Compiler::GetForPlatform(platform);
+    return Compiler::GetForPlatform(platform->id());
   }
 
   CpuCodegenBackend(Compiler* compiler, absl::string_view name)

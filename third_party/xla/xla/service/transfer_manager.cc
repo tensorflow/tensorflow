@@ -152,7 +152,8 @@ absl::Status TransferManager::ReadDynamicShapes(
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   TF_ASSIGN_OR_RETURN(
-      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
+      auto compiler,
+      Compiler::GetForPlatform(stream->parent()->GetPlatform()->id()));
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
           const se::DeviceAddressBase& buffer) -> absl::Status {

@@ -1690,8 +1690,9 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
 
   se::StreamExecutor* stream_exec = config_.GetExecutor();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(stream_exec->GetPlatform()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Compiler> compiler,
+      Compiler::GetForPlatform(stream_exec->GetPlatform()->id()));
   se::DeviceAddressAllocator* device_allocator = config_.GetAllocator();
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);
