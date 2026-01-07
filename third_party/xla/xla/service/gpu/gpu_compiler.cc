@@ -1911,7 +1911,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
 
   pipeline.AddPass<HostMemoryTransferAsyncifier>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost));
+      static_cast<int64_t>(stream_executor::MemorySpace::kHost));
 
 #ifdef NDEBUG
   // Verify the module in non-debug builds. For debug builds, the verifier
@@ -2492,7 +2492,7 @@ absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
   XlaComputation computation(hlo_proto);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
                       client.Compile(computation));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> result,
                       client.Export(executable.get()));
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
       tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(result.get());
@@ -2744,7 +2744,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                 const AotCompilationOptions& options) {
   tsl::profiler::TraceMe traceme("CompileAheadOfTime");
@@ -2766,7 +2766,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   return LegacyCompileAheadOfTime(std::move(hlo_module), options);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                    const AotCompilationOptions& options) {
   CompileOptions compile_options;
@@ -2777,12 +2777,12 @@ GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<Executable> executable,
       RunBackend(std::move(hlo_module), options.executor(), compile_options));
 
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  std::vector<std::unique_ptr<CompiledModule>> results;
   TF_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
   return results;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                          const AotCompilationOptions& options) {
   bool early_exit_with_layouts =
@@ -2793,7 +2793,7 @@ GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   compile_options.gpu_target_config = options.gpu_target_config();
   compile_options.early_exit_with_layouts = early_exit_with_layouts;
 
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  std::vector<std::unique_ptr<CompiledModule>> results;
   TF_ASSIGN_OR_RETURN(
       auto optimized_module,
       RunHloPasses(std::move(hlo_module), options.executor(), compile_options));
@@ -2802,7 +2802,7 @@ GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   return std::move(results);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                       const AotCompilationOptions& options) {
   std::unique_ptr<HloModule> optimized_module;
@@ -2836,7 +2836,7 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                              {options.device_allocator()}, gpu_device_info));
 
   // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
-  std::vector<std::unique_ptr<AotCompilationResult>> results;
+  std::vector<std::unique_ptr<CompiledModule>> results;
   TF_ASSIGN_OR_RETURN(
       results.emplace_back(),
       LegacyGpuAotCompilationResult::FromModule(
@@ -2853,7 +2853,7 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
   return gpu::ShapeSizeBytesFunction(pointer_size_);
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
+absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     Executable* executable) {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) {
@@ -2938,7 +2938,7 @@ HloCostAnalysis::Options CreateHloAnalysisOpts(
                           gpu_device_info.fpus_per_core() *
                           gpu_device_info.clock_rate_ghz() * kGiga * kFma;
     int64_t host_memory_space_color =
-        static_cast<int64_t>(se::MemoryType::kHost);
+        static_cast<int64_t>(stream_executor::MemorySpace::kHost);
     hlo_cost_analysis_options.set_flops_per_second(flops_per_sec);
     hlo_cost_analysis_options.set_transcendentals_per_second(flops_per_sec);
     offloading_config =
@@ -2962,7 +2962,7 @@ HloRematerialization::Options CreateRematOpts(
       offloading_config = std::nullopt;
   if (enable_offloading) {
     int64_t host_memory_space_color =
-        static_cast<int64_t>(se::MemoryType::kHost);
+        static_cast<int64_t>(stream_executor::MemorySpace::kHost);
     offloading_config =
         std::make_optional<HloRematerialization::HostMemoryOffloadConfig>(
             /*host_memory_space=*/host_memory_space_color,
@@ -3092,7 +3092,7 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<CompiledModule>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   GpuExecutableProto gpu_executable_proto;
@@ -3112,8 +3112,7 @@ GpuCompiler::LoadAotCompilationResult(
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuCompiler::LoadExecutableFromAotResult(
-    const AotCompilationResult& aot_result,
-    const se::StreamExecutor& stream_exec) {
+    const CompiledModule& aot_result, const se::StreamExecutor& stream_exec) {
   tsl::profiler::TraceMe traceme("LoadExecutableFromAotResult");
 
   const auto* gpu_aot_result =

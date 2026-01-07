@@ -271,10 +271,10 @@ TEST_F(GpuOffloadingTest, XLAHostMemoryAllocationDeallocationTest) {
   stream_executor::StreamExecutor* executor =
       backend().default_stream_executor();
   stream_executor::DeviceAddressBase host_ptr =
-      executor->Allocate(64, (int64_t)(stream_executor::MemoryType::kHost));
+      executor->Allocate(64, (int64_t)(stream_executor::MemorySpace::kHost));
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
                           executor->GetPointerMemorySpace(host_ptr.opaque()));
-  EXPECT_EQ(memory_space, stream_executor::MemoryType::kHost);
+  EXPECT_EQ(memory_space, stream_executor::MemorySpace::kHost);
   executor->Deallocate(&host_ptr);
 }
 
