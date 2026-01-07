@@ -43,8 +43,6 @@ limitations under the License.
 
 namespace xla {
 
-using PjRtPlatformId = uint64_t;
-
 inline const char* CpuName() {
   static constexpr char kCpuName[] = "cpu";
   return kCpuName;
