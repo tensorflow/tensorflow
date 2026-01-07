@@ -1907,7 +1907,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveGroupStartThunk(
   ThunkSequence thunks;
   for (const HloInstruction* nested_instruction :
        instr->async_wrapped_computation()->instructions()) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto comp_thunks,
         EmitHloInstruction(nested_instruction, /*emit_group_thunks=*/true));
     AppendThunkSequence(thunks, comp_thunks);
@@ -1921,9 +1921,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveGroupStartThunk(
     }
   }
   auto thunk = std::make_unique<CollectiveGroupThunk>(
-      instr, Thunk::Kind::kGroupStart, std::move(thunks),
-      stream_kind.value_or(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      ir_emitter_context_->GetNextThunkId());
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          instr, ir_emitter_context_->GetNextThunkId()),
+      Thunk::Kind::kGroupStart, std::move(thunks),
+      stream_kind.value_or(AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
 
   GetCollectivesAsyncEvents().insert({instr, thunk->async_events()});
   return GetThunkSequence(std::move(thunk));

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -286,6 +287,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return DynamicMemcpyThunk::FromProto(std::move(thunk_info),
                                            thunk_proto.dynamic_memcpy_thunk(),
                                            buffer_allocations);
+    case ThunkProto::kCollectiveGroupThunk:
+      return CollectiveGroupThunk::FromProto(
+          std::move(thunk_info), thunk_proto.collective_group_thunk(),
+          buffer_allocations, collective_async_events_map, deserializer);
     default:
       std::optional<absl::string_view> unsupported_thunk_type =
           GetStoredThunkTypeName(thunk_proto);
