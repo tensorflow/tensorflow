@@ -3233,15 +3233,13 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
 }
 
 struct ShardedAutotuningTestInfo {
-  bool use_xla_computation;
   int num_active_nodes;
   int num_nodes_using_cache;
 
   static std::string Name(
       const ::testing::TestParamInfo<ShardedAutotuningTestInfo>& info) {
-    return absl::StrFormat(
-        "computation_%d_active_%d_cache_%d", info.param.use_xla_computation,
-        info.param.num_active_nodes, info.param.num_nodes_using_cache);
+    return absl::StrFormat("active_%d_cache_%d", info.param.num_active_nodes,
+                           info.param.num_nodes_using_cache);
   }
 };
 
@@ -3273,8 +3271,6 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back("sharded_autotuning_test");
       argv.push_back("--test_to_run=ShardedAutotuningWorksHelper");
       argv.push_back(absl::StrFormat("--node_id=%d", node_id));
-      argv.push_back(absl::StrFormat("--use_xla_computation=%d",
-                                     param.use_xla_computation));
       argv.push_back(
           absl::StrFormat("--num_active_nodes=%d", param.num_active_nodes));
       argv.push_back(absl::StrFormat("--num_nodes_using_cache=%d",
@@ -3324,8 +3320,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
 absl::Status ShardedAutotuningWorksTestBody(const int node_id,
                                             const int num_active_nodes,
                                             const int num_nodes_using_cache,
-                                            absl::string_view cache_dir,
-                                            bool use_xla_computation) {
+                                            absl::string_view cache_dir) {
   std::unique_ptr<xla::DistributedRuntimeService> service;
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
@@ -3377,31 +3372,21 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
     debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
   }
 
-  mlir::MLIRContext context;
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                      ParseMlirModuleString(R"mlir(
-      func.func public @main(%arg0: tensor<2x32x32xf16>) ->
-      (tensor<2x32x32xf16> {jax.result_info = ""}) {
-        %0 = stablehlo.dot_general %arg0, %arg0, batching_dims = [0] x [0],
-        contracting_dims = [2] x [1]
-          : (tensor<2x32x32xf16>, tensor<2x32x32xf16>) ->
-          tensor<2x32x32xf16>
-        return %0 : tensor<2x32x32xf16>
-      })mlir",
-                                            context));
+  const char* kHlo = R"(
+    HloModule main
+    ENTRY main {
+      %p0 = f16[2,32,32] parameter(0)
+      ROOT %dot = f16[2,32,32] dot(%p0, %p0), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    }
+  )";
+
+  TF_ASSIGN_OR_RETURN(auto hlo_module,
+                      ParseAndReturnUnverifiedModule(kHlo, {}));
+  xla::XlaComputation computation(hlo_module->ToProto());
+
   std::unique_ptr<PjRtLoadedExecutable> executable;
-  if (use_xla_computation) {
-    XlaComputation computation;
-    TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation,
-                                            /*use_tuple_args=*/false,
-                                            /*return_tuple=*/false,
-                                            /*exec_build_options=*/nullptr));
-    TF_ASSIGN_OR_RETURN(executable,
-                        client->CompileAndLoad(computation, compile_options));
-  } else {
-    TF_ASSIGN_OR_RETURN(executable,
-                        client->CompileAndLoad(*module, compile_options));
-  }
+  TF_ASSIGN_OR_RETURN(executable,
+                      client->CompileAndLoad(computation, compile_options));
 
   const std::string optimized_hlo =
       executable->GetExecutable()->GetHloModules()->front()->ToString();
@@ -3414,11 +3399,8 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
 
 INSTANTIATE_TEST_SUITE_P(
     ShardedAutotuningTest, ShardedAutotuningTest,
-    ::testing::ValuesIn(std::vector<ShardedAutotuningTestInfo>{{true, 2, 0},
-                                                               {false, 2, 0},
-                                                               {false, 1, 0},
-                                                               {false, 2, 1},
-                                                               {false, 2, 2}}),
+    ::testing::ValuesIn(std::vector<ShardedAutotuningTestInfo>{
+        {2, 0}, {1, 0}, {2, 1}, {2, 2}}),
     ShardedAutotuningTestInfo::Name);
 
 }  // namespace
@@ -3437,7 +3419,6 @@ int main(int argc, char* argv[]) {
   int num_active_nodes = -1;
   int num_nodes_using_cache = -1;
   std::string cache_dir;
-  bool use_xla_computation = false;
 
   // Variables used by SuccessfulCrossHostTransfer.
   std::string cross_host_test_role;
@@ -3457,8 +3438,6 @@ int main(int argc, char* argv[]) {
       tsl::Flag("num_nodes_using_cache", &num_nodes_using_cache,
                 "Test parameter for ShardedAutotuningWorks."),
       tsl::Flag("cache_dir", &cache_dir,
-                "Test parameter for ShardedAutotuningWorks."),
-      tsl::Flag("use_xla_computation", &use_xla_computation,
                 "Test parameter for ShardedAutotuningWorks."),
 
       // Flags for SuccessfulCrossHostTransfer.
@@ -3480,8 +3459,7 @@ int main(int argc, char* argv[]) {
 
   if (test_to_run == "ShardedAutotuningWorksHelper") {
     absl::Status result = xla::ShardedAutotuningWorksTestBody(
-        node_id, num_active_nodes, num_nodes_using_cache, cache_dir,
-        use_xla_computation);
+        node_id, num_active_nodes, num_nodes_using_cache, cache_dir);
     if (!result.ok()) {
       LOG(ERROR) << result;
     }
