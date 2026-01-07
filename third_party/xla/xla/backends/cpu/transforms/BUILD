@@ -118,6 +118,7 @@ cc_library(
 xla_cc_test(
     name = "ynn_matcher_test",
     srcs = ["ynn_matcher_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:xla_proto_cc",
         "//xla/service:cpu_plugin",
