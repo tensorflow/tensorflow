@@ -141,6 +141,125 @@ absl::StatusOr<bool> RunOptimizer(
   return pass.Run(module);
 }
 
+TEST_F(CollectivePipelinerTest, ForwardSinkReshapeTransformedNoCrash) {
+  const std::string hlo_string = R"(
+HloModule test_reshape_forward_sink
+
+%add_f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+%while_cond (%param (s32[], f32[7])) -> pred[] {
+  %param = (s32[], f32[7]) parameter(0)
+  %iter = s32[] get-tuple-element(%param), index=0
+  %limit = s32[] constant(7)
+  ROOT %lt = pred[] compare(%iter, %limit), direction=LT
+}
+
+%while_body (%param (s32[], f32[7])) -> (s32[], f32[7]) {
+  %param = (s32[], f32[7]) parameter(0)
+  %iter = s32[] get-tuple-element(%param), index=0
+  %data = f32[7] get-tuple-element(%param), index=1
+
+  // Collective: AllReduce on a scalar
+  %const_1 = f32[] constant(1.0)
+  %ar = f32[] all-reduce(%const_1), replica_groups={}, to_apply=%add_f32
+
+  // Formatting Op: Reshape from f32[] to f32[1]
+  %reshape = f32[1] reshape(%ar)
+
+  // DynamicUpdateSlice: Updates %data with %reshape
+  %index = s32[] get-tuple-element(%param), index=0
+  %dus = f32[7] dynamic-update-slice(%data, %reshape, %index)
+
+  // Increment iterator
+  %const_1_s32 = s32[] constant(1)
+  %next_iter = s32[] add(%iter, %const_1_s32)
+
+  ROOT %tuple = (s32[], f32[7]) tuple(%next_iter, %dus)
+}
+
+ENTRY main {
+  %init_iter = s32[] constant(0)
+  %init_data = f32[7] constant({0, 0, 0, 0, 0, 0, 0})
+  %init_tuple = (s32[], f32[7]) tuple(%init_iter, %init_data)
+  ROOT %while = (s32[], f32[7]) while(%init_tuple), condition=%while_cond, body=%while_body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  CollectivePipeliner::Config config;
+  config.pipelining_direction =
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink;
+  config.acceptable_formatting = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kReshape;
+  };
+  config.should_process = [](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kAllReduce;
+  };
+  config.process_different_sized_ops =
+      true;                // Allow different sized ops in chain
+  config.last_run = true;  // To trigger cleanup
+
+  CollectivePipeliner pipeliner(config);
+
+  EXPECT_THAT(pipeliner.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  // The original while loop is replaced by a tuple.
+  const HloInstruction* entry_root =
+      module->entry_computation()->root_instruction();
+  EXPECT_EQ(entry_root->opcode(), HloOpcode::kTuple);
+  const HloInstruction* gte = entry_root->operand(0);
+  EXPECT_EQ(gte->opcode(), HloOpcode::kGetTupleElement);
+  const HloInstruction* new_reshape = entry_root->operand(1);
+  EXPECT_EQ(new_reshape->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(new_reshape->shape(), ShapeUtil::MakeShape(F32, {7}));
+
+  // The element at index 1 of the new output tuple should be the result of the
+  // sunk reshape.
+  const HloInstruction* sunk_reshape = new_reshape->operand(0);
+  EXPECT_EQ(sunk_reshape->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(sunk_reshape->shape(), ShapeUtil::MakeShape(F32, {7, 1}));
+
+  // The input to the sunk reshape should be the sunk all-reduce.
+  const HloInstruction* sunk_ar = sunk_reshape->operand(0);
+  EXPECT_EQ(sunk_ar->opcode(), HloOpcode::kAllReduce);
+  EXPECT_EQ(sunk_ar->shape(), ShapeUtil::MakeShape(F32, {7}));
+
+  // The input to the sunk all-reduce should be a GetTupleElement from the new
+  // while loop.
+  const HloInstruction* ar_input_gte = sunk_ar->operand(0);
+  EXPECT_EQ(ar_input_gte->opcode(), HloOpcode::kGetTupleElement);
+  const HloInstruction* new_while = ar_input_gte->operand(0);
+  EXPECT_EQ(new_while->opcode(), HloOpcode::kWhile);
+  // The index of the GTE should be where the accumulated bcast is stored in the
+  // new while tuple. Original while tuple size is 2. The sunk collective's
+  // input is added at index 2.
+  EXPECT_EQ(ar_input_gte->tuple_index(), 2);
+  EXPECT_EQ(ar_input_gte->shape(), ShapeUtil::MakeShape(F32, {7}));
+
+  // Verify the new while body structure.
+  const HloComputation* new_while_body = new_while->while_body();
+  const HloInstruction* new_while_root = new_while_body->root_instruction();
+  EXPECT_EQ(new_while_root->opcode(), HloOpcode::kTuple);
+  // The element at index 2 of the new while root tuple should be the
+  // DynamicUpdateSlice.
+  const HloInstruction* new_dus = new_while_root->operand(2);
+  EXPECT_EQ(new_dus->opcode(), HloOpcode::kDynamicUpdateSlice);
+  EXPECT_EQ(new_dus->shape(), ShapeUtil::MakeShape(F32, {7}));
+
+  // The value being inserted by the new DUS is a reshaped constant.
+  const HloInstruction* dus_inserted_value = new_dus->operand(1);
+  EXPECT_EQ(dus_inserted_value->opcode(), HloOpcode::kReshape);
+  EXPECT_EQ(dus_inserted_value->shape(), ShapeUtil::MakeShape(F32, {1}));
+  EXPECT_EQ(dus_inserted_value->operand(0)->opcode(), HloOpcode::kConstant);
+}
+
 TEST_F(CollectivePipelinerTest, TransformIncrementIndexByOne) {
   constexpr absl::string_view hlo_string = R"(
 HloModule module
