@@ -1062,8 +1062,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
   auto lb = ImplicitLocOpBuilder(loc, *b);
   // TODO: b/315868720 Consider alternate lowerings of mhlo::PowOp with integer
   // operands. Floating point can use std::powf
-  auto resultType = getElementTypeOrSelf(resultTypes.front());
-  if (mlir::isa<ComplexType, FloatType>(resultType)) {
+  auto elementType = getElementTypeOrSelf(resultTypes.front());
+  if (mlir::isa<ComplexType, FloatType>(elementType)) {
     return MapMhloOpToScalarOpImpl<IsFloatType, math::PowFOp, IsComplexType,
                                    complex::PowOp>{}(
         loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
@@ -1071,11 +1071,14 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
 
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
-  Value negOne =
-      arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, -1));
-  Value zero = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 0));
-  Value one = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 1));
-  Value two = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 2));
+  Value negOne = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                    lb.getIntegerAttr(elementType, -1));
+  Value zero = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                  lb.getIntegerAttr(elementType, 0));
+  Value one = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                 lb.getIntegerAttr(elementType, 1));
+  Value two = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                 lb.getIntegerAttr(elementType, 2));
   Value step = arith::ConstantIndexOp::create(lb, 1);
   Value lowerBound = arith::ConstantIndexOp::create(lb, 0);
   // Everything else would overflow for any exponent > 1, as 2^64
