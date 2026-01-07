@@ -645,7 +645,7 @@ cc_library(
     deps = [
         ":kernel",
         ":kernel_args",
-        ":kernel_argument_packing_spec",
+        ":kernel_args_packing_spec",
         ":kernel_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/functional:function_ref",
@@ -660,14 +660,14 @@ cc_library(
 tf_proto_library(
     name = "kernel_spec_proto",
     srcs = ["kernel_spec.proto"],
-    deps = [":kernel_argument_packing_spec_proto"],
+    deps = [":kernel_args_packing_spec_proto"],
 )
 
 xla_cc_test(
     name = "kernel_spec_test",
     srcs = ["kernel_spec_test.cc"],
     deps = [
-        ":kernel_argument_packing_spec",
+        ":kernel_args_packing_spec",
         ":kernel_spec",
         ":kernel_spec_proto_cc",
         "//xla/tsl/platform:statusor",
@@ -696,16 +696,16 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "kernel_argument_packing_spec",
-    srcs = ["kernel_argument_packing_spec.cc"],
-    hdrs = ["kernel_argument_packing_spec.h"],
+    name = "kernel_args_packing_spec",
+    srcs = ["kernel_args_packing_spec.cc"],
+    hdrs = ["kernel_args_packing_spec.h"],
     deps = [
         ":device_address",
+        ":kernel_args",
         ":kernel_args_packed_vector",
-        ":kernel_argument_packing_spec_proto_cc",
+        ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -714,17 +714,17 @@ cc_library(
 )
 
 tf_proto_library(
-    name = "kernel_argument_packing_spec_proto",
-    srcs = ["kernel_argument_packing_spec.proto"],
+    name = "kernel_args_packing_spec_proto",
+    srcs = ["kernel_args_packing_spec.proto"],
 )
 
 xla_cc_test(
-    name = "kernel_argument_packing_spec_test",
-    srcs = ["kernel_argument_packing_spec_test.cc"],
+    name = "kernel_args_packing_spec_test",
+    srcs = ["kernel_args_packing_spec_test.cc"],
     deps = [
         ":device_address",
-        ":kernel_args_packed_vector",
-        ":kernel_argument_packing_spec",
+        ":kernel_args",
+        ":kernel_args_packing_spec",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
@@ -1023,9 +1023,7 @@ cc_library(
         "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/meta:type_traits",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

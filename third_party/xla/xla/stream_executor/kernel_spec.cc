@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -111,11 +111,10 @@ absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
   CHECK(has_cuda_cubin_in_memory() || has_cuda_ptx_in_memory() ||
         has_in_process_symbol());
 
-  if (std::holds_alternative<KernelArgumentsPackingSpec>(
-          kernel_args_packing_)) {
+  if (std::holds_alternative<KernelArgsPackingSpec>(kernel_args_packing_)) {
     TF_ASSIGN_OR_RETURN(
         *proto.mutable_kernel_args_packing_spec(),
-        std::get<KernelArgumentsPackingSpec>(kernel_args_packing_).ToProto());
+        std::get<KernelArgsPackingSpec>(kernel_args_packing_).ToProto());
   }
 
   return proto;
@@ -126,9 +125,9 @@ absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
     std::optional<SymbolResolver> symbol_resolver) {
   KernelArgsPacking kernel_args_packing;
   if (proto.has_kernel_args_packing_spec()) {
-    TF_ASSIGN_OR_RETURN(kernel_args_packing,
-                        KernelArgumentsPackingSpec::FromProto(
-                            proto.kernel_args_packing_spec()));
+    TF_ASSIGN_OR_RETURN(
+        kernel_args_packing,
+        KernelArgsPackingSpec::FromProto(proto.kernel_args_packing_spec()));
   }
 
   switch (proto.payload_case()) {

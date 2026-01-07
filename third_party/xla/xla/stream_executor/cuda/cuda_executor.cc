@@ -86,7 +86,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -1234,11 +1234,11 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
             spec.kernel_args_packing()));
   } else {
     const auto& packing_spec =
-        std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
+        std::get<KernelArgsPackingSpec>(spec.kernel_args_packing());
     cuda_kernel->set_args_packing(
         [packing_spec](const Kernel& kernel, const KernelArgs& args) {
           const auto& mem_args = Cast<KernelArgsDeviceAddressArray>(&args);
-          return packing_spec.BuildArguments(mem_args->device_memory_args(),
+          return packing_spec.BuildArguments(mem_args->device_addr_args(),
                                              args.number_of_shared_bytes());
         });
   }
