@@ -29,21 +29,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Rewrites supported Triton GEMM fusions to generic Triton fusions.
+// Annotates instructions inside the triton_gemm fusions with the tiling
+// parameters from its backend config.
 //
-// Fusions with kind kCustom and fusion_backend_config.kind "__triton_gemm" are
-// rewritten to fusion_backend_config.kind
-// "__triton_nested_fusion_gemm".
-//
-// While this new fusion kind is supported by generic triton emitter we want
-// to distinguish it from "__triton" as we don't want other passes to modify the
-// resulting fusions.
-//
-// The fusion's backend config is set to a BlockLevelFusionConfig, derived from
-// a previously set TritonGemmConfig.
-//
-// The operands of the dot (including their prologues) are fused into two new
-// nested fusions, each with their own BlockLevelFusionConfig.
+// Replaces the fusion kind with "__triton_nested_gemm_fusion" and sets the
+// fusion's backend config a BlockLevelFusionConfig, derived from
+// TritonGemmConfig.
 class ConvertTritonGemmConfig : public HloModulePass {
  public:
   explicit ConvertTritonGemmConfig(
