@@ -68,6 +68,8 @@ namespace gpu_plugin {
 
 #if TENSORFLOW_USE_ROCM
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
+#elif TENSORFLOW_USE_SYCL
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ONEAPI"
 #else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 #endif
@@ -265,13 +267,22 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       PJRT_TopologyDescription_Create_Args_STRUCT_SIZE, args->struct_size));
 
   // Determine the platform ID and name based on the platform.
-  xla::PjRtPlatformId platform_id =
-      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmId()
-                                                             : xla::CudaId();
-  std::string platform_name =
-      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
-                                                             : xla::CudaName();
 
+  xla::PjRtPlatformId platform_id;
+  std::string platform_name;
+
+  absl::string_view plugin_platform = PJRT_GPU_PLUGIN_PLATFORM_NAME;
+
+  if (plugin_platform == "ROCM") {
+    platform_id = xla::RocmId();
+    platform_name = xla::RocmName();
+  } else if (plugin_platform == "ONEAPI") {
+    platform_id = xla::OneapiId();      // Assuming this is defined in XLA
+    platform_name = xla::OneapiName();  // Assuming this is defined in XLA
+  } else {
+    platform_id = xla::CudaId();
+    platform_name = xla::CudaName();
+  }
   absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
       pjrt::ConvertFromPjRtNamedValueList(args->create_options,
                                           args->num_options);
