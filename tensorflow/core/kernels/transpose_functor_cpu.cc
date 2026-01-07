@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define EIGEN_USE_THREADS
+#include <cstdint>
 
-#include <complex>
+#include "absl/types/span.h"
+#define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/attr_value.pb.h"

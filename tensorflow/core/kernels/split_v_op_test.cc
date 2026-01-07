@@ -15,10 +15,14 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <numeric>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/tensor.h"
