@@ -173,16 +173,37 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "xla_runtime_abi_version",
+    srcs = ["xla_runtime_abi_version.cc"],
+    hdrs = ["xla_runtime_abi_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":executable_metadata_proto_cc",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_version",
+        "//xla/python/ifrt:serdes_week_4_old_version_accessor",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "xla_executable_version",
     srcs = ["xla_executable_version.cc"],
     hdrs = ["xla_executable_version.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":executable_metadata_proto_cc",
+        ":xla_runtime_abi_version",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
