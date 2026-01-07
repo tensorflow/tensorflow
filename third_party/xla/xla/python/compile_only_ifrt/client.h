@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -282,6 +282,12 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override {
     return Unimplemented("MakeTuple not available with compile-only client.");
+  }
+
+  void CancelExecution(ifrt::ExecutionCancellationHandle handle,
+                       const absl::Status& status) override {
+    CHECK(!status.ok());
+    // Execution cancellation is not supported.
   }
 
   absl::string_view runtime_type() const override {

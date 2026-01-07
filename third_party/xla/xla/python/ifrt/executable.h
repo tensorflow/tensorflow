@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
@@ -163,6 +164,9 @@ struct ExecuteOptions {
       const ExecuteOptionsProto& proto);
 };
 
+// Handle that identifies an execution for cancellation.
+TSL_LIB_GTL_DEFINE_INT_TYPE(ExecutionCancellationHandle, uint64_t);
+
 // Wraps a computation that has been fully compiled and loaded for execution.
 class LoadedExecutable
     : public llvm::RTTIExtends<LoadedExecutable, llvm::RTTIRoot> {
@@ -266,6 +270,9 @@ class LoadedExecutable
     tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
+    // Handle that identifies the execution for cancellation. `std::nullopt` if
+    // cancellation is not supported.
+    std::optional<ExecutionCancellationHandle> cancellation_handle;
   };
 
   // Executes the executable on devices.

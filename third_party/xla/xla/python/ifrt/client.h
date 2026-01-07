@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
@@ -263,6 +263,25 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) = 0;
+
+  // Cancels an execution identified by `handle`. `status` will be used as the
+  // error status for the execution.
+  //
+  // If any shard of the execution has already finished before cancellation,
+  // these output array shards may contain a non-error.
+  //
+  // Similarly, if any shards of the execution has finished with an error,
+  // these output array shards may contain an error that is different from
+  // `status`.
+  //
+  // This operation is asynchronous and non-blocking. Whether the execution has
+  // not started, is running, or has happened, or if cancellation is not
+  // supported, it will return without an error. The user can block on
+  // `ExecuteResult.status` to ensure that the execution has finished.
+  //
+  // Requires: `!status.ok()`.
+  virtual void CancelExecution(ExecutionCancellationHandle handle,
+                               const absl::Status& status) = 0;
 
   // Identifies the IFRT implementation. Most C++ users should use LLVM RTTI to
   // determine the runtime type. This is a string exposed to users mostly for

@@ -66,13 +66,13 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -1685,6 +1685,12 @@ tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
 absl::StatusOr<tsl::RCReference<Tuple>> PjRtClient::MakeTuple(
     absl::Span<ValueRef> values) {
   return PjRtTuple::Create(this, values);
+}
+
+void PjRtClient::CancelExecution(ExecutionCancellationHandle handle,
+                                 const absl::Status& status) {
+  CHECK(!status.ok());
+  // Execution cancellation is not supported.
 }
 
 absl::StatusOr<std::shared_ptr<Topology>> PjRtClient::GetTopologyForDevices(
