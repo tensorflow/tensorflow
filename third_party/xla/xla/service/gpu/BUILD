@@ -1905,6 +1905,8 @@ xla_test(
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     shard_count = 2,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":alias_info",
         ":backend_configs_cc",
@@ -2059,6 +2061,8 @@ xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":backend_configs_cc",
         "//xla:autotune_results_proto_cc",
@@ -2087,7 +2091,11 @@ xla_test(
     name = "auto_sharding_gpu_compiler_test",
     srcs = ["auto_sharding_gpu_compiler_test.cc"],
     backends = ["gpu"],
-    tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
+    tags = [
+        "no_oss",
+        "pjrt_migration_candidate",
+    ],  # TODO(b/277355322): Make autosharding work in OSS
+    use_legacy_runtime = True,
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
@@ -2242,7 +2250,9 @@ xla_test(
     tags = [
         "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":alias_info",
         ":gpu_constants",
@@ -2286,7 +2296,9 @@ xla_test(
     tags = [
         "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_executable",
         ":nvptx_compiler_impl",
@@ -2328,6 +2340,7 @@ xla_cc_test(
         "gpu",
         "no_oss",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
+        "pjrt_migration_candidate",
         "requires-gpu-nvidia",
     ],
     deps = if_cuda_is_configured([
@@ -2549,6 +2562,8 @@ xla_test(
         "gpu_hlo_schedule_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":alias_info",
         ":gpu_compiler",
@@ -2943,6 +2958,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
@@ -2960,6 +2977,8 @@ xla_test(
     name = "conv_layout_normalization_test",
     srcs = ["conv_layout_normalization_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
@@ -3132,7 +3151,9 @@ xla_test(
     ],
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -3194,7 +3215,9 @@ xla_test(
     tags = [
         "manual",
         "notap",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
@@ -3458,12 +3481,14 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ] + if_google([
         # TODO(b/456585142): Currently we don't support building the SYCL backend.
         "notap",
         "nobuilder",
         "manual",
     ]),
+    use_legacy_runtime = True,
     deps = [
         ":intel_gpu_compiler",
         "//xla/tests:hlo_test_base",
