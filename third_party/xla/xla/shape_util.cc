@@ -760,6 +760,29 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     PrintBufferShape</*kPrintLayout=*/false>(printer, shape);
     return;
   }
+
+  if (printer->is_hasher()) {
+    // Faster path for hashing type and dimension info
+    absl::InlinedVector<int64_t, 8> numbers;
+    numbers.push_back(static_cast<int64_t>(shape.element_type()));
+    if (shape.IsArray()) {
+      for (int i = 0, n = shape.dimensions().size(); i < n; ++i) {
+        // We store metadata about the dimension in a 2-bit tag
+        int64_t tag = 0;
+        if (shape.is_dynamic_dimension(i)) {
+          if (shape.dimensions(i) != Shape::kUnboundedSize) {
+            tag = 1;
+          } else {
+            tag = 2;
+          }
+        }
+        numbers.push_back((shape.dimensions(i) << 2) | tag);
+      }
+    }
+    printer->AppendInt64List(numbers, /*leading_comma=*/false);
+    return;
+  }
+
   printer->Append(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()));
   if (!shape.IsArray() || shape.dimensions().empty()) {

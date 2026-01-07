@@ -4029,8 +4029,11 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append(", backend_config=");
     // In the common case that the backend-config is valid-ish JSON, the parser
     // doesn't need it delimited by quotes, so we can print it without
-    // CEsape'ing.  This is much easier to read.
-    if (LexesAsJsonDict(config)) {
+    // CEscape'ing.  This is much easier to read.
+    //
+    // Also, if we are just computing a fingerprint/hash, we do not need to do
+    // any escaping.
+    if (printer->is_hasher() || LexesAsJsonDict(config)) {
       printer->Append(config);
     } else {
       printer->Append("\"");
