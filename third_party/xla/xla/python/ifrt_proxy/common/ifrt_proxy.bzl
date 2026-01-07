@@ -18,6 +18,13 @@ def ifrt_proxy_cc_test(
         **kwargs
     )
 
+def ifrt_proxy_cc_test_madthanuspecific(
+        **kwargs):
+    kwargs.setdefault("tags", []).append("madthanuspecific")
+    xla_cc_test(
+        **kwargs
+    )
+
 default_ifrt_proxy_visibility = ["//xla/python:__subpackages__"]
 
 def cc_library(**attrs):
