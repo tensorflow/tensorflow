@@ -267,11 +267,11 @@ class PackedTranspose : public TransposeFusionBase {
       mlir::ValueRange thread_and_block_ids) const override;
 
  private:
-  IndexingMap GetInputIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetShmemWriteIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetInputIndexing(mlir::MLIRContext* mlir_context) const;
+  IndexingMap GetShmemWriteIndexing(mlir::MLIRContext* mlir_context) const;
 
-  IndexingMap GetShmemReadIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetOutputIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetShmemReadIndexing(mlir::MLIRContext* mlir_context) const;
+  IndexingMap GetOutputIndexing(mlir::MLIRContext* mlir_context) const;
 
   PackedTransposeDescription spec_;
 

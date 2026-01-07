@@ -585,7 +585,16 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
 
 std::optional<IndexingMap> PackedTranspose::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
-  return GetOutputIndexing(mlir_context);
+  auto map = GetOutputIndexing(mlir_context);
+  auto hero_shape = analysis_.fusion_hero(root_index).shape();
+  if (!ShapeUtil::SameDimensions(hero_shape, spec_.original_output_shape())) {
+    auto bitcast =
+        GetBitcastMap(spec_.original_output_shape(), hero_shape, mlir_context);
+    map = ComposeIndexingMaps(map, bitcast);
+    map.Simplify();
+    map.RemoveUnusedSymbols();
+  }
+  return map;
 }
 
 std::optional<std::vector<IndexingMap>>
@@ -593,7 +602,17 @@ PackedTranspose::ComputeThreadIdToInputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (GetDescriptionForTiledTransposeEmitter(hero)) {
-    return std::vector<IndexingMap>{GetInputIndexing(mlir_context)};
+    auto map = GetInputIndexing(mlir_context);
+    auto operand_shape = hero.operand(0)->shape();
+    if (!ShapeUtil::SameDimensions(operand_shape,
+                                   spec_.original_input_shape())) {
+      auto bitcast = GetBitcastMap(spec_.original_input_shape(), operand_shape,
+                                   mlir_context);
+      map = ComposeIndexingMaps(map, bitcast);
+      map.Simplify();
+      map.RemoveUnusedSymbols();
+    }
+    return std::vector<IndexingMap>{map};
   }
   std::vector<IndexingMap> result;
   result.reserve(hero.operand_count());
@@ -645,9 +664,21 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
             [&](ImplicitLocOpBuilder& nested_b, ValueRange ivs,
                 ValueRange input_indices,
                 ValueRange iter_arg) -> SmallVector<Value> {
+              ValueRange indices = input_indices;
+              SmallVector<Value> indices_storage;
+              if (!ShapeUtil::SameDimensions(transpose->operand(0)->shape(),
+                                             spec_.original_input_shape())) {
+                auto map = GetBitcastMap(spec_.original_input_shape(),
+                                         transpose->operand(0)->shape(),
+                                         mlir_context_);
+                indices_storage =
+                    emitters::ApplyIndexing(map, input_indices, {}, nested_b);
+                indices = indices_storage;
+              }
+
               Value input_element =
                   emitters::ProvideParameter(root_computation, transpose,
-                                             /*operand_index=*/0, input_indices,
+                                             /*operand_index=*/0, indices,
                                              call_target_provider,
                                              entry_function, nested_b)
                       .front();
