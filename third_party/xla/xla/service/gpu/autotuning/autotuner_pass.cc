@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -129,6 +130,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
 absl::StatusOr<bool> AutotunerPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_SCOPED_LOGGING_TIMER("AutotunerPass");
   VLOG(1) << "Running Autotuner Pass";
 
   bool shard_autotuning =

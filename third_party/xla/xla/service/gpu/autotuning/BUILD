@@ -719,6 +719,7 @@ cc_library(
     hdrs = ["autotuner_pass.h"],
     tags = ["gpu"],
     deps = [
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_interface",
