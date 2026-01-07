@@ -80,8 +80,11 @@ class CoordinationService {
     // service recording the state change and the agent stopping heartbeats.
     absl::Duration heartbeat_timeout = absl::Seconds(10);
 
-    // The list of `CoordinatedJob`s that will register in coordination service.
-    std::vector<tensorflow::CoordinatedJob> coordinated_job_list;
+    // The name of the job.
+    std::string job_name;
+
+    // The number of tasks in the job.
+    int32_t num_tasks;
 
     // Denotes how long to wait for all coordination agents to reach the
     // barriers (after the first shutdown request) before disconnecting
