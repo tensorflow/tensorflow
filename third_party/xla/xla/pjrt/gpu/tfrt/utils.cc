@@ -698,7 +698,8 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     }
     allocators.emplace_back(
         std::move(allocator), stream,
-        /*memory_space=*/static_cast<int>(se::MemoryType::kDevice),
+        /*memory_space=*/
+        static_cast<int>(stream_executor::MemorySpace::kDevice),
         executor->device_ordinal(), executor->GetPlatform());
 
     TF_ASSIGN_OR_RETURN(
@@ -714,7 +715,7 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     TF_ASSIGN_OR_RETURN(auto host_allocator, GetGpuHostAllocator(executor));
     allocators.emplace_back(
         std::move(host_allocator), stream,
-        /*memory_space=*/static_cast<int>(se::MemoryType::kHost),
+        /*memory_space=*/static_cast<int>(stream_executor::MemorySpace::kHost),
         executor->device_ordinal(), executor->GetPlatform());
   }
   return MaybeOwning<se::DeviceAddressAllocator>(
