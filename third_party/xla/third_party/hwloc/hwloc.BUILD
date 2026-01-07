@@ -51,6 +51,7 @@ expand_template(
     out = "include/hwloc/autogen/config.h",
     substitutions = select({
         "@local_xla//xla/tsl:linux_x86_64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
+        "@local_xla//xla/tsl:linux_aarch64": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_LINUX_SUBS,
         "//conditions:default": _INCLUDE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS,
     }),
     template = "include/hwloc/autogen/config.h.in",
