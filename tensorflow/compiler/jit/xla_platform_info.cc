@@ -255,8 +255,12 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     return platform.status();
   }
 
+  // THIS ISN'T BEING CALLED WTF?
+  LOG(INFO) << "eusebiodm: xla_platform_info - platform_id: "
+            << platform.value()->id()
+            << "  = platform name: " << platform.value()->Name();
   absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.value());
+      xla::Compiler::GetForPlatform(platform.value()->id());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation

@@ -1014,6 +1014,7 @@ cc_library(
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
