@@ -1003,6 +1003,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:export_hlo",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
