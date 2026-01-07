@@ -78,7 +78,7 @@ std::string CanonicalPlatformName(absl::string_view platform_name) {
 absl::StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
   return se::PlatformManager::PlatformsWithFilter(
       [](const se::Platform* platform) {
-        auto compiler_status = Compiler::GetForPlatform(platform);
+        auto compiler_status = Compiler::GetForPlatform(platform->id());
         bool supported = compiler_status.ok();
         if (!supported) {
           LOG(INFO) << "platform " << platform->Name() << " present but no "
@@ -149,7 +149,7 @@ absl::StatusOr<se::Platform*> PlatformUtil::GetDefaultPlatform() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           xla::CanonicalPlatformName(platform_name)));
-  TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
+  TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform->id()).status());
   return platform;
 }
 
