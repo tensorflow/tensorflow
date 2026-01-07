@@ -30,6 +30,35 @@ limitations under the License.
 
 namespace stream_executor {
 
+ExecutionUnitDescriptionProto ExecutionUnitDescription::ToProto() const {
+  ExecutionUnitDescriptionProto proto;
+  for (const auto& [type, info] : rate_infos_) {
+    auto& entry = (*proto.mutable_rate_infos())[type];
+    entry.set_clock_rate_ghz(info.clock_rate_ghz);
+    entry.set_units_per_core(info.units_per_core);
+    entry.set_ops_per_clock(info.ops_per_clock);
+  }
+  return proto;
+}
+
+absl::StatusOr<ExecutionUnitDescription> ExecutionUnitDescription::FromProto(
+    const ExecutionUnitDescriptionProto& proto) {
+  ExecutionUnitDescription desc;
+  for (const auto& [type_int, info_proto] : proto.rate_infos()) {
+    if (!xla::PrimitiveType_IsValid(type_int)) {
+      VLOG(2) << "Invalid PrimitiveType encountered, ExecutionUnitDescription "
+                 "might be malformed: "
+              << type_int;
+      continue;
+    }
+    desc.SetRateInfo(
+        static_cast<xla::PrimitiveType>(type_int),
+        RateInfo{info_proto.units_per_core(), info_proto.clock_rate_ghz(),
+                 info_proto.ops_per_clock()});
+  }
+  return desc;
+}
+
 absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
     const GpuDeviceInfoProto& proto) {
   DeviceDescription device_description;
@@ -64,6 +93,17 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.core_count_ = proto.core_count();
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
+  if (proto.has_scalar_unit_description()) {
+    TF_ASSIGN_OR_RETURN(
+        device_description.scalar_unit_description_,
+        ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
+  }
+  if (proto.has_matrix_unit_description()) {
+    TF_ASSIGN_OR_RETURN(
+        device_description.matrix_unit_description_,
+        ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
+  }
+
   return device_description;
 }
 
@@ -93,6 +133,14 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_device_memory_size(device_memory_size_);
   proto.set_registers_per_core_limit(registers_per_core_limit_);
   proto.set_registers_per_block_limit(registers_per_block_limit_);
+  if (scalar_unit_description_.has_value()) {
+    *proto.mutable_scalar_unit_description() =
+        scalar_unit_description_->ToProto();
+  }
+  if (matrix_unit_description_.has_value()) {
+    *proto.mutable_matrix_unit_description() =
+        matrix_unit_description_->ToProto();
+  }
   return proto;
 }
 
@@ -151,8 +199,8 @@ RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
   return RocmComputeCapability{};
 }
 
-bool ThreadDimOk(const DeviceDescription &device_description,
-                 const ThreadDim &thread_dim) {
+bool ThreadDimOk(const DeviceDescription& device_description,
+                 const ThreadDim& thread_dim) {
   const int64_t total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
   const int64_t threads_per_block_limit =
       device_description.threads_per_block_limit();
@@ -162,7 +210,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
     return false;
   }
 
-  const auto &limit = device_description.thread_dim_limit();
+  const auto& limit = device_description.thread_dim_limit();
   bool ok = thread_dim.x <= limit.x && thread_dim.y <= limit.y &&
             thread_dim.z <= limit.z;
   if (!ok) {
@@ -172,9 +220,9 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64_t element_count, int64_t *threads_per_block,
-                             int64_t *block_count) {
+void CalculateDimensionality(const DeviceDescription& device_description,
+                             int64_t element_count, int64_t* threads_per_block,
+                             int64_t* block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = tsl::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {
