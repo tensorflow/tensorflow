@@ -621,8 +621,10 @@ xla_cc_test(
 tf_proto_library(
     name = "convolution_filter_thunk_proto",
     srcs = ["convolution_filter_thunk.proto"],
-    protodeps = ["//xla/service:buffer_assignment_proto"],
-    deps = [":shaped_slice_proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
 )
 
 tf_proto_library(
@@ -2402,8 +2404,7 @@ xla_cc_test(
 tf_proto_library(
     name = "shaped_slice_proto",
     srcs = ["shaped_slice.proto"],
-    protodeps = [
-        # keep sorted
+    deps = [
         "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
     ],
@@ -2966,8 +2967,7 @@ tf_proto_library(
     srcs = [
         "thunk.proto",
     ],
-    protodeps = [
-        # keep sorted
+    deps = [
         ":convolution_filter_thunk_proto",
         ":copy_thunk_proto",
         ":dynamic_slice_thunk_proto",
@@ -2999,8 +2999,7 @@ tf_proto_library(
     srcs = [
         "dynamic_slice_thunk.proto",
     ],
-    protodeps = [
-        # keep sorted
+    deps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",
         "//xla/service:buffer_assignment_proto",

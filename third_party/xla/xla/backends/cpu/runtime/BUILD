@@ -153,15 +153,15 @@ tf_proto_library(
     srcs = ["thunk.proto"],
     create_grpc_library = True,
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_data_proto",
         "//xla/backends/cpu:xnn_fusion_options_proto",
         "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/service:buffer_assignment_proto",
-        "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
         "@com_google_protobuf//:any_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(

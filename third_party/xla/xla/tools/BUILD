@@ -450,10 +450,10 @@ xla_cc_test(
 tf_proto_library(
     name = "run_hlo_module_proto",
     srcs = ["run_hlo_module.proto"],
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "//xla:xla_data_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(

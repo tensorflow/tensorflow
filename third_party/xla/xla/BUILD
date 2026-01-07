@@ -75,12 +75,12 @@ tf_proto_library(
     srcs = ["xla.proto"],
     create_grpc_library = True,
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         ":xla_data_proto",
         "//xla/service:hlo_proto",
         "@com_google_protobuf//:any_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -1321,8 +1321,8 @@ tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
     make_default_target_header_only = True,
-    protodeps = [":autotuning_proto"],
     visibility = ["//visibility:public"],
+    deps = [":autotuning_proto"],
 )
 
 xla_py_proto_library(
@@ -1345,7 +1345,7 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         "//xla/tsl/protobuf:dnn_proto",
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",

@@ -65,7 +65,7 @@ cc_library(
 tf_proto_library(
     name = "xla_host_callback_proto",
     srcs = ["xla_host_callback.proto"],
-    protodeps = [
+    deps = [
         "//xla:xla_data_proto",
         "@com_google_protobuf//:any_proto",
     ],
@@ -74,13 +74,13 @@ tf_proto_library(
 tf_proto_library(
     name = "xla_compiler_proto",
     srcs = ["xla_compiler.proto"],
-    protodeps = ["//xla/pjrt/proto:compile_options_proto"],
+    deps = ["//xla/pjrt/proto:compile_options_proto"],
 )
 
 tf_proto_library(
     name = "xla_sharding_proto",
     srcs = ["xla_sharding.proto"],
-    protodeps = [
+    deps = [
         "//xla:xla_data_proto",
         "//xla/python/ifrt:device_proto",
     ],
@@ -210,16 +210,16 @@ cc_library(
 tf_proto_library(
     name = "executable_metadata_proto",
     srcs = ["executable_metadata.proto"],
-    protodeps = [
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
         "//xla:xla_data_proto",
         "//xla/python/ifrt:dtype_proto",
         "//xla/python/ifrt:layout_proto",
         "//xla/python/ifrt:shape_proto",
     ],
-    visibility = internal_visibility([
-        ":friends",
-        ":internal",
-    ]),
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
@@ -568,7 +568,7 @@ xla_cc_test(
 tf_proto_library(
     name = "pjrt_layout_serdes_proto",
     srcs = ["pjrt_layout_serdes.proto"],
-    protodeps = ["//xla:xla_data_proto"],
+    deps = ["//xla:xla_data_proto"],
 )
 
 cc_library(

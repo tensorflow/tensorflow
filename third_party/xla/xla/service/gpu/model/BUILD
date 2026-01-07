@@ -688,7 +688,7 @@ tf_proto_library(
     name = "hlo_op_profile_proto",
     srcs = ["hlo_op_profile.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         "//xla/service:hlo_proto",
     ],
 )

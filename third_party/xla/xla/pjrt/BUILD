@@ -626,11 +626,11 @@ cc_library(
 tf_proto_library(
     name = "stream_executor_executable_proto",
     srcs = ["stream_executor_executable.proto"],
-    protodeps = [
-        "//xla/pjrt/proto:compile_options_proto",
-        "//xla:xla_proto",
-    ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//xla:xla_proto",
+        "//xla/pjrt/proto:compile_options_proto",
+    ],
 )
 
 cc_library(

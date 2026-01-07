@@ -511,10 +511,10 @@ xla_test(
 tf_proto_library(
     name = "executable_proto",
     srcs = ["executable.proto"],
-    protodeps = [
-        "//xla/service:hlo_proto",
+    deps = [
         "//xla:xla_proto",
         "//xla/backends/cpu/runtime:thunk_proto",
+        "//xla/service:hlo_proto",
     ],
 )
 
@@ -1352,7 +1352,7 @@ tf_proto_library(
 tf_proto_library(
     name = "backend_config_proto",
     srcs = ["backend_config.proto"],
-    protodeps = [
+    deps = [
         ":onednn_config_proto",
         "//xla/backends/cpu:xnn_fusion_options_proto",
         "//xla/backends/cpu:ynn_fusion_options_proto",

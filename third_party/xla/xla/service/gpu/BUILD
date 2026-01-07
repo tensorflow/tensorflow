@@ -57,9 +57,9 @@ tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
     make_default_target_header_only = True,
-    protodeps = [
-        "//xla:xla_data_proto",
+    deps = [
         "//xla:autotuning_proto",
+        "//xla:xla_data_proto",
         "//xla/tsl/protobuf:dnn_proto",
     ],
 )
@@ -172,7 +172,7 @@ cc_library(
 tf_proto_library(
     name = "launch_dimensions_proto",
     srcs = ["launch_dimensions.proto"],
-    protodeps = ["//xla/stream_executor:launch_dim_proto"],
+    deps = ["//xla/stream_executor:launch_dim_proto"],
 )
 
 xla_cc_test(
@@ -757,15 +757,15 @@ cc_library(
 tf_proto_library(
     name = "gpu_executable_proto",
     srcs = ["gpu_executable.proto"],
-    protodeps = [
+    deps = [
         ":ir_emission_utils_proto",
+        "//xla:shape_util_proto",
         "//xla:xla_data_proto",
         "//xla:xla_proto",
-        "//xla:shape_util_proto",
-        "//xla/service:hlo_proto",
         "//xla/backends/gpu/runtime:thunk_proto",
-        "//xla/stream_executor/cuda:cuda_compute_capability_proto",
+        "//xla/service:hlo_proto",
         "//xla/stream_executor:device_description_proto",
+        "//xla/stream_executor/cuda:cuda_compute_capability_proto",
     ],
 )
 
@@ -1251,7 +1251,7 @@ tf_proto_library(
 tf_proto_library(
     name = "fusion_process_dump_proto",
     srcs = ["fusion_process_dump.proto"],
-    protodeps = [
+    deps = [
         "//xla/stream_executor:device_description_proto",
     ],
 )
@@ -1363,9 +1363,9 @@ cc_library(
 tf_proto_library(
     name = "kernel_reuse_cache_proto",
     srcs = ["kernel_reuse_cache.proto"],
-    protodeps = [
-        "//xla/service:hlo_proto",
+    deps = [
         "//xla:xla_proto",
+        "//xla/service:hlo_proto",
     ],
 )
 

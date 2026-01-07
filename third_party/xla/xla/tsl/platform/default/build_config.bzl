@@ -235,7 +235,7 @@ def tf_proto_library(
         deps = deps + protodeps + [
             proto_lib
             for proto_lib in well_known_proto_libs()
-            if proto_lib not in protodeps
+            if proto_lib not in (deps + protodeps)
         ],
         exports = exports,
         compatible_with = compatible_with,

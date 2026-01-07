@@ -52,12 +52,12 @@ tf_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "//xla:xla_data_proto",
         "//xla/service:metrics_proto",
         "@com_google_protobuf//:any_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_pyclif_proto_library(
@@ -75,19 +75,19 @@ tf_proto_library(
 tf_proto_library(
     name = "hlo_execution_profile_data",
     srcs = ["hlo_execution_profile_data.proto"],
-    protodeps = [":hlo_profile_printer_data"],
+    deps = [":hlo_profile_printer_data"],
 )
 
 tf_proto_library(
     name = "metrics_proto",
     srcs = ["metrics.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:duration_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(
@@ -5965,7 +5965,7 @@ tf_proto_library(
     name = "buffer_assignment_proto",
     srcs = ["buffer_assignment.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         "//xla:xla_data_proto",
     ],
 )
@@ -6038,19 +6038,18 @@ cc_library(
 cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
-    deps = [],
 )
 
 tf_proto_library(
     name = "xla_compile_result_proto",
     srcs = ["xla_compile_result.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         ":hlo_proto",
         "//xla/tsl/protobuf:status_proto",
         "@com_google_protobuf//:duration_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(

@@ -662,11 +662,11 @@ xla_test(
 tf_proto_library(
     name = "gpu_autotuning_proto",
     srcs = ["gpu_autotuning.proto"],
-    protodeps = [
-        "//xla/service/gpu:backend_configs",
+    deps = [
+        "//xla:autotuning_proto",
         "//xla:xla_data_proto",
         "//xla/service:hlo_proto",
-        "//xla:autotuning_proto",
+        "//xla/service/gpu:backend_configs",
     ],
 )
 

@@ -63,11 +63,11 @@ cc_library(
 tf_proto_library(
     name = "custom_kernel_proto",
     srcs = ["custom_kernel.proto"],
-    protodeps = [
+    visibility = [":friends"],
+    deps = [
         "//xla/stream_executor:kernel_spec_proto",
         "//xla/stream_executor:launch_dim_proto",
     ],
-    visibility = [":friends"],
 )
 
 cc_library(

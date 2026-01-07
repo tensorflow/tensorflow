@@ -445,7 +445,7 @@ cc_library(
 tf_proto_library(
     name = "gpu_blas_lt_proto",
     srcs = ["gpu_blas_lt.proto"],
-    protodeps = [
+    deps = [
         "//xla:xla_data_proto",
         "//xla/stream_executor:blas_proto",
     ],

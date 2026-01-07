@@ -43,7 +43,7 @@ tf_proto_library(
     name = "device_description_proto",
     srcs = ["device_description.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         "//xla:autotune_results_proto",
         "//xla/stream_executor/cuda:cuda_compute_capability_proto",
     ],
@@ -657,7 +657,7 @@ cc_library(
 tf_proto_library(
     name = "kernel_spec_proto",
     srcs = ["kernel_spec.proto"],
-    protodeps = [":kernel_argument_packing_spec_proto"],
+    deps = [":kernel_argument_packing_spec_proto"],
 )
 
 xla_cc_test(
