@@ -64,7 +64,7 @@ template <bool thread_dim_x_only>
 class Kernel::ParallelTask {
  public:
   ParallelTask(XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
-               absl::Span<const XLA_CPU_KernelArg> args);
+               size_t batch_size, absl::Span<const XLA_CPU_KernelArg> args);
 
   // Invokes a host kernel for a given task index.
   absl::Status operator()(size_t task_index) const;
@@ -76,6 +76,7 @@ class Kernel::ParallelTask {
 
   XLA_CPU_Kernel* kernel_;
   XLA_CPU_KernelThreadDim thread_dims_;
+  size_t batch_size_;
   absl::InlinedVector<XLA_CPU_KernelArg, 8> args_;
 
   size_t num_tasks_;
@@ -88,11 +89,13 @@ class Kernel::ParallelTask {
 template <bool thread_dim_x_only>
 Kernel::ParallelTask<thread_dim_x_only>::ParallelTask(
     XLA_CPU_Kernel* kernel, Kernel::ThreadDim thread_dims,
+    size_t batch_size,
     absl::Span<const XLA_CPU_KernelArg> args)
     : kernel_(kernel),
       thread_dims_({thread_dims.x, thread_dims.y, thread_dims.z}),
       args_(args.begin(), args.end()),
       num_tasks_(thread_dims_.x * thread_dims_.y * thread_dims_.z),
+      batch_size_(batch_size),
       stride_z_(thread_dims_.y * thread_dims_.x),
       stride_y_(thread_dims_.x) {}
 
@@ -103,7 +106,7 @@ absl::Status Kernel::ParallelTask<thread_dim_x_only>::operator()(
 
   XLA_CPU_KernelThread kernel_thread = Delinearize(task_index);
   XLA_CPU_KernelCallFrame call_frame = {&thread_dims_, &kernel_thread,
-                                        args_.size(), args_.data()};
+                                        args_.size(), args_.data(), batch_size_};
 
   XLA_CPU_KernelError* error = (*kernel_)(&call_frame);
 
@@ -138,12 +141,12 @@ Kernel::Kernel(unsigned arity, XLA_CPU_Kernel* kernel)
       kernel_(function_->kernel()),
       arity_(arity) {}
 
-absl::Status Kernel::Launch(const ThreadDim& thread_dims,
+absl::Status Kernel::Launch(const ThreadDim& thread_dims, size_t batch_size,
                             absl::Span<const DeviceMemoryBase> buffers) const {
-  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers));
+  return Launch(thread_dims, batch_size, ConvertBuffersToKernelArgs(buffers));
 }
 
-absl::Status Kernel::Launch(const ThreadDim& thread_dims,
+absl::Status Kernel::Launch(const ThreadDim& thread_dims, size_t batch_size,
                             absl::Span<const XLA_CPU_KernelArg> args) const {
   XLA_CPU_KernelThreadDim kernel_thread_dims = {
       thread_dims.x,
@@ -156,8 +159,9 @@ absl::Status Kernel::Launch(const ThreadDim& thread_dims,
       for (uint64_t x = 0; x < thread_dims.x; ++x) {
         XLA_CPU_KernelThread kernel_thread = {x, y, z};
 
-        XLA_CPU_KernelCallFrame call_frame = {
-            &kernel_thread_dims, &kernel_thread, args.size(), args.data()};
+        XLA_CPU_KernelCallFrame call_frame = {&kernel_thread_dims,
+                                              &kernel_thread, args.size(),
+                                              args.data(), batch_size};
 
         XLA_CPU_KernelError* error = (*kernel_)(&call_frame);
 
@@ -172,20 +176,23 @@ absl::Status Kernel::Launch(const ThreadDim& thread_dims,
 }
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
-    const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
+    const ThreadDim& thread_dims, size_t batch_size,
+    absl::Span<const DeviceMemoryBase> buffers,
     const Eigen::ThreadPoolDevice* device) const {
-  return Launch(thread_dims, ConvertBuffersToKernelArgs(buffers), device);
+  return Launch(thread_dims, batch_size, ConvertBuffersToKernelArgs(buffers),
+                device);
 }
 
 tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
-    const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
+    const ThreadDim& thread_dims, size_t batch_size,
+    absl::Span<const XLA_CPU_KernelArg> args,
     const Eigen::ThreadPoolDevice* device) const {
   size_t num_tasks = thread_dims.x * thread_dims.y * thread_dims.z;
   CHECK_GT(num_tasks, 0) << "Number of tasks must be positive";  // Crash Ok
 
   // Short-circuit launch with a single task and run it in the caller thread.
   if (ABSL_PREDICT_TRUE(num_tasks == 1)) {
-    absl::Status launched = Launch(thread_dims, args);
+    absl::Status launched = Launch(thread_dims, batch_size, args);
     return ABSL_PREDICT_TRUE(launched.ok())
                ? OkLaunchEvent()
                : tsl::MakeErrorAsyncValueRef(std::move(launched));
@@ -197,11 +204,13 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
                        std::numeric_limits<uint16_t>::max());
 
   if (ABSL_PREDICT_TRUE(thread_dims.y == 1 && thread_dims.z == 1)) {
-    return Worker::Parallelize(device, num_workers, num_tasks,
-                               ParallelTask<true>(kernel_, thread_dims, args));
+    return Worker::Parallelize(
+        device, num_workers, num_tasks,
+        ParallelTask<true>(kernel_, thread_dims, batch_size, args));
   } else {
-    return Worker::Parallelize(device, num_workers, num_tasks,
-                               ParallelTask<false>(kernel_, thread_dims, args));
+    return Worker::Parallelize(
+        device, num_workers, num_tasks,
+        ParallelTask<false>(kernel_, thread_dims, batch_size, args));
   }
 }
 

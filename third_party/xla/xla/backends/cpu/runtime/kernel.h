@@ -77,9 +77,9 @@ class Kernel {
 
   // Launches the kernel on the current thread by iterating over all threads in
   // `thread_dims` and calling the kernel function.
-  absl::Status Launch(const ThreadDim& thread_dims,
+  absl::Status Launch(const ThreadDim& thread_dims, size_t batch_size,
                       absl::Span<const DeviceMemoryBase> buffers) const;
-  absl::Status Launch(const ThreadDim& thread_dims,
+  absl::Status Launch(const ThreadDim& thread_dims, size_t batch_size,
                       absl::Span<const XLA_CPU_KernelArg> args) const;
 
   // Launches the kernel by iterating over all threads in `thread_dims` and
@@ -89,10 +89,12 @@ class Kernel {
   // Async value returned in constructed state and the caller can access it to
   // get the number of tasks that are expected to be completed.
   tsl::AsyncValueRef<LaunchEvent> Launch(
-      const ThreadDim& thread_dims, absl::Span<const DeviceMemoryBase> buffers,
+      const ThreadDim& thread_dims, size_t batch_size,
+      absl::Span<const DeviceMemoryBase> buffers,
       const Eigen::ThreadPoolDevice* device) const;
   tsl::AsyncValueRef<LaunchEvent> Launch(
-      const ThreadDim& thread_dims, absl::Span<const XLA_CPU_KernelArg> args,
+      const ThreadDim& thread_dims, size_t batch_size,
+      absl::Span<const XLA_CPU_KernelArg> args,
       const Eigen::ThreadPoolDevice* device) const;
 
   // For host platform, we assume that a core is a thread, and we can run at

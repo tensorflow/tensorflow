@@ -3630,8 +3630,9 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     if (multiplier > 0) {
       bound = llvm_ir::GetBatchDimByName(b_, multiplier);
     } else if (shape_dim == 977) {
-      // This should not happen, and yet it does.
-      bound = llvm_ir::GetBatchDimByName(b_);
+      // This should be deleted.
+      LOG(ERROR) << "Dynamic batch marker: No multiplier for batch dim: "
+                 << hlo->ToString();
     }
 
     in_bounds = And(in_bounds, ICmpSLT(multi_index[i], bound), "in_bounds");

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -147,10 +148,21 @@ class MeanOp : public XlaReductionOp {
     xla::XlaOp result = reduce_output;
     xla::Shape bounded_shape = builder->GetShape(input).value();
     int64_t divisor_value = bounded_shape.dimensions(dimensions_to_reduce[0]);
-    auto divisor = xla::GetDimensionSize(input, dimensions_to_reduce[0]);
+    xla::XlaOp divisor;
+    MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+    if (flags->tf_xla_enable_dynamic_sizes && dimensions_to_reduce[0] == 0) {
+      divisor = xla::GetOuterBatchValue(input);
+    } else {
+      divisor = xla::GetDimensionSize(input, dimensions_to_reduce[0]);
+    }
     for (int i = 1; i < dimensions_to_reduce.size(); i++) {
       int64_t size_value = bounded_shape.dimensions(dimensions_to_reduce[i]);
-      auto size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
+      xla::XlaOp size;
+      if (flags->tf_xla_enable_dynamic_sizes && dimensions_to_reduce[i] == 0) {
+        size = xla::GetOuterBatchValue(input);
+      } else {
+        size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
+      }
       if (size_value * divisor_value > std::numeric_limits<int32_t>::max()) {
         result = result / xla::ConvertElementType(divisor, xla_reduction_type_);
         divisor_value = size_value;

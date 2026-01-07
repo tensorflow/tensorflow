@@ -263,6 +263,10 @@ static absl::optional<int64_t> ComputeMultiplierForUserScalar(HloInstruction* op
   if (in_shape.IsTuple() || out_shape.IsTuple()) {
     return flag_unsupport;
   }
+  if (out_shape.dimensions_size() == 0 &&
+      user->IsCustomCall("GetOuterBatchValue")) {
+    return operand_mul;
+  }
   if (in_shape.dimensions_size() == 0 || out_shape.dimensions_size() == 0) {
     return absl::nullopt;
   }
@@ -482,7 +486,8 @@ static absl::optional<int64_t> ComputeMultiplierForUserScalar(HloInstruction* op
       if (!is_operand_at(0)) return absl::nullopt;
       for (int64_t d : user->dimensions()) {
         if (d == 0) {
-          return absl::nullopt;
+          // Reduce batch dimension to zero
+          return 0;
         }
       }
       return operand_mul_val;
@@ -509,7 +514,10 @@ static absl::optional<int64_t> ComputeMultiplierForUserScalar(HloInstruction* op
       if (!user->dimensions().empty() && user->dimensions(0) == 0) {
         return operand_mul_val;
       }
-      return flag_error;
+      if (in_lead == out_lead) {
+        return operand_mul;
+      }
+      return absl::nullopt;
     }
     case HloOpcode::kPad: {
       if (!is_operand_at(0))
@@ -969,7 +977,9 @@ class OutDimPropagator {
         ComputeMultiplierForUserScalar(cur, user, operand_mul);
     if (opt_mul.has_value()) {
       if (opt_mul.value() < 0) {
-        LOG(ERROR) <<"HandleDefaultPropagation error, opt_mul can't be negative";
+        LOG(ERROR)
+            << "HandleDefaultPropagation error, opt_mul can't be negative"
+            << "for instruction: " << user->ToString();
         return;
       }
       PathMulMap add;

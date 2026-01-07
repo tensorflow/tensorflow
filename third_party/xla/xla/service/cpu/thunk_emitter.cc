@@ -1086,6 +1086,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return EmitTopKThunk(custom_call);
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
+  } else if (custom_call_target == "GetOuterBatchValue") {
+    return EmitGetOuterBatchValueThunk(instruction);
   }
 
   // Check the API version.
@@ -1125,6 +1127,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
 
   return MakeKernelThunkSequence(
       instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGetOuterBatchValueThunk(
+    const HloInstruction* instruction) {
+  VLOG(2) << "Handling GetOuterBatchValue for instruction: "
+            << instruction->ToString();
+  const HloCustomCallInstruction* custom_call =
+      Cast<HloCustomCallInstruction>(instruction);
+  TF_ASSIGN_OR_RETURN(
+      auto kernel, ir_emitter_.EmitGetOuterBatchValueHostKernel(custom_call));
+  TF_ASSIGN_OR_RETURN(auto result_buffer,
+                      GetHostKernelAllocationSlices(instruction));
+  return MakeKernelThunkSequence(
+      instruction, result_buffer, kernel,
       /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 

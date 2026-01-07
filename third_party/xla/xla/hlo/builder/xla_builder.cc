@@ -6085,6 +6085,14 @@ XlaOp GetDimensionSize(const XlaOp operand, int64_t dimension) {
   return operand.builder()->GetDimensionSize(operand, dimension);
 }
 
+XlaOp GetOuterBatchValue(XlaOp operand) {
+  XlaBuilder* builder = operand.builder();
+  return CustomCall(builder, "GetOuterBatchValue", {operand},
+                             ShapeUtil::MakeShape(S32, {}), "", false, {},
+                             nullptr, CustomCallSchedule::SCHEDULE_NONE,
+                             CustomCallApiVersion::API_VERSION_ORIGINAL);
+}
+
 XlaOp SetDimensionSize(const XlaOp operand, const XlaOp val,
                        int64_t dimension) {
   return operand.builder()->SetDimensionSize(operand, val, dimension);
