@@ -214,7 +214,8 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
-  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
+  absl::Status AllocateAndRecordEvent(AsyncWorkRunner* async_work_runner,
+                                      BufferSequencingEventRef event,
                                       se::Stream* stream);
 
   size_t GetNextComputeStreamSyncPoint() {

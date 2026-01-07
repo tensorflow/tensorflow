@@ -310,10 +310,12 @@ int LocalDeviceState::GetNewPrngSeed() {
 }
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
-    BufferSequencingEventRef event, se::Stream* stream) {
+    AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
+    se::Stream* stream) {
   auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(EventPool::Handle device_event,
-                        event_pool().AllocateEvent(stream->parent()));
+    TF_ASSIGN_OR_RETURN(
+        EventPool::Handle device_event,
+        event_pool().AllocateEvent(async_work_runner, stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(stream, [event]() { event.SetStateConcrete(); });
@@ -345,7 +347,8 @@ LocalDeviceState::GetEventForComputeStreamSyncPoint(
   }
   next_compute_stream_sync_point_.store(cur_sync_point + 1);
   auto event = BufferSequencingEvent::Create(async_work_runner);
-  auto status = AllocateAndRecordEvent(event, compute_stream());
+  auto status =
+      AllocateAndRecordEvent(async_work_runner, event, compute_stream());
   if (!status.ok()) {
     mu_.unlock();
     return status;

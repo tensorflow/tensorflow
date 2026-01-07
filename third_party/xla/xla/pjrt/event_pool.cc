@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/never_run_on_fiber.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -36,7 +38,7 @@ EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
 absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
-    se::StreamExecutor* executor) {
+    AsyncWorkRunner* async_work_runner, se::StreamExecutor* executor) {
   Handle event;
 
   if (allow_reuse_) {
@@ -48,7 +50,9 @@ absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     }
   }
   if (!event.event_) {
-    TF_ASSIGN_OR_RETURN(event.event_, executor->CreateEvent());
+    TF_ASSIGN_OR_RETURN(event.event_, NeverRunOnFiber(async_work_runner, [&]() {
+                          return executor->CreateEvent();
+                        }));
   }
   return event;
 }
@@ -60,9 +64,9 @@ void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
 }
 
 absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
-    se::Stream* stream) {
+    AsyncWorkRunner* async_work_runner, se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
-                      AllocateEvent(stream->parent()));
+                      AllocateEvent(async_work_runner, stream->parent()));
   ThenRecordEvent(stream, handle);
   return handle;
 }

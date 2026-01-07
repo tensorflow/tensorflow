@@ -327,7 +327,8 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
         }
 
         absl::StatusOr<EventPool::Handle> event_or =
-            local_device->event_pool().AllocateEvent(stream->parent());
+            local_device->event_pool().AllocateEvent(
+                client->async_work_runner(), stream->parent());
         if (!event_or.ok()) {
           promise.Set(event_or.status());
           client->SetEventAsError(usage_event, event_or.status());
@@ -426,7 +427,8 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
           se::Stream* stream = local_device->GetDeviceToDeviceStream();
 
           absl::StatusOr<EventPool::Handle> event_or =
-              local_device->event_pool().AllocateEvent(stream->parent());
+              local_device->event_pool().AllocateEvent(
+                  client->async_work_runner(), stream->parent());
           if (!event_or.ok()) {
             client->SetEventAsError(usage_event, event_or.status());
             return;

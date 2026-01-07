@@ -59,14 +59,16 @@ cc_library(
     srcs = ["event_pool.cc"],
     hdrs = ["event_pool.h"],
     deps = [
+        ":async_work_runner",
+        ":never_run_on_fiber",
         "//xla:types",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -688,6 +690,7 @@ cc_library(
         ":local_device_state",
         ":metrics",
         ":mlir_to_hlo",
+        ":never_run_on_fiber",
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
@@ -1428,6 +1431,16 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "never_run_on_fiber",
+    hdrs = ["never_run_on_fiber.h"],
+    deps = [
+        ":async_work_runner",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
