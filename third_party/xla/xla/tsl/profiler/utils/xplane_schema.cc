@@ -66,6 +66,7 @@ const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const absl::string_view kSourceLineName = "Source code";
 const absl::string_view kHostOffloadOpLineName = "Host Offload Ops";
 const absl::string_view kCounterEventsLineName = "_counters_";
+const absl::string_view kCounterValue = "counter_value";
 const absl::string_view kTensorCoreSyncFlagLineName = "Tensor Core Sync Flag";
 const absl::string_view kSparseCoreSyncsLineName = "Sparse Core Syncs";
 
@@ -221,6 +222,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"queue_addr", kQueueAddr},
        {"queue_id", kQueueId},
        {"request_id", kRequestId},
+       {"global_chip_id", kGlobalChipId},
        {"run_id", kRunId},
        {"replica_id", kReplicaId},
        {"graph_type", kGraphType},
@@ -297,6 +299,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"dcn_collective_info", kDcnCollectiveInfo},
        {"all_reduce_id", kAllReduceId},
        {"all_reduce_unique_id", kAllReduceUniqueId},
+       {"performance_counter_id", kPerformanceCounterId},
        // Performance counter related.
        {"Raw Value", kRawValue},
        {"Scaled Value", kScaledValue},
