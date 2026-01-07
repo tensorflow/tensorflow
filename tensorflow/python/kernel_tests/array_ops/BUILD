@@ -282,6 +282,7 @@ cuda_py_strict_test(
     shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
