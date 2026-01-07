@@ -58,6 +58,29 @@ cc_library(
 #===-------------------------------------------------------------------------------------------===//
 
 cc_library(
+    name = "command_state",
+    srcs = ["command_state.cc"],
+    hdrs = ["command_state.h"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
+    ],
+)
+
+xla_cc_test(
+    name = "command_state_test",
+    srcs = ["command_state_test.cc"],
+    deps = [
+        ":command_state",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "command_buffer_cmd",
     srcs = ["command_buffer_cmd.cc"],
     hdrs = ["command_buffer_cmd.h"],
@@ -70,6 +93,7 @@ cc_library(
         ":collective_execution",
         ":collective_permute_thunk",
         ":collective_thunk",
+        ":command_state",
         ":copy_thunk",
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
@@ -122,7 +146,6 @@ cc_library(
         "//xla/stream_executor:tensor_map",
         "//xla/stream_executor:trace_command_buffer_factory",
         "//xla/stream_executor/gpu:tma_metadata",
-        "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -153,6 +176,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":command_buffer_cmd",
+        ":command_state",
         ":copy_thunk",
         ":shaped_slice",
         ":thunk",
@@ -199,6 +223,7 @@ cc_library(
         ":collective_permute_thunk",
         ":collective_thunk",
         ":command_buffer_cmd",
+        ":command_state",
         ":conditional_thunk",
         ":copy_thunk",
         ":cudnn_thunk",
@@ -331,6 +356,7 @@ cc_library(
     hdrs = ["command_buffer_thunk.h"],
     deps = [
         ":command_buffer_cmd",
+        ":command_state",
         ":sequential_thunk",  # build_cleaner: keep
         ":thunk",
         "//xla/service:buffer_assignment",  # build_cleaner: keep

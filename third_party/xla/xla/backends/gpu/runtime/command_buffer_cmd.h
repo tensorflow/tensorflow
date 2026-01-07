@@ -21,9 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
@@ -72,7 +71,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -142,31 +140,8 @@ using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
 // keeping a state in a map inside the command will lead to memory leaks.
 //
 // Commands have an external state manager, which is responsible for managing
-// the lifetime of command state. See `State` and `StateManager` classes below.
-//
-// To make command stateful, it needs a `params.state` indirection:
-//
-//   class MyCommand : public CommandBufferCmd {
-//     public:
-//
-//     // Container for mutable state required for command execution.
-//     struct MyState : CommandBufferCmd::State {
-//       ...
-//     };
-//
-//     absl::StatusOr<Command*> Record(...) override {
-//       // Attach a new instance of `MyState` to the `command_buffer`. When
-//       // command buffer will be destroyed, the state will be destroyed as
-//       // well automatically by XLA runtime. If this command will be recorded
-//       // into another command buffer, the state will be re-created
-//       // automatically using the provided callback.
-//       MyState* my_state = record_params.state.GetOrCreate<MyState>(this,
-//         command_buffer, [&] { // create MyState for a `command_buffer` });
-//       ...
-//     }
-//
-//   };
-//
+// the lifetime of command state. See `CommandState` and
+// `CommandCommandStateManager` classes for documentation and example.
 class CommandBufferCmd {
  public:
   explicit CommandBufferCmd(
@@ -181,96 +156,11 @@ class CommandBufferCmd {
 
   using BufferUseVector = absl::InlinedVector<BufferUse, 4>;
 
-  // A base class for externally managed command state.
-  //
-  // Commands can be executed concurrently for many stream executors (underlying
-  // devices) and command buffers. Managing per-executor state can become
-  // expensive as it requires synchronization. Furthermore the number of command
-  // buffers command is recorded into is unbounded as they come and go (command
-  // buffers evicted and reconstructed) which makes it hard to manage the
-  // lifetime of resources attached to command buffers.
-  //
-  // Externally managed state (owned and synchronized by CommandBufferThunk)
-  // allows commands to attach a piece of information to command buffer in a
-  // safe and performant way.
-  //
-  // See example above next to `CommandBufferCmd` definition.
-  class State {
-   public:
-    virtual ~State() = default;
-  };
-
-  // An external manager for a state attached to commands recorded into command
-  // buffers (same command can be recorded into multiple command buffers).
-  class StateManager {
-   public:
-    virtual ~StateManager() = default;
-
-    template <typename ConcreteState>
-    ConcreteState* absl_nullable GetOrNull(
-        const CommandBufferCmd* absl_nonnull cmd,
-        const se::CommandBuffer* absl_nonnull command_buffer,
-        int64_t unroll_iteration = 0) {
-      static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(GetOrNull(
-          cmd, command_buffer, GetTypeId<ConcreteState>(), unroll_iteration));
-    }
-
-    template <typename ConcreteState>
-    ConcreteState* absl_nonnull GetOrCreate(
-        const CommandBufferCmd* absl_nonnull cmd,
-        const se::CommandBuffer* absl_nonnull command_buffer,
-        absl::FunctionRef<std::unique_ptr<ConcreteState>()> create,
-        int64_t unroll_iteration = 0) {
-      static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(
-          GetOrCreate(cmd, command_buffer, GetTypeId<ConcreteState>(),
-                      unroll_iteration, [&] { return create(); }));
-    }
-
-    template <typename ConcreteState>
-    ConcreteState* absl_nonnull GetOrCreate(
-        const CommandBufferCmd* absl_nonnull cmd,
-        const se::CommandBuffer* absl_nonnull command_buffer,
-        int64_t unroll_iteration = 0) {
-      return GetOrCreate<ConcreteState>(
-          cmd, command_buffer, [] { return std::make_unique<ConcreteState>(); },
-          unroll_iteration);
-    }
-
-   private:
-    // We use TypeId to distinguish between different state types.
-    TSL_LIB_GTL_DEFINE_INT_TYPE(TypeId, int64_t);
-
-    template <typename F>
-    static TypeId GetTypeId() {
-      static const TypeId id = GetNextTypeId();
-      return id;
-    }
-
-    static TypeId GetNextTypeId();
-
-    State* absl_nullable GetOrNull(
-        const CommandBufferCmd* absl_nonnull cmd,
-        const se::CommandBuffer* absl_nonnull command_buffer, TypeId type_id,
-        int64_t unroll_iteration);
-
-    State* absl_nonnull GetOrCreate(
-        const CommandBufferCmd* absl_nonnull cmd,
-        const se::CommandBuffer* absl_nonnull command_buffer, TypeId type_id,
-        int64_t unroll_iteration,
-        absl::FunctionRef<std::unique_ptr<State>()> create);
-
-    using Key = std::tuple<const CommandBufferCmd*, const se::CommandBuffer*,
-                           TypeId, int64_t>;
-    absl::flat_hash_map<Key, std::unique_ptr<State>> state_;
-  };
-
   // Parameters for recording commands into the command buffer.
   struct RecordParams {
     // An external state manager that gives efficient access to per-device state
     // to commands without a need to add expensive synchronization.
-    StateManager& state;
+    CommandStateManager& state;
 
     // Buffer allocations that changed since the last call to `Record`. Buffer
     // allocation indices are sorted. CommandBufferCmdExecutor and individual
@@ -341,7 +231,7 @@ class CommandBufferCmd {
   // separate function to allow expensive initialization (e.g. device kernel
   // loading) to happen before a command buffer thunk execution.
   virtual absl::Status Initialize(const Thunk::InitializeParams& params,
-                                  StateManager& state) {
+                                  CommandStateManager& state) {
     return absl::OkStatus();
   }
 
@@ -498,7 +388,7 @@ class CommandBufferCmdExecutor {
 
   // Initializes all commands added to a sequence.
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandBufferCmd::StateManager& state);
+                          CommandStateManager& state);
 
   // Records commands into the command buffer. This method automatically
   // switches between `RecordCreate` or `RecordUpdate` depending on the command
@@ -583,7 +473,7 @@ class CommandBufferCmdExecutor {
 
   // A state associated with commands in the sequence. We rely on this state to
   // efficiently update command recorded into the command buffer.
-  struct RecordState : public CommandBufferCmd::State {
+  struct RecordState : public CommandState {
     const se::CommandBuffer::Command* command;
   };
 
@@ -632,7 +522,7 @@ class CommandBufferCmdExecutor {
 // allocations that are relevant for `buffers` passed to constructor. We use a
 // very simple most-recently-used cache of traced command buffers as in practice
 // subsequent calls to XLA executable tend to reuse the same allocations.
-class TracedCommandBuffer : public CommandBufferCmd::State {
+class TracedCommandBuffer : public CommandState {
  public:
   explicit TracedCommandBuffer(const CommandBufferCmd* absl_nonnull trace_cmd,
                                CommandBufferCmd::BufferUseVector buffers,
@@ -747,7 +637,7 @@ class LaunchCmd : public CommandBufferCmd {
                 std::nullopt);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -780,7 +670,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
                         CustomKernel custom_kernel);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -862,7 +752,7 @@ class ChildCmd : public CommandBufferCmd {
   explicit ChildCmd(CommandBufferCmdExecutor child_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -888,7 +778,7 @@ class CaseCmd : public CommandBufferCmd {
   CaseCmd(ShapedSlice index, std::vector<CommandBufferCmdExecutor> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -919,7 +809,7 @@ class WhileCmd : public CommandBufferCmd {
            bool enable_loop_unroll = false);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Prepare(const Thunk::PrepareParams& params) override;
 
@@ -957,7 +847,7 @@ class GemmCmd : public TracedCommandBufferCmd {
           std::optional<BufferAllocation::Slice> workspace, bool deterministic);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -985,7 +875,7 @@ class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
   explicit CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   // This is needed to avoid compile errors about "shadowed" virtual function
   absl::Status Initialize(const InitializeParams& params) override {
@@ -1010,7 +900,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
            std::shared_ptr<se::dnn::LazyDnnGraph> graph);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       RecordParams& record_params) override;
@@ -1276,7 +1166,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
           offset_as_function_of_indvar_metadata = std::nullopt);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
-                          StateManager& state) override;
+                          CommandStateManager& state) override;
 
   absl::Status Prepare(const Thunk::PrepareParams& params) final;
 
