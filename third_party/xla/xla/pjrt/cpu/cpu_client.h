@@ -481,6 +481,8 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
 
   // Buffer allocation indices corresponding to each result buffer leaf buffer.
   absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices_;
+  // Reverse mapping of result_buffer_indices_.
+  std::vector<int64_t> output_indices_;
 
   // Size on device of each leaf buffer of the compiled program, cached here
   // for performance reasons.

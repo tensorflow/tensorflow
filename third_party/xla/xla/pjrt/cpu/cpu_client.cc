@@ -1134,6 +1134,18 @@ PjRtCpuExecutable::PjRtCpuExecutable(
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
   output_memory_space_kind_ids_.resize(result_buffer_indices_.size(), 0);
+  output_indices_.resize(
+      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_)
+          ->buffer_assignment()
+          .Allocations()
+          .size(),
+      -1);
+  for (int i = 0; i < result_buffer_indices_.size(); ++i) {
+    CHECK_LT(result_buffer_indices_[i], output_indices_.size());
+    CHECK_EQ(output_indices_[result_buffer_indices_[i]], -1)
+        << "Unexpected duplicate.";
+    output_indices_[result_buffer_indices_[i]] = i;
+  }
   const auto& computation_layout =
       cpu_executable_->module().entry_computation_layout();
   if (computation_layout.parameter_count() == 0) {
@@ -1181,12 +1193,6 @@ namespace {
 
 // Some helper structs to support delayed memory allocation.
 
-struct BufferInfo {
-  tsl::AsyncValueRef<CpuDeviceMemory> buffer;
-  bool owns_buffer;
-  size_t buffer_size;
-};
-
 struct BufferAlloc {
   // All data members should have the same size.
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
@@ -1231,28 +1237,29 @@ struct BufferAllocAndCopy {
 
 // The following few helpers are adapted from XLA:CPU to create a buffer table
 // and assemble the buffer pointers in order to call into CpuExecutable.
-static absl::StatusOr<BufferInfo> MemoryForAllocation(
+static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
     const BufferAllocation& allocation,
     absl::Span<const cpu::ConstantAllocation> constants,
     absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
     BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy,
-    const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table) {
-  BufferInfo buffer_info;
+    const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table,
+    const tsl::RCReference<CommonPjRtRawBuffer>& allocated_output) {
+  auto buffer_or_default = [&]() -> tsl::AsyncValueRef<CpuDeviceMemory> {
+    if (allocated_output) {
+      return tensorflow::down_cast<CpuRawBuffer*>(allocated_output.get())
+          ->buffer();
+    }
+    return CpuDeviceMemory::CreateDelayedMemory();
+  };
   if (allocation.is_entry_computation_parameter()) {
-    bool can_donate = false;
-    TrackedCpuDeviceBuffer* arg = nullptr;
-    size_t buffer_size;
-    tsl::AsyncValuePtr<CpuDeviceMemory> out;
+    CpuRawBuffer* arg = nullptr;
     if (tuple_index_table) {
       if (allocation.param_shape_index().empty()) {
-        out = tuple_index_table.AsPtr();
-        buffer_size = arguments.size() * sizeof(void*);
+        return tuple_index_table;
       } else if (allocation.param_shape_index().size() == 1) {
-        const auto& argument = arguments[allocation.param_shape_index()[0]];
-        arg = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(argument.buffer());
-        can_donate = argument.type() == CommonPjRtBuffer::ScopedHold::kDonation;
-        out = arg->buffer().AsPtr();
-        buffer_size = arg->BufferSize();
+        arg = tensorflow::down_cast<CpuRawBuffer*>(
+            input_buffers[allocation.param_shape_index()[0]].get());
       } else {
         return absl::InvalidArgumentError(absl::StrCat(
             "Nested tuples are not supported for argument: ",
@@ -1265,103 +1272,140 @@ static absl::StatusOr<BufferInfo> MemoryForAllocation(
           allocation.parameter_number(),
           " at shape index:", allocation.param_shape_index().ToString()));
     } else {
-      const auto& argument = arguments[allocation.parameter_number()];
-      arg = tensorflow::down_cast<TrackedCpuDeviceBuffer*>(argument.buffer());
-      can_donate = argument.type() == CommonPjRtBuffer::ScopedHold::kDonation;
-      out = arg->buffer().AsPtr();
-      buffer_size = arg->BufferSize();
+      arg = tensorflow::down_cast<CpuRawBuffer*>(
+          input_buffers[allocation.parameter_number()].get());
     }
-    CHECK_EQ(allocation.size(), buffer_size)
-        << "Size mismatch on param " << allocation.parameter_number()
-        << " at shape index " << allocation.param_shape_index().ToString();
-
-    // If we don't own the buffer, we can't overwrite it or donate it. For
-    // example we might be pointing to a buffer owned by the client whose
-    // lifetime will not extend past the lifetime of the donated input buffer.
-    if ((!can_donate ||
-         (arg && !tensorflow::down_cast<CpuRawBuffer*>(arg->raw_buffer().get())
-                      ->is_mutable())) &&
-        !allocation.is_readonly()) {
-      auto copy = CpuDeviceMemory::CreateDelayedMemory();
-
-      buffer_alloc_and_copy.src_buffers.push_back(out.CopyRef());
-      buffer_alloc_and_copy.dst_buffers.push_back(copy);
-      buffer_alloc_and_copy.allocation_sizes.push_back(allocation.size());
-
-      buffer_info.buffer = std::move(copy);
-      buffer_info.owns_buffer = true;
-      buffer_info.buffer_size = allocation.size();
-      return buffer_info;
+    if (allocated_output) {
+      if (arg != allocated_output.get()) {
+        auto copy = tensorflow::down_cast<CpuRawBuffer*>(allocated_output.get())
+                        ->buffer();
+        buffer_alloc_and_copy.src_buffers.push_back(arg->buffer());
+        buffer_alloc_and_copy.dst_buffers.push_back(copy);
+        buffer_alloc_and_copy.allocation_sizes.push_back(allocation.size());
+        return copy;
+      }
+      return tensorflow::down_cast<CpuRawBuffer*>(allocated_output.get())
+          ->buffer();
     }
-
-    buffer_info.buffer = out.CopyRef();
-    buffer_info.owns_buffer =
-        !arg || tensorflow::down_cast<CpuRawBuffer*>(arg->raw_buffer().get())
-                    ->is_mutable();
-    buffer_info.buffer_size = buffer_size;
-    return buffer_info;
-
+    return arg->buffer();
   } else if (allocation.is_constant() &&
              allocation.index() < constants.size()) {
     se::DeviceAddressBase constant =
         constants[allocation.index()].AsDeviceAddress();
-    buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(
-        constant.opaque(), constant.size());
-    buffer_info.owns_buffer = false;
-    buffer_info.buffer_size = constant.size();
-    return buffer_info;
-
+    return CpuDeviceMemory::CreateConstantMemory(constant.opaque(),
+                                                 constant.size());
   } else if (allocation.is_constant() || allocation.is_thread_local()) {
-    buffer_info.buffer = CpuDeviceMemory::CreateConstantMemory(nullptr, 0);
-    buffer_info.owns_buffer = true;
-    buffer_info.buffer_size = 0;
-    return buffer_info;
+    return CpuDeviceMemory::CreateConstantMemory(nullptr, 0);
   }
 
   // Output and temporary buffer.
-  auto out = CpuDeviceMemory::CreateDelayedMemory();
+  auto out = buffer_or_default();
 
   buffer_alloc.buffers.push_back(out);
   buffer_alloc.allocation_sizes.push_back(allocation.size());
 
-  buffer_info.buffer = std::move(out);
-  buffer_info.owns_buffer = true;
-  buffer_info.buffer_size = allocation.size();
-  return buffer_info;
+  return out;
 }
 
-static absl::StatusOr<std::vector<BufferInfo>> CreateBufferTable(
+static absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+MemoryForOutputAllocation(
+    const BufferAllocation& allocation,
+    absl::Span<const cpu::ConstantAllocation> constants,
+    absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
+    bool parameter_is_tupled_arguments, PjRtMemorySpace* memory_space) {
+  if (allocation.is_entry_computation_parameter()) {
+    int64_t param_index = 0;
+    if (parameter_is_tupled_arguments) {
+      if (allocation.param_shape_index().empty()) {
+        LOG(FATAL) << "Tuple table cannot be an explicit output.";
+      } else if (allocation.param_shape_index().size() == 1) {
+        param_index = allocation.param_shape_index()[0];
+      } else {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Nested tuples are not supported for argument: ",
+            allocation.parameter_number(),
+            " at shape index:", allocation.param_shape_index().ToString()));
+      }
+    } else if (!allocation.param_shape_index().empty()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Nested tuples are not supported for argument: ",
+          allocation.parameter_number(),
+          " at shape index:", allocation.param_shape_index().ToString()));
+    } else {
+      param_index = allocation.parameter_number();
+    }
+    const auto& argument = arguments[param_index];
+    TrackedCpuDeviceBuffer* arg =
+        tensorflow::down_cast<TrackedCpuDeviceBuffer*>(argument.buffer());
+    // If we don't own the buffer, we can't overwrite it or donate it. For
+    // example we might be pointing to a buffer owned by the client whose
+    // lifetime will not extend past the lifetime of the donated input buffer.
+    if (argument.type() == CommonPjRtBuffer::ScopedHold::kDonation &&
+        tensorflow::down_cast<CpuRawBuffer*>(arg->raw_buffer().get())
+            ->is_mutable()) {
+      return arg->raw_buffer();
+    }
+  } else if (allocation.is_constant() &&
+             allocation.index() < constants.size()) {
+    return absl::InvalidArgumentError(
+        "Constants are not allowed to be outputs");
+  } else if (allocation.is_constant() || allocation.is_thread_local()) {
+    return absl::InvalidArgumentError(
+        "Constants are not allowed to be outputs");
+  }
+  return tsl::MakeRef<CpuRawBuffer>(
+      memory_space, CpuDeviceMemory::CreateDelayedMemory(), allocation.size(),
+      /*owns_buffer=*/true);
+}
+
+static absl::Status AllocateOutputsWithBufferReuse(
     const BufferAssignment& assignment,
     absl::Span<const cpu::ConstantAllocation> constants,
     absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
-    BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy,
-    const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table) {
-  std::vector<BufferInfo> buffer_table(assignment.Allocations().size());
-  for (BufferAllocation::Index i = 0; i < buffer_table.size(); ++i) {
-    const BufferAllocation& allocation = assignment.GetAllocation(i);
-    TF_ASSIGN_OR_RETURN(
-        buffer_table[i],
-        MemoryForAllocation(allocation, constants, arguments, buffer_alloc,
-                            buffer_alloc_and_copy, tuple_index_table));
-  }
-  return std::move(buffer_table);
-}
-
-static absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
-CreateResultBufferInfo(absl::Span<const BufferAllocation::Index> buffer_indices,
-                       absl::Span<const BufferInfo> buffer_table,
-                       xla::PjRtDevice* device) {
+    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
+        output_leaf_buffers,
+    bool parameter_is_tupled_arguments,
+    absl::Span<const BufferAllocation::Index> buffer_indices,
+    xla::PjRtDevice* device) {
   auto* memory_space = *device->default_memory_space();
-  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
-      output_leaf_buffers;
   output_leaf_buffers.reserve(buffer_indices.size());
   for (int i = 0; i < buffer_indices.size(); ++i) {
-    const auto& result_buffer_info = buffer_table[buffer_indices[i]];
-    output_leaf_buffers.push_back(tsl::MakeRef<CpuRawBuffer>(
-        memory_space, std::move(result_buffer_info.buffer),
-        result_buffer_info.buffer_size, result_buffer_info.owns_buffer));
+    TF_ASSIGN_OR_RETURN(
+        auto result_buffer,
+        MemoryForOutputAllocation(assignment.GetAllocation(buffer_indices[i]),
+                                  constants, arguments,
+                                  parameter_is_tupled_arguments, memory_space));
+    output_leaf_buffers.push_back(result_buffer);
   }
-  return output_leaf_buffers;
+  return absl::OkStatus();
+}
+
+static absl::StatusOr<std::vector<tsl::AsyncValueRef<CpuDeviceMemory>>>
+CreateBufferTable(
+    const BufferAssignment& assignment,
+    absl::Span<const cpu::ConstantAllocation> constants,
+    absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
+    BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy,
+    const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table,
+    const absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>>
+        output_buffers,
+    absl::Span<const int64_t> output_indices) {
+  std::vector<tsl::AsyncValueRef<CpuDeviceMemory>> buffer_table(
+      assignment.Allocations().size());
+  tsl::RCReference<CommonPjRtRawBuffer> null_output;
+  for (BufferAllocation::Index i = 0; i < buffer_table.size(); ++i) {
+    const BufferAllocation& allocation = assignment.GetAllocation(i);
+    int64_t out_index = output_indices[i];
+    TF_ASSIGN_OR_RETURN(
+        buffer_table[i],
+        MemoryForAllocation(
+            allocation, constants, arguments, input_buffers, buffer_alloc,
+            buffer_alloc_and_copy, tuple_index_table,
+            out_index != -1 ? output_buffers[out_index] : null_output));
+  }
+
+  return std::move(buffer_table);
 }
 
 absl::Status PjRtCpuExecutable::CheckBufferCompatibilities(
@@ -1449,6 +1493,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   TF_RETURN_IF_ERROR(
       CheckBufferCompatibilities(device_buffers, argument_handles));
 
+  auto cpu_executable =
+      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_);
+  absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
+      output_leaf_buffers;
+  TF_RETURN_IF_ERROR(AllocateOutputsWithBufferReuse(
+      cpu_executable->buffer_assignment(), cpu_executable->constants(),
+      device_buffers, output_leaf_buffers, parameter_is_tupled_arguments_,
+      result_buffer_indices_, device));
+
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
   tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table;
@@ -1478,20 +1531,17 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
         });
   }
 
-  auto cpu_executable =
-      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_);
   // `buffer_alloc` and `buffer_alloc_and_copy` are used to do real memory
   // allocation and copy work.
   BufferAlloc buffer_alloc;
   BufferAllocAndCopy buffer_alloc_and_copy;
+
   TF_ASSIGN_OR_RETURN(
-      std::vector<BufferInfo> buffer_table,
-      CreateBufferTable(cpu_executable->buffer_assignment(),
-                        cpu_executable->constants(), device_buffers,
-                        buffer_alloc, buffer_alloc_and_copy,
-                        tuple_index_table));
-  auto output_leaf_buffers =
-      CreateResultBufferInfo(result_buffer_indices_, buffer_table, device);
+      std::vector<tsl::AsyncValueRef<CpuDeviceMemory>> buffer_table,
+      CreateBufferTable(
+          cpu_executable->buffer_assignment(), cpu_executable->constants(),
+          device_buffers, input_buffers, buffer_alloc, buffer_alloc_and_copy,
+          tuple_index_table, output_leaf_buffers, output_indices_));
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -1577,10 +1627,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     tsl::port::ScopedSetRound round(FE_TONEAREST);
 
     // Immediately allocate memory and prepare for computation.
-    for (const auto& buffer_info : buffer_table) {
-      CHECK(buffer_info.buffer.IsAvailable());
-      if (buffer_info.buffer.IsError()) {
-        return buffer_info.buffer.GetError();
+    for (const auto& buffer : buffer_table) {
+      CHECK(buffer.IsAvailable());
+      if (buffer.IsError()) {
+        return buffer.GetError();
       }
     }
 
@@ -1590,10 +1640,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     // Call interpreted thunk sequence implementing XLA executable.
     absl::InlinedVector<MaybeOwningDeviceAddress, 8> buffer_device_mem;
     buffer_device_mem.reserve(buffer_table.size());
-    for (const auto& buffer_info : buffer_table) {
+    for (const auto& buffer : buffer_table) {
       buffer_device_mem.emplace_back(
-          se::DeviceAddressBase(buffer_info.buffer->untyped_data(),
-                                buffer_info.buffer->size_bytes()));
+          se::DeviceAddressBase(buffer->untyped_data(), buffer->size_bytes()));
     }
 
     cpu::BufferAllocations allocations(buffer_device_mem);
