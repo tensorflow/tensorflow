@@ -38,6 +38,7 @@ tf_proto_library(
 tf_proto_library(
     name = "executable_metadata_proto",
     srcs = ["executable_metadata.proto"],
+    protodeps = ["@com_google_protobuf//:any_proto"],
     visibility = ["//visibility:public"],
 )
 
