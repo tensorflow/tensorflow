@@ -69,7 +69,7 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
       buffer_(buffer),
       execution_counters_(config_.validation_kind ==
                                   P2PConfig::ValidationKind::kConditional
-                              ? new ExecutionCounters()
+                              ? std::make_shared<ExecutionCounters>()
                               : nullptr),
       hlo_name_(instr_name) {}
 
