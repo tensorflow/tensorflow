@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 
 namespace stream_executor {
 
@@ -41,6 +42,9 @@ class GpuComputeCapability {
   GpuComputeCapability(const CudaComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {}
   explicit GpuComputeCapability(const RocmComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+  explicit GpuComputeCapability(
+      const OneAPIComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {}
 
   GpuComputeCapability& operator=(
@@ -55,12 +59,22 @@ class GpuComputeCapability {
     return *this;
   }
 
+  GpuComputeCapability& operator=(
+      const OneAPIComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
+  }
+
   bool IsCuda() const {
     return std::holds_alternative<CudaComputeCapability>(compute_capability_);
   }
 
   bool IsRocm() const {
     return std::holds_alternative<RocmComputeCapability>(compute_capability_);
+  }
+
+  bool IsOneAPI() const {
+    return std::holds_alternative<OneAPIComputeCapability>(compute_capability_);
   }
 
   const CudaComputeCapability* cuda_compute_capability() const {
@@ -71,8 +85,14 @@ class GpuComputeCapability {
     return std::get_if<RocmComputeCapability>(&compute_capability_);
   }
 
+  const OneAPIComputeCapability* oneapi_compute_capability() const {
+    return std::get_if<OneAPIComputeCapability>(&compute_capability_);
+  }
+
   std::string ToString() const {
     if (auto ptr = cuda_compute_capability()) {
+      return ptr->ToString();
+    } else if (auto ptr = oneapi_compute_capability()) {
       return ptr->ToString();
     }
     return rocm_compute_capability()->ToString();
@@ -94,7 +114,8 @@ class GpuComputeCapability {
   }
 
  private:
-  std::variant<CudaComputeCapability, RocmComputeCapability>
+  std::variant<CudaComputeCapability, RocmComputeCapability,
+               OneAPIComputeCapability>
       compute_capability_;
 };
 
@@ -242,6 +263,11 @@ class DeviceDescription {
   // If a ROCm compute capability is not available, the default gfx_arch will
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
+
+  // Returns the oneAPI compute capability if we're running on the sycl
+  // platform. If a oneAPI compute capability is not available, the generation
+  // will be 0 which is invalid.
+  OneAPIComputeCapability oneapi_compute_capability() const;
 
   const GpuComputeCapability& gpu_compute_capability() const;
 
@@ -401,6 +427,10 @@ class DeviceDescription {
 
   void set_rocm_compute_capability(std::string gcn_arch_name) {
     gpu_compute_capability_ = RocmComputeCapability(std::move(gcn_arch_name));
+  }
+
+  void set_oneapi_compute_capability(uint32_t ip_version) {
+    gpu_compute_capability_ = OneAPIComputeCapability(ip_version);
   }
 
   void set_numa_node(int value) { numa_node_ = value; }
