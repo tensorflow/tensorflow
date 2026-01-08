@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -129,7 +130,8 @@ TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
   // Stream executor is not passed as an option.
   Compiler::GpuTargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_gpu_target_config(gpu_target_config);
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology("", gpu_target_config));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
