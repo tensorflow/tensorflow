@@ -996,7 +996,7 @@ absl::Status LaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
         "Kernel not loaded on a command buffer executor: ", kernel_name_));
   }
 
-  absl::InlinedVector<se::KernelArgument, 4> kernel_args_variant;
+  absl::InlinedVector<se::KernelArg, 4> kernel_args_variant;
   stream_executor::gpu::TmaMetadata tma_metadata =
       tma_metadata_.value_or(se::gpu::TmaMetadata{});
   for (int idx = 0; idx < args_.size(); ++idx) {
@@ -1020,10 +1020,7 @@ absl::Status LaunchCmd::Record(const Thunk::ExecuteParams& execute_params,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_args,
-      se::PackKernelArgs(absl::MakeConstSpan(kernel_args_variant),
-                         shmem_bytes_));
+  auto kernel_args = se::PackKernelArgs(kernel_args_variant, shmem_bytes_);
 
   return HandleCmdCreateOrUpdate(
       record_params,

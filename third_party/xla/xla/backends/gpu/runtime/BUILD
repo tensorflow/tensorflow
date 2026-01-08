@@ -2926,7 +2926,7 @@ cc_library(
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service/gpu/kernels:custom_kernel",
-        "//xla/stream_executor:kernel_argument_packing_spec",
+        "//xla/stream_executor:kernel_args_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:platform",

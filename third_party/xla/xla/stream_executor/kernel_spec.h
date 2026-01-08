@@ -27,7 +27,6 @@ limitations under the License.
 //      se::cuda::kCudaPlatformId, ([](size_t arity) {
 //        return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
 //            absl::bit_cast<void*>(&se::gpu::RepeatBufferKernelImpl),
-
 //            "repeat_buffer_kernel", arity);
 //      }));
 //
@@ -54,7 +53,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 
 namespace stream_executor {
@@ -103,7 +102,7 @@ class KernelLoaderSpec {
   // The specification has the advantage that it can be serialized and is
   // therefore a requirement for AOT compilation.
   using KernelArgsPacking =
-      std::variant<KernelArgsPackingFunc, KernelArgumentsPackingSpec>;
+      std::variant<KernelArgsPackingFunc, KernelArgsPackingSpec>;
 
   // Returns the number of arguments that this kernel accepts.
   size_t arity() const { return arity_; }
