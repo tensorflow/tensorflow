@@ -434,9 +434,6 @@ absl::Status XlaCallModuleLoader::LoadModule(
     // another XlaCallModuleOp.
     mlir::StatusScopedDiagnosticHandler diag_handler(context_);
     mlir::PassManager pm(module_->getContext());
-    // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` 6 months
-    // after mixed serialization will be supported by Shardy+StableHLO in JAX
-    xla::sdy::addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/false);
     pm.addPass(mlir::sdy::createInlineMeshesPass());
     if (failed(pm.run(*module_))) {
       return absl::InternalError(
