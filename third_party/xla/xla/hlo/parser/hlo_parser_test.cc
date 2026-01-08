@@ -1135,6 +1135,29 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 
 )"
 },
+// AsyncStartWithAliasing
+{
+"AsyncStartWithAliasing",
+R"(HloModule module, entry_computation_layout={(f32[8,4,1]{0,1,2:T(4,128)})->f32[8,4,1]{0,1,2:T(4,128)}}
+
+%async_computation (param_0.2: (f32[8,4,1], (f32[8,4,1], u32[], u32[]))) -> f32[8,4,1] {
+  %param_0.2 = (f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)})) parameter(0)
+  %get-tuple-element = f32[8,4,1]{1,2,0:T(1,128)} get-tuple-element((f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)})) %param_0.2), index=0
+  ROOT %all-to-all0.0 = f32[8,4,1]{1,2,0:T(1,128)} all-to-all(f32[8,4,1]{1,2,0:T(1,128)} %get-tuple-element), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={0}
+}
+
+ENTRY %Comp_spmd (param: f32[8,4,1]) -> f32[8,4,1] {
+  %param = f32[8,4,1]{0,1,2:T(4,128)} parameter(0)
+  %copy = f32[8,4,1]{1,2,0:T(1,128)} copy(f32[8,4,1]{0,1,2:T(4,128)} %param)
+  %custom-call = (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}) custom-call(), custom_call_target="BarrierStart"
+  %tuple = (f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)})) tuple(f32[8,4,1]{1,2,0:T(1,128)} %copy, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}) %custom-call)
+  %all-to-all-start.1 = (((f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}))), f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}) async-start((f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)})) %tuple), output_to_operand_aliasing={{0,0,1,0}: (0, {1,0}), {1}: (0, {1,0}), {0,0,1,1}: (0, {1,1}), {2}: (0, {1,1}), {0,0,1,2}: (0, {1,2}), {3}: (0, {1,2})}, calls=%async_computation
+  %all-to-all-done = f32[8,4,1]{1,2,0:T(1,128)} async-done((((f32[8,4,1]{1,2,0:T(1,128)}, (f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}))), f32[8,4,1]{1,2,0:T(1,128)}, u32[]{:S(2)}, u32[]{:S(2)}) %all-to-all-start.1)
+  ROOT %copy.1 = f32[8,4,1]{0,1,2:T(4,128)} copy(f32[8,4,1]{1,2,0:T(1,128)} %all-to-all-done)
+}
+
+)"
+},
 // FusionWithAliasing
 {
 "FusionWithAliasing",

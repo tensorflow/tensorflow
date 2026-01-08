@@ -221,13 +221,18 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
             [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
               if (in_place_pair.first.operand_number == use.operand_number &&
                   in_place_pair.first.operand_index == use.operand_index) {
-                return use.instruction != root_instruction &&
-                       absl::c_all_of(
-                           alias_analysis.dataflow_analysis()
-                               .GetUniqueValueAt(use.instruction,
-                                                 in_place_pair.second)
-                               .GetUses(),
-                           use_does_not_live_out);
+                if (use.instruction == root_instruction) {
+                  return false;
+                }
+                for (const HloUse& nested_use :
+                     alias_analysis.dataflow_analysis()
+                         .GetUniqueValueAt(use.instruction,
+                                           in_place_pair.second)
+                         .GetUses()) {
+                  if (nested_use != use && !use_does_not_live_out(nested_use)) {
+                    return false;
+                  }
+                }
               }
               return true;
             });
