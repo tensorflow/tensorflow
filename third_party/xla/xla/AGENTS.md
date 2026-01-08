@@ -55,4 +55,9 @@ suggesting, or modifying code within the
 
 6.  **Explicit Typing**:
     *   **Avoid `auto`** in public headers or complex logic chains.
-    *   Prefer explicit types for readability, especially for common types.
+
+7.  **Compiler Phases & Invariants**:
+    *   **Phase Ordering**: Understand where your pass or change sits in the pipeline (e.g., Optimizations, Layout Assignment, Fusion).
+    *   **Invariants**: Respect the invariants of the current phase.
+        *   *Example*: Do not generate `kCustomCall` instructions before the relevant expansion pass if they are not supported by the HLO verifier at that stage.
+        *   *Example*: Do not rely on layout information before Layout Assignment.
