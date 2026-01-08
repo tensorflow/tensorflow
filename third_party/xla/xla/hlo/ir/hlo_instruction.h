@@ -45,7 +45,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/literal_pool.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
@@ -73,7 +72,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -2113,6 +2111,13 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     OpMetadata* m = metadata_.get();
     return (m == nullptr) ? *kEmptyMetadata : *m;
   }
+
+  // Reconstructs the full Python call stack from HloMetadata.
+  std::vector<HloStackFrame> GetStackTraceFromMetadata() const;
+
+  // Formats the stack trace reconstructed from metadata into a human-readable
+  // string.
+  std::string GetStackTraceStringFromMetadata(int indent = 0) const;
 
   OpMetadata& mutable_metadata() {
     if (metadata_ == nullptr) {
