@@ -948,6 +948,10 @@ message DebugOptions {
   // memory, or have bugs.
   optional bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
+  // Internal testing flag to enable new tile nesting pipeline that removes
+  // nested fusions at HLO level.
+  optional bool xla_gpu_unsupported_disable_nested_gemm_fusions = 443;
+
   // Internal testing flag to switch AllReduceDecomposer on or off.
   optional bool xla_gpu_unsupported_enable_all_reduce_decomposer = 384;
 
@@ -1353,7 +1357,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 443
+  // Next id: 444
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -1764,6 +1764,7 @@ cc_library(
         "//xla/service/gpu/transforms:async_wrapper",
         "//xla/service/gpu/transforms:composite_rewriter",
         "//xla/service/gpu/transforms:conv_rewriter",
+        "//xla/service/gpu/transforms:convert_triton_gemm_config",
         "//xla/service/gpu/transforms:cudnn_custom_call_converter",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/service/gpu/transforms:dot_algorithm_rewriter",
