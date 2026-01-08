@@ -49,10 +49,10 @@ class DeviceMgr {
   virtual std::vector<Device*> ListDevices() const = 0;
 
   // Returns a string listing all devices.
-  virtual string DebugString() const = 0;
+  virtual std::string DebugString() const = 0;
 
   // Returns a string of all the device mapping.
-  virtual string DeviceMappingString() const = 0;
+  virtual std::string DeviceMappingString() const = 0;
 
   // Assigns *device with pointer to Device of the given name.
   // Accepts either a full device name, or just the replica-local suffix.
@@ -66,9 +66,10 @@ class DeviceMgr {
 
   // Clears given containers of all devices if 'container' is
   // non-empty. Otherwise, clears default containers of all devices.
-  virtual void ClearContainers(absl::Span<const string> containers) const = 0;
+  virtual void ClearContainers(
+      absl::Span<const std::string> containers) const = 0;
 
-  virtual int NumDeviceType(const string& type) const = 0;
+  virtual int NumDeviceType(const std::string& type) const = 0;
 
   virtual int NumDevices() const = 0;
 
@@ -99,13 +100,13 @@ class DynamicDeviceMgr : public DeviceMgr {
   void ListDeviceAttributes(
       std::vector<DeviceAttributes>* devices) const override;
   std::vector<Device*> ListDevices() const override;
-  string DebugString() const override;
-  string DeviceMappingString() const override;
+  std::string DebugString() const override;
+  std::string DeviceMappingString() const override;
   absl::Status LookupDevice(absl::string_view name,
                             Device** device) const override;
   bool ContainsDevice(int64_t device_incarnation) const override;
-  void ClearContainers(absl::Span<const string> containers) const override;
-  int NumDeviceType(const string& type) const override;
+  void ClearContainers(absl::Span<const std::string> containers) const override;
+  int NumDeviceType(const std::string& type) const override;
   int NumDevices() const override;
   Device* HostCPU() const override;
 
@@ -120,7 +121,8 @@ class DynamicDeviceMgr : public DeviceMgr {
   // Remove devices from device manager by their names. Returns error for
   // non-existing devices or if the HostCPU() device is given in the input list.
   // If an error is returned, the device list is not modified.
-  absl::Status RemoveDevicesByName(const std::vector<string>& device_names);
+  absl::Status RemoveDevicesByName(
+      const std::vector<std::string>& device_names);
 
  private:
   mutable mutex devices_mu_;
@@ -139,9 +141,10 @@ class DynamicDeviceMgr : public DeviceMgr {
 
   absl::flat_hash_set<int64_t> device_incarnation_set_
       TF_GUARDED_BY(devices_mu_);
-  std::unordered_map<string, Device*> device_map_ TF_GUARDED_BY(devices_mu_);
+  std::unordered_map<std::string, Device*> device_map_
+      TF_GUARDED_BY(devices_mu_);
 
-  std::unordered_map<string, int> device_type_counts_
+  std::unordered_map<std::string, int> device_type_counts_
       TF_GUARDED_BY(devices_mu_);
 
   mutable std::atomic<Device*> cpu_device_;  // memoize `HostCPU` result
