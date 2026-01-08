@@ -374,7 +374,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
       std::unique_ptr<AutotunerPass> autotuner_pass,
       AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
                             thread_pool, should_autotune, target_config,
-                            options.device_allocator));
+                            options.device_allocator,
+                            /*optimize_scratch_bytes=*/true));
   pipeline->AddPass(std::move(autotuner_pass));
 
   // After autotuning, update GEMM workspace sizes to match the exact
