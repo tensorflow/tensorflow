@@ -704,7 +704,7 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
@@ -719,7 +719,7 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return stream_executor::DeviceAddress<uint8>::MakeFromByteSize(
+    return stream_executor::DeviceAddress<uint8_t>::MakeFromByteSize(
         temporary_memory.template flat<T>().data(),
         temporary_memory.template flat<T>().size() * sizeof(T));
   }
@@ -758,7 +758,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
@@ -773,10 +773,12 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
       return allocation_status;
     }
     total_byte_size_ += byte_size;
-    auto memory_uint8 = stream_executor::DeviceAddress<uint8>::MakeFromByteSize(
-        temporary_memory->template flat<T>().data(),
-        temporary_memory->template flat<T>().size() * sizeof(T));
-    return absl::StatusOr<stream_executor::DeviceAddress<uint8>>(memory_uint8);
+    auto memory_uint8 =
+        stream_executor::DeviceAddress<uint8_t>::MakeFromByteSize(
+            temporary_memory->template flat<T>().data(),
+            temporary_memory->template flat<T>().size() * sizeof(T));
+    return absl::StatusOr<stream_executor::DeviceAddress<uint8_t>>(
+        memory_uint8);
   }
 
   int64_t TotalByteSize() { return total_byte_size_; }
@@ -1235,8 +1237,8 @@ struct FusedBatchNormGradImplGPU {
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8_t>>
         workspace_allocator;
-    stream_executor::DeviceAddress<uint8>* reserve_space_data_ptr = nullptr;
-    stream_executor::DeviceAddress<uint8> reserve_space_data;
+    stream_executor::DeviceAddress<uint8_t>* reserve_space_data_ptr = nullptr;
+    stream_executor::DeviceAddress<uint8_t> reserve_space_data;
 #if CUDNN_VERSION >= 7402
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
