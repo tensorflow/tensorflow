@@ -128,9 +128,7 @@ xla_cc_test(
 cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
-    hdrs = [
-        "gpu_command_buffer.h",
-    ],
+    hdrs = ["gpu_command_buffer.h"],
     deps = [
         "//xla:debug_options_flags",
         "//xla/service:dump",
@@ -157,7 +155,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:path",
     ],
 )
 
