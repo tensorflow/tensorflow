@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/save_profile.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
-#include "xla/tsl/profiler/utils/profiler_options_util.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/lib/profiler_session.h"
@@ -57,15 +56,8 @@ using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
 std::string GetHostname(const ProfileRequest& request) {
-  std::optional<std::variant<std::string, bool, int64_t>> hostname_override =
-      GetConfigValue(request.opts(), "override_hostname");
-  if (!hostname_override.has_value()) {
-    return request.host_name();
-  }
-  const std::string* hostname_str =
-      std::get_if<std::string>(&*hostname_override);
-  if (hostname_str != nullptr && !hostname_str->empty()) {
-    return *hostname_str;
+  if (!request.opts().override_hostname().empty()) {
+    return request.opts().override_hostname();
   }
   return request.host_name();
 }

@@ -37,7 +37,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/profiler/rpc/client:save_profile",
         "//xla/tsl/profiler/utils:math_utils",
-        "//xla/tsl/profiler/utils:profiler_options_util",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_utils",
         "@com_github_grpc_grpc//:grpc++",

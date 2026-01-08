@@ -158,9 +158,7 @@ TEST(ProfileGrpcTest, ProfileWithOverrideHostname) {
   std::unique_ptr<ProfilerServer> server =
       StartServer(duration, &service_addr, &request);
 
-  (*request.mutable_opts()
-        ->mutable_advanced_configuration())["override_hostname"]
-      .set_string_value("testhost");
+  request.mutable_opts()->set_override_hostname("testhost");
 
   tensorflow::ProfileResponse response;
   absl::Status status = ProfileGrpc(service_addr, request, &response);
