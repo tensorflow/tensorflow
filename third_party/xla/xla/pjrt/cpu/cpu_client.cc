@@ -1240,6 +1240,7 @@ struct BufferAllocAndCopy {
 static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> MemoryForAllocation(
     const BufferAllocation& allocation,
     absl::Span<const cpu::ConstantAllocation> constants,
+    absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
     BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy,
     const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table,
@@ -1383,6 +1384,7 @@ static absl::StatusOr<std::vector<tsl::AsyncValueRef<CpuDeviceMemory>>>
 CreateBufferTable(
     const BufferAssignment& assignment,
     absl::Span<const cpu::ConstantAllocation> constants,
+    absl::Span<const CommonPjRtBuffer::ScopedHold> arguments,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
     BufferAlloc& buffer_alloc, BufferAllocAndCopy& buffer_alloc_and_copy,
     const tsl::AsyncValueRef<CpuDeviceMemory>& tuple_index_table,
@@ -1398,7 +1400,7 @@ CreateBufferTable(
     TF_ASSIGN_OR_RETURN(
         buffer_table[i],
         MemoryForAllocation(
-            allocation, constants, input_buffers, buffer_alloc,
+            allocation, constants, arguments, input_buffers, buffer_alloc,
             buffer_alloc_and_copy, tuple_index_table,
             out_index != -1 ? output_buffers[out_index] : null_output));
   }
@@ -1428,11 +1430,20 @@ absl::Status PjRtCpuExecutable::CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<CpuPjRtRawLoadedExecutable>>
-PjRtCpuExecutable::StartRawExecutable(
-    const ExecuteOptions& options,
+absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
+    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
+    const RunId& run_id, const ExecuteOptions& options,
     PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
-    const RunId& run_id, int replica, int partition, PjRtDevice* device) const {
+    bool fill_future, PjRtCpuDevice* device) const {
+  tsl::profiler::TraceMe traceme([&]() {
+    return tsl::profiler::TraceMeEncode("PjRtCpuExecutable::ExecuteHelper",
+                                        {
+                                            {"run_id", run_id.ToInt()},
+                                            {"replica", replica},
+                                            {"partition", partition},
+                                        });
+  });
+
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -1451,35 +1462,22 @@ PjRtCpuExecutable::StartRawExecutable(
     (*device_assignment)(0, 0) = device->id();
   }
   CHECK_EQ(device->process_index(), client_->process_index());
-  auto result = std::make_unique<CpuPjRtRawLoadedExecutable>();
-  result->last_collective_launch_event_ =
-      std::move(last_collective_launch_event);
-  result->executable_ = this;
-  result->device_assignment_ = device_assignment;
-  result->device_ = tsl::down_cast<PjRtCpuDevice*>(device);
-  result->run_id_ = run_id;
-  return result;
-}
 
-absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
-    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const RunId& run_id, const ExecuteOptions& options,
-    PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
-    bool fill_future, PjRtCpuDevice* device) const {
-  tsl::profiler::TraceMe traceme([&]() {
-    return tsl::profiler::TraceMeEncode("PjRtCpuExecutable::ExecuteHelper",
-                                        {
-                                            {"run_id", run_id.ToInt()},
-                                            {"replica", replica},
-                                            {"partition", partition},
-                                        });
-  });
-
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      StartRawExecutable(options, std::move(last_collective_launch_event),
-                         run_id, replica, partition, device));
-  device = tsl::down_cast<PjRtCpuDevice*>(executable->device());
+  // Handle inputs.
+  // `execute_event` indicates whether cpu computation is complete and whether
+  // there was an error.
+  auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+  MarkEventReadyOnExit ready_on_exit(execute_event);
+  auto execute_usage_event = tsl::MakeRef<CpuTrackedDeviceEvent>(execute_event);
+  // `returned_future_can_be_set_event` indicates when `returned_future` can be
+  // set using `execute_event`. This is necessary to delay setting the
+  // `returned_future` until all (async) execution activities are complete even
+  // if `execute_event` itself may be set early due to execution poisoning. This
+  // lets the user rely on `returned_future` when there is no more in-flight
+  // executions and destroy any external resources such as loaded callbacks and
+  // execute contexts.
+  auto returned_future_can_be_set_event =
+      tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   bool is_error = false;
   absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
@@ -1487,8 +1485,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   CpuTrackedDeviceEventSet input_deps(argument_handles.size());
   TF_RETURN_IF_ERROR(client()->PrepareArguments(
       options, argument_handles, parameters_that_must_be_donated_, input_deps,
-      input_deps, input_buffers, device_buffers, executable->device(), replica,
-      partition, parameter_device_shapes_, is_error,
+      input_deps, input_buffers, device_buffers, device, replica, partition,
+      parameter_device_shapes_, is_error,
       /*allow_fallback_for_donation=*/true));
 
   CHECK(!is_error) << "CpuClient does not support is_error.";
@@ -1504,78 +1502,22 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
       device_buffers, output_leaf_buffers, parameter_is_tupled_arguments_,
       result_buffer_indices_, device));
 
-  PjRtRawLoadedExecutable::RawExecuteResult result;
-  absl::Status inline_result_status;
-
-  TF_RETURN_IF_ERROR(std::move(*executable)
-                         .Execute(options, result, inline_result_status,
-                                  input_buffers, output_leaf_buffers,
-                                  input_deps, fill_future));
-
-  for (CommonPjRtBuffer::ScopedHold& b : device_buffers) {
-    if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
-      b.ConvertUsageHold(result.primary_execute_event);
-    } else {
-      CHECK(b.type() == CommonPjRtBuffer::ScopedHold::kDonation);
-      b.ConfirmDonation();
-    }
-  }
-
-  TF_RETURN_IF_ERROR(inline_result_status);
-
-  auto res = client_->CreateOutputs(
-      cpu_executable_->result_shape(), std::move(result.primary_execute_event),
-      device, output_memory_space_kind_ids_, std::move(output_leaf_buffers),
-      /*is_predetermined_error=*/false);
-
-  return Result({std::move(result.future), std::move(res)});
-}
-
-absl::Status CpuPjRtRawLoadedExecutable::Execute(
-    const ExecuteOptions& options,
-    PjRtRawLoadedExecutable::RawExecuteResult& result,
-    absl::Status& inline_result_status,
-    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
-        input_buffers,
-    absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
-        output_leaf_buffers,
-    PjRtDeviceEventSet& generic_input_deps, bool fill_future) && {
-  // `returned_future_can_be_set_event` indicates when `returned_future` can be
-  // set using `execute_event`. This is necessary to delay setting the
-  // `returned_future` until all (async) execution activities are complete even
-  // if `execute_event` itself may be set early due to execution poisoning. This
-  // lets the user rely on `returned_future` when there is no more in-flight
-  // executions and destroy any external resources such as loaded callbacks and
-  // execute contexts.
-  auto returned_future_can_be_set_event =
-      tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-
-  auto& input_deps =
-      *tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&generic_input_deps);
-  auto execute_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-  MarkEventReadyOnExit ready_on_exit(execute_event);
-  result.primary_execute_event =
-      tsl::MakeRef<CpuTrackedDeviceEvent>(execute_event);
-
-  auto cpu_executable =
-      tsl::down_pointer_cast<cpu::CpuExecutable>(executable_->cpu_executable_);
-  auto client = executable_->client();
-
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
   // gets many inputs that are not yet tupled.
   tsl::AsyncValueRef<CpuDeviceMemory> tuple_index_table;
-  if (executable_->parameter_is_tupled_arguments_) {
+  if (parameter_is_tupled_arguments_) {
     absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> leaf_buffers;
-    leaf_buffers.reserve(input_buffers.size());
-    for (const auto& buffer : input_buffers) {
+    leaf_buffers.reserve(device_buffers.size());
+    for (const auto& device_buffer : device_buffers) {
       leaf_buffers.push_back(
-          tensorflow::down_cast<CpuRawBuffer*>(buffer.get())->buffer());
+          tensorflow::down_cast<TrackedCpuDeviceBuffer*>(device_buffer.buffer())
+              ->buffer());
     }
     tuple_index_table = CpuDeviceMemory::CreateDelayedMemory();
     tsl::RunWhenReady(
         absl::MakeConstSpan(leaf_buffers),
         [buffers = leaf_buffers, tuple_index_table,
-         allocator = client->allocator()]() mutable {
+         allocator = client()->allocator()]() mutable {
           size_t index_table_byte_size = buffers.size() * sizeof(void*);
           // We assume tuple table allocations will not fail.
           CHECK_OK(CpuDeviceMemory::AllocateInto(
@@ -1596,10 +1538,10 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<tsl::AsyncValueRef<CpuDeviceMemory>> buffer_table,
-      CreateBufferTable(cpu_executable->buffer_assignment(),
-                        cpu_executable->constants(), input_buffers,
-                        buffer_alloc, buffer_alloc_and_copy, tuple_index_table,
-                        output_leaf_buffers, executable_->output_indices_));
+      CreateBufferTable(
+          cpu_executable->buffer_assignment(), cpu_executable->constants(),
+          device_buffers, input_buffers, buffer_alloc, buffer_alloc_and_copy,
+          tuple_index_table, output_leaf_buffers, output_indices_));
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -1607,13 +1549,13 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
   // allows the inputs for the next executable to be fetched even if the
   // launch is delayed.
   auto compute_reservation = std::make_unique<Semaphore::ScopedReservation>(
-      device_->max_inflight_computations_semaphore().ScopedAcquire(1));
+      device->max_inflight_computations_semaphore().ScopedAcquire(1));
 
   ExecutableRunOptions run_options;
-  run_options.set_run_id(run_id_);
+  run_options.set_run_id(run_id);
   // Need to keep device_assignment alive until execution completes.
-  run_options.set_device_assignment(device_assignment_.get());
-  run_options.set_intra_op_thread_pool(client->eigen_intraop_device());
+  run_options.set_device_assignment(device_assignment.get());
+  run_options.set_intra_op_thread_pool(client_->eigen_intraop_device());
 
   auto cpu_run_options = std::make_unique<cpu::CpuExecutableRunOptions>();
   run_options.set_cpu_executable_run_options(cpu_run_options.get());
@@ -1626,29 +1568,29 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
       cpu_execute_context->process_index().has_value()) {
     run_options.set_device_ordinal(
         PackCpuDeviceId(*cpu_execute_context->process_index(),
-                        UnpackCpuLocalDeviceId(device_->global_device_id()))
+                        UnpackCpuLocalDeviceId(device->global_device_id()))
             .value());
   } else {
-    run_options.set_device_ordinal(device_->global_device_id().value());
+    run_options.set_device_ordinal(device->global_device_id().value());
   }
   if (cpu_execute_context != nullptr &&
       cpu_execute_context->collectives() != nullptr) {
     cpu_run_options->set_collectives(cpu_execute_context->collectives());
   } else {
-    cpu_run_options->set_collectives(client->collectives_.get());
+    cpu_run_options->set_collectives(client_->collectives_.get());
   }
 
   // Schedule only one collective at a time.
   bool is_a_collective_launch =
-      static_cast<bool>(last_collective_launch_event_.first);
+      static_cast<bool>(last_collective_launch_event.first);
   // Add additional dependency conditioned on whether this is a collective
   // launch or not.
   if (is_a_collective_launch) {
-    input_deps.AddEvent(std::move(last_collective_launch_event_.first));
+    input_deps.AddEvent(std::move(last_collective_launch_event.first));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
-    auto last_enqueue_event = device_->stream_event_map()->GetLastEnqueueEvent(
+    auto last_enqueue_event = device->stream_event_map()->GetLastEnqueueEvent(
         options.execution_stream_id);
     if (!last_enqueue_event.IsAvailable()) {
       auto last_enqueue_done_event =
@@ -1664,8 +1606,7 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
     run_options.set_ffi_execution_context(&options.context->ffi_context());
   }
 
-  bool execute_inline = executable_->cheap_computation_ ||
-                        !client->asynchronous_ ||
+  bool execute_inline = cheap_computation_ || !client_->asynchronous_ ||
                         ThisThreadIsInsideHostCallback();
 
   // Overwrite `execute_inline` if it is specified in the ExecuteOptions.
@@ -1677,7 +1618,7 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
   }
 
   auto execute_thunks = [cpu_executable, buffer_table = std::move(buffer_table),
-                         eigen_device = client->eigen_intraop_device(),
+                         eigen_device = client()->eigen_intraop_device(),
                          run_options = std::move(run_options)]()
       -> absl::StatusOr<tsl::AsyncValueRef<cpu::Thunk::ExecuteEvent>> {
     // Set denormal and rounding behavior to match the default TF
@@ -1749,10 +1690,11 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
     return thunks_execute_event;
   };
 
+  absl::Status inline_result_status;
   if (input_deps.events().empty() && execute_inline) {
     // Synchronously call generated function or thunk sequence.
-    buffer_alloc.Allocate(*client->allocator());
-    buffer_alloc_and_copy.AllocateAndCopy(*client->allocator());
+    buffer_alloc.Allocate(*client()->allocator());
+    buffer_alloc_and_copy.AllocateAndCopy(*client()->allocator());
 
     TF_ASSIGN_OR_RETURN(auto thunks_execute_event, execute_thunks());
 
@@ -1770,13 +1712,13 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
     // this one completes.
     if (is_a_collective_launch) {
       execute_event.AndThen(
-          [count_down = last_collective_launch_event_.second]() mutable {
+          [count_down = last_collective_launch_event.second]() mutable {
             count_down.CountDown();
           });
     } else {
       // This is a non-parallel computation. Set the execute event as the new
       // last enqueue event.
-      auto* stream_event_map = device_->stream_event_map();
+      auto* stream_event_map = device->stream_event_map();
       stream_event_map->SetLastEnqueueEvent(options.execution_stream_id,
                                             execute_event.CopyRef());
       execute_event.AndThen([stream_event_map,
@@ -1788,20 +1730,20 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_avs_ref =
         input_deps.events();
     CpuScopedAsyncExecution scoped_async_execution =
-        device_->async_execution_tracker()->NewAsyncExecution(
-            run_id_.ToInt(), std::move(ready_on_exit).Release());
-    client->async_work_runner()->ScheduleWhenReady(
+        device->async_execution_tracker()->NewAsyncExecution(
+            run_id.ToInt(), std::move(ready_on_exit).Release());
+    client()->async_work_runner()->ScheduleWhenReady(
         events_avs_ref,
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          execute_thunks = std::move(execute_thunks),
-         device_assignment = std::move(device_assignment_),
+         device_assignment = std::move(device_assignment),
          cpu_run_options = std::move(cpu_run_options),
          compute_reservation = std::move(compute_reservation),
          tuple_index_table = std::move(tuple_index_table),
          scoped_async_execution = std::move(scoped_async_execution),
          input_deps_avs = std::move(input_deps).Consume(),
-         allocator = client->allocator(),
+         allocator = client()->allocator(),
          returned_future_can_be_set_event =
              returned_future_can_be_set_event.CopyRef()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,
@@ -1840,6 +1782,21 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
         });
   }
 
+  for (CommonPjRtBuffer::ScopedHold& b : device_buffers) {
+    if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
+      b.ConvertUsageHold(execute_usage_event);
+    } else {
+      CHECK(b.type() == CommonPjRtBuffer::ScopedHold::kDonation);
+      b.ConfirmDonation();
+    }
+  }
+
+  TF_RETURN_IF_ERROR(inline_result_status);
+
+  auto res = client_->CreateOutputs(
+      cpu_executable_->result_shape(), std::move(execute_usage_event), device,
+      output_memory_space_kind_ids_, std::move(output_leaf_buffers),
+      /*is_predetermined_error=*/false);
   if (fill_future) {
     auto [promise, future] = MakePromise<>();
     returned_future_can_be_set_event.AndThen(
@@ -1854,10 +1811,10 @@ absl::Status CpuPjRtRawLoadedExecutable::Execute(
             }
           });
         });
-    result.future = std::move(future);
+    return Result({std::move(future), /*buffers=*/std::move(res)});
   }
 
-  return absl::OkStatus();
+  return Result({/*future=*/std::nullopt, std::move(res)});
 }
 
 static void MaybeDumpHloSnapshot(
@@ -1973,7 +1930,7 @@ PjRtCpuExecutable::Execute(
     // time, because we may not have enough threads to run arbitrary number of
     // collectives concurrently.
     PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event =
-        client()->GetLastCollectiveLaunchEvent(num_addressable_devices);
+        client_->GetLastCollectiveLaunchEvent(num_addressable_devices);
 
     absl::Mutex mu;
     int running = num_addressable_devices;
