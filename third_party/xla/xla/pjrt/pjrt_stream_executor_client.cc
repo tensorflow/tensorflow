@@ -2223,7 +2223,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
         hlo_snapshot, input_hlo_snapshot_bits_->debug_options);
   }
 
-  RunId run_id;
+  RunId run_id = RunId::CreateUniqueId();
   tsl::profiler::TraceMeProducer activity(
       "PjRtStreamExecutorLoadedExecutable::Execute",
       tsl::profiler::ContextType::kPjRt, run_id.ToInt());
@@ -2360,8 +2360,8 @@ PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
           auto result,
           ExecuteHelper(argument_handles,
                         addressable_device_logical_ids_[i].replica,
-                        addressable_device_logical_ids_[i].partition, RunId(),
-                        options, fill_future));
+                        addressable_device_logical_ids_[i].partition,
+                        RunId::CreateUniqueId(), options, fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -2391,10 +2391,11 @@ PjRtStreamExecutorLoadedExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  TF_ASSIGN_OR_RETURN(auto result, ExecuteHelper(argument_handles,
-                                                 /*replica=*/0,
-                                                 /*partition=*/0, RunId(),
-                                                 options, fill_future, device));
+  TF_ASSIGN_OR_RETURN(auto result,
+                      ExecuteHelper(argument_handles,
+                                    /*replica=*/0,
+                                    /*partition=*/0, RunId::CreateUniqueId(),
+                                    options, fill_future, device));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }

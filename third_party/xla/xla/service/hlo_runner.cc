@@ -448,9 +448,9 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
   TF_ASSIGN_OR_RETURN(auto stream,
                       backend().default_stream_executor()->CreateStream());
   ServiceExecutableRunOptions service_run_options =
-      GetServiceRunOptionsForDevice(backend().default_device_ordinal(),
-                                    stream.get(), nullptr, RunId(),
-                                    backend().device_count());
+      GetServiceRunOptionsForDevice(
+          backend().default_device_ordinal(), stream.get(), nullptr,
+          RunId::CreateUniqueId(), backend().device_count());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   auto options = executable->module().config().debug_options();
@@ -519,7 +519,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
                                                         1);
   std::vector<absl::Span<const ShapedBuffer* const>> argument_buffer_slices;
   int64_t index = 0;
-  RunId run_id;
+  RunId run_id = RunId::CreateUniqueId();
   for (int64_t i = 0; i < options.num_devices; ++i) {
     int64_t device =
         (*device_assignment)(i / num_partitions, i % num_partitions);

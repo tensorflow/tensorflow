@@ -73,7 +73,7 @@ struct XLA_FFI_ExecutionContext {
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
 
-  xla::RunId run_id = {};
+  xla::RunId run_id{0};
   int32_t device_ordinal = -1;
   BackendContext backend_context = {};
 
