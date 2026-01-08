@@ -798,6 +798,7 @@ xla_cc_test(
     deps = [
         ":test_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -962,7 +963,9 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -972,6 +975,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ],
 )
