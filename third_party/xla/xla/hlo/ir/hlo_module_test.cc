@@ -223,6 +223,7 @@ TEST(HloModuleTest, CloneGeneral) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
+  m1.metadata()->set_module_group_name("test");
   CHECK_OK(m1.set_schedule(schedule));
   m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
 
@@ -242,6 +243,10 @@ TEST(HloModuleTest, CloneGeneral) {
                 .instructions()
                 .front()
                 ->name());
+  EXPECT_EQ(m1.metadata()->proto().module_group_name(), "test");
+  EXPECT_EQ(m2->metadata()->proto().module_group_name(), "test");
+  EXPECT_EQ(m1.metadata()->proto().canonical_module_id(), m1.unique_id());
+  EXPECT_EQ(m2->metadata()->proto().canonical_module_id(), m2->unique_id());
 
   EXPECT_EQ(m1.CrossProgramPrefetches().front().alt_memory_offset,
             m2->CrossProgramPrefetches().front().alt_memory_offset);
