@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -33,6 +35,34 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
+
+// Describes a stack frame.
+struct HloStackFrame {
+  absl::string_view file_name;
+  absl::string_view function_name;
+  int line = 0;
+  int column = 0;
+
+  // 1-based index of the parent frame.
+  // 0 value indicates that the current frame is the root.
+  int parent_frame_id = 0;
+
+  bool empty() const {
+    return line == 0 && column == 0 && file_name.empty() &&
+           function_name.empty();
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const HloStackFrame& frame) {
+    absl::Format(&sink, "%s:%d", frame.file_name, frame.line);
+    if (frame.column != 0) {
+      absl::Format(&sink, ":%d", frame.column);
+    }
+    if (!frame.function_name.empty()) {
+      absl::Format(&sink, " [%s]", frame.function_name);
+    }
+  }
+};
 
 // Wrapper class for HloModuleMetadataProto to avoid allowing callers to mutate
 // arbitrary fields. Specifically, callers cannot set timestamps or ids or
