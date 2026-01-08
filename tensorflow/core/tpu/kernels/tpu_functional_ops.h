@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/linked_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
