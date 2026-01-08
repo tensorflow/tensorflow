@@ -169,20 +169,22 @@ void EventMgr::PollLoop() {
   polling_stopped_->Notify();
 }
 
-void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
-  VLOG(2) << "EnqueueCallback with one or more callbacks pending on "
-          << callbacks_.size() << " streams and " << free_events_.size()
-          << " unused event objects.";
-  // Events are created on demand, and repeatedly reused.  There is no
-  // limit placed here on the number of allocated Events.
-  if (free_events_.empty()) {
-    free_events_.emplace_back(exec_->CreateEvent().value());
+std::unique_ptr<se::Event> EventMgr::PopOrCreateEvent() {
+  {
+    mutex_lock l(free_events_mu_);
+    if (!free_events_.empty()) {
+      std::unique_ptr<se::Event> e = std::move(free_events_.back());
+      free_events_.pop_back();
+      return e;
+    }
   }
+  return exec_->CreateEvent().value();
+}
 
-  std::unique_ptr<se::Event> e = std::move(free_events_.back());
-  free_events_.pop_back();
-  stream->RecordEvent(e.get()).IgnoreError();
-
+void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func,
+                               std::unique_ptr<se::Event> e) {
+  VLOG(2) << "EnqueueCallback with one or more callbacks pending on "
+          << callbacks_.size() << " streams.";
   bool was_empty = callbacks_.empty();
   callbacks_[stream].push_back({std::move(e), std::move(func)});
 
@@ -202,8 +204,7 @@ void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
 void EventMgr::PollEvents(se::Stream* stream,
                           absl::InlinedVector<InUse, 4UL>* to_free) {
   VLOG(2) << "PollEvents with one or more callbacks pending on "
-          << callbacks_.size() << " streams and " << free_events_.size()
-          << " unused event objects.";
+          << callbacks_.size();
 
   // Polls the events for one stream.
   //
@@ -221,18 +222,23 @@ void EventMgr::PollEvents(se::Stream* stream,
           bool keep_looping = true;
           switch (s) {
             case se::Event::Status::kUnknown:
-            case se::Event::Status::kError:
+            case se::Event::Status::kError: {
               // We don't expect to see these.  Someday maybe propagate
               // a Status error, but for now fail hard.
               LOG(FATAL) << "Unexpected Event status: " << static_cast<int>(s);
               break;
-            case se::Event::Status::kPending:
+            }
+            case se::Event::Status::kPending: {
               // If this event is still pending, then all events after it are
               // guaranteed to be pending as well, so we can stop looping.
               keep_looping = false;
               break;
-            case se::Event::Status::kComplete:
-              free_events_.push_back(std::move(event));
+            }
+            case se::Event::Status::kComplete: {
+              {
+                mutex_lock l(free_events_mu_);
+                free_events_.push_back(std::move(event));
+              }
               to_free->push_back({nullptr, std::move(callback)});
               // std::deque::erase() does invalidate iterators, so we can't
               // erase `it` here.  Instead, we'll wait until the end of the loop
@@ -240,6 +246,7 @@ void EventMgr::PollEvents(se::Stream* stream,
               // that point.
               ++it;
               break;
+            }
           }
 
           if (!keep_looping) {

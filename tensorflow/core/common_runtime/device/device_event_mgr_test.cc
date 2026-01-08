@@ -65,7 +65,7 @@ class TEST_EventMgrHelper {
   }
 
   size_t free_size() {
-    mutex_lock l(em_->mu_);
+    mutex_lock l(em_->free_events_mu_);
     return em_->free_events_.size();
   }
 
