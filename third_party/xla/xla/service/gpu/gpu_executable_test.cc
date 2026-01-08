@@ -612,7 +612,7 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
                 kernel_args_packing_spec {
                   kernel_arguments {
                     relocations {
-                      type: TYPE_BITS64_ABSOLUTE
+                      kind: KIND_BITS64_ABSOLUTE
                       argument_index: 0
                       offset: 0
                     }

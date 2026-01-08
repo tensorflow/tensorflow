@@ -386,7 +386,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
                             state->metadata, /*num_parameters=*/kNumParameters,
                             /*num_devices=*/num_devices,
                             /*parameter_index=*/1));
-    std::array<se::KernelArgument, kAllReduceArgsCount> kernel_args = {
+    std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
         source_buffer,
         destination_buffer,
         static_cast<int32_t>(state->rank.value()),

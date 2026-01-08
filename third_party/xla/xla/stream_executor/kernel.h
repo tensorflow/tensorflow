@@ -223,6 +223,7 @@ class TypedKernel {
 
   std::unique_ptr<Kernel> kernel_;
 };
+
 // Packs the given arguments into a KernelArgsPackedTuple with compile-time type
 // checks that arguments are compatible with TypedKernel signature.
 template <typename... Params, typename... Args>
