@@ -263,7 +263,7 @@ std::string MeshAxesReplicaGroupList::ToString() const {
   std::vector<std::string> group_axes_str;
   group_axes_str.reserve(axes_.size());
   for (const AxisRef& axis : axes_) {
-    std::string axis_str = axis.ToString(mesh_);
+    std::string axis_str = axis.ToString(&mesh_);
     group_axes_str.push_back(axis_str);
   }
   absl::StrAppend(&rg_str, mesh_.ToString(), " {",
