@@ -64,7 +64,7 @@ class CompositeTensorVariant {
   const CompositeTensorVariantMetadata& metadata() const { return *metadata_; }
 
   // Variant methods.
-  string TypeName() const { return kTypeName; }
+  std::string TypeName() const { return kTypeName; }
 
   // Updates `VariantTensorData` with an encoding for this value.
   void Encode(VariantTensorData* data) const;
@@ -73,7 +73,7 @@ class CompositeTensorVariant {
   bool Decode(const VariantTensorData& data);
 
   // Returns a string summary for this value.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // Name of this type (used for variant serialization).
   static constexpr const char kTypeName[] = "CompositeTensorVariant";
