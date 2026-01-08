@@ -85,7 +85,10 @@ class CommandState {
 //
 // Note that the same command can be recorded as a part of multiple iterations
 // of unrolled loop, and for this reason the state can be attached to a
-// concreate iteration index.
+// concreate iteration index. Also for unrolled loops the same command can be
+// recorded into multiple command buffers (for cond and body computations), and
+// for this reason state is attached to a triple: (command, command_buffer,
+// unroll_iteration).
 class CommandStateManager {
  public:
   template <typename State>

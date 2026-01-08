@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/casts.h"
 
 namespace stream_executor::gpu {
 
@@ -253,6 +252,7 @@ GpuCommandBuffer::CreateChildCommand(
   TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
                       CreateMovedChildNode(
                           ToGraphNodeDependencies(dependencies), nested.get()));
+  TF_RETURN_IF_ERROR(nested->Finalize());
   return AppendCommand(GpuChildCommand{handle, std::move(nested)});
 }
 
@@ -262,7 +262,11 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = dynamic_cast<const GpuChildCommand*>(command);
   CHECK(gpu_command) << "Command must be a GpuChildCommand";
-  return update_fn(gpu_command->command_buffer.get());
+
+  CommandBuffer* child_command_buffer = gpu_command->command_buffer.get();
+  TF_RETURN_IF_ERROR(child_command_buffer->Update());
+  TF_RETURN_IF_ERROR(update_fn(child_command_buffer));
+  return child_command_buffer->Finalize();
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
