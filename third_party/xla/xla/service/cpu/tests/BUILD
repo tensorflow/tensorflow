@@ -169,6 +169,9 @@ xla_test(
 xla_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
+    # The objective of this test to ensure that LLVM auto vectorization kicks in. This is not
+    # necessary with the tiled emitter which explicitly creates vector instructions.
+    env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_tiled_emitter"},
     tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_codegen_test_main",
@@ -264,6 +267,9 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
+    # The objective of this test to ensure that LLVM auto vectorization kicks in. This is not
+    # necessary with the tiled emitter which explicitly creates vector instructions.
+    env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_tiled_emitter"},
     tags = ["pjrt_migration_candidate"],
     deps = [
         ":cpu_codegen_test_main",

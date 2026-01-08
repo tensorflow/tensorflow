@@ -746,9 +746,6 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<SliceSinker>();
 
-    ReshapeMoverOptions reshape_mover_options;
-    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-    pipeline.AddPass<ReshapeMover>(reshape_mover_options);
     pipeline.AddPass<HloConstantFolding>();
     pipeline.AddPass<ConditionalSimplifier>();
     pipeline.AddPass<RealImagExpander>();
@@ -760,7 +757,6 @@ absl::Status RunOptimizationPasses(
             int64_t operand) -> absl::StatusOr<bool> { return false; });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
-  }();
 
   // Do not merge dots when they are assigned different stream ids.
   std::function<int64_t(const HloInstruction* dot)> queue_id =
@@ -778,12 +774,6 @@ absl::Status RunOptimizationPasses(
   // by DotDecomposer. Subsequent passes must not rely on it from this point on.
   pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
 
-  // ConvertMover and ReshapeMover fight with each other: ConvertMover wants
-  // to move some converts down the graph, but ReshapeMover wants to move them
-  // up the graph.  As a compromise, let ReshapeMover run to a fixed point,
-  // and then run ConvertMover + algsimp to a fixed point.
-  [&, &pipeline =
-          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification-2")] {
     pipeline.AddPass<ConvertMover>();
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
