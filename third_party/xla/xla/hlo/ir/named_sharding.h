@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,12 @@ class NamedSharding {
     bool operator==(const DimensionSharding& other) const {
       return axes_ == other.axes_ && is_closed_ == other.is_closed_;
     }
+
+    bool operator!=(const DimensionSharding& other) const {
+      return !(*this == other);
+    }
+
+    std::string ToString(const Mesh* mesh = nullptr) const;
 
     // Note that by default we assume closed sharding.
     explicit DimensionSharding() : is_closed_(true) {};
@@ -83,6 +90,8 @@ class NamedSharding {
   bool operator!=(const NamedSharding& other) const {
     return !(*this == other);
   }
+
+  std::string ToString(bool include_metadata = false) const;
 
   // TODO(b/456212087): Add validation checks
   explicit NamedSharding(Mesh mesh,
@@ -192,6 +201,11 @@ class NamedSharding {
   // we can remove this field.
   std::vector<int64_t> sharded_sizes_;
 };
+
+std::ostream& operator<<(std::ostream& out,
+                         const NamedSharding::DimensionSharding& sharding);
+
+std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding);
 
 // Contains test only helper functions.
 namespace test_utils {
