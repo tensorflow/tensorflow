@@ -2,6 +2,7 @@
 #   Base testing infrastructure for XLA.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -12,6 +13,7 @@ load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -3008,6 +3010,33 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "collective_ops_ffi_kernels",
+    hdrs = ["collective_ops_ffi_kernels.h"],
+    deps = [
+        "//xla:types",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cuda_library(
+    name = "collective_ops_ffi_kernels_cuda",
+    srcs = ["collective_ops_ffi_kernels.cu.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_ffi_kernels",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = True,  # static kernel registation
+)
+
 xla_test(
     name = "collective_ops_ffi_test",
     srcs = ["collective_ops_ffi_test.cc"],
@@ -3019,6 +3048,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":collective_ops_e2e_test_base",
+        ":collective_ops_ffi_kernels",
         ":literal_test_util",
         ":test_utils",
         ":xla_internal_test_main",
@@ -3047,7 +3077,9 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-    ],
+    ] + if_cuda_is_configured([
+        ":collective_ops_ffi_kernels_cuda",
+    ]),
 )
 
 xla_test(
