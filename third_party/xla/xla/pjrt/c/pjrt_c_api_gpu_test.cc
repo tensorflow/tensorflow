@@ -79,11 +79,15 @@ using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsNull;
 
-#ifdef TENSORFLOW_USE_ROCM
+#if defined(TENSORFLOW_USE_ROCM)
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
                                                   /*platform_name=*/"rocm"),
                       true);
-#else   // TENSORFLOW_USE_ROCM
+#elif defined(TENSORFLOW_USE_SYCL)
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"oneapi"),
+                      true);
+#else   // Default to CUDA
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
                                                   /*platform_name=*/"cuda"),
                       true);
@@ -678,7 +682,7 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
   for (const std::string& allocator_option : allocator_options) {
 #ifdef TENSORFLOW_USE_ROCM
     if (allocator_option == "cuda_async") {
-      VLOG(1) << "cuda_async allocator not available on ROCm!";
+      VLOG(1) << "cuda_async allocator not available on ROCm and SYCL!";
       continue;
     }
 #endif
@@ -767,6 +771,7 @@ TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
   auto api = GetPjrtApi();
   std::string expected_platform_name_for_cuda = "cuda";
   std::string expected_platform_name_for_rocm = "rocm";
+  std::string expected_platform_name_for_oneapi = "oneapi";
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
       {"platform_name", static_cast<std::string>("gpu")},
       {"allocator", static_cast<std::string>("default")},
@@ -799,7 +804,8 @@ TEST(PjrtCApiPlatformNameTest, AvailablePlatformName) {
   EXPECT_EQ(platform_name_error, nullptr);
   EXPECT_THAT(platform_name_args.platform_name,
               testing::AnyOf(expected_platform_name_for_cuda,
-                             expected_platform_name_for_rocm));
+                             expected_platform_name_for_rocm,
+                             expected_platform_name_for_oneapi));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
@@ -949,7 +955,9 @@ TEST(PJRTGpuDeviceTopologyTest, CreateGpuTopology) {
   EXPECT_TRUE((pjrt_topology->topology->platform_id() == xla::CudaId() &&
                pjrt_topology->topology->platform_name() == xla::CudaName()) ||
               (pjrt_topology->topology->platform_id() == xla::RocmId() &&
-               pjrt_topology->topology->platform_name() == xla::RocmName()));
+               pjrt_topology->topology->platform_name() == xla::RocmName()) ||
+              (pjrt_topology->topology->platform_id() == xla::OneapiId() &&
+               pjrt_topology->topology->platform_name() == xla::OneapiName()));
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
@@ -1016,7 +1024,9 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   EXPECT_TRUE((pjrt_topology->topology->platform_id() == xla::CudaId() &&
                pjrt_topology->topology->platform_name() == xla::CudaName()) ||
               (pjrt_topology->topology->platform_id() == xla::RocmId() &&
-               pjrt_topology->topology->platform_name() == xla::RocmName()));
+               pjrt_topology->topology->platform_name() == xla::RocmName()) ||
+              (pjrt_topology->topology->platform_id() == xla::OneapiId() &&
+               pjrt_topology->topology->platform_name() == xla::OneapiName()));
 
   EXPECT_EQ(pjrt_topology->topology->ProcessCount().value(), 16 * 2);
   EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions().size(), 16 * 2 * 4);
