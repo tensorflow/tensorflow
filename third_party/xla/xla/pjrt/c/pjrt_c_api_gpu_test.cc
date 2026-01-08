@@ -876,7 +876,9 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client =
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
-  EXPECT_TRUE(gpu_client->should_stage_host_to_device_transfers());
+  std::vector<float> data(4, 0.0f);
+  EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
@@ -915,7 +917,9 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client =
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
-  EXPECT_FALSE(gpu_client->should_stage_host_to_device_transfers());
+  std::vector<float> data(4, 0.0f);
+  EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;

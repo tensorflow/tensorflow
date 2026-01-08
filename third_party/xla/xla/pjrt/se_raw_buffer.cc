@@ -145,8 +145,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
       if (transfer_size > 0) {
-        if (client->should_stage_host_to_device_transfers() &&
-            !client->IsDmaMapped(src, transfer_size)) {
+        if (client->ShouldStageHostToDeviceTransfers(src, transfer_size)) {
           if (client->host_memory_allocator() == nullptr) {
             return absl::InvalidArgumentError(
                 "host_memory_allocator should be initialized for "
@@ -201,8 +200,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     client->WaitForAllocation(stream, *buf);
     auto status = [&]() -> absl::Status {
       if (transfer_size > 0) {
-        if (client->should_stage_host_to_device_transfers() &&
-            !client->IsDmaMapped(dst, transfer_size)) {
+        if (client->ShouldStageHostToDeviceTransfers(dst, transfer_size)) {
           if (client->host_memory_allocator() == nullptr) {
             return absl::InvalidArgumentError(
                 "host_memory_allocator should be initialized for "

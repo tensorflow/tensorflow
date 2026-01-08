@@ -1372,7 +1372,8 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   auto* staging_client =
       tensorflow::down_cast<StreamExecutorGpuClient*>(client_staging.get());
 
-  EXPECT_TRUE(staging_client->should_stage_host_to_device_transfers());
+  EXPECT_TRUE(staging_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -1401,7 +1402,8 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   auto* no_staging_client =
       tensorflow::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
 
-  EXPECT_FALSE(no_staging_client->should_stage_host_to_device_transfers());
+  EXPECT_FALSE(no_staging_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,

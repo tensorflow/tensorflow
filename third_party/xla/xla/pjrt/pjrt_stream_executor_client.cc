@@ -668,12 +668,8 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   bool must_use_staging_buffer =
       host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
       !host_and_device_strides_equal || packed_size != size;
-  // Allocating multigigabyte pinned buffers can be very slow. In that case,
-  // using a staging buffer is probably worse than not using one.
-  // TODO(phawkins): add chunking for transfers.
-  if (must_use_staging_buffer || (!IsDmaMapped(data, packed_size) &&
-                                  (should_stage_host_to_device_transfers() &&
-                                   packed_size < (int64_t{1} << 30)))) {
+  if (must_use_staging_buffer ||
+      ShouldStageHostToDeviceTransfers(data, packed_size)) {
     staging_buffer =
         host_memory_allocator()->Allocate(transpose ? size : packed_size);
   }
