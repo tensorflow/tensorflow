@@ -127,10 +127,8 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::BuildWithRestrictions(
 
 std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     const HloComputation* computation) {
-  HloComputation::ChannelDependencies channel_dependencies =
-      computation->ComputeChannelDependencies();
   std::vector<HloInstruction*> instructions =
-      computation->MakeInstructionPostOrder(channel_dependencies);
+      computation->MakeInstructionPostOrder();
   auto result = std::make_unique<HloReachabilityMap>(instructions);
 
   auto get_bit_set = [&](const HloInstruction* instruction) -> BitSet {
@@ -151,12 +149,6 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
     };
 
     add_dependencies(instruction);
-
-    // If an instruction has channel depencencies, they are also reachable.
-    auto it = channel_dependencies.find(instruction);
-    if (it != channel_dependencies.end()) {
-      absl::c_for_each(it->second, add_dependencies);
-    }
   }
   return result;
 }
