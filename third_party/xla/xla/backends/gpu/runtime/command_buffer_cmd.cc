@@ -841,12 +841,11 @@ absl::Status TracedCommandBufferCmd::RecordTracedCommand(
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, *nested_cmd,
-            Dependencies(record_params));
+            *nested_cmd, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* cmd) {
-        return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, cmd, *nested_cmd);
+        return record_params.command_buffer->UpdateChildCommand(cmd,
+                                                                *nested_cmd);
       });
 }
 
@@ -1288,13 +1287,11 @@ absl::Status ChildCmd::Record(const Thunk::ExecuteParams& execute_params,
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kMoved,
-            execute_params.stream->parent(), record_fn,
-            Dependencies(record_params));
+            record_fn, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* command) {
-        return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kMoved, command, record_fn);
+        return record_params.command_buffer->UpdateChildCommand(command,
+                                                                record_fn);
       });
 }
 
@@ -1449,13 +1446,11 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
         record_params,
         [&] {
           return record_params.command_buffer->CreateChildCommand(
-              se::CommandBuffer::ChildCommandType::kMoved,
-              execute_params.stream->parent(), record_fn,
-              Dependencies(record_params));
+              record_fn, Dependencies(record_params));
         },
         [&](const se::CommandBuffer::Command* command) {
-          return record_params.command_buffer->UpdateChildCommand(
-              se::CommandBuffer::ChildCommandType::kMoved, command, record_fn);
+          return record_params.command_buffer->UpdateChildCommand(command,
+                                                                  record_fn);
         });
   }
   return HandleCmdCreateOrUpdate(
@@ -1769,12 +1764,11 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, *nested_cmd,
-            Dependencies(record_params));
+            *nested_cmd, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* command) {
-        return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, command, *nested_cmd);
+        return record_params.command_buffer->UpdateChildCommand(command,
+                                                                *nested_cmd);
       });
 }
 
@@ -1850,12 +1844,11 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, *nested_cmd,
-            Dependencies(record_params));
+            *nested_cmd, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* command) {
-        return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, command, *nested_cmd);
+        return record_params.command_buffer->UpdateChildCommand(command,
+                                                                *nested_cmd);
       });
 }
 
@@ -1908,12 +1901,11 @@ absl::Status CollectiveCmd::RecordTracedCommand(
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, *nested_cmd,
-            Dependencies(record_params));
+            *nested_cmd, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* command) {
-        return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, command, *nested_cmd);
+        return record_params.command_buffer->UpdateChildCommand(command,
+                                                                *nested_cmd);
       });
 }
 
@@ -2611,13 +2603,11 @@ absl::Status DynamicSliceFusionCmd::Record(
       record_params,
       [&] {
         return record_params.command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned,
             *nested_command_buffer, Dependencies(record_params));
       },
       [&](const se::CommandBuffer::Command* command) {
         return record_params.command_buffer->UpdateChildCommand(
-            se::CommandBuffer::ChildCommandType::kCloned, command,
-            *nested_command_buffer);
+            command, *nested_command_buffer);
       });
 }
 

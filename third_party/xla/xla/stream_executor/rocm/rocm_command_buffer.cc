@@ -217,13 +217,11 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
-    ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
-    CommandBuffer& nested) {
-  CHECK(type == ChildCommandType::kCloned)
-      << "Moved child node creation is not supported";
-  auto& child_command_buffer =
-      tensorflow::down_cast<RocmCommandBuffer&>(nested);
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    const CommandBuffer& nested) {
+  auto& child_command_buffer = tensorflow::down_cast<RocmCommandBuffer&>(
+      const_cast<CommandBuffer&>(nested));
   CHECK(child_command_buffer.parent_ == nullptr)
       << "Nested command buffer's parent is not null";
   child_command_buffer.parent_ = this;
@@ -241,11 +239,13 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
   return FromHipGraphHandle(node_handle);
 }
 
-absl::Status RocmCommandBuffer::UpdateChildNode(ChildCommandType type,
-                                                GraphNodeHandle node_handle,
-                                                const CommandBuffer& nested) {
-  CHECK(type == ChildCommandType::kCloned)
-      << "Moved child node update is not supported";
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMovedChildNode(
+    absl::Span<const GraphNodeHandle> dependencies, CommandBuffer* nested) {
+  return absl::UnimplementedError("Moved child nodes are not supported");
+}
+
+absl::Status RocmCommandBuffer::UpdateClonedChildNode(
+    GraphNodeHandle node_handle, const CommandBuffer& nested) {
   hipGraph_t child_graph =
       tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
 

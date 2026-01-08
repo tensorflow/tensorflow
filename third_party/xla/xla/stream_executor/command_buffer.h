@@ -174,29 +174,34 @@ class CommandBuffer {
                             const ThreadDim& threads, const BlockDim& blocks,
                             Args... args);
 
-  // kCloned: child command is cloned into parent command.
-  // kMoved: child command is moved into parent command.
-  enum class ChildCommandType { kCloned, kMoved };
+  // Creates a child command from a pre-recorded command buffer.
   virtual absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, CommandBuffer& nested,
+      const CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) = 0;
 
-  // Updates a command that launches a nested command buffer.
-  virtual absl::Status UpdateChildCommand(ChildCommandType type,
-                                          const Command* command,
+  // Updates a child command with a new command buffer. New command buffer must
+  // be compatible with the one that was used to create command.
+  virtual absl::Status UpdateChildCommand(const Command* command,
                                           const CommandBuffer& nested) = 0;
 
+  // Creates a child command from a user-provided callback by recording commands
+  // into the child command buffer owned by this command buffer. In contrast to
+  // the child command created from pre-recorded command buffer (see API
+  // above), such child commands can be efficiently updated by updating the
+  // command buffer itself.
   virtual absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, StreamExecutor* executor,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> record_fn,
       absl::Span<const Command* const> dependencies) = 0;
 
-  // Updates a command that launches a nested command buffer.
+  // Updates a child command using a user-provided callback to record command
+  // updates into the child command buffer owned by this command buffer. In
+  // contrast to the child command update from pre-recorded command buffer (see
+  // API above) it allows fine grained command update. Updating from a
+  // pre-recorded command buffer requires swapping the whole child command
+  // buffer to a new one, which might be expensive for large command buffers.
   virtual absl::Status UpdateChildCommand(
-      ChildCommandType type, const Command* command,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn) = 0;
+      const Command* command,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> update_fn) = 0;
 
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(
