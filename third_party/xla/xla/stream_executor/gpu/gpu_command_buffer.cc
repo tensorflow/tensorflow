@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/path.h"
 
 namespace stream_executor::gpu {
 
@@ -225,47 +224,45 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
 
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateChildCommand(
-    ChildCommandType type, CommandBuffer& nested,
+    const CommandBuffer& nested,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
   TF_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
-      CreateChildNode(type, ToGraphNodeDependencies(dependencies), nested));
+      CreateClonedChildNode(ToGraphNodeDependencies(dependencies), nested));
   return AppendCommand(GpuCommand{handle});
 }
 
-absl::Status GpuCommandBuffer::UpdateChildCommand(ChildCommandType type,
-                                                  const Command* command,
+absl::Status GpuCommandBuffer::UpdateChildCommand(const Command* command,
                                                   const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   VLOG(5) << "UpdateChildCommand: " << reinterpret_cast<const void*>(command);
-  return UpdateChildNode(type, gpu_command->handle, nested);
+  return UpdateClonedChildNode(gpu_command->handle, nested);
 }
 
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateChildCommand(
-    ChildCommandType type, StreamExecutor* executor,
-    absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)> record_fn,
+    absl::AnyInvocable<absl::Status(CommandBuffer*)> record_fn,
     absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
-                      executor->CreateCommandBuffer(Mode::kNested));
+                      executor_->CreateCommandBuffer(Mode::kNested));
+
   TF_RETURN_IF_ERROR(record_fn(nested.get()));
-  TF_ASSIGN_OR_RETURN(
-      GraphNodeHandle handle,
-      CreateChildNode(type, ToGraphNodeDependencies(dependencies), *nested));
+  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                      CreateMovedChildNode(
+                          ToGraphNodeDependencies(dependencies), nested.get()));
   return AppendCommand(GpuChildCommand{handle, std::move(nested)});
 }
 
 absl::Status GpuCommandBuffer::UpdateChildCommand(
-    ChildCommandType type, const Command* command,
-    absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-        record_fn) {
+    const Command* command,
+    absl::AnyInvocable<absl::Status(CommandBuffer*)> update_fn) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = dynamic_cast<const GpuChildCommand*>(command);
   CHECK(gpu_command) << "Command must be a GpuChildCommand";
-  return record_fn(gpu_command->command_buffer.get());
+  return update_fn(gpu_command->command_buffer.get());
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
@@ -330,8 +327,7 @@ GpuCommandBuffer::CreateDnnGraphCommand(
 
   TF_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
-      CreateChildNode(ChildCommandType::kCloned,
-                      ToGraphNodeDependencies(dependencies), *nested));
+      CreateClonedChildNode(ToGraphNodeDependencies(dependencies), *nested));
 
   return AppendCommand(GpuCommand{handle});
 }
