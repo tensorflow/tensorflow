@@ -21,15 +21,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -61,14 +57,10 @@ class CubSortTestBase
     ASSIGN_OR_RETURN(const HloModule* optimized_module,
                      test_runner().HloModuleFromWrapped(executable.get()));
 
-    for (const HloComputation* computation : optimized_module->computations()) {
-      for (const HloInstruction* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCustomCall) {
-          if (absl::StrContains(instruction->custom_call_target(),
-                                "DeviceRadixSort")) {
-            return true;
-          }
-        }
+    for (const auto& pass_metadata :
+         optimized_module->metadata().proto().pass_metadata()) {
+      if (pass_metadata.pass_name() == "sort-rewriter") {
+        return pass_metadata.module_changed();
       }
     }
     return false;
@@ -110,10 +102,10 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_str));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(hlo_str, ErrorSpec{0, 0}));
 }
 
 TEST_F(CubSortKeysTest, CompareToReferenceNumpyOrderGt) {
@@ -143,10 +135,10 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kHlo));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
 // Verify that Cub Device Radix sort honors XLA's total order semantics:
@@ -173,10 +165,10 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(kHlo));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
 // This test verifies an issue where sort was launched on the wrong stream,
@@ -205,10 +197,10 @@ ENTRY m {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_str));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(hlo_str, ErrorSpec{0, 0}));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -268,10 +260,10 @@ ENTRY main {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_str));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(hlo_str, ErrorSpec{0, 0}));
 }
 
 // This test verifies an issue where sort was launched on the wrong stream,
@@ -317,10 +309,10 @@ ENTRY m {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                        ParseAndReturnVerifiedModule(hlo_str));
   ASSERT_OK_AND_ASSIGN(bool rewritten,
-                       WasRewrittenToUseCubSort(hlo_module->Clone()));
+                       WasRewrittenToUseCubSort(std::move(hlo_module)));
   EXPECT_TRUE(rewritten);
 
-  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompare(hlo_str, ErrorSpec{0, 0}));
 }
 
 INSTANTIATE_TEST_SUITE_P(
