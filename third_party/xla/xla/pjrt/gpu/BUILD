@@ -203,6 +203,7 @@ xla_test(
     },
     backends = ["gpu"],
     tags = ["nofixdeps"],
+    use_legacy_runtime = True,
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_topology_description",

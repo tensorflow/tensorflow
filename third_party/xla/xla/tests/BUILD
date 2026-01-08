@@ -3792,6 +3792,7 @@ xla_test(
     srcs = ["test_utils_test.cc"],
     # There is nothing backend specific in this test, so just pick an arbitrary backend.
     backends = ["cpu"],
+    use_legacy_runtime = True,
     deps = [
         ":local_client_test_base",
         ":test_utils",

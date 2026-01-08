@@ -2765,6 +2765,7 @@ xla_test(
     name = "make_batch_pointers_test",
     srcs = ["make_batch_pointers_test.cc"],
     backends = ["gpu"],
+    use_legacy_runtime = True,
     deps = [
         ":make_batch_pointers",
         "//xla/service:platform_util",
@@ -2818,6 +2819,7 @@ xla_test(
     },
     backends = ["gpu"],
     disabled_backends = [],
+    use_legacy_runtime = True,
     deps = [
         ":all_reduce",
         "//xla:array",
