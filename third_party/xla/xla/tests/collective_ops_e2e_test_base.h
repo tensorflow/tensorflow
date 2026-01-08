@@ -84,7 +84,6 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
 
  protected:
   std::unique_ptr<HloRunner> hlo_runner_;
-  std::unique_ptr<HloRunner> reference_hlo_runner_;
   se::GpuComputeCapability gpu_compute_capability_;
 
  private:
