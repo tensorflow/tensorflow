@@ -899,6 +899,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
