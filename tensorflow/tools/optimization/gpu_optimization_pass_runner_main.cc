@@ -17,6 +17,7 @@ limitations under the License.
 // --output_file_path=/tmp/output.pbtxt
 // --optimization_pass=NameOfGraphOptimizationPass
 
+#include <string>
 #include <utility>
 #include <vector>
 
