@@ -1021,7 +1021,10 @@ def _find_reference_cycle(objects: Sequence[Any], idx: int) -> bool:
 
 
 def assert_no_garbage_created(f: _F) -> _F:
-  """Test method decorator to assert that no garbage has been created.
+  """Test method decorator to assert that no memory leaks occur.
+
+  This decorator verifies that we don't have memory leaks by checking if garbage
+  is created during the test execution.
 
   Note that this decorator sets DEBUG_SAVEALL, which in some Python interpreters
   cannot be un-set (i.e. will disable garbage collection for any other unit
@@ -1033,9 +1036,6 @@ def assert_no_garbage_created(f: _F) -> _F:
   Returns:
     The decorated function.
   """
-
-  # FIXME(power) -- Update documentation, we no longer care if garbage is
-  # created, we only want to verify we don't have memory leaks.
   def decorator(self: "TensorFlowTestCase", **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
     gc.disable()
