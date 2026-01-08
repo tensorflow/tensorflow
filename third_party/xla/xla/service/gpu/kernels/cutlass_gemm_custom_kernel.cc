@@ -87,7 +87,7 @@ static std::optional<Dim> As(std::optional<Dim3> dim3) {
 // Returns a pointer to device memory holding a slice offset.
 static int32_t* SlicePtr(
     const stream_executor::KernelArgsDeviceAddressArray* args, int64_t index) {
-  const void* opaque = args->device_memory_ptr(index);
+  const void* opaque = args->device_addr_ptr(index);
   return static_cast<int32_t*>(const_cast<void*>(opaque));
 }
 
@@ -115,15 +115,15 @@ KernelArgsPacking ArgsPacking(GemmMode mode, int32_t batch_count, int32_t m,
         se::Cast<stream_executor::KernelArgsDeviceAddressArray>(&args);
 
     Arguments arguments = {mode, batch_count, m, n, k};
-    arguments.lhs = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));
-    arguments.rhs = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
-    arguments.out = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
+    arguments.lhs = const_cast<void*>(mem_args->device_addr_ptr(indices.lhs));
+    arguments.rhs = const_cast<void*>(mem_args->device_addr_ptr(indices.rhs));
+    arguments.out = const_cast<void*>(mem_args->device_addr_ptr(indices.out));
 
     // Workspace argument always passed as the last one (if passed at all).
     if (indices.has_workspace) {
-      size_t num_mem_args = mem_args->device_memory_args().size();
+      size_t num_mem_args = mem_args->device_addr_args().size();
       arguments.workspace =
-          const_cast<void*>(mem_args->device_memory_ptr(num_mem_args - 1));
+          const_cast<void*>(mem_args->device_addr_ptr(num_mem_args - 1));
     } else {
       arguments.workspace = nullptr;
     }

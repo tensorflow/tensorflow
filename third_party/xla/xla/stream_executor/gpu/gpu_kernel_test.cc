@@ -253,7 +253,7 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<KernelArgs> packed_args,
       stream_executor::PackKernelArgs(
-          absl::Span<const stream_executor::KernelArgument>({tma0, tma1, tma2}),
+          absl::Span<const stream_executor::KernelArg>({tma0, tma1, tma2}),
           tma_kernel->metadata()));
   TF_ASSERT_OK(
       tma_kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *packed_args));
