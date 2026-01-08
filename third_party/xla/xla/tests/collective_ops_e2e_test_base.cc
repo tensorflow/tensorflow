@@ -105,6 +105,10 @@ void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
                             platform);
   }
 
+  gpu_compute_capability_ = CheckStatus(platform->ExecutorForDevice(0))
+                                ->GetDeviceDescription()
+                                .gpu_compute_capability();
+
   hlo_runner_ =
       std::make_unique<HloRunner>(platform, /*intra_op_parallelism_threads=*/0,
                                   std::make_unique<se::MultiDeviceAdapter>(
