@@ -91,6 +91,7 @@ struct OpData {
   // Per channel output multiplier and shift.
   std::vector<int32_t> per_channel_output_multiplier;
   std::vector<int> per_channel_output_shift;
+  std::vector<double> per_channel_effective_output_scale;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
@@ -404,10 +405,6 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   }
 
   if (input_type == kTfLiteInt16) {
-    // Quantization should be symmetric.
-    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-
     // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
     if (params->quantized_bias_type != kTfLiteFloat32) {
       TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
@@ -501,6 +498,16 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
 
     data->per_channel_output_multiplier.resize(channels_out);
     data->per_channel_output_shift.resize(channels_out);
+    if (input_type == kTfLiteInt16) {
+      data->per_channel_effective_output_scale.resize(channels_out);
+      for (int i = 0; i < channels_out; ++i) {
+        const float filter_scale = affine_quantization->scale->size == 1
+                                       ? affine_quantization->scale->data[0]
+                                       : affine_quantization->scale->data[i];
+        data->per_channel_effective_output_scale[i] = static_cast<double>(
+            input->params.scale * filter_scale / output->params.scale);
+      }
+    }
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
@@ -877,25 +884,6 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  KernelType effective_kernel_type = kernel_type;
-  // We have to fallback to reference execution path when im2col is needed but
-  // disabled because to-be-allocated temporary im2col tensor is too large.
-  // See b/178743262 for the detailed motivation.
-  if (data->im2col_oversized) {
-    effective_kernel_type = kReference;
-  }
-
-  // Grouped convolution is right now only supported on reference kernel.
-  if (data->groups != 1) {
-    effective_kernel_type = kReference;
-  }
-
-  // To prevent 32bit accum overflow for 16x8 quantization, it enables the
-  // optimized path only when zero_point is 0.
-  bool has_non_zero_point = input->params.zero_point ||
-                            filter->params.zero_point ||
-                            output->params.zero_point;
-
   const int8_t* filter_data = nullptr;
   std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
   if (filter->type == kTfLiteInt4) {
@@ -909,34 +897,20 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
     filter_data = GetTensorData<int8_t>(filter);
   }
 
-  if (data->quantized_bias_type == kTfLiteInt32) {
-    if (effective_kernel_type == kReference || has_non_zero_point) {
-      reference_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int16>(input), GetTensorShape(filter), filter_data,
-          GetTensorShape(bias), GetTensorData<int32_t>(bias),
-          GetTensorShape(output), GetTensorData<int16>(output));
-    } else {
-      optimized_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int16_t>(input), GetTensorShape(filter), filter_data,
-          GetTensorShape(bias), GetTensorData<int32_t>(bias),
-          GetTensorShape(output), GetTensorData<int16_t>(output),
-          GetTensorShape(im2col), GetTensorData<int16_t>(im2col),
-          CpuBackendContext::GetFromContext(context));
-    }
-  } else {
-    TFLITE_DCHECK(!has_non_zero_point);
-    // Fallback to reference kernel when bias_type is int64 as
-    // there is no optimized kernel for int64 bias yet.
+  if (data->quantized_bias_type == kTfLiteInt64) {
     reference_integer_ops::ConvPerChannel(
-        op_params, data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(filter), filter_data,
-        GetTensorShape(bias), GetTensorData<int64_t>(bias),
-        GetTensorShape(output), GetTensorData<int16>(output));
+        op_params, data->per_channel_effective_output_scale.data(),
+        GetTensorShape(input), GetTensorData<int16>(input),
+        GetTensorShape(filter), filter_data, GetTensorShape(bias),
+        GetTensorData<int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output));
+  } else {
+    reference_integer_ops::ConvPerChannel(
+        op_params, data->per_channel_effective_output_scale.data(),
+        GetTensorShape(input), GetTensorData<int16>(input),
+        GetTensorShape(filter), filter_data, GetTensorShape(bias),
+        GetTensorData<int32_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output));
   }
 }
 
