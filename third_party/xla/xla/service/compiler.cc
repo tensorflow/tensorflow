@@ -90,8 +90,7 @@ Compiler::GetPlatformCompilers() {
     se::Platform::Id platform_id) {
   absl::MutexLock lock(platform_compiler_mutex_);
 
-  absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>* factories =
-      GetPlatformCompilerFactories();
+  auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform_id);
   if (it == factories->end()) {
     return NotFound(

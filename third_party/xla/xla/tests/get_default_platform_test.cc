@@ -31,12 +31,11 @@ using GetDefaultPlatformTest = HloPjRtTestBase;
 
 // Regression test to ensure that it's not possible to call GetDefaultPlatform
 // on a PJRT migrated test due to
-// --XLA_ALLOW_GET_DEFAULT_PLATFORM=false being set in the env variables.
+// --xla_allow_get_default_platform=false being set in XLA_FLAGS.
 TEST_F(GetDefaultPlatformTest, GetDefaultPlatformFails) {
-  EXPECT_THAT(
-      PlatformUtil::GetDefaultPlatform(),
-      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
-                             HasSubstr("XLA_ALLOW_GET_DEFAULT_PLATFORM")));
+  EXPECT_THAT(PlatformUtil::GetDefaultPlatform(),
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("allow_get_default_platform")));
 }
 
 }  // namespace
