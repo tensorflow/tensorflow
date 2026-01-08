@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-string FormatNumber(int64_t n) {
+std::string FormatNumber(int64_t n) {
   if (n < 1000) {
     return absl::StrFormat("%d", n);
   } else if (n < 1000000) {
@@ -44,7 +44,7 @@ string FormatNumber(int64_t n) {
   }
 }
 
-string FormatTime(int64_t micros) {
+std::string FormatTime(int64_t micros) {
   if (micros < 1000) {
     return absl::StrFormat("%dus", micros);
   } else if (micros < 1000000) {
@@ -54,7 +54,7 @@ string FormatTime(int64_t micros) {
   }
 }
 
-string FormatMemory(int64_t bytes) {
+std::string FormatMemory(int64_t bytes) {
   if (bytes < 1000) {
     return absl::StrFormat("%dB", bytes);
   } else if (bytes < 1000000) {
@@ -64,19 +64,19 @@ string FormatMemory(int64_t bytes) {
   }
 }
 
-string FormatShapes(const std::vector<int64_t>& shape) {
+std::string FormatShapes(const std::vector<int64_t>& shape) {
   return absl::StrJoin(shape, "x");
 }
 
-string StringReplace(const string& str, const string& oldsub,
-                     const string& newsub) {
-  string out = str;
+std::string StringReplace(const std::string& str, const std::string& oldsub,
+                          const std::string& newsub) {
+  std::string out = str;
   RE2::GlobalReplace(&out, oldsub, newsub);
   return out;
 }
 
 namespace {
-string StripQuote(const string& s) {
+std::string StripQuote(const std::string& s) {
   int start = s.find_first_not_of("\"\'");
   int end = s.find_last_not_of("\"\'");
   if (start == s.npos || end == s.npos) return "";
@@ -84,8 +84,8 @@ string StripQuote(const string& s) {
   return s.substr(start, end - start + 1);
 }
 
-absl::Status ReturnError(const std::vector<string>& pieces, int idx) {
-  string val;
+absl::Status ReturnError(const std::vector<std::string>& pieces, int idx) {
+  std::string val;
   if (pieces.size() > idx + 1) {
     val = pieces[idx + 1];
   }
@@ -115,11 +115,13 @@ bool StringToBool(absl::string_view str, bool* value) {
 }
 }  // namespace
 
-absl::Status ParseCmdLine(const string& line, string* cmd,
+absl::Status ParseCmdLine(const std::string& line, std::string* cmd,
                           tensorflow::tfprof::Options* opts) {
-  std::vector<string> pieces = absl::StrSplit(line, ' ', absl::SkipEmpty());
+  std::vector<std::string> pieces =
+      absl::StrSplit(line, ' ', absl::SkipEmpty());
 
-  std::vector<string> cmds_str(kCmds, kCmds + sizeof(kCmds) / sizeof(*kCmds));
+  std::vector<std::string> cmds_str(kCmds,
+                                    kCmds + sizeof(kCmds) / sizeof(*kCmds));
   if (std::find(cmds_str.begin(), cmds_str.end(), pieces[0]) ==
       cmds_str.end()) {
     return absl::Status(absl::StatusCode::kInvalidArgument,
@@ -128,7 +130,7 @@ absl::Status ParseCmdLine(const string& line, string* cmd,
   *cmd = pieces[0];
 
   for (int i = 1; i < pieces.size(); ++i) {
-    if (pieces[i] == string(tensorflow::tfprof::kOptions[0])) {
+    if (pieces[i] == std::string(tensorflow::tfprof::kOptions[0])) {
       if (pieces.size() <= i + 1 ||
           !absl::SimpleAtoi(pieces[i + 1], &opts->max_depth)) {
         return ReturnError(pieces, i);
@@ -204,7 +206,7 @@ absl::Status ParseCmdLine(const string& line, string* cmd,
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
-      std::set<string> order_by_set(
+      std::set<std::string> order_by_set(
           kOrderBy, kOrderBy + sizeof(kOrderBy) / sizeof(*kOrderBy));
       auto order_by = order_by_set.find(pieces[i + 1]);
       if (order_by == order_by_set.end()) {
@@ -261,13 +263,13 @@ absl::Status ParseCmdLine(const string& line, string* cmd,
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
-      std::set<string> shown_set(kShown,
-                                 kShown + sizeof(kShown) / sizeof(*kShown));
-      std::vector<string> requested_vector =
+      std::set<std::string> shown_set(
+          kShown, kShown + sizeof(kShown) / sizeof(*kShown));
+      std::vector<std::string> requested_vector =
           absl::StrSplit(StripQuote(pieces[i + 1]), ',', absl::SkipEmpty());
-      std::set<string> requested_set(requested_vector.begin(),
-                                     requested_vector.end());
-      for (const string& requested : requested_set) {
+      std::set<std::string> requested_set(requested_vector.begin(),
+                                          requested_vector.end());
+      for (const std::string& requested : requested_set) {
         if (shown_set.find(requested) == shown_set.end()) {
           return ReturnError(pieces, i);
         }
@@ -368,8 +370,8 @@ static const char* const kSet =
     "set: Set a value for an option for future use.";
 static const char* const kHelp = "help: Print helping messages.";
 
-string QueryDoc(const string& cmd, const Options& opts) {
-  string cmd_help = "";
+std::string QueryDoc(const std::string& cmd, const Options& opts) {
+  std::string cmd_help = "";
   if (cmd == kCmds[0]) {
     cmd_help = kScope;
   } else if (cmd == kCmds[1]) {
@@ -388,8 +390,8 @@ string QueryDoc(const string& cmd, const Options& opts) {
     cmd_help = "Unknown command: " + cmd;
   }
 
-  std::vector<string> helps;
-  for (const string& s : opts.select) {
+  std::vector<std::string> helps;
+  for (const std::string& s : opts.select) {
     if (s == kShown[0]) {
       helps.push_back(kBytes);
     } else if (s == kShown[1]) {
