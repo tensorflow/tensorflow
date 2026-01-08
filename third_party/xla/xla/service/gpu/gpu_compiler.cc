@@ -224,6 +224,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/reduce_scatter_combiner.h"
 #include "xla/service/gpu/transforms/composite_rewriter.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
+#include "xla/service/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -1886,8 +1887,13 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // GemmFusionAutotuner runs hoist-fused-bitcasts and nest-gemm-fusion,
   // matching its behavior here.
   pipeline.AddPass<HoistFusedBitcasts>();
-  pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
-                                   &mlir_context_);
+  if (debug_options.xla_gpu_unsupported_disable_nested_gemm_fusions()) {
+    pipeline.AddPass<ConvertTritonGemmConfig>(
+        gpu_target_config.device_description, &mlir_context_);
+  } else {
+    pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
+                                     &mlir_context_);
+  }
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();

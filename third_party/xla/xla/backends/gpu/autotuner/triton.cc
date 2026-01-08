@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
+#include "xla/service/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -221,8 +223,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
   TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
-  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
-  TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+  if (debug_options().xla_gpu_unsupported_disable_nested_gemm_fusions()) {
+    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                       mlir_context_);
+    RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
+  } else {
+    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
+    RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+  }
   return hlo_module;
 }
 
