@@ -1,1 +1,746 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
+--- a/clang/lib/Serialization/ASTReader.cpp
++++ b/clang/lib/Serialization/ASTReader.cpp
+@@ -555,25 +555,7 @@
+ 
+ using MacroDefinitionsMap =
+     llvm::StringMap<std::pair<StringRef, bool /*IsUndef*/>>;
+-
+-class DeclsSet {
+-  SmallVector<NamedDecl *, 64> Decls;
+-  llvm::SmallPtrSet<NamedDecl *, 8> Found;
+-
+-public:
+-  operator ArrayRef<NamedDecl *>() const { return Decls; }
+-
+-  bool empty() const { return Decls.empty(); }
+-
+-  bool insert(NamedDecl *ND) {
+-    auto [_, Inserted] = Found.insert(ND);
+-    if (Inserted)
+-      Decls.push_back(ND);
+-    return Inserted;
+-  }
+-};
+-
+-using DeclsMap = llvm::DenseMap<DeclarationName, DeclsSet>;
++using DeclsMap = llvm::DenseMap<DeclarationName, SmallVector<NamedDecl *, 8>>;
+ 
+ } // namespace
+ 
+@@ -8752,23 +8734,14 @@
+     return false;
+ 
+   // Load the list of declarations.
+-  DeclsSet DS;
++  SmallVector<NamedDecl *, 64> Decls;
++  llvm::SmallPtrSet<NamedDecl *, 8> Found;
+ 
+   auto Find = [&, this](auto &&Table, auto &&Key) {
+     for (GlobalDeclID ID : Table.find(Key)) {
+       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
+-      if (ND->getDeclName() != Name)
+-        continue;
+-      // Special case for namespaces: There can be a lot of redeclarations of
+-      // some namespaces, and we import a "key declaration" per imported module.
+-      // Since all declarations of a namespace are essentially interchangeable,
+-      // we can optimize namespace look-up by only storing the key declaration
+-      // of the current TU, rather than storing N key declarations where N is
+-      // the # of imported modules that declare that namespace.
+-      // TODO: Try to generalize this optimization to other redeclarable decls.
+-      if (isa<NamespaceDecl>(ND))
+-        ND = cast<NamedDecl>(getKeyDeclaration(ND));
+-      DS.insert(ND);
++      if (ND->getDeclName() == Name && Found.insert(ND).second)
++        Decls.push_back(ND);
+     }
+   };
+ 
+@@ -8803,8 +8776,8 @@
+     Find(It->second.Table, Name);
+   }
+ 
+-  SetExternalVisibleDeclsForName(DC, Name, DS);
+-  return !DS.empty();
++  SetExternalVisibleDeclsForName(DC, Name, Decls);
++  return !Decls.empty();
+ }
+ 
+ void ASTReader::completeVisibleDeclsMap(const DeclContext *DC) {
+@@ -8822,16 +8795,7 @@
+ 
+     for (GlobalDeclID ID : It->second.Table.findAll()) {
+       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
+-      // Special case for namespaces: There can be a lot of redeclarations of
+-      // some namespaces, and we import a "key declaration" per imported module.
+-      // Since all declarations of a namespace are essentially interchangeable,
+-      // we can optimize namespace look-up by only storing the key declaration
+-      // of the current TU, rather than storing N key declarations where N is
+-      // the # of imported modules that declare that namespace.
+-      // TODO: Try to generalize this optimization to other redeclarable decls.
+-      if (isa<NamespaceDecl>(ND))
+-        ND = cast<NamedDecl>(getKeyDeclaration(ND));
+-      Decls[ND->getDeclName()].insert(ND);
++      Decls[ND->getDeclName()].push_back(ND);
+     }
+ 
+     // FIXME: Why a PCH test is failing if we remove the iterator after findAll?
+@@ -8841,9 +8805,9 @@
+   findAll(ModuleLocalLookups, NumModuleLocalVisibleDeclContexts);
+   findAll(TULocalLookups, NumTULocalVisibleDeclContexts);
+ 
+-  for (auto &[Name, DS] : Decls)
+-    SetExternalVisibleDeclsForName(DC, Name, DS);
+-
++  for (DeclsMap::iterator I = Decls.begin(), E = Decls.end(); I != E; ++I) {
++    SetExternalVisibleDeclsForName(DC, I->first, I->second);
++  }
+   const_cast<DeclContext *>(DC)->setHasExternalVisibleStorage(false);
+ }
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
+--- a/clang/lib/Serialization/ASTWriter.cpp
++++ b/clang/lib/Serialization/ASTWriter.cpp
+@@ -4397,20 +4397,20 @@
+ 
+   template <typename Coll> data_type getData(const Coll &Decls) {
+     unsigned Start = DeclIDs.size();
+-    auto AddDecl = [this](NamedDecl *D) {
++    for (NamedDecl *D : Decls) {
+       NamedDecl *DeclForLocalLookup =
+           getDeclForLocalLookup(Writer.getLangOpts(), D);
+ 
+       if (Writer.getDoneWritingDeclsAndTypes() &&
+           !Writer.wasDeclEmitted(DeclForLocalLookup))
+-        return;
++        continue;
+ 
+       // Try to avoid writing internal decls to reduced BMI.
+       // See comments in ASTWriter::WriteDeclContextLexicalBlock for details.
+       if (Writer.isGeneratingReducedBMI() &&
+           !DeclForLocalLookup->isFromExplicitGlobalModule() &&
+           IsInternalDeclFromFileContext(DeclForLocalLookup))
+-        return;
++        continue;
+ 
+       auto ID = Writer.GetDeclRef(DeclForLocalLookup);
+ 
+@@ -4424,7 +4424,7 @@
+             ModuleLocalDeclsMap.insert({Key, DeclIDsTy{ID}});
+           else
+             Iter->second.push_back(ID);
+-          return;
++          continue;
+         }
+         break;
+       case LookupVisibility::TULocal: {
+@@ -4433,7 +4433,7 @@
+           TULocalDeclsMap.insert({D->getDeclName(), DeclIDsTy{ID}});
+         else
+           Iter->second.push_back(ID);
+-        return;
++        continue;
+       }
+       case LookupVisibility::GenerallyVisibile:
+         // Generally visible decls go into the general lookup table.
+@@ -4441,24 +4441,6 @@
+       }
+ 
+       DeclIDs.push_back(ID);
+-    };
+-    ASTReader *Chain = Writer.getChain();
+-    for (NamedDecl *D : Decls) {
+-      if (Chain && isa<NamespaceDecl>(D) && D->isFromASTFile() &&
+-          D == Chain->getKeyDeclaration(D)) {
+-        // In ASTReader, we stored only the key declaration of a namespace decl
+-        // for this TU rather than storing all of the key declarations from each
+-        // imported module. If we have an external namespace decl, this is that
+-        // key declaration and we need to re-expand it to write out all of the
+-        // key declarations from each imported module again.
+-        //
+-        // See comment 'ASTReader::FindExternalVisibleDeclsByName' for details.
+-        Chain->forEachImportedKeyDecl(D, [&AddDecl](const Decl *D) {
+-          AddDecl(cast<NamedDecl>(const_cast<Decl *>(D)));
+-        });
+-      } else {
+-        AddDecl(D);
+-      }
+     }
+     return std::make_pair(Start, DeclIDs.size());
+   }
+diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/CMakeLists.txt b/clang/unittests/Serialization/CMakeLists.txt
+--- a/clang/unittests/Serialization/CMakeLists.txt
++++ b/clang/unittests/Serialization/CMakeLists.txt
+@@ -2,7 +2,6 @@
+   ForceCheckFileInputTest.cpp
+   InMemoryModuleCacheTest.cpp
+   ModuleCacheTest.cpp
+-  NamespaceLookupTest.cpp
+   NoCommentsTest.cpp
+   PreambleInNamedModulesTest.cpp
+   LoadSpecLazilyTest.cpp
+diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/NamespaceLookupTest.cpp b/clang/unittests/Serialization/NamespaceLookupTest.cpp
+--- a/clang/unittests/Serialization/NamespaceLookupTest.cpp
++++ b/clang/unittests/Serialization/NamespaceLookupTest.cpp
+@@ -1,247 +0,0 @@
+-//== unittests/Serialization/NamespaceLookupOptimizationTest.cpp =======//
+-//
+-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-// See https://llvm.org/LICENSE.txt for license information.
+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-//
+-//===----------------------------------------------------------------------===//
+-
+-#include "clang/Driver/CreateInvocationFromArgs.h"
+-#include "clang/Frontend/CompilerInstance.h"
+-#include "clang/Frontend/FrontendAction.h"
+-#include "clang/Frontend/FrontendActions.h"
+-#include "clang/Parse/ParseAST.h"
+-#include "clang/Serialization/ASTReader.h"
+-#include "clang/Tooling/Tooling.h"
+-#include "gtest/gtest.h"
+-
+-using namespace llvm;
+-using namespace clang;
+-using namespace clang::tooling;
+-
+-namespace {
+-
+-class NamespaceLookupTest : public ::testing::Test {
+-  void SetUp() override {
+-    ASSERT_FALSE(
+-        sys::fs::createUniqueDirectory("namespace-lookup-test", TestDir));
+-  }
+-
+-  void TearDown() override { sys::fs::remove_directories(TestDir); }
+-
+-public:
+-  SmallString<256> TestDir;
+-
+-  void addFile(StringRef Path, StringRef Contents) {
+-    ASSERT_FALSE(sys::path::is_absolute(Path));
+-
+-    SmallString<256> AbsPath(TestDir);
+-    sys::path::append(AbsPath, Path);
+-
+-    ASSERT_FALSE(
+-        sys::fs::create_directories(llvm::sys::path::parent_path(AbsPath)));
+-
+-    std::error_code EC;
+-    llvm::raw_fd_ostream OS(AbsPath, EC);
+-    ASSERT_FALSE(EC);
+-    OS << Contents;
+-  }
+-
+-  std::string GenerateModuleInterface(StringRef ModuleName,
+-                                      StringRef Contents) {
+-    std::string FileName = llvm::Twine(ModuleName + ".cppm").str();
+-    addFile(FileName, Contents);
+-
+-    IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS =
+-        llvm::vfs::createPhysicalFileSystem();
+-    DiagnosticOptions DiagOpts;
+-    IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
+-        CompilerInstance::createDiagnostics(*VFS, DiagOpts);
+-    CreateInvocationOptions CIOpts;
+-    CIOpts.Diags = Diags;
+-    CIOpts.VFS = VFS;
+-
+-    std::string CacheBMIPath =
+-        llvm::Twine(TestDir + "/" + ModuleName + ".pcm").str();
+-    std::string PrebuiltModulePath =
+-        "-fprebuilt-module-path=" + TestDir.str().str();
+-    const char *Args[] = {"clang++",
+-                          "-std=c++20",
+-                          "--precompile",
+-                          PrebuiltModulePath.c_str(),
+-                          "-working-directory",
+-                          TestDir.c_str(),
+-                          "-I",
+-                          TestDir.c_str(),
+-                          FileName.c_str(),
+-                          "-o",
+-                          CacheBMIPath.c_str()};
+-    std::shared_ptr<CompilerInvocation> Invocation =
+-        createInvocation(Args, CIOpts);
+-    EXPECT_TRUE(Invocation);
+-
+-    CompilerInstance Instance(std::move(Invocation));
+-    Instance.setDiagnostics(Diags);
+-    Instance.getFrontendOpts().OutputFile = CacheBMIPath;
+-    // Avoid memory leaks.
+-    Instance.getFrontendOpts().DisableFree = false;
+-    GenerateModuleInterfaceAction Action;
+-    EXPECT_TRUE(Instance.ExecuteAction(Action));
+-    EXPECT_FALSE(Diags->hasErrorOccurred());
+-
+-    return CacheBMIPath;
+-  }
+-};
+-
+-struct NamespaceLookupResult {
+-  int NumLocalNamespaces = 0;
+-  int NumExternalNamespaces = 0;
+-};
+-
+-class NamespaceLookupConsumer : public ASTConsumer {
+-  NamespaceLookupResult &Result;
+-
+-public:
+-  explicit NamespaceLookupConsumer(NamespaceLookupResult &Result)
+-      : Result(Result) {}
+-
+-  void HandleTranslationUnit(ASTContext &Context) override {
+-    TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
+-    ASSERT_TRUE(TU);
+-    ASTReader *Chain = dyn_cast_or_null<ASTReader>(Context.getExternalSource());
+-    ASSERT_TRUE(Chain);
+-    for (const Decl *D :
+-         TU->lookup(DeclarationName(&Context.Idents.get("N")))) {
+-      if (!isa<NamespaceDecl>(D))
+-        continue;
+-      if (!D->isFromASTFile()) {
+-        ++Result.NumLocalNamespaces;
+-      } else {
+-        ++Result.NumExternalNamespaces;
+-        EXPECT_EQ(D, Chain->getKeyDeclaration(D));
+-      }
+-    }
+-  }
+-};
+-
+-class NamespaceLookupAction : public ASTFrontendAction {
+-  NamespaceLookupResult &Result;
+-
+-public:
+-  explicit NamespaceLookupAction(NamespaceLookupResult &Result)
+-      : Result(Result) {}
+-
+-  std::unique_ptr<ASTConsumer>
+-  CreateASTConsumer(CompilerInstance &CI, StringRef /*Unused*/) override {
+-    return std::make_unique<NamespaceLookupConsumer>(Result);
+-  }
+-};
+-
+-TEST_F(NamespaceLookupTest, ExternalNamespacesOnly) {
+-  GenerateModuleInterface("M1", R"cpp(
+-export module M1;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M2", R"cpp(
+-export module M2;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M3", R"cpp(
+-export module M3;
+-namespace N {}
+-  )cpp");
+-  const char *test_file_contents = R"cpp(
+-import M1;
+-import M2;
+-import M3;
+-  )cpp";
+-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
+-  NamespaceLookupResult Result;
+-  EXPECT_TRUE(runToolOnCodeWithArgs(
+-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
+-      {
+-          "-std=c++20",
+-          DepArg.c_str(),
+-          "-I",
+-          TestDir.c_str(),
+-      },
+-      "main.cpp"));
+-
+-  EXPECT_EQ(0, Result.NumLocalNamespaces);
+-  EXPECT_EQ(1, Result.NumExternalNamespaces);
+-}
+-
+-TEST_F(NamespaceLookupTest, ExternalReplacedByLocal) {
+-  GenerateModuleInterface("M1", R"cpp(
+-export module M1;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M2", R"cpp(
+-export module M2;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M3", R"cpp(
+-export module M3;
+-namespace N {}
+-  )cpp");
+-  const char *test_file_contents = R"cpp(
+-import M1;
+-import M2;
+-import M3;
+-
+-namespace N {}
+-  )cpp";
+-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
+-  NamespaceLookupResult Result;
+-  EXPECT_TRUE(runToolOnCodeWithArgs(
+-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
+-      {
+-          "-std=c++20",
+-          DepArg.c_str(),
+-          "-I",
+-          TestDir.c_str(),
+-      },
+-      "main.cpp"));
+-
+-  EXPECT_EQ(1, Result.NumLocalNamespaces);
+-  EXPECT_EQ(0, Result.NumExternalNamespaces);
+-}
+-
+-TEST_F(NamespaceLookupTest, LocalAndExternalInterleaved) {
+-  GenerateModuleInterface("M1", R"cpp(
+-export module M1;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M2", R"cpp(
+-export module M2;
+-namespace N {}
+-  )cpp");
+-  GenerateModuleInterface("M3", R"cpp(
+-export module M3;
+-namespace N {}
+-  )cpp");
+-  const char *test_file_contents = R"cpp(
+-import M1;
+-
+-namespace N {}
+-
+-import M2;
+-import M3;
+-  )cpp";
+-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
+-  NamespaceLookupResult Result;
+-  EXPECT_TRUE(runToolOnCodeWithArgs(
+-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
+-      {
+-          "-std=c++20",
+-          DepArg.c_str(),
+-          "-I",
+-          TestDir.c_str(),
+-      },
+-      "main.cpp"));
+-
+-  EXPECT_EQ(1, Result.NumLocalNamespaces);
+-  EXPECT_EQ(1, Result.NumExternalNamespaces);
+-}
+-
+-} // namespace
+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/AliasAnalysis.cpp b/llvm/lib/Analysis/AliasAnalysis.cpp
+--- a/llvm/lib/Analysis/AliasAnalysis.cpp
++++ b/llvm/lib/Analysis/AliasAnalysis.cpp
+@@ -433,7 +433,7 @@
+                                     const MemoryLocation &Loc,
+                                     AAQueryInfo &AAQI) {
+   // Be conservative in the face of atomic.
+-  if (isStrongerThanMonotonic(L->getOrdering()))
++  if (isStrongerThan(L->getOrdering(), AtomicOrdering::Unordered))
+     return ModRefInfo::ModRef;
+ 
+   // If the load address doesn't alias the given address, it doesn't read
+@@ -443,13 +443,6 @@
+     if (AR == AliasResult::NoAlias)
+       return ModRefInfo::NoModRef;
+   }
+-
+-  assert(!isStrongerThanMonotonic(L->getOrdering()) &&
+-         "Stronger atomic orderings should have been handled above!");
+-
+-  if (isStrongerThanUnordered(L->getOrdering()))
+-    return ModRefInfo::ModRef;
+-
+   // Otherwise, a load just reads.
+   return ModRefInfo::Ref;
+ }
+@@ -458,7 +451,7 @@
+                                     const MemoryLocation &Loc,
+                                     AAQueryInfo &AAQI) {
+   // Be conservative in the face of atomic.
+-  if (isStrongerThanMonotonic(S->getOrdering()))
++  if (isStrongerThan(S->getOrdering(), AtomicOrdering::Unordered))
+     return ModRefInfo::ModRef;
+ 
+   if (Loc.Ptr) {
+@@ -476,13 +469,7 @@
+       return ModRefInfo::NoModRef;
+   }
+ 
+-  assert(!isStrongerThanMonotonic(S->getOrdering()) &&
+-         "Stronger atomic orderings should have been handled above!");
+-
+-  if (isStrongerThanUnordered(S->getOrdering()))
+-    return ModRefInfo::ModRef;
+-
+-  // A store just writes.
++  // Otherwise, a store just writes.
+   return ModRefInfo::Mod;
+ }
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic.ll b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
+--- a/llvm/test/Transforms/DeadStoreElimination/atomic.ll
++++ b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
+@@ -37,21 +37,9 @@
+   ret void
+ }
+ 
+-; DSE doesn't remove monotonic store.
++; DSE unordered store overwriting non-atomic store (allowed)
+ define void @test5() {
+ ; CHECK-LABEL: @test5(
+-; CHECK-NEXT:    store atomic i32 2, ptr @x monotonic, align 4
+-; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  store atomic i32 2, ptr @x monotonic, align 4
+-  store i32 1, ptr @x
+-  ret void
+-}
+-
+-; DSE unordered store overwriting non-atomic store (allowed)
+-define void @test6() {
+-; CHECK-LABEL: @test6(
+ ; CHECK-NEXT:    store atomic i32 1, ptr @x unordered, align 4
+ ; CHECK-NEXT:    ret void
+ ;
+@@ -61,8 +49,8 @@
+ }
+ 
+ ; DSE no-op unordered atomic store (allowed)
+-define void @test7() {
+-; CHECK-LABEL: @test7(
++define void @test6() {
++; CHECK-LABEL: @test6(
+ ; CHECK-NEXT:    ret void
+ ;
+   %x = load atomic i32, ptr @x unordered, align 4
+@@ -72,8 +60,8 @@
+ 
+ ; DSE seq_cst store (be conservative; DSE doesn't have infrastructure
+ ; to reason about atomic operations).
+-define void @test8() {
+-; CHECK-LABEL: @test8(
++define void @test7() {
++; CHECK-LABEL: @test7(
+ ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
+ ; CHECK-NEXT:    store atomic i32 0, ptr [[A]] seq_cst, align 4
+ ; CHECK-NEXT:    ret void
+@@ -85,8 +73,8 @@
+ 
+ ; DSE and seq_cst load (be conservative; DSE doesn't have infrastructure
+ ; to reason about atomic operations).
+-define i32 @test9() {
+-; CHECK-LABEL: @test9(
++define i32 @test8() {
++; CHECK-LABEL: @test8(
+ ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
+ ; CHECK-NEXT:    call void @randomop(ptr [[A]])
+ ; CHECK-NEXT:    store i32 0, ptr [[A]], align 4
+@@ -100,40 +88,11 @@
+   ret i32 %x
+ }
+ 
+-; DSE across monotonic load (allowed if the monotonic load's address is NoAlias)
+-define i32 @test10() {
+-; CHECK-LABEL: @test10(
+-; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
+-; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    ret i32 [[X]]
+-;
+-  store i32 0, ptr @x
+-  %x = load atomic i32, ptr @y monotonic, align 4
+-  store i32 1, ptr @x
+-  ret i32 %x
+-}
+-
+-; DSE across monotonic load (blocked if the atomic load's address isn't NoAlias)
+-define i32 @test11(ptr %ptr) {
+-; CHECK-LABEL: @test11(
+-; CHECK-NEXT:    store i32 0, ptr @x, align 4
+-; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr [[PTR:%.*]] monotonic, align 4
+-; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    ret i32 [[X]]
+-;
+-  store i32 0, ptr @x
+-  %x = load atomic i32, ptr %ptr monotonic, align 4
+-  store i32 1, ptr @x
+-  ret i32 %x
+-}
+-
+ ; DSE across monotonic store (allowed as long as the eliminated store isUnordered)
+-define void @test12() {
+-; CHECK-LABEL: @test12(
+-; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
+-; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    ret void
+-;
++define void @test10() {
++; CHECK-LABEL: test10
++; CHECK-NOT: store i32 0
++; CHECK: store i32 1
+   store i32 0, ptr @x
+   store atomic i32 42, ptr @y monotonic, align 4
+   store i32 1, ptr @x
+@@ -141,8 +100,8 @@
+ }
+ 
+ ; DSE across monotonic load (forbidden since the eliminated store is atomic)
+-define i32 @test13() {
+-; CHECK-LABEL: @test13(
++define i32 @test11() {
++; CHECK-LABEL: @test11(
+ ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
+ ; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
+ ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
+@@ -155,8 +114,8 @@
+ }
+ 
+ ; DSE across monotonic store (forbidden since the eliminated store is atomic)
+-define void @test14() {
+-; CHECK-LABEL: @test14(
++define void @test12() {
++; CHECK-LABEL: @test12(
+ ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
+ ; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
+ ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
+@@ -191,7 +150,7 @@
+ define i64 @test_atomicrmw_0() {
+ ; CHECK-LABEL: @test_atomicrmw_0(
+ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+   store i64 1, ptr @z
+@@ -203,7 +162,7 @@
+ define i64 @test_atomicrmw_1() {
+ ; CHECK-LABEL: @test_atomicrmw_1(
+ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+   store i64 1, ptr @z
+@@ -214,7 +173,7 @@
+ ; Monotonic atomicrmw should not block eliminating no-aliasing stores.
+ define i64 @test_atomicrmw_2() {
+ ; CHECK-LABEL: @test_atomicrmw_2(
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic
+ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+@@ -228,7 +187,7 @@
+ define i64 @test_atomicrmw_3() {
+ ; CHECK-LABEL: @test_atomicrmw_3(
+ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release
+ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+@@ -242,7 +201,7 @@
+ define i64 @test_atomicrmw_4(ptr %ptr) {
+ ; CHECK-LABEL: @test_atomicrmw_4(
+ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic
+ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+@@ -256,7 +215,7 @@
+ define i64 @test_atomicrmw_5() {
+ ; CHECK-LABEL: @test_atomicrmw_5(
+ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
+-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
+ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
+ ; CHECK-NEXT:    ret i64 [[RES]]
+ ;
+@@ -270,7 +229,7 @@
+ define { i32, i1} @test_cmpxchg_1() {
+ ; CHECK-LABEL: @test_cmpxchg_1(
+ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic, align 4
++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic
+ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
+ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
+ ;
+@@ -283,7 +242,7 @@
+ ; Monotonic cmpxchg should not block DSE for non-aliasing stores.
+ define { i32, i1} @test_cmpxchg_2() {
+ ; CHECK-LABEL: @test_cmpxchg_2(
+-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic, align 4
++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic
+ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
+ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
+ ;
+@@ -297,7 +256,7 @@
+ define { i32, i1} @test_cmpxchg_3() {
+ ; CHECK-LABEL: @test_cmpxchg_3(
+ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst, align 4
++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst
+ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
+ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
+ ;
+@@ -311,7 +270,7 @@
+ define { i32, i1} @test_cmpxchg_4(ptr %ptr) {
+ ; CHECK-LABEL: @test_cmpxchg_4(
+ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic, align 4
++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic
+ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
+ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
+ ;
+@@ -325,7 +284,7 @@
+ define { i32, i1} @test_cmpxchg_5(ptr %ptr) {
+ ; CHECK-LABEL: @test_cmpxchg_5(
+ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
+-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic, align 4
++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic
+ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
+ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
+ ;
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
+--- a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
++++ b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
+@@ -0,0 +1,23 @@
++; XFAIL: *
++; RUN: opt -passes=dse -S < %s | FileCheck %s
++
++target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
++target triple = "x86_64-apple-macosx10.7.0"
++
++; Basic correctness tests for atomic stores.
++; Note that it turns out essentially every transformation DSE does is legal on
++; atomic ops, just some transformations are not allowed across release-acquire pairs.
++
++@x = common global i32 0, align 4
++@y = common global i32 0, align 4
++
++; DSE across monotonic load (allowed as long as the eliminated store isUnordered)
++define i32 @test9() {
++; CHECK-LABEL: test9
++; CHECK-NOT: store i32 0
++; CHECK: store i32 1
++  store i32 0, ptr @x
++  %x = load atomic i32, ptr @y monotonic, align 4
++  store i32 1, ptr @x
++  ret i32 %x
++}
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -517,6 +517,7 @@
+         ":IRDLDialect",
+         ":InferTypeOpInterface",
+         ":Parser",
++        ":TransformsPassIncGen",
+     ],
+ )
+ 
