@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for translating mixed IR to buffer form.
 // Currently it supports MHLO and some operations from the Standard dialect.
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <memory>
