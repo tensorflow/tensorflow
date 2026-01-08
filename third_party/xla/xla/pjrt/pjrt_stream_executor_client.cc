@@ -269,7 +269,8 @@ class CpuAllocator : public tsl::Allocator {
   std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return tsl::port::AlignedMalloc(num_bytes, alignment);
+    return tsl::port::AlignedMalloc(num_bytes,
+                                    static_cast<std::align_val_t>(alignment));
   }
   void DeallocateRaw(void* ptr) override { return tsl::port::AlignedFree(ptr); }
 };
@@ -2214,7 +2215,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
     for (const auto& argument_handle : argument_handles) {
       HloInputs hlo_inputs;
       for (const auto& buffer : argument_handle) {
-        TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteralSync());
+        TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
         *hlo_inputs.add_arguments() = literal->ToProto();
       }
       *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
@@ -2797,7 +2798,7 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 
   Executable* built_executable = local_executables[0]->executable();
   Compiler* compiler = client_->backend().compiler();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler->Export(built_executable));
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
   if (serialized.empty()) {
