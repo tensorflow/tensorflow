@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // IWYU pragma: keep
+#include "mlir/Dialect/SCF/IR/SCF.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // IWYU pragma: keep
