@@ -62,6 +62,7 @@ __global__ void AvePoolBackwardNHWC(
     const dtype* const top_diff_slice =
         top_diff + n * pooled_height * pooled_width * channels + c;
     for (int ph = phstart; ph < phend; ++ph) {
+    const int ph_pooled_width = ph * pooled_width;
       for (int pw = pwstart; pw < pwend; ++pw) {
         // figure out the pooling size
         int hstart = ph * stride_h - pad_t;
@@ -71,7 +72,7 @@ __global__ void AvePoolBackwardNHWC(
         hstart = max(hstart, 0);
         wstart = max(wstart, 0);
         int pool_size = (hend - hstart) * (wend - wstart);
-        gradient += top_diff_slice[(ph * pooled_width + pw) * channels] /
+        gradient += top_diff_slice[(ph_pooled_width + pw) * channels] /
                     dtype(pool_size);
       }
     }
