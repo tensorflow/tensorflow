@@ -42,12 +42,14 @@ suggesting, or modifying code within the
 
 4.  **Testing**:
     *   Write unit tests using `EXPECT_EQ`, `EXPECT_TRUE`, etc.
-    *   Use `HloTestBase` or `HloRunner` for compiler pass tests locally where possible.
+    *   Use `HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>` or
+        `HloHardwareIndependentTestBase` for compiler pass tests locally where
+        possible.
     *   Ensure tests are deterministic and do not flake.
 
 5.  **BUILD targets**:
     * When defining BUILD targets prefer these XLA specific rules:
-        *   Instead of `proto_library` use `tf_proto_library`. Theres no need
+        *   Instead of `proto_library` use `tf_proto_library`. There is no need
             to define language specific targets with `tf_proto_library`.
         *   Instead of `cc_test` use `xla_cc_test`.
 
