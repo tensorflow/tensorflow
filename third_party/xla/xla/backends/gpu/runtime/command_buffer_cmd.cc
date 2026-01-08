@@ -1392,7 +1392,6 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
                                   CommandStateManager& state) {
   TF_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
   TF_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
-  enable_loop_unroll_ = true;
   if (enable_loop_unroll_ && body_commands_.support_loop_unroll() &&
       cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt) {
     is_unrolled_loop_ = true;
@@ -1415,6 +1414,8 @@ absl::Status WhileCmd::Record(const Thunk::ExecuteParams& execute_params,
   VLOG(5) << "WhileCmd: cond_commands=" << cond_commands_.size()
           << " body_commands=" << body_commands_.size();
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
+  VLOG(5) << "  trip_count: " << trip_count_.value_or(-1)
+          << " (unroll: " << is_unrolled_loop_ << ")";
   if (is_unrolled_loop_) {
     auto record_fn =
         [&](se::CommandBuffer* child_command_buffer) -> absl::Status {
