@@ -161,6 +161,7 @@ cc_library(
     deps = [
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//third_party/protobuf/io",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
@@ -249,6 +250,7 @@ xla_test(
         ":functional_hlo_runner",
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//third_party/protobuf/io",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -280,6 +282,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",

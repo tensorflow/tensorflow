@@ -29,13 +29,12 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "Eigen/Core"
+#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -181,12 +180,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
   return wrapped_thunk;
 }
 
-void LogHloInstructionWithId(const HloModule* hlo_module,
-                             const std::string& id) {
+void LogHloInstructionWithId(const HloModule* hlo_module, const std::string& id,
+                             absl::string_view check_type) {
   for (const HloComputation* computation : hlo_module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->name() == id) {
-        LOG(ERROR) << "HLO instruction with id " << id << ":\n\n"
+        LOG(ERROR) << "Found " << check_type << " in HLO instruction " << id
+                   << ":\nStack trace:\n"
+                   << instruction->GetStackTraceStringFromMetadata(4) << "\n\n"
                    << instruction->ToString() << "\n\n";
         if (instruction->opcode() == HloOpcode::kFusion) {
           auto fusion = xla::Cast<HloFusionInstruction>(instruction);
@@ -204,7 +205,7 @@ void LogHloInstructionWithId(const HloModule* hlo_module,
 absl::Status BufferDebugFloatCheck(
     std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store,
     se::Stream* stream, const HloComputation* absl_nonnull hlo_computation,
-    xla::ffi::Buffer<U8> log_buffer) {
+    xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
   VLOG(1) << "HLO computation ptr: " << hlo_computation;
   const HloModule* hlo_module = hlo_computation->parent();
   VLOG(1) << "HLO module ptr: " << hlo_module;
@@ -263,7 +264,7 @@ absl::Status BufferDebugFloatCheck(
                  << " for thunk " << entry.entry_id << " and execution "
                  << "with metadata: " << metadata->profile_annotation;
       non_zero_nan_check_modules_count++;
-      LogHloInstructionWithId(hlo_module, metadata->profile_annotation);
+      LogHloInstructionWithId(hlo_module, metadata->profile_annotation, "NaN");
     }
     if (inf_check_enabled && entry.inf_count > 0) {
       if (reported_inf_thunks.contains(metadata->profile_annotation)) {
@@ -279,7 +280,7 @@ absl::Status BufferDebugFloatCheck(
                  << metadata->execution_id
                  << " and profile annotation: " << metadata->profile_annotation;
       non_zero_inf_check_modules_count++;
-      LogHloInstructionWithId(hlo_module, metadata->profile_annotation);
+      LogHloInstructionWithId(hlo_module, metadata->profile_annotation, "Inf");
     }
   }
   if (non_zero_nan_check_modules_count > 0 &&
@@ -303,12 +304,15 @@ absl::Status BufferDebugFloatCheck(
 
 XLA_FFI_DEFINE_HANDLER_SYMBOL(
     kBufferDebugFloatCheckLogInitHandler,
-    [](se::Stream* absl_nonnull stream, xla::ffi::Buffer<U8> log_buffer) {
+    [](se::Stream* absl_nonnull stream,
+       xla::ffi::Buffer<PrimitiveType::U8> log_buffer) {
       return se::gpu::BufferDebugLog<xla::gpu::BufferDebugFloatCheckEntry>::
           CreateOnDevice(*stream, log_buffer.device_memory())
               .status();
     },
-    xla::ffi::Ffi::Bind().Ctx<xla::ffi::Stream>().Arg<xla::ffi::Buffer<U8>>());
+    xla::ffi::Ffi::Bind()
+        .Ctx<xla::ffi::Stream>()
+        .Arg<xla::ffi::Buffer<PrimitiveType::U8>>());
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
     BufferAllocation::Slice log_slice,
@@ -341,7 +345,7 @@ CreateBufferDebugFloatCheckThunk(
       xla::ffi::Ffi::Bind()
           .Ctx<xla::ffi::Stream>()
           .Ctx<xla::ffi::CalledComputation>()
-          .Arg<xla::ffi::Buffer<U8>>()
+          .Arg<xla::ffi::Buffer<PrimitiveType::U8>>()
           .To(absl::bind_front(BufferDebugFloatCheck, metadata_store));
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check",
