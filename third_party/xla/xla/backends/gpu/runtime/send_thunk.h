@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
@@ -25,9 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
@@ -56,8 +57,13 @@ class SendThunk : public CollectiveThunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
- protected:
   const CollectiveConfig& config() const override { return config_.config; }
+
+  const Buffer& buffer() const { return buffer_; }
+
+  const P2PConfig& p2p_config() const { return config_; }
+
+ protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
@@ -68,7 +74,15 @@ class SendThunk : public CollectiveThunk {
   const Buffer buffer_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
+  absl::StatusOr<bool> ConditionalShouldRun(const ExecuteParams& params,
+                                            int64_t current_id,
+                                            int64_t target_id) const;
 };
+
+absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
+                     Communicator& comm, int64_t current_id,
+                     std::optional<int64_t> target_id,
+                     absl::string_view device_string);
 
 }  // namespace gpu
 }  // namespace xla
