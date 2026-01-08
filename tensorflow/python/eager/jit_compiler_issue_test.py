@@ -19,18 +19,20 @@ from tensorflow.python.platform import test
 
 class JitCompileIntegrationTest(test.TestCase):
 
-  def testKerasLayerWithTfFunctionInsideJitCompile(self):
+  def testNestedTfFunctionInsideJitCompile(self):
     """Regression test for GitHub Issue #105728.
     
-    Ensures that a Keras layer method decorated with @tf.function
-    can be called inside a @tf.function(jit_compile=True) block
-    without crashing due to symbolic tensor tracing errors.
+    Ensures that a method decorated with @tf.function can be called 
+    inside a @tf.function(jit_compile=True) block without crashing.
     """
     
-    class AttentionLayer(tf.keras.layers.Layer):
+    # We use tf.Module instead of tf.keras.layers.Layer to avoid 
+    # circular dependencies in the BUILD system.
+    class AttentionModule(tf.Module):
       def __init__(self):
-        super(AttentionLayer, self).__init__()
-        self.dense = tf.keras.layers.Dense(10)
+        super(AttentionModule, self).__init__()
+        self.w = tf.Variable(tf.random.normal((10, 10)))
+        self.b = tf.Variable(tf.zeros([10]))
 
       @tf.function
       def internal_fn(self, inputs):
@@ -38,13 +40,13 @@ class JitCompileIntegrationTest(test.TestCase):
         # attempted to convert the symbolic input to a numpy array.
         return tf.matmul(inputs, inputs, transpose_b=True)
 
-      def call(self, inputs):
+      def __call__(self, inputs):
         # Call the internal tf.function
         processed = self.internal_fn(inputs)
-        return self.dense(processed)
+        return tf.matmul(processed, self.w) + self.b
 
     # Setup model and inputs
-    model = AttentionLayer()
+    model = AttentionModule()
     inputs = tf.random.normal((8, 10))
 
     # Define the XLA-compiled forward pass
