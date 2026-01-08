@@ -57,15 +57,15 @@ TEST_F(RangeOpTest, Simple_D32) {
   MakeOp(DT_INT32);
 
   // Feed and run
-  AddInputFromArray<int32>(TensorShape({}), {0});
-  AddInputFromArray<int32>(TensorShape({}), {10});
-  AddInputFromArray<int32>(TensorShape({}), {2});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {10});
+  AddInputFromArray<int32_t>(TensorShape({}), {2});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
   Tensor expected(allocator(), DT_INT32, TensorShape({5}));
-  test::FillValues<int32>(&expected, {0, 2, 4, 6, 8});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::FillValues<int32_t>(&expected, {0, 2, 4, 6, 8});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 TEST_F(RangeOpTest, Simple_Half) {
@@ -118,9 +118,9 @@ TEST_F(RangeOpTest, Large_Double) {
 TEST_F(RangeOpTest, Range_Size_Overflow) {
   MakeOp(DT_INT64);
 
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(-5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {-1});
+  AddInputFromArray<int64_t>(TensorShape({}), {static_cast<int64_t>(5e18)});
+  AddInputFromArray<int64_t>(TensorShape({}), {static_cast<int64_t>(-5e18)});
+  AddInputFromArray<int64_t>(TensorShape({}), {-1});
 
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
@@ -133,7 +133,7 @@ TEST_F(LinSpaceOpTest, Simple_D32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({}), {3.0});
   AddInputFromArray<float>(TensorShape({}), {7.0});
-  AddInputFromArray<int32>(TensorShape({}), {3});
+  AddInputFromArray<int32_t>(TensorShape({}), {3});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
@@ -150,7 +150,7 @@ TEST_F(LinSpaceOpTest, Exact_Endpoints) {
   // because for IEEE 32-bit floats that returns 0.99999994 != 1.0.
   AddInputFromArray<float>(TensorShape({}), {0.0});
   AddInputFromArray<float>(TensorShape({}), {1.0});
-  AddInputFromArray<int32>(TensorShape({}), {42});
+  AddInputFromArray<int32_t>(TensorShape({}), {42});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
@@ -184,7 +184,7 @@ TEST_F(LinSpaceOpTest, Simple_Double) {
   // Feed and run
   AddInputFromArray<double>(TensorShape({}), {5.0});
   AddInputFromArray<double>(TensorShape({}), {6.0});
-  AddInputFromArray<int32>(TensorShape({}), {6});
+  AddInputFromArray<int32_t>(TensorShape({}), {6});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
