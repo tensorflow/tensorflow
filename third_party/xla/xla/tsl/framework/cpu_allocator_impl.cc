@@ -84,7 +84,8 @@ class CPUAllocator : public Allocator {
                    << "% of free system memory.";
     }
 
-    void* p = port::AlignedMalloc(num_bytes, alignment);
+    void* p = port::AlignedMalloc(num_bytes,
+                                  static_cast<std::align_val_t>(alignment));
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       absl::MutexLock l(mu_);
@@ -128,7 +129,8 @@ class CPUAllocator : public Allocator {
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
-    port::AlignedSizedFree(ptr, alignment, num_bytes);
+    port::AlignedSizedFree(ptr, num_bytes,
+                           static_cast<std::align_val_t>(alignment));
   }
 
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
