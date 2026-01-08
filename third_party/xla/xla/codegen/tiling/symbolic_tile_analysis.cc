@@ -648,12 +648,6 @@ bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
   return true;
 }
 
-// Helper to handle nested parameters for `TilingSpecification::FromFusion`.
-// It is assumed that `num_tile_sizes_by_instruction` does not contain any
-// information regarding the nested tiling parameters of the fusion.
-//
-// `num_tile_sizes_by_instruction` is however allowed to contain information
-// regarding the tiling parameters of the fusion that are visible at the output.
 absl::Status PopulateNestedParameters(
     const HloFusionAdaptor& fusion,
     TilingSpecification::ParameterMapping& parameter_mapping) {
