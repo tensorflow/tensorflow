@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "xla/pjrt/lru_cache.h"
 
 namespace xla {
@@ -124,6 +123,12 @@ class TransposePlan {
                std::optional<absl::FunctionRef<void(std::function<void(void)>)>>
                    schedule_work = std::nullopt) const;
 
+  // Executes a single chunk of the transposition. To perform a complete
+  // transposition, call ExecuteChunk for each chunk ID from 0 to Parallelism()
+  // - 1. It is legal to call ExecuteChunk for independent chunks in parallel.
+  // This is useful for callers that want to manage their own threading.
+  void ExecuteChunk(int chunk_id, const void* a, void* b) const;
+
   // Returns a human-readable description of the plan.
   std::string ToString() const;
 
@@ -175,6 +180,16 @@ class TransposePlan {
     // Number of parallel threads to use for this loop.
     int64_t parallelism;
 
+    // The unit of work for this loop. For loops that are not the innermost
+    // dimension in A or B, this is 1. For the innermost dimension of a
+    // transpose kernel, it is the kernel size.
+    int64_t inc = 1;
+
+    // Iteration bounds for this chunk. Initially [0, full_iterations).
+    // After chunk splitting, each chunk's loops have narrowed bounds.
+    int64_t start = 0;  // Inclusive start of iteration range
+    int64_t end = 0;    // Exclusive end of iteration range
+
     bool operator==(const Loop& other) const;
   };
 
@@ -182,15 +197,31 @@ class TransposePlan {
   static void RemoveTrivialLoops(std::vector<Loop>& loops);
   static void CoalesceLoops(std::vector<Loop>& loops);
 
+  // Reorders loops to optimize for locality.
+  void ChooseLoopOrder(std::vector<Loop>& loop_order) const;
+
+  void set_inner_kernel_is_memcpy(bool is_memcpy) {
+    inner_kernel_is_memcpy_ = is_memcpy;
+  }
+
  private:
   // Performs plan initialization that cannot fail.
   void Initialize();
 
-  void BuildPlanNodes(int thread_id, std::vector<Node>& output_nodes);
+  void BuildPlanNodes(int chunk_id, std::vector<Node>& nodes);
 
-  // Chooses a parallelism for each loop. Returns the total number of parallel
-  // work units.
-  int ChooseParallelizationStrategy();
+  // Chooses a parallelism for each loop. Returns the number of separate chunks
+  // in the plan, and populates the `parallelism` field of each loop.
+  int ChooseParallelizationStrategy(std::vector<Loop>& loop_order) const;
+
+  // Creates per-chunk loop vectors by splitting loop_order_ into per-chunk
+  // loops. Returns a vector of loop vectors, one per chunk. Each chunk's
+  // loops have their start/end bounds narrowed to represent that chunk's work.
+  static void PartitionLoops(
+      int num_chunks, const std::vector<Loop>& loop_order,
+      std::vector<std::vector<TransposePlan::Loop>>& result,
+      std::vector<int64_t>& input_offset_bytes,
+      std::vector<int64_t>& output_offset_bytes);
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -237,9 +268,13 @@ class TransposePlan {
   bool a_is_tiled_;
   bool b_is_tiled_;
 
-  // Order to traverse dimensions, from slowest-varying to fastest-varying.
+  // Per-chunk loop nests. Each loop nest has its own start/end bounds
+  // representing one chunk of the work.
+  std::vector<std::vector<Loop>> chunk_loops_;
 
-  std::vector<Loop> loop_order_;
+  // Per-chunk byte offsets into the input and output arrays.
+  std::vector<int64_t> input_offset_bytes_;
+  std::vector<int64_t> output_offset_bytes_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.
