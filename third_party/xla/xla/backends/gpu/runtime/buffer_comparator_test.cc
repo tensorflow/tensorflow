@@ -471,7 +471,7 @@ TEST_F(BufferComparatorTest, VeryLargeArray) {
       rhs(static_cast<NT*>(base.opaque()) + 1, lhs.size());
 
   constexpr uint32_t pattern = 0xABABABAB;
-  TF_CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
+  CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
 
   // First we do "positive" test to make sure lhs and rhs are indeed equal:
   // disable host comparison here since it could take a while for ~4GB array
@@ -485,7 +485,7 @@ TEST_F(BufferComparatorTest, VeryLargeArray) {
   // Change only the very last entry of rhs to verify that the whole arrays are
   // compared (if the grid dimensions are not computed correctly, this might
   // not be the case).
-  TF_CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
+  CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
   EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
 }
 

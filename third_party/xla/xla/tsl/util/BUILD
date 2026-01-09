@@ -168,6 +168,7 @@ cc_library(
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     deps = [
         ":env_var",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],

@@ -105,7 +105,6 @@ tsl_cc_test(
         "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
