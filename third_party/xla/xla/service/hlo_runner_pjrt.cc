@@ -281,16 +281,57 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 
   CompileOptions compile_options;
 
-  compile_options.executable_build_options.set_device_assignment(
-      device_assignment);
+  // LINT.IfChange
   compile_options.executable_build_options.set_num_partitions(
       module->config().num_partitions());
   compile_options.executable_build_options.set_num_replicas(
       module->config().replica_count());
-  compile_options.executable_build_options.set_run_backend_only(
-      !run_hlo_passes);
+  compile_options.executable_build_options.set_use_spmd_partitioning(
+      module->config().use_spmd_partitioning());
+  compile_options.executable_build_options
+      .set_allow_spmd_sharding_propagation_to_parameters(
+          module->config().allow_spmd_sharding_propagation_to_parameters());
+  compile_options.executable_build_options
+      .set_allow_spmd_sharding_propagation_to_output(
+          module->config().allow_spmd_sharding_propagation_to_output());
+  compile_options.executable_build_options.set_use_auto_spmd_partitioning(
+      module->config().use_auto_spmd_partitioning());
+  compile_options.executable_build_options
+      .set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+          module->config().auto_spmd_partitioning_mesh_shape().begin(),
+          module->config().auto_spmd_partitioning_mesh_shape().end()));
+  compile_options.executable_build_options.set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t>(
+          module->config().auto_spmd_partitioning_mesh_ids().begin(),
+          module->config().auto_spmd_partitioning_mesh_ids().end()));
+  compile_options.executable_build_options.set_exec_time_optimization_effort(
+      module->config().exec_time_optimization_effort());
+  compile_options.executable_build_options.set_memory_fitting_effort(
+      module->config().memory_fitting_effort());
+  compile_options.executable_build_options.set_optimization_level(
+      module->config().optimization_level());
+  compile_options.executable_build_options.set_memory_fitting_level(
+      module->config().memory_fitting_level());
+  compile_options.executable_build_options.set_deduplicate_hlo(
+      module->config().deduplicate_hlo());
   *compile_options.executable_build_options.mutable_debug_options() =
       module->config().debug_options();
+  compile_options.executable_build_options.set_device_assignment(
+      device_assignment);
+  compile_options.executable_build_options.set_fdo_profile(
+      std::string(module->config().fdo_profile()));
+  compile_options.executable_build_options.set_alias_passthrough_params(
+      module->config().alias_passthrough_params());
+  compile_options.executable_build_options.set_device_memory_size(
+      module->config().device_memory_size());
+  compile_options.executable_build_options.set_use_shardy_partitioner(
+      module->config().use_shardy_partitioner());
+  // LINT.ThenChange(
+  //   //xla/service/hlo_module_util.cc
+  // )
+
+  compile_options.executable_build_options.set_run_backend_only(
+      !run_hlo_passes);
   *compile_options.executable_build_options.mutable_comp_envs() =
       module->comp_envs();
 
@@ -311,9 +352,6 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 
   compile_options.executable_build_options.set_result_layout(
       module->entry_computation_layout().result_shape());
-
-  compile_options.executable_build_options.set_use_spmd_partitioning(
-      module->config().use_spmd_partitioning());
 
   return compile_options;
 }
