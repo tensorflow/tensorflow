@@ -143,11 +143,6 @@ xla::OpMetadata CreateOpMetadataFromLocation(
     auto result = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
     if (result.last_frame_id != mlir::StackFrameIndexBuilder::kInvalidIndex) {
       metadata.set_stack_frame_id(result.last_frame_id);
-      metadata.set_source_file(result.last_frame_file);
-      metadata.set_source_line(result.last_frame_line);
-      metadata.set_source_end_line(result.last_frame_end_line);
-      metadata.set_source_column(result.last_frame_column);
-      metadata.set_source_end_column(result.last_frame_end_column);
       return metadata;
     }
   }
