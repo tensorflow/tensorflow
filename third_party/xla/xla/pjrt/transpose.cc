@@ -582,6 +582,14 @@ static absl::Status ParseTilingSpecification(
   return absl::OkStatus();
 }
 
+std::string TransposePlan::Loop::ToString() const {
+  return absl::StrFormat(
+      "%d%s[dim_size=%d,tile_size=%d,start=%d,end=%d,is_inner_dim_in_a=%d,is_"
+      "inner_dim_in_b=%d,lda=%d,ldb=%d,parallelism=%d)",
+      dim_in_a, tile_interior ? "[tile]" : "", dim_size, tile_size, start, end,
+      is_inner_dim_in_a, is_inner_dim_in_b, lda, ldb, parallelism);
+}
+
 bool TransposePlan::Loop::operator==(const Loop& other) const {
   return dim_in_a == other.dim_in_a && tile_interior == other.tile_interior &&
          dim_size == other.dim_size && tile_size == other.tile_size &&
@@ -985,23 +993,38 @@ void TransposePlan::Initialize() {
     Loop loop;
     loop.dim_in_a = i;
     loop.tile_interior = false;
-    loop.dim_size = a_dims_[i];
-    loop.tile_size = std::max(a_tiling_[i], b_tiling_[inverse_permutation[i]]);
+    int64_t dim_size = a_dims_[i];
+    int64_t tile_size =
+        std::max(a_tiling_[i], b_tiling_[inverse_permutation[i]]);
+    bool has_partial_tile = (dim_size % tile_size != 0);
+    if (has_partial_tile) {
+      // We only need to track tile interiors correctly if there are partial
+      // tiles.
+      loop.dim_size = dim_size;
+      loop.tile_size = tile_size;
+    } else {
+      loop.dim_size = dim_size / tile_size;
+      loop.tile_size = 1;
+    }
 
     loop.lda = lda_[i];
     if (a_tiling_[i] == 1) {
-      loop.lda *= loop.tile_size;
+      loop.lda *= tile_size;
     }
     loop.ldb = ldb_[inverse_permutation[i]];
     if (b_tiling_[inverse_permutation[i]] == 1) {
-      loop.ldb *= loop.tile_size;
+      loop.ldb *= tile_size;
     }
-    loop.is_inner_dim_in_a = (loop.tile_size == 1) && (i == pos_stride1a_in_a);
-    loop.is_inner_dim_in_b = (loop.tile_size == 1) && (i == pos_stride1b_in_a);
+    loop.is_inner_dim_in_a = (tile_size == 1) && (i == pos_stride1a_in_a);
+    loop.is_inner_dim_in_b = (tile_size == 1) && (i == pos_stride1b_in_a);
     loop_order.push_back(loop);
 
-    if (loop.tile_size > 1) {
-      loop.tile_interior = true;
+    if (tile_size > 1) {
+      loop.tile_interior = has_partial_tile;
+      if (!has_partial_tile) {
+        loop.dim_size = tile_size;
+        loop.tile_size = 1;
+      }
       loop.lda = a_is_tiled_ ? lda_tile_[i] : lda_[i];
       loop.ldb = b_is_tiled_ ? ldb_tile_[inverse_permutation[i]]
                              : ldb_[inverse_permutation[i]];
@@ -1011,6 +1034,13 @@ void TransposePlan::Initialize() {
     }
   }
 
+  auto loops_to_string = [](absl::Span<const Loop> loops) {
+    return absl::StrJoin(loops, "\n  ", [](std::string* out, const Loop& l) {
+      absl::StrAppend(out, l.ToString());
+    });
+  };
+
+  VLOG(5) << "Before RemoveTrivialLoops: " << loops_to_string(loop_order);
   RemoveTrivialLoops(loop_order);
   CoalesceLoops(loop_order);
 
@@ -1437,14 +1467,9 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                                   : (inner.dim_size / inner.tile_size);
 
     // Two loops can be coalesced if:
-    // * they are both tile interiors or both tile exteriors
     // * neither has a partial tile
     // * the inner loop is a multiple of the outer loop.
-    // TODO(phawkins): I suspect this condition can be simplified. In particular
-    // the condition that we separate tile exteriors from interiors feels
-    // arbitrary.
-    bool coalescable = (outer.tile_interior == inner.tile_interior) &&
-                       (outer.dim_size % outer.tile_size == 0) &&
+    bool coalescable = (outer.dim_size % outer.tile_size == 0) &&
                        (inner.dim_size % inner.tile_size == 0) &&
                        (outer.lda == inner.lda * inner_iter_size) &&
                        (outer.ldb == inner.ldb * inner_iter_size);

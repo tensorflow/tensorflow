@@ -157,16 +157,22 @@ class TransposePlan {
     // for debugging the plan.
     int dim_in_a;
 
-    // If true, the loop iterates over the interior of a tile.
-    // For an untiled dimension, this is always false. For a tiled dimension,
-    // we will have two loops: one over the tile exteriors and one over the tile
-    // interiors.
+    // If true, the loop iterates over the interior of a tiled dimension that
+    // may have a trailing partial tile.
+    // For an untiled dimension or a tiled dimension whose tile size evenly
+    // divides the dimension size, this is always false. For a tiled dimension
+    // with a trailing partial tile, we will have two loops: one over the tile
+    // exteriors and one over the tile interiors.
     bool tile_interior;
 
     // Size of the iteration space.
     int64_t dim_size;
 
-    // Size of the tiles, if this a tiled dimension.
+    // Size of the tiles, if this a tiled dimension with a trailing partial
+    // tile.
+    // We do not set this for tiled dimensions without partial tiles, since in
+    // that case we can just use the dimension size, which affords more
+    // opportunities for loop optimizations.
     int64_t tile_size;
 
     int64_t lda;  // Stride in A for this loop.
@@ -191,6 +197,8 @@ class TransposePlan {
     int64_t end = 0;    // Exclusive end of iteration range
 
     bool operator==(const Loop& other) const;
+
+    std::string ToString() const;
   };
 
   // Exposed for testing.
