@@ -565,10 +565,10 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*permutation=*/{3, 1, 2, 0},
                         /*input_tiling=*/{},
                         /*output_tiling=*/{8, 128}),
-      TransposeTestCase{/*dims=*/{129, 1234567},
+      TransposeTestCase(/*dims=*/{129, 1234567},
                         /*permutation=*/{0, 1},
                         /*input_tiling=*/{},
-                        /*output_tiling=*/{8, 128}},
+                        /*output_tiling=*/{8, 128}),
       TransposeTestCase(/*dims=*/{21}, /*permutation=*/{0},
                         /*input_tiling=*/{14},
                         /*output_tiling=*/{}, /*input_striding=*/{1488}),
@@ -579,12 +579,49 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
       TransposeTestCase(/*dims=*/{2, 33554433}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{33554433},
                         /*output_tiling=*/{}),
+      // Negative strides
+      TransposeTestCase(/*dims=*/{10}, /*permutation=*/{0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{-4}),
+      TransposeTestCase(/*dims=*/{3, 4}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{16, -4}),
+      TransposeTestCase(/*dims=*/{3, 4}, /*permutation=*/{0, 1},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{-16, -4}),
+
+      // Negative strides with tiling
+      TransposeTestCase(/*dims=*/{10}, /*permutation=*/{0},
+                        /*input_tiling=*/{2}, /*output_tiling=*/{},
+                        /*input_striding=*/{-32}),
+      TransposeTestCase(/*dims=*/{4, 4}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{2, 2}, /*output_tiling=*/{},
+                        /*input_striding=*/{-32, 16}),
       TransposeTestCase(/*dims=*/{97, 44, 98}, /*permutation=*/{0, 2, 1},
                         /*input_tiling=*/{8, 3, 6}, /*output_tiling=*/{},
                         /*input_striding=*/{-18, -4, 0}),
       TransposeTestCase(/*dims=*/{24, 80}, /*permutation=*/{0, 1},
                         /*input_tiling=*/{}, /*output_tiling=*/{15, 1}),
-  };
+      TransposeTestCase(/*dims=*/{51, 85, 63, 1}, /*permutation=*/{0, 3, 2, 1},
+                        /*input_tiling=*/{5, 13, 16}, /*output_tiling=*/{},
+                        /*input_striding=*/{}),
+      TransposeTestCase(/*dims=*/{30, 94, 89, 18, 1, 1},
+                        /*permutation=*/{4, 5, 3, 1, 2, 0},
+                        /*input_tiling=*/{15, 14}, /*output_tiling=*/{},
+                        /*input_striding=*/{-32, -56, 4248, 4784, 0, 3280}),
+      TransposeTestCase(
+          /*dims=*/{49, 24, 29, 95}, /*permutation=*/{1, 3, 2, 0},
+          /*input_tiling=*/{15, 10, 15}, /*output_tiling=*/{},
+          /*input_striding=*/{11488, -80, 0, -128}),
+
+      TransposeTestCase(/*dims=*/{67, 16, 75, 5, 15},
+                        /*permutation=*/{3, 1, 2, 0, 4},
+                        /*input_tiling=*/{9, 3}, /*output_tiling=*/{},
+                        /*input_striding=*/{}),
+      TransposeTestCase(/*dims=*/{52, 44, 45, 96, 1, 5},
+                        /*permutation=*/{5, 4, 2, 3, 1, 0},
+                        /*input_tiling=*/{}, /*output_tiling=*/{},
+                        /*input_striding=*/{})};
   return cases;
 }
 
@@ -593,18 +630,25 @@ struct RandomTransposeTestCase {
   int elem_size;
   int parallelism;
   TransposePlan::Transformation transformation;
+  TransposePlan::ChunkContiguity chunk_contiguity;
+  bool use_execute_chunk;
 
   RandomTransposeTestCase(TransposeTestCase tc, int es, int p,
-                          TransposePlan::Transformation t)
+                          TransposePlan::Transformation t,
+                          TransposePlan::ChunkContiguity c, bool u)
       : test_case(std::move(tc)),
         elem_size(es),
         parallelism(p),
-        transformation(t) {}
+        transformation(t),
+        chunk_contiguity(c),
+        use_execute_chunk(u) {}
 
   std::string ToString() const {
-    return absl::StrFormat("%s,elem_size=%d,threads=%d,transformation=%x",
-                           test_case.ToString(), elem_size, parallelism,
-                           static_cast<int>(transformation));
+    return absl::StrFormat(
+        "%s,elem_size=%d,threads=%d,transformation=%x,contiguity=%d,chunked=%d",
+        test_case.ToString(), elem_size, parallelism,
+        static_cast<int>(transformation), static_cast<int>(chunk_contiguity),
+        use_execute_chunk);
   }
 };
 
@@ -669,9 +713,12 @@ std::vector<RandomTransposeTestCase> GetRandomTransposeTestCases() {
       if (absl::Bernoulli(bitgen, 0.2)) {
         striding.resize(rank);
         for (int j = 0; j < rank; ++j) {
-          int r = absl::Uniform<int>(bitgen, 0, 2);
+          int r = absl::Uniform<int>(bitgen, -2, 3);
           if (r == 0) {
             striding[j] = 0;
+          } else if (r < 0) {
+            striding[j] = -static_cast<int64_t>(elem_size) *
+                          absl::Uniform<int>(bitgen, 1, 10);
           } else {
             striding[j] = static_cast<int64_t>(elem_size) *
                           absl::Uniform<int>(bitgen, 1, 1000);
@@ -697,11 +744,15 @@ std::vector<RandomTransposeTestCase> GetRandomTransposeTestCases() {
       }
 
       int parallelism = absl::Uniform<int>(bitgen, 1, 17);
+      auto chunk_contiguity = static_cast<TransposePlan::ChunkContiguity>(
+          absl::Uniform<int>(bitgen, 0, 3));
+      bool use_execute_chunk = absl::Bernoulli(bitgen, 0.5);
 
       cases.push_back(RandomTransposeTestCase(
           TransposeTestCase(dims, permutation, input_tiling, output_tiling,
                             striding),
-          elem_size, parallelism, TransposePlan::Transformation::kNone));
+          elem_size, parallelism, TransposePlan::Transformation::kNone,
+          chunk_contiguity, use_execute_chunk));
       valid = true;
     }
   }
@@ -710,7 +761,9 @@ std::vector<RandomTransposeTestCase> GetRandomTransposeTestCases() {
 
 template <typename T>
 void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
-                      TransposePlan::Transformation transformation) {
+                      TransposePlan::Transformation transformation,
+                      TransposePlan::ChunkContiguity chunk_contiguity,
+                      bool use_execute_chunk) {
   tsl::thread::ThreadPool threadpool(tsl::Env::Default(), "Transpose",
                                      parallelism);
   std::vector<int64_t> output_dims = Permute(test.dims, test.permutation);
@@ -729,6 +782,7 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
   }
   options.transformation = transformation;
   options.num_threads = parallelism;
+  options.chunk_contiguity = chunk_contiguity;
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   VLOG(1) << plan->ToString();
 
@@ -761,31 +815,88 @@ void ExecuteTestWithT(const TransposeTestCase& test, int parallelism,
                         absl::MakeSpan(expected_output),
                         input_base_offset_bytes);
 
-  plan->Execute(
-      reinterpret_cast<const char*>(input.data()) + input_base_offset_bytes,
-      output.data(),
-      [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+  if (use_execute_chunk) {
+    int num_chunks = plan->Parallelism();
+    int64_t input_total = input_size * static_cast<int64_t>(sizeof(T));
+    int64_t output_total = output_size * static_cast<int64_t>(sizeof(T));
+
+    // For contiguous buffers, sum of chunk sizes should equal total.
+    bool has_non_default_striding = !test.input_striding.empty();
+    if (chunk_contiguity == TransposePlan::ChunkContiguity::kInput &&
+        !has_non_default_striding) {
+      int64_t sum = 0;
+      for (int i = 0; i < num_chunks; ++i) {
+        sum += plan->InputChunkSizeBytes(i);
+      }
+      EXPECT_EQ(sum, input_total);
+    }
+    if (chunk_contiguity == TransposePlan::ChunkContiguity::kOutput) {
+      int64_t sum = 0;
+      for (int i = 0; i < num_chunks; ++i) {
+        sum += plan->OutputChunkSizeBytes(i);
+      }
+      EXPECT_EQ(sum, output_total);
+    }
+
+    for (int chunk = 0; chunk < num_chunks; ++chunk) {
+      int64_t input_offset = plan->InputChunkOffsetBytes(chunk);
+      int64_t input_bytes = plan->InputChunkSizeBytes(chunk);
+      int64_t output_offset = plan->OutputChunkOffsetBytes(chunk);
+      int64_t output_bytes = plan->OutputChunkSizeBytes(chunk);
+
+      std::vector<char> input_temp(input_bytes);
+      std::memcpy(input_temp.data(),
+                  reinterpret_cast<const char*>(input.data()) +
+                      input_base_offset_bytes + input_offset,
+                  input_bytes);
+
+      if (chunk_contiguity == TransposePlan::ChunkContiguity::kOutput) {
+        std::vector<char> output_temp(output_bytes, 0xFF);
+        plan->ExecuteChunk(chunk, input_temp.data(), output_temp.data(),
+                           /*input_is_global=*/false,
+                           /*output_is_global=*/false);
+        std::memcpy(reinterpret_cast<char*>(output.data()) + output_offset,
+                    output_temp.data(), output_bytes);
+      } else {
+        plan->ExecuteChunk(chunk, input_temp.data(), output.data(),
+                           /*input_is_global=*/false,
+                           /*output_is_global=*/true);
+      }
+    }
+  } else {
+    plan->Execute(
+        reinterpret_cast<const char*>(input.data()) + input_base_offset_bytes,
+        output.data(),
+        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+  }
 
   EXPECT_EQ(output, expected_output);
 }
 
 void ExecuteTest(const TransposeTestCase& test, int elem_size, int parallelism,
-                 TransposePlan::Transformation transformation) {
+                 TransposePlan::Transformation transformation,
+                 TransposePlan::ChunkContiguity chunk_contiguity,
+                 bool use_execute_chunk) {
   switch (elem_size) {
     case 1:
-      ExecuteTestWithT<int8_t>(test, parallelism, transformation);
+      ExecuteTestWithT<int8_t>(test, parallelism, transformation,
+                               chunk_contiguity, use_execute_chunk);
       break;
     case 2:
-      ExecuteTestWithT<int16_t>(test, parallelism, transformation);
+      ExecuteTestWithT<int16_t>(test, parallelism, transformation,
+                                chunk_contiguity, use_execute_chunk);
       break;
     case 4:
-      ExecuteTestWithT<int32_t>(test, parallelism, transformation);
+      ExecuteTestWithT<int32_t>(test, parallelism, transformation,
+                                chunk_contiguity, use_execute_chunk);
       break;
     case 8:
-      ExecuteTestWithT<int64_t>(test, parallelism, transformation);
+      ExecuteTestWithT<int64_t>(test, parallelism, transformation,
+                                chunk_contiguity, use_execute_chunk);
       break;
     case 16:
-      ExecuteTestWithT<absl::int128>(test, parallelism, transformation);
+      ExecuteTestWithT<absl::int128>(test, parallelism, transformation,
+                                     chunk_contiguity, use_execute_chunk);
       break;
     default:
       LOG(FATAL) << "Unsupported elem_size: " << elem_size;
@@ -797,7 +908,9 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
   template <typename T>
   void TestTranspose(int parallelism) {
     ExecuteTest(GetParam(), sizeof(T), parallelism,
-                TransposePlan::Transformation::kNone);
+                TransposePlan::Transformation::kNone,
+                TransposePlan::ChunkContiguity::kNone,
+                /*use_execute_chunk=*/false);
   }
 };
 
@@ -860,6 +973,26 @@ TEST(TransposeTest, NegativeStrides2D) {
   EXPECT_EQ(expected, output);
 }
 
+// Test contiguous chunk execution modes: kNone, kInput, kOutput.
+// Uses all TransposeTestCases as test inputs to verify chunked execution.
+class ChunkedTransposeTest
+    : public ::testing::TestWithParam<
+          std::tuple<TransposeTestCase, TransposePlan::ChunkContiguity>> {};
+
+TEST_P(ChunkedTransposeTest, ChunkedTranspose) {
+  const auto& [test, mode] = GetParam();
+  ExecuteTest(test, sizeof(int32_t), 4, TransposePlan::Transformation::kNone,
+              mode, /*use_execute_chunk=*/true);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ChunkedTransposeTestInstance, ChunkedTransposeTest,
+    ::testing::Combine(
+        ::testing::ValuesIn(GetTransposeTestCases()),
+        ::testing::Values(TransposePlan::ChunkContiguity::kNone,
+                          TransposePlan::ChunkContiguity::kInput,
+                          TransposePlan::ChunkContiguity::kOutput)));
+
 class RandomTransposeTest
     : public ::testing::TestWithParam<RandomTransposeTestCase> {};
 
@@ -867,7 +1000,8 @@ TEST_P(RandomTransposeTest, RandomTranspose) {
   const RandomTransposeTestCase& test = GetParam();
   LOG(INFO) << "Running random test case: " << test;
   ExecuteTest(test.test_case, test.elem_size, test.parallelism,
-              test.transformation);
+              test.transformation, test.chunk_contiguity,
+              test.use_execute_chunk);
 }
 
 INSTANTIATE_TEST_SUITE_P(RandomTransposeTestInstance, RandomTransposeTest,
@@ -952,7 +1086,9 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   options.dims = bm.dims;
   options.permutation = bm.permutation;
   options.transformation = TransposePlan::Transformation::kNone;
+
   options.num_threads = parallelism;
+
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   Array<T> input(bm.dims);
   input.FillIota(0);

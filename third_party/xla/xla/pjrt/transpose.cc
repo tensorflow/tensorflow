@@ -442,15 +442,29 @@ struct uint128 {
 };
 static_assert(sizeof(uint128) == 16, "uint128 should be 16 bytes in size");
 
-void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b) const {
+void TransposePlan::ExecuteChunk(int chunk_id, const void* a, void* b,
+                                 bool input_is_global,
+                                 bool output_is_global) const {
   if (num_elems_ == 0) {
     return;
   }
   tsl::profiler::TraceMe traceme("Transpose::ExecuteChunk", /*level=*/2);
 
   absl::Span<Node const> nodes = nodes_[chunk_id];
-  const char* ac = static_cast<const char*>(a) + input_offset_bytes_[chunk_id];
-  char* bc = static_cast<char*>(b) + output_offset_bytes_[chunk_id];
+  const char* ac = static_cast<const char*>(a);
+  if (input_is_global) {
+    ac += input_chunk_offset_bytes_[chunk_id] +
+          input_chunk_iteration_offsets_[chunk_id];
+  } else {
+    ac += input_chunk_iteration_offsets_[chunk_id];
+  }
+  char* bc = static_cast<char*>(b);
+  if (output_is_global) {
+    bc += output_chunk_offset_bytes_[chunk_id] +
+          output_chunk_iteration_offsets_[chunk_id];
+  } else {
+    bc += output_chunk_iteration_offsets_[chunk_id];
+  }
 
   if (inner_kernel_is_memcpy_) {
     DCHECK(transformation_ == Transformation::kNone);
@@ -496,17 +510,20 @@ void TransposePlan::Execute(
 
   if (!schedule_work || Parallelism() <= 1) {
     for (int i = 0; i < Parallelism(); ++i) {
-      ExecuteChunk(i, a, b);
+      ExecuteChunk(i, a, b, /*input_is_global=*/true,
+                   /*output_is_global=*/true);
     }
   } else {
     absl::BlockingCounter counter(Parallelism() - 1);
     for (size_t i = 1; i < nodes_.size(); ++i) {
       (*schedule_work)([&, i]() {
-        ExecuteChunk(i, a, b);
+        ExecuteChunk(i, a, b, /*input_is_global=*/true,
+                     /*output_is_global=*/true);
         counter.DecrementCount();
       });
     }
-    ExecuteChunk(0, a, b);
+    ExecuteChunk(0, a, b, /*input_is_global=*/true,
+                 /*output_is_global=*/true);
     counter.Wait();
   }
 }
@@ -571,8 +588,11 @@ static absl::Status ParseTilingSpecification(
                            absl::StrJoin(tiling_spec, ","));
   }
   if (ndim == 1 && !nonstandard_layout) {
-    // Tiling doesn't do anything for a rank-1 array, except add padding. Since
-    // we're not going to touch any padding elements, we can ignore it.
+    // Tiling doesn't do anything for a rank-1 array with default strides,
+    // except add padding. Since we're not going to touch any padding elements,
+    // we can ignore it.
+    // TODO(phawkins): this seems like it should be a loop optimization, not
+    // done here.
     return absl::OkStatus();
   }
   int offset = ndim;
@@ -585,9 +605,11 @@ static absl::Status ParseTilingSpecification(
 std::string TransposePlan::Loop::ToString() const {
   return absl::StrFormat(
       "%d%s[dim_size=%d,tile_size=%d,start=%d,end=%d,is_inner_dim_in_a=%d,is_"
-      "inner_dim_in_b=%d,lda=%d,ldb=%d,parallelism=%d)",
+      "inner_dim_in_b=%d,lda=%d,ldb=%d,parallelism=%d,contiguity=%d,has_"
+      "partial_tile=%d)",
       dim_in_a, tile_interior ? "[tile]" : "", dim_size, tile_size, start, end,
-      is_inner_dim_in_a, is_inner_dim_in_b, lda, ldb, parallelism);
+      is_inner_dim_in_a, is_inner_dim_in_b, lda, ldb, parallelism, contiguity,
+      has_partial_tile);
 }
 
 bool TransposePlan::Loop::operator==(const Loop& other) const {
@@ -603,7 +625,6 @@ bool TransposePlan::Loop::operator==(const Loop& other) const {
 // Helper function that builds a plan.
 void TransposePlan::BuildPlanNodes(int chunk_id,
                                    std::vector<TransposePlan::Node>& nodes) {
-  VLOG(8) << "Before plan build: " << ToString();
   const int ndim = a_dims_.size();
   DCHECK_GT(ndim, 0);
 
@@ -675,12 +696,9 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
       bool partial = agendum.partial_tiles[a_dim];
 
       int64_t size = partial ? loop.dim_size % loop.tile_size : loop.tile_size;
-      // loop.start and loop.end are in element units.
-      // Verify alignment to block boundaries.
-      CHECK(loop.start % node.inc == 0)
-          << "loop.start=" << loop.start
-          << " must be aligned to node.inc=" << node.inc;
-      node.end = std::min<int64_t>(size, loop.end) - loop.start;
+      int64_t actual_start = std::max<int64_t>(0, loop.start);
+      int64_t actual_end = std::min<int64_t>(size, loop.end);
+      node.end = std::max<int64_t>(0, actual_end - actual_start);
 
       if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
         node.end *= elem_size_in_bytes_;
@@ -726,7 +744,8 @@ void TransposePlan::BuildPlanNodes(int chunk_id,
 
       // loop.start and loop.end are in tile units.
       int64_t num_tiles = partial ? 1 : num_complete_tiles;
-      node.end = std::min<int64_t>(num_tiles, loop.end) - loop.start;
+      node.end = std::max<int64_t>(
+          0, std::min<int64_t>(num_tiles, loop.end) - loop.start);
 
       if (node.is_inner_dim_in_a && inner_kernel_is_memcpy_) {
         node.end *= elem_size_in_bytes_;
@@ -780,7 +799,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   int ndim = o.dims.size();
 
   auto plan = std::make_unique<TransposePlan>();
-  plan->num_threads_requested_ = o.num_threads;
+  plan->num_chunks_requested_ = o.num_threads;
   plan->elem_size_in_bytes_ = o.elem_size_in_bytes;
   switch (o.elem_size_in_bytes) {
     case 1:
@@ -799,15 +818,22 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
   absl::c_copy(o.dims, plan->original_a_dims_.begin());
   plan->original_b_dims_ = Permute(o.dims, o.permutation);
 
+  bool output_contiguity =
+      o.chunk_contiguity == TransposePlan::ChunkContiguity::kOutput;
+  bool input_contiguity =
+      o.chunk_contiguity == TransposePlan::ChunkContiguity::kInput;
+
   TF_RETURN_IF_ERROR(ParseTilingSpecification(
-      ndim, o.output_tiling, /*nonstandard_layout=*/false, plan->b_tiling_));
+      ndim, o.output_tiling,
+      /*nonstandard_layout=*/output_contiguity, plan->b_tiling_));
 
   // Temporary vectors to hold un-permuted attributes
   absl::InlinedVector<int64_t, 4> temp_lda, temp_lda_tile, temp_a_tiling;
 
   // Parse the tile and stride specifications.
   TF_RETURN_IF_ERROR(ParseTilingSpecification(
-      ndim, o.input_tiling, /*nonstandard_layout=*/o.input_striding.has_value(),
+      ndim, o.input_tiling,
+      /*nonstandard_layout=*/o.input_striding.has_value() || input_contiguity,
       temp_a_tiling));
   ComputeStrides(plan->elem_size_in_bytes_, o.dims, temp_a_tiling, temp_lda,
                  temp_lda_tile);
@@ -910,6 +936,7 @@ absl::StatusOr<std::unique_ptr<TransposePlan>> TransposePlan::Create(
             sizeof(float));
       }
   }
+  plan->chunk_contiguity_ = o.chunk_contiguity;
 
   plan->Initialize();
   return plan;
@@ -1042,7 +1069,9 @@ void TransposePlan::Initialize() {
 
   VLOG(5) << "Before RemoveTrivialLoops: " << loops_to_string(loop_order);
   RemoveTrivialLoops(loop_order);
+  VLOG(5) << "After RemoveTrivialLoops: " << loops_to_string(loop_order);
   CoalesceLoops(loop_order);
+  VLOG(5) << "After CoalesceLoops: " << loops_to_string(loop_order);
 
   // Bound the block sizes so they are smaller than the stride-1 dimension
   // size.
@@ -1108,6 +1137,11 @@ void TransposePlan::Initialize() {
     outer_block_elems_b_ = std::max<int64_t>(outer_block_elems_b_, 1);
   }
 
+  // Identify contiguous loops for chunk scheduling.
+  // Loops with smallest strides in the contiguous buffer form the contiguous
+  // region. Accumulate loops until their combined iteration count reaches
+  // the target chunk size.
+  IdentifyContiguousLoops(loop_order);
   ChooseLoopOrder(loop_order);
 
   for (Loop& loop : loop_order) {
@@ -1131,8 +1165,13 @@ void TransposePlan::Initialize() {
       << ToString();
 
   int num_chunks = ChooseParallelizationStrategy(loop_order);
-  PartitionLoops(num_chunks, loop_order, chunk_loops_, input_offset_bytes_,
-                 output_offset_bytes_);
+  VLOG(5) << "After ChooseParallelizationStrategy num_chunks=" << num_chunks
+          << " loops: " << loops_to_string(loop_order);
+  PartitionLoops(a_dims_.size(), num_chunks, loop_order, chunk_loops_,
+                 input_chunk_iteration_offsets_,
+                 output_chunk_iteration_offsets_);
+  ComputeChunkSizes();
+  VLOG(8) << "Before plan build: " << ToString();
   nodes_.resize(num_chunks);
   for (int chunk_id = 0; chunk_id < num_chunks; ++chunk_id) {
     BuildPlanNodes(chunk_id, nodes_[chunk_id]);
@@ -1173,11 +1212,22 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
       b_stride *= inner_block_elems_ * outer_block_elems_b_;
     }
 
-    // Add a small penalty to the input strides: given the choice between
-    // consecutive writes and consecutive reads, we would prefer consecutive
-    // writes.
-    constexpr double kPenalty = 1.01;
-    return -std::min<double>(a_stride * kPenalty, b_stride);
+    double stride;
+    switch (chunk_contiguity_) {
+      case ChunkContiguity::kOutput:
+        stride = b_stride;
+        return std::make_tuple(0, -stride);
+      case ChunkContiguity::kInput:
+        stride = a_stride;
+        return std::make_tuple(0, -stride);
+      case ChunkContiguity::kNone:
+        // Add a small penalty to the input strides: given the choice between
+        // consecutive writes and consecutive reads, we would prefer consecutive
+        // writes.
+        constexpr double kPenalty = 1.01;
+        stride = std::min<double>(a_stride * kPenalty, b_stride);
+        return std::make_tuple(l.contiguity, -stride);
+    }
   };
 
   while (!remaining.empty()) {
@@ -1209,11 +1259,15 @@ void TransposePlan::ChooseLoopOrder(std::vector<Loop>& loop_order) const {
     loop_order.push_back(std::move(remaining[best_idx]));
     remaining.erase(remaining.begin() + best_idx);
   }
+  VLOG(5) << "After loop ordering sort: "
+          << absl::StrJoin(loop_order, ", ",
+                           [](std::string* out, const Loop& l) {
+                             absl::StrAppend(out, l.ToString());
+                           });
 }
-
 int TransposePlan::ChooseParallelizationStrategy(
     std::vector<Loop>& loop_order) const {
-  int available_parallelism = num_threads_requested_;
+  int available_parallelism = num_chunks_requested_;
 
   // Compute the number of iterations in `loop`.
   auto loop_iterations = [&](const Loop& loop) {
@@ -1244,19 +1298,38 @@ int TransposePlan::ChooseParallelizationStrategy(
   for (size_t i = 0; i < loop_order.size(); ++i) {
     Loop& loop = loop_order[i];
     CHECK_GE(available_parallelism, 1);
-    int64_t iterations = loop_iterations(loop);
 
     // Initialize loop iteration bounds to full range in element units.
     loop.start = 0;
     loop.end = loop.tile_interior ? loop.tile_size
                                   : CeilOfRatio(loop.dim_size, loop.tile_size);
 
+    int64_t iterations_without_blocking = loop.end - loop.start;
+    int64_t iterations = loop_iterations(loop);
+
+    // Contiguous loops must not be parallelized to maintain chunk contiguity.
+    // Tile interiors with partial tiles must not be parallelized since
+    // otherwise we will not account for things like padding correctly when
+    // calculating chunk sizes.
+    if (loop.contiguity > 1 || loop.tile_interior) {
+      loop.parallelism = 1;
+      if (chunk_contiguity_ != ChunkContiguity::kNone &&
+          loop.parallelism < iterations_without_blocking) {
+        available_parallelism = 1;
+      }
+      VLOG(8) << "loop " << i << " restricted to parallelism=1"
+              << " iterations=" << iterations_without_blocking
+              << " available_parallelism=" << available_parallelism;
+      continue;
+    }
+
     int kMinBytesPerThread = inner_kernel_is_memcpy_ ? (1 << 20) : (1 << 26);
     int64_t min_iterations_per_thread =
         CeilOfRatio<int64_t>(kMinBytesPerThread, work_in_bytes[i]);
     int64_t parallel_work = CeilOfRatio(iterations, min_iterations_per_thread);
 
-    VLOG(8) << "iterations=" << iterations << " parallel_work=" << parallel_work
+    VLOG(8) << "loop " << i << ": iterations=" << iterations
+            << " parallel_work=" << parallel_work
             << " available_parallelism=" << available_parallelism;
     int parallelism = std::min<int64_t>(available_parallelism, parallel_work);
     if (parallelism > 1) {
@@ -1270,21 +1343,32 @@ int TransposePlan::ChooseParallelizationStrategy(
       parallelism = useful_tasks;
     }
     loop.parallelism = parallelism;
-    available_parallelism /= parallelism;
     num_chunks *= loop.parallelism;
+
+    // Once a loop is sequential (parallelism < iterations), we must not
+    // parallelize any inner loops if we want to maintain chunk contiguity.
+    // This is because parallelizing an inner loop while a sequential outer
+    // loop has multiple iterations would interleave the inner splits across
+    // the outer iterations.
+    if (chunk_contiguity_ != ChunkContiguity::kNone &&
+        loop.parallelism < iterations_without_blocking) {
+      available_parallelism = 1;
+    } else {
+      available_parallelism /= loop.parallelism;
+    }
   }
   return num_chunks;
 }
 
 /*static*/ void TransposePlan::PartitionLoops(
-    int num_chunks, const std::vector<Loop>& loop_order,
+    int num_dims, int num_chunks, const std::vector<Loop>& loop_order,
     std::vector<std::vector<TransposePlan::Loop>>& result,
-    std::vector<int64_t>& input_offset_bytes,
-    std::vector<int64_t>& output_offset_bytes) {
+    std::vector<int64_t>& input_chunk_iteration_offsets,
+    std::vector<int64_t>& output_chunk_iteration_offsets) {
   // Copy the base loop order for each chunk.
   result.resize(num_chunks, loop_order);
-  input_offset_bytes.resize(num_chunks);
-  output_offset_bytes.resize(num_chunks);
+  input_chunk_iteration_offsets.resize(num_chunks);
+  output_chunk_iteration_offsets.resize(num_chunks);
   for (int chunk_id = 0; chunk_id < num_chunks; ++chunk_id) {
     // For each loop, narrow the start/end bounds to this chunk's portion.
     int task_id_remaining = chunk_id;
@@ -1311,9 +1395,98 @@ int TransposePlan::ChooseParallelizationStrategy(
       chunk_loop.end =
           base_loop.start +
           std::min(iterations, (task_id + 1) * blocks_per_task * base_loop.inc);
-      input_offset_bytes[chunk_id] += chunk_loop.start * chunk_loop.lda;
-      output_offset_bytes[chunk_id] += chunk_loop.start * chunk_loop.ldb;
+      input_chunk_iteration_offsets[chunk_id] +=
+          chunk_loop.start * chunk_loop.lda;
+      output_chunk_iteration_offsets[chunk_id] +=
+          chunk_loop.start * chunk_loop.ldb;
     }
+
+    // Set has_partial_tile for tile interior loops.
+    // First pass: find which dimensions' exterior loops include the last tile.
+    std::vector<bool> dims_with_partial(num_dims, false);
+    for (const Loop& loop : result[chunk_id]) {
+      if (!loop.tile_interior && loop.dim_size % loop.tile_size != 0) {
+        int64_t full_tiles = CeilOfRatio(loop.dim_size, loop.tile_size);
+        if (loop.end >= full_tiles) {
+          dims_with_partial[loop.dim_in_a] = true;
+        }
+      }
+    }
+    // Second pass: set has_partial_tile on interior loops.
+    for (Loop& loop : result[chunk_id]) {
+      if (loop.tile_interior && dims_with_partial[loop.dim_in_a]) {
+        loop.has_partial_tile = true;
+      }
+    }
+  }
+}
+
+void TransposePlan::ComputeChunkSizes() {
+  input_chunk_size_bytes_.resize(chunk_loops_.size(), 0);
+  output_chunk_size_bytes_.resize(chunk_loops_.size(), 0);
+  input_chunk_offset_bytes_.resize(chunk_loops_.size(), 0);
+  output_chunk_offset_bytes_.resize(chunk_loops_.size(), 0);
+  // Compute chunk sizes from the pre-computed chunk loop bounds.
+  // For each loop, accumulate the offset range based on the iteration bounds
+  // and strides. Strides can be negative, so track both min and max.
+  for (size_t chunk_id = 0; chunk_id < chunk_loops_.size(); ++chunk_id) {
+    absl::Span<const Loop> loops = chunk_loops_[chunk_id];
+
+    int64_t input_min = 0, input_max = 0;
+    int64_t output_min = 0, output_max = 0;
+
+    for (const Loop& loop : loops) {
+      if (loop.start >= loop.end) {
+        continue;  // Empty iteration range
+      }
+
+      int64_t first = loop.start;
+      int64_t last = loop.end - 1;  // Last iteration (exclusive end)
+
+      // For tile interior loops with partial tiles, use the full tile size.
+      int64_t input_last = last;
+      int64_t output_last = last;
+      if (loop.tile_interior && loop.has_partial_tile) {
+        int64_t partial_size = loop.dim_size % loop.tile_size;
+        if (a_is_tiled_) {
+          input_last = loop.tile_size - 1;
+        } else {
+          input_last = partial_size - 1;
+        }
+        // Output: if tiled, use full tile extent (no adjustment)
+        // If untiled, use partial size
+        if (b_is_tiled_) {
+          output_last = loop.tile_size - 1;
+        } else {
+          output_last = partial_size - 1;
+        }
+      }
+
+      // Accumulate min/max (strides can be negative)
+      int64_t input_first_offset = first * loop.lda;
+      int64_t input_last_offset = input_last * loop.lda;
+      input_min += std::min(input_first_offset, input_last_offset);
+      input_max += std::max(input_first_offset, input_last_offset);
+
+      int64_t output_first_offset = first * loop.ldb;
+      int64_t output_last_offset = output_last * loop.ldb;
+      output_min += std::min(output_first_offset, output_last_offset);
+      output_max += std::max(output_first_offset, output_last_offset);
+    }
+
+    input_chunk_offset_bytes_[chunk_id] = input_min;
+    output_chunk_offset_bytes_[chunk_id] = output_min;
+
+    // Adjust iteration offsets to be relative to the physical start of the
+    // chunk.
+    input_chunk_iteration_offsets_[chunk_id] -= input_min;
+    output_chunk_iteration_offsets_[chunk_id] -= output_min;
+
+    // Extent = range of offsets + element size at the max position.
+    input_chunk_size_bytes_[chunk_id] =
+        input_max - input_min + elem_size_in_bytes_;
+    output_chunk_size_bytes_[chunk_id] =
+        output_max - output_min + elem_size_in_bytes_;
   }
 }
 
@@ -1336,17 +1509,19 @@ std::string TransposePlan::ToString() const {
                 }));
       });
   auto format_loop = [](std::string* out, const Loop& loop) {
-    absl::StrAppendFormat(out, "%d%s[%d,%d](%d)", loop.dim_in_a,
-                          loop.tile_interior ? "[tile]" : "", loop.start,
-                          loop.end, loop.parallelism);
+    absl::StrAppend(out, loop.ToString());
   };
   std::vector<std::string> chunk_strings;
   chunk_strings.reserve(chunk_loops_.size());
   for (int i = 0; i < chunk_loops_.size(); ++i) {
     chunk_strings.push_back(absl::StrFormat(
-        "    chunk %d: input_offset=%d output_offset=%d loops=%s", i,
-        input_offset_bytes_[i], output_offset_bytes_[i],
-        absl::StrJoin(chunk_loops_[i], ", ", format_loop)));
+        "    chunk %d: physical_input_offset=%d physical_output_offset=%d "
+        "input_size=%d output_size=%d "
+        "logical_input_offset=%d logical_output_offset=%d loops:\n      %s",
+        i, input_chunk_offset_bytes_[i], output_chunk_offset_bytes_[i],
+        input_chunk_size_bytes_[i], output_chunk_size_bytes_[i],
+        input_chunk_iteration_offsets_[i], output_chunk_iteration_offsets_[i],
+        absl::StrJoin(chunk_loops_[i], "\n      ", format_loop)));
   }
   std::string chunk_loops_str = absl::StrJoin(chunk_strings, "\n");
   std::string transformation_str;
@@ -1362,7 +1537,7 @@ std::string TransposePlan::ToString() const {
       "elem_size=%d a_dims=%s b_dims=%s permutation=%s a_tiling=%s b_tiling=%s "
       "lda=%s lda_tile=%s ldb=%s ldb_tile=%s "
       "outer_bs=[%d,%d] inner_bs=%d "
-      "transformation=%s scratch_size=%d\n"
+      "transformation=%s scratch_size=%d num_chunks_requested=%d\n"
       "chunk_loops:\n%s\n"
       "nodes:\n%s",
       elem_size_in_bytes_, absl::StrJoin(a_dims_, ","),
@@ -1371,8 +1546,8 @@ std::string TransposePlan::ToString() const {
       absl::StrJoin(b_tiling_, ","), absl::StrJoin(lda_, ","),
       absl::StrJoin(lda_tile_, ","), absl::StrJoin(ldb_, ","),
       absl::StrJoin(ldb_tile_, ","), outer_block_elems_a_, outer_block_elems_b_,
-      inner_block_elems_, transformation_str, scratch_size_, chunk_loops_str,
-      nodes_str);
+      inner_block_elems_, transformation_str, scratch_size_,
+      num_chunks_requested_, chunk_loops_str, nodes_str);
 }
 
 bool TransposePlanCacheKey::operator==(
@@ -1428,6 +1603,47 @@ absl::StatusOr<std::shared_ptr<TransposePlan>> TransposePlanCache::GetOrCreate(
                             TransposePlan::Create(o));
         return std::shared_ptr<TransposePlan>(std::move(plan));
       });
+}
+void TransposePlan::IdentifyContiguousLoops(
+    std::vector<Loop>& loop_order) const {
+  if (chunk_contiguity_ != ChunkContiguity::kNone) {
+    int64_t target_chunk_bytes = CeilOfRatio<int64_t>(
+        num_elems_ * elem_size_in_bytes_, num_chunks_requested_);
+
+    // Sort loops by stride in the contiguous buffer (ascending).
+    auto contiguous_stride = [&](const Loop& l) {
+      return chunk_contiguity_ == ChunkContiguity::kInput ? std::abs(l.lda)
+                                                          : std::abs(l.ldb);
+    };
+
+    // Create index vector and sort by contiguous stride.
+    std::vector<size_t> indices(loop_order.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    auto cost = [&](const Loop& l) {
+      int64_t stride = contiguous_stride(l);
+      return std::make_tuple(!l.tile_interior, stride);
+    };
+    absl::c_stable_sort(indices, [&](size_t a, size_t b) {
+      return cost(loop_order[a]) < cost(loop_order[b]);
+    });
+
+    int prev = -1;
+    for (size_t idx : indices) {
+      Loop& loop = loop_order[idx];
+      int64_t stride = contiguous_stride(loop);
+      if (stride == 0) {
+        continue;
+      }
+      if (stride >= target_chunk_bytes) {
+        break;
+      }
+      loop.contiguity = 1;
+      if (prev != -1) {
+        loop_order[prev].contiguity = 2;
+      }
+      prev = idx;
+    }
+  }
 }
 
 /*static*/ void TransposePlan::RemoveTrivialLoops(std::vector<Loop>& loops) {
