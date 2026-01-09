@@ -25,6 +25,8 @@ const char kXlaHostTransferHandlerNameAttr[] =
 
 const char kXlaHostTransferTfRendezvousHandlerName[] = "tf_rendezvous";
 
+const char kXlaHostTransferPjRtRendezvousHandlerName[] = "pjrt_rendezvous";
+
 const char kXlaComputeTypeAttr[] = "_xla_compute_type";
 
 const char kXlaComputeTypeSparse[] = "sparse";

@@ -1309,6 +1309,7 @@ cc_library(
     name = "side_effect_util",
     srcs = ["side_effect_util.cc"],
     hdrs = ["side_effect_util.h"],
+    visibility = internal_visibility([":friends"]),
 )
 
 cc_library(
