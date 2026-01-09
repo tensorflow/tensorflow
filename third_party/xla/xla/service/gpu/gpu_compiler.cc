@@ -59,6 +59,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "nanobind/nanobind.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
@@ -572,12 +573,20 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
   return backend_config->device_type() == DEVICE_TYPE_HOST;
 }
 
+std::string nanobind_version() {
+  std::stringstream ss;
+  ss << NB_VERSION_MAJOR << "." << NB_VERSION_MINOR << "." << NB_VERSION_PATCH
+     << std::endl;
+  return ss.str();
+}
+
 }  // namespace
 
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     absl::string_view platform_name, bool enable_sort_rewriter) {
+  std::cerr << "<< XLA nanobind version: \n" << nanobind_version() << "\n";
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
