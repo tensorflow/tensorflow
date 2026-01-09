@@ -3315,7 +3315,7 @@ absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
 }
 
 absl::Status VerifyPin(const HloCustomCallInstruction* inst,
-                       bool layout_sentitive) {
+                       bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
       inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument(
@@ -3326,7 +3326,7 @@ absl::Status VerifyPin(const HloCustomCallInstruction* inst,
     return InvalidArgument("custom-call to Pin must have one buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape(), inst->shape().buffer_shape())) {
     return InvalidArgument(
         "custom-call to Pin must have the same shape as the operand");
@@ -3354,7 +3354,7 @@ absl::Status VerifyCreateBuffer(const HloInstruction* inst) {
 }
 
 absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
-                         bool layout_sentitive) {
+                         bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument("custom-call to Unpin must have one buffer operand");
   }
@@ -3364,7 +3364,7 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
         "custom-call to Unpin must have one array non-buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape().buffer_shape(), inst->shape())) {
     return InvalidArgument(
         "custom-call to Unpin must have the same shape as the operand");
@@ -3489,15 +3489,15 @@ absl::Status VerifyBuffersInResults(
 // - An HLO buffer result can only be updated at most once.
 //
 absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
-                              bool layout_sentitive) {
+                              bool layout_sensitive) {
   if (inst->IsCustomCall(kPinCustomCallTarget)) {
-    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
   if (inst->IsCustomCall(kCreateBufferCustomCallTarget)) {
     return VerifyCreateBuffer(inst);
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
-    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
 
   TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
@@ -3521,12 +3521,35 @@ absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyBuffers(const HloModule& module, bool layout_sentitive) {
+absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
   for (auto* comp : module.computations()) {
+    if (comp->IsAsyncComputation()) {
+      // For asynchronous computations, we only need to check the root
+      // custom-call op. The root op can also be a call-op expanded from a
+      // stream-annotated-call-op, in which case, the correctness of the op
+      // is guaranteed by the rest of the checking and we skip the check to
+      // allow the op to use buffers.
+      HloInstruction* root = comp->root_instruction();
+      if (root->opcode() == HloOpcode::kCustomCall) {
+        TF_RETURN_IF_ERROR(VerifyCustomCall(
+            Cast<HloCustomCallInstruction>(root), layout_sensitive));
+      }
+      continue;
+    }
     for (auto* inst : comp->instructions()) {
+      if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
+                                     inst->frontend_attributes().map().contains(
+                                         kXlaStreamAnnotationAttr))) {
+        // No need for additional buffer verification as the correctness of
+        // buffer usage in AsyncStart/Update/Done is guaranteed through:
+        //   .Making sure these ops are consistent with the wrapped computation.
+        //   .Buffer verification for the custom-call op inside the wrapped
+        //    computation.
+        continue;
+      }
       if (inst->opcode() == HloOpcode::kCustomCall) {
         TF_RETURN_IF_ERROR(VerifyCustomCall(
-            Cast<HloCustomCallInstruction>(inst), layout_sentitive));
+            Cast<HloCustomCallInstruction>(inst), layout_sensitive));
       } else if (inst->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
