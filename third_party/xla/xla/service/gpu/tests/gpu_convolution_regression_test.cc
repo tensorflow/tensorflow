@@ -17,22 +17,22 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class GpuConvolutionRegressionTest : public HloTestBase {
+class GpuConvolutionRegressionTest : public HloPjRtTestBase {
  public:
-  // RunHloPasses goes through convolution autotuning, which performs
-  // correctness cross-checking.
+  // CreateExecutable with run_hlo_passes=true goes through convolution
+  // autotuning, which performs correctness cross-checking.
   void CheckForHloText(absl::string_view hlo_string) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsFromFlags());
-    (void)backend().compiler()->RunHloPasses(
+    (void)test_runner().CreateExecutable(
         ParseAndReturnVerifiedModule(hlo_string, config).value(),
-        backend().default_stream_executor(), backend().memory_allocator());
+        /*run_hlo_passes=*/true);
   }
 };
 
