@@ -82,6 +82,23 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
+absl::StatusOr<bool> SendThunk::ConditionalShouldRun(
+    const ExecuteParams& params, int64_t current_id, int64_t target_id) const {
+  se::StreamExecutor* executor = params.stream->parent();
+  TF_ASSIGN_OR_RETURN(int64_t* counter,
+                      execution_counters_->GetCounter(
+                          executor, params.collective_params->run_id));
+  auto it = config_.source_target_to_bounds.find(
+      std::make_pair(current_id, target_id));
+  TF_RET_CHECK(it != config_.source_target_to_bounds.end())
+      << "Missing bounds for conditional Send";
+  bool should_run =
+      !(*counter < it->second.first || *counter > it->second.second);
+  VLOG(3) << "RunCollective counter " << *counter << " " << should_run;
+  ++(*counter);
+  return should_run;
+}
+
 absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
     ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
@@ -148,15 +165,55 @@ absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
   return proto;
 }
 
+absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
+                     Communicator& comm, int64_t current_id,
+                     std::optional<int64_t> target_id,
+                     absl::string_view device_string) {
+  // Determine the target IDs for this instance. The target ID is the ID
+  // to which this instance will copy its data.
+  int device_ordinal = stream.parent()->device_ordinal();
+  se::DeviceAddressBase src_addr = buffer.source_buffer;
+
+  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
+                                device_ordinal, device_string, current_id,
+                                target_id.value_or(-1));
+
+  // Send source buffer to target peer if needed.
+  if (target_id) {
+    VLOG(3) << "[" << device_ordinal << "] target_id: " << *target_id
+            << ", call comm.Send()";
+    TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+    auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
+                            RankId(*target_id), GpuCollectives::On(stream));
+    TF_RETURN_IF_ERROR(future.Await());
+  } else {
+    // TODO(b/324437509): make SendCommand not a TracedCommand but a custom
+    // implementation that traces conditionally.
+    // For now single byte memcpy is ok compromise.
+
+    // If there is no target_id, this is an unmatched sender. We issue a
+    // size-one self-copy as a placeholder to ensure the CUDA Graph
+    // capture remains valid and the stream maintains its sequence.
+    VLOG(3) << absl::StreamFormat(
+        "[%d] %s : Send: Unmatched sender; issuing size-one self-copy",
+        device_ordinal, device_string);
+    RETURN_IF_ERROR(stream.MemcpyD2D(&src_addr, src_addr, 1));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
                                               const GpuCliqueKey&,
                                               se::Stream& stream,
                                               Communicator& comm) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, {buffer_},
-                             config_.config.operand_element_type));
-  TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
+  DeviceBufferPair device_buffer_pair{
+      config_.config.operand_element_type[0],
+      buffer_.element_count,
+      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer),
+      params.buffer_allocations->GetDeviceAddress(buffer_.destination_buffer),
+      buffer_.source_memory_space,
+      buffer_.destination_memory_space};
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
@@ -172,70 +229,39 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
 
   const P2PConfig::SourceTargetMapEntry source_target =
       P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
-  DeviceBufferPair& buffer = device_buffers[0];
 
-  // Determine the target IDs for this instance. The target ID is the ID
-  // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "[" << device_ordinal << "] Performing Send "
-          << ", current_id: " << current_id << ", group mode: "
-          << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
-          << hlo_name_ << ")";
 
-  const std::optional<int64_t> target_id = source_target.target;
-  se::DeviceAddressBase src_addr = buffer.source_buffer;
+  std::optional<int64_t> target_id = source_target.target;
+  bool should_run = false;
 
-  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
-                                device_ordinal, device_string, current_id,
-                                target_id.value_or(-1));
-
-  // Send source buffer to target peer if needed.
-  if (target_id) {
-    bool should_run =
-        config_.validation_kind == P2PConfig::ValidationKind::kInvalid ? false
-                                                                       : true;
-    if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
-      se::StreamExecutor* executor = params.stream->parent();
-      TF_ASSIGN_OR_RETURN(int64_t* counter,
-                          execution_counters_->GetCounter(
-                              executor, params.collective_params->run_id));
-      auto it = config_.source_target_to_bounds.find(
-          std::make_pair(current_id, *source_target.target));
-      if (it == config_.source_target_to_bounds.end()) {
-        return absl::InternalError("Missing bounds for conditional Send");
+  switch (config_.validation_kind) {
+    case P2PConfig::ValidationKind::kValid:
+      should_run = true;
+      break;
+    case P2PConfig::ValidationKind::kInvalid:
+      should_run = false;
+      break;
+    case P2PConfig::ValidationKind::kConditional:
+      if (target_id) {
+        TF_ASSIGN_OR_RETURN(
+            should_run, ConditionalShouldRun(params, current_id, *target_id));
       }
-      if (*counter < it->second.first || *counter > it->second.second) {
-        should_run = false;
-      }
-      VLOG(3) << "[" << device_ordinal << "] RunCollective counter " << *counter
-              << " " << should_run;
-      ++(*counter);
-    }
-
-    if (should_run) {
-      TF_RETURN_IF_ERROR(
-          MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
-      auto future =
-          comm.Send(src_addr, buffer.element_type, buffer.element_count,
-                    RankId(*target_id), GpuCollectives::On(stream));
-      TF_RETURN_IF_ERROR(future.Await());
-    } else {
-      VLOG(3) << "[" << device_ordinal << "] Skipping Send";
-    }
-  } else {
-    // TODO(b/324437509): make SendCommand not a TracedCommand but a custom
-    // implementation that traces conditionally.
-    // For now single byte memcpy is ok compromise.
-
-    // If there is no target_id, this is an unmatched sender. We issue a
-    // size-one self-copy as a placeholder to ensure the CUDA Graph
-    // capture remains valid and the stream maintains its sequence.
-    VLOG(3) << absl::StreamFormat(
-        "[%d] %s : Send: Unmatched sender; issuing size-one self-copy",
-        device_ordinal, device_string);
-    RETURN_IF_ERROR(stream.MemcpyD2D(&src_addr, src_addr, 1));
+      break;
   }
 
+  if (target_id && !should_run) {
+    VLOG(3) << "[" << device_ordinal << "] Skipping Send";
+    return false;
+  }
+
+  VLOG(3) << "[" << device_ordinal << "] Performing Send "
+          << ", current_id: " << current_id << ", group mode: "
+          << CollectiveOpGroupModeToString(config_.config.group_mode)
+          << ", hlo_name=(" << hlo_name_ << ")";
+
+  TF_RETURN_IF_ERROR(RunSend(device_buffer_pair, stream, comm, current_id,
+                             target_id, device_string));
   return false;
 }
 
