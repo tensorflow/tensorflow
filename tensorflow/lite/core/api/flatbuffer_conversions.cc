@@ -879,13 +879,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return kTfLiteOk;
     }
     case BuiltinOperator_GELU: {
-      auto params = safe_allocator.Allocate<TfLiteGeluParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* gelu_params = op->builtin_options_as_GeluOptions()) {
-        params->approximate = gelu_params->approximate();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseGelu(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_STABLEHLO_SCATTER: {
       return ParseStablehloScatter(op, error_reporter, allocator, builtin_data);
@@ -1630,6 +1624,18 @@ TfLiteStatus ParseGather(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseGatherNd(const Operator*, ErrorReporter*,
                            BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseGelu(const Operator* op, ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data) {
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteGeluParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* gelu_params = op->builtin_options_as_GeluOptions()) {
+    params->approximate = gelu_params->approximate();
+  }
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
