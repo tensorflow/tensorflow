@@ -133,9 +133,8 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<gpu::ShuffleReduceOp> {
     for (int distance = max_distance; distance > 0; distance /= 2) {
       namespace ml = mlir::LLVM;
       auto shuffle_32 = [&](Value v) {
-        return b
-            .create<mlir::gpu::ShuffleOp>(v, distance, warp_size,
-                                          mlir::gpu::ShuffleMode::DOWN)
+        return mlir::gpu::ShuffleOp::create(b, v, distance, warp_size,
+                                            mlir::gpu::ShuffleMode::DOWN)
             .getShuffleResult();
       };
 

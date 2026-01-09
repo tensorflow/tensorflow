@@ -345,16 +345,14 @@ LogicalResult HandleTensorArraySplitV3Op(
   buffer_shape.push_back(count);
   for (int64_t dim : elem_type.getShape()) buffer_shape.push_back(dim);
   // Reshape the input to match the buffer of the tensor array.
-  Value buffer =
-      builder
-          .create<TF::ReshapeOp>(
-              split.getLoc(),
-              ArrayRef<Type>{RankedTensorType::get(buffer_shape,
-                                                   elem_type.getElementType())},
-              ArrayRef<Value>{
-                  split.getValue(),
-                  cutil::GetR1Const(buffer_shape, builder, split.getLoc())})
-          .getOutput();
+  Value buffer = TF::ReshapeOp::create(
+                     builder, split.getLoc(),
+                     ArrayRef<Type>{RankedTensorType::get(
+                         buffer_shape, elem_type.getElementType())},
+                     ArrayRef<Value>{split.getValue(),
+                                     cutil::GetR1Const(buffer_shape, builder,
+                                                       split.getLoc())})
+                     .getOutput();
   // Accumulate with the old buffer.
   auto old_buffer =
       cutil::ReadLocalVariable(local_var, builder, split.getLoc());

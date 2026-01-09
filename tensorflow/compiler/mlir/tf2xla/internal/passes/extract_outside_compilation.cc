@@ -142,7 +142,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  ReturnOp::create(*builder, ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 

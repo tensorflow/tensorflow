@@ -634,13 +634,13 @@ static StatusOr<Operation*> BuildSparseConstOp(
                                                        dense_buffer);
 
   if (tfl::IsQuantized(tensor)) {
-    return builder
-        .create<tfl::SparseQConstOp>(loc, mlir::TypeAttr::get(shaped_type),
-                                     dummy_value, s_param, compressed_data)
+    return tfl::SparseQConstOp::create(builder, loc,
+                                       mlir::TypeAttr::get(shaped_type),
+                                       dummy_value, s_param, compressed_data)
         .getOperation();
   }
-  return builder
-      .create<tfl::SparseConstOp>(loc, dummy_value, s_param, compressed_data)
+  return tfl::SparseConstOp::create(builder, loc, dummy_value, s_param,
+                                    compressed_data)
       .getOperation();
 }
 
@@ -1539,9 +1539,9 @@ StatusOr<FuncOp> ConvertSubgraph(
       if (input_num == -1) {
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
-              op_builder
-                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
-                                                builder.getUnitAttr())
+              mlir::TFL::NoValueOp::create(op_builder, base_loc,
+                                           builder.getNoneType(),
+                                           builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {

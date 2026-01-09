@@ -657,9 +657,8 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
     llvm::SmallVector<Type, 4> new_result_types;
     for (const auto&& [index, arg] : llvm::enumerate(op.getOperands())) {
       if (mlir::isa<mlir::RankedTensorType>(arg.getType())) {
-        new_operands.push_back(rewriter
-                                   .create<mlir::UnrealizedConversionCastOp>(
-                                       op.getLoc(), ptr_ty, arg)
+        new_operands.push_back(mlir::UnrealizedConversionCastOp::create(
+                                   rewriter, op.getLoc(), ptr_ty, arg)
                                    .getResult(0));
       } else {
         new_operands.push_back(arg);
@@ -747,9 +746,9 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
-        rewriter
-            .create<ml::AddrSpaceCastOp>(
-                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
+        ml::AddrSpaceCastOp::create(rewriter, op.getLoc(),
+                                    ml::LLVMPointerType::get(op.getContext()),
+                                    addr)
             .getResult());
     return success();
   }
@@ -782,9 +781,9 @@ struct RewriteNonScalarConstants : OpRewritePattern<mlir::arith::ConstantOp> {
     auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
-        rewriter
-            .create<ml::AddrSpaceCastOp>(
-                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
+        ml::AddrSpaceCastOp::create(rewriter, op.getLoc(),
+                                    ml::LLVMPointerType::get(op.getContext()),
+                                    addr)
             .getResult());
     return success();
   }

@@ -184,7 +184,8 @@ TF::PadOp GetPadOpForConv2DFilter(ArrayRef<int64_t> filter_shape, Value filter,
   auto padding_type =
       RankedTensorType::get({4, 2}, builder->getIntegerType(32));
   auto paddings = DenseIntElementsAttr::get(padding_type, values);
-  auto paddings_value = builder->create<TF::ConstOp>(filter.getLoc(), paddings);
+  auto paddings_value =
+      TF::ConstOp::create(*builder, filter.getLoc(), paddings);
   std::vector<int64_t> pad_shape = {filter_shape[0] + pad_h,
                                     filter_shape[1] + pad_w, filter_shape[2],
                                     filter_shape[3]};
@@ -192,8 +193,8 @@ TF::PadOp GetPadOpForConv2DFilter(ArrayRef<int64_t> filter_shape, Value filter,
 
   auto expand_result_type =
       RankedTensorType::get(expand_shape, getElementTypeOrSelf(filter));
-  return builder->create<TF::PadOp>(filter.getLoc(), expand_result_type, filter,
-                                    paddings_value);
+  return TF::PadOp::create(*builder, filter.getLoc(), expand_result_type,
+                           filter, paddings_value);
 }
 
 // Creates reshape op for space to depth transform.
@@ -205,9 +206,9 @@ TF::ReshapeOp GetReshapeOpForConv2DFilter(ArrayRef<int64_t> new_shape,
       {static_cast<int64_t>(new_shape.size())}, builder->getIntegerType(64));
   auto reshape_sizes = DenseIntElementsAttr::get(reshape_type, new_shape);
   auto reshape_value =
-      builder->create<TF::ConstOp>(input.getLoc(), reshape_sizes);
-  return builder->create<TF::ReshapeOp>(input.getLoc(), reshape_result_type,
-                                        input, reshape_value);
+      TF::ConstOp::create(*builder, input.getLoc(), reshape_sizes);
+  return TF::ReshapeOp::create(*builder, input.getLoc(), reshape_result_type,
+                               input, reshape_value);
 }
 
 // Creates transpose op for shape to depth transform.
@@ -216,8 +217,9 @@ TF::TransposeOp GetTransposeOpForConv2DFilter(OpBuilder* builder, Value input) {
   auto permute_type = RankedTensorType::get({6}, builder->getIntegerType(32));
   auto permute_attr = DenseIntElementsAttr::get(permute_type, permutation);
   auto permute_value =
-      builder->create<TF::ConstOp>(input.getLoc(), permute_attr);
-  return builder->create<TF::TransposeOp>(input.getLoc(), input, permute_value);
+      TF::ConstOp::create(*builder, input.getLoc(), permute_attr);
+  return TF::TransposeOp::create(*builder, input.getLoc(), input,
+                                 permute_value);
 }
 
 void HandleConv2DFilter(TF::Conv2DOp conv2d, int64_t block_size) {
@@ -277,19 +279,19 @@ TF::SliceOp GetSliceOpForConv2DBackPropFilter(
                                      old_filter_shape.end());
   auto slice_result_type =
       RankedTensorType::get(slice_size, getElementTypeOrSelf(input));
-  auto slice_size_op = builder->create<TF::ConstOp>(
-      input.getLoc(),
+  auto slice_size_op = TF::ConstOp::create(
+      *builder, input.getLoc(),
       DenseIntElementsAttr::get(
           RankedTensorType::get({4}, builder->getIntegerType(32)),
           old_filter_shape));
   SmallVector<int64_t, 4> slice_start_position = {0, 0, 0, 0};
   auto start_position_type =
       RankedTensorType::get({4}, builder->getIntegerType(64));
-  auto start_position = builder->create<TF::ConstOp>(
-      input.getLoc(),
+  auto start_position = TF::ConstOp::create(
+      *builder, input.getLoc(),
       DenseIntElementsAttr::get(start_position_type, slice_start_position));
-  return builder->create<TF::SliceOp>(input.getLoc(), slice_result_type, input,
-                                      start_position, slice_size_op);
+  return TF::SliceOp::create(*builder, input.getLoc(), slice_result_type, input,
+                             start_position, slice_size_op);
 }
 
 // Transforms Conv2DBackPropFilter for space to depth.

@@ -2986,7 +2986,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation* input_op,
   auto new_value_i32_attr =
       mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
 
-  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+  return TFL::ConstOp::create(*builder, loc, new_value_i32_attr);
 }
 
 // This will cast down int64 values for TFL slice op.

@@ -113,7 +113,7 @@ Value CreateI32SplatConst(Location loc, PatternRewriter *rewriter,
       tensorflow::GetTypeFromTFTensorShape(shape, rewriter->getIntegerType(32));
   DenseElementsAttr attr =
       DenseElementsAttr::get(type, rewriter->getI32IntegerAttr(val));
-  return rewriter->create<arith::ConstantOp>(loc, type, attr);
+  return arith::ConstantOp::create(*rewriter, loc, type, attr);
 }
 
 Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
@@ -122,14 +122,14 @@ Value CreateI64SplatConst(Location loc, PatternRewriter *rewriter,
       tensorflow::GetTypeFromTFTensorShape(shape, rewriter->getIntegerType(64));
   DenseElementsAttr attr =
       DenseElementsAttr::get(type, rewriter->getI64IntegerAttr(val));
-  return rewriter->create<arith::ConstantOp>(loc, type, attr);
+  return arith::ConstantOp::create(*rewriter, loc, type, attr);
 }
 
 Value CreateI32SplatTensor(Location loc, PatternRewriter *rewriter,
                            Value shape_tensor, int32_t val) {
   Value scalar_val = CreateI32SplatConst(loc, rewriter, {}, val);
-  return rewriter->create<TF::FillOp>(
-      loc,
+  return TF::FillOp::create(
+      *rewriter, loc,
       tensorflow::GetTypeFromTFTensorShape({-1}, rewriter->getIntegerType(32)),
       shape_tensor, scalar_val);
 }
@@ -202,23 +202,23 @@ TF::SliceOp CreateSliceOpForTensorList(Location loc, Value input_list,
   Value scalar_zero = CreateI32SplatConst(loc, rewriter, {}, 0);
   RankedTensorType vector_type =
       tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype);
-  auto expanded_start_index = rewriter->create<TF::ExpandDimsOp>(
-      loc, vector_type, start_index, scalar_zero);
-  auto start_position = rewriter->create<TF::ConcatOp>(
-      loc, position_type, scalar_zero,
+  auto expanded_start_index = TF::ExpandDimsOp::create(
+      *rewriter, loc, vector_type, start_index, scalar_zero);
+  auto start_position = TF::ConcatOp::create(
+      *rewriter, loc, position_type, scalar_zero,
       ArrayRef<Value>({expanded_start_index, partial_start_position}));
 
   // Create the slice size tensor. This is done by concatenating `size` and
   // `partial_size`.
   auto size_leading_dim =
-      rewriter->create<TF::ExpandDimsOp>(loc, vector_type, size, scalar_zero);
+      TF::ExpandDimsOp::create(*rewriter, loc, vector_type, size, scalar_zero);
   Value partial_size = CreateI32SplatTensor(loc, rewriter, item_rank, -1);
-  auto slice_size = rewriter->create<TF::ConcatOp>(
-      loc, position_type, scalar_zero,
-      ArrayRef<Value>({size_leading_dim, partial_size}));
+  auto slice_size =
+      TF::ConcatOp::create(*rewriter, loc, position_type, scalar_zero,
+                           ArrayRef<Value>({size_leading_dim, partial_size}));
 
-  return rewriter->create<TF::SliceOp>(loc, result_type, input_list,
-                                       start_position, slice_size);
+  return TF::SliceOp::create(*rewriter, loc, result_type, input_list,
+                             start_position, slice_size);
 }
 
 template <typename OpT>
@@ -675,9 +675,10 @@ struct ConvertTensorListReserve
                 .begin())
               .getSExtValue());
     }
-    return rewriter->create<TF::ExpandDimsOp>(
-        op.getLoc(), tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype),
-        num_elements, scalar_zero);
+    return TF::ExpandDimsOp::create(
+        *rewriter, op.getLoc(),
+        tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype), num_elements,
+        scalar_zero);
   }
 };
 
@@ -852,24 +853,25 @@ struct ConvertTensorListResize
     Value slice_size = CreateI32SplatConst(loc, rewriter, {1}, -1);
     Value scalar_zero = CreateI32SplatConst(loc, rewriter, {}, 0);
     Value slice_start = CreateI32SplatConst(loc, rewriter, {1}, 1);
-    auto elem_shape = rewriter->create<TF::SliceOp>(
-        loc, tensorflow::GetTypeFromTFTensorShape({-1}, shape_dtype),
+    auto elem_shape = TF::SliceOp::create(
+        *rewriter, loc, tensorflow::GetTypeFromTFTensorShape({-1}, shape_dtype),
         input_shape, slice_start, slice_size);
-    auto extended_part = rewriter->create<TF::TensorListReserveOp>(
-        loc, resize_op.getOutputHandle().getType(), elem_shape, size_diff);
+    auto extended_part = TF::TensorListReserveOp::create(
+        *rewriter, loc, resize_op.getOutputHandle().getType(), elem_shape,
+        size_diff);
     // `ConcatOp` expects non-variant-typed input. Insert a
     // `TensorListStackOp` here to convert type from variant to non-variant.
     // Note that we are using the same `result_type` for both the
     // `TensorListStackOp` and `ConcatOp`, since the first dimension of the
     // shape specified by `result_type` is -1.
-    auto stacked_extended_part = rewriter->create<TF::TensorListStackOp>(
-        loc, result_type, extended_part,
+    auto stacked_extended_part = TF::TensorListStackOp::create(
+        *rewriter, loc, result_type, extended_part,
         /*element_shape=*/CreateI32SplatConst(loc, rewriter, {}, -1),
         /*num_elements=*/rewriter->getI32IntegerAttr(-1));
-    auto concat_op = rewriter->create<TF::ConcatOp>(
-        loc, result_type, scalar_zero,
-        ArrayRef<Value>({input, stacked_extended_part}));
-    rewriter->create<func::ReturnOp>(loc, ArrayRef<Value>({concat_op}));
+    auto concat_op =
+        TF::ConcatOp::create(*rewriter, loc, result_type, scalar_zero,
+                             ArrayRef<Value>({input, stacked_extended_part}));
+    func::ReturnOp::create(*rewriter, loc, ArrayRef<Value>({concat_op}));
   }
 
   void CreateCondFalseBranch(Location loc, Type shape_dtype, Type result_type,
@@ -891,17 +893,18 @@ struct ConvertTensorListResize
 
     // Subtract `input_rank` by 1 to get the item's rank, which is used as
     // `partial_position_shape`.
-    auto input_rank = rewriter->create<TF::RankOp>(
-        loc, tensorflow::GetTypeFromTFTensorShape({}, shape_dtype), input);
-    auto partial_position_shape = rewriter->create<TF::SubOp>(
-        loc, tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype), input_rank,
-        vector_one);
+    auto input_rank = TF::RankOp::create(
+        *rewriter, loc, tensorflow::GetTypeFromTFTensorShape({}, shape_dtype),
+        input);
+    auto partial_position_shape = TF::SubOp::create(
+        *rewriter, loc, tensorflow::GetTypeFromTFTensorShape({1}, shape_dtype),
+        input_rank, vector_one);
     auto slice_op =
         CreateSliceOpForTensorList(loc, /*input_list=*/input,
                                    /*start_index=*/scalar_zero, /*size=*/size,
                                    /*item_rank=*/partial_position_shape,
                                    /*result_type=*/result_type, rewriter);
-    rewriter->create<func::ReturnOp>(loc, ArrayRef<Value>({slice_op}));
+    func::ReturnOp::create(*rewriter, loc, ArrayRef<Value>({slice_op}));
   }
 };
 

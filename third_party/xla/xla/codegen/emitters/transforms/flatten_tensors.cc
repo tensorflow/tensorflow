@@ -119,8 +119,8 @@ bool HasOnlyFlatTensorsFlatVectorsOrScalars(TypeRange types) {
 Value Flatten(Value value, PatternRewriter& rewriter) {
   if (IsScalarOrFlat(value.getType())) return value;
   auto flat_type = GetFlattenedType(value.getType());
-  return rewriter
-      .create<UnrealizedConversionCastOp>(value.getLoc(), flat_type, value)
+  return UnrealizedConversionCastOp::create(rewriter, value.getLoc(), flat_type,
+                                            value)
       .getResult(0);
 }
 
@@ -310,9 +310,8 @@ struct RewriteTensorExtract : OpRewritePattern<ExtractOp> {
     auto loc = op.getLoc();
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
-    auto tensor_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             loc, GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         rewriter, loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<ExtractOp>(op, tensor_1D, linear_index);
     return mlir::success();
@@ -338,9 +337,8 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
     auto loc = op.getLoc();
     auto linear_index =
         LinearizeIndex(loc, tensor_type, op.getIndices(), rewriter);
-    auto tensor_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             loc, GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         rewriter, loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<mv::TransferReadOp>(
         op, vector_type, tensor_1D, linear_index, op.getPadding(),
@@ -362,10 +360,10 @@ struct RewriteVectorExtract : OpRewritePattern<mv::ExtractOp> {
         mv::getAsValues(rewriter, op.getLoc(), op.getMixedPosition());
     auto linear_index =
         LinearizeIndex(op.getLoc(), vector_type, indices, rewriter);
-    auto vector_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             op.getLoc(), GetFlattenedType(vector_type), vector)
-                         .getResult(0);
+    auto vector_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(vector_type), vector)
+            .getResult(0);
     rewriter.replaceOpWithNewOp<mv::ExtractOp>(op, vector_1D, linear_index);
     return mlir::success();
   }
@@ -536,9 +534,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
          llvm::enumerate(new_body->getArguments().drop_front())) {
       if (!args_to_update.test(index)) continue;
       updated_block_args[index + 1] =
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, old_body->getArgument(index + 1).getType(), arg)
+          UnrealizedConversionCastOp::create(
+              rewriter, loc, old_body->getArgument(index + 1).getType(), arg)
               .getResult(0);
     }
 
@@ -552,11 +549,10 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     for (auto&& [index, yielded_value] :
          llvm::enumerate(new_terminator.getResultsMutable())) {
       if (!args_to_update.test(index)) continue;
-      yielded_value.assign(
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, new_init_args[index].getType(), yielded_value.get())
-              .getResult(0));
+      yielded_value.assign(UnrealizedConversionCastOp::create(
+                               rewriter, loc, new_init_args[index].getType(),
+                               yielded_value.get())
+                               .getResult(0));
     }
 
     // Cast back the results.
@@ -564,9 +560,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     SmallVector<Value> new_results(new_for_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       if (!args_to_update.test(index)) continue;
-      result = rewriter
-                   .create<UnrealizedConversionCastOp>(
-                       loc, op->getResult(index).getType(), result)
+      result = UnrealizedConversionCastOp::create(
+                   rewriter, loc, op->getResult(index).getType(), result)
                    .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -727,9 +722,8 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
       if (tensor_type.getRank() < 2) continue;
       results_to_update.set(operand.getOperandNumber());
       new_operands.push_back(
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, GetFlattenedType(tensor_type), operand.get())
+          UnrealizedConversionCastOp::create(
+              rewriter, loc, GetFlattenedType(tensor_type), operand.get())
               .getResult(0));
     }
     auto new_op = gpu::SyncThreadsOp::create(
@@ -761,10 +755,10 @@ struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
       return rewriter.notifyMatchFailure(op, "the tensor is already flat");
     }
 
-    auto tensor_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             op.getLoc(), GetFlattenedType(tensor_type), tensor)
-                         .getResult(0);
+    auto tensor_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(tensor_type), tensor)
+            .getResult(0);
     rewriter.replaceOpWithNewOp<GetDynamicDimSizeOp>(op, tensor_1D,
                                                      op.getDim());
 

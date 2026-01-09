@@ -155,9 +155,8 @@ Value GetShape(Value input, Location loc, PatternRewriter& rewriter) {
 
   // If the shape is not static, create a new ShapeOp.
   BoolAttr false_attr = rewriter.getBoolAttr(false);
-  return rewriter
-      .create<TF::ShapeOp>(loc, input,
-                           /*use_32bit=*/false_attr)
+  return TF::ShapeOp::create(rewriter, loc, input,
+                             /*use_32bit=*/false_attr)
       .getOutput();
 }
 
@@ -795,26 +794,23 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
     Value lhs_shape = GetShape(lhs, op->getLoc(), rewriter);
     Value rhs_shape = GetShape(rhs, op->getLoc(), rewriter);
     auto broadcast_shape =
-        rewriter
-            .create<TF::BroadcastArgsOp>(
-                op->getLoc(),
-                RankedTensorType::get(symbolic_broadcast_shape.size(),
-                                      rewriter.getIntegerType(64)),
-                lhs_shape, rhs_shape)
+        TF::BroadcastArgsOp::create(
+            rewriter, op->getLoc(),
+            RankedTensorType::get(symbolic_broadcast_shape.size(),
+                                  rewriter.getIntegerType(64)),
+            lhs_shape, rhs_shape)
             .getR0();
 
     // Broadcasts inputs using BroadcastTo op.
     auto broadcast_type = RankedTensorType::get(
         symbolic_broadcast_shape, getElementTypeOrSelf(lhs.getType()));
     auto broadcasted_lhs =
-        rewriter
-            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
-                                       broadcast_shape)
+        TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type, lhs,
+                                  broadcast_shape)
             .getOutput();
     auto broadcasted_rhs =
-        rewriter
-            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
-                                       broadcast_shape)
+        TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type, rhs,
+                                  broadcast_shape)
             .getOutput();
 
     // Recreate an op with the above BroadcastTo op results.
@@ -865,15 +861,13 @@ class ApplyExplicitBroadcasting : public OpRewritePattern<SourceOp> {
         result_shape, getElementTypeOrSelf(lhs.getType()));
 
     if (result_type.getShape() != lhs_shape) {
-      lhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
-                                           new_shape)
+      lhs = TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type,
+                                      lhs, new_shape)
                 .getOutput();
     }
     if (result_type.getShape() != rhs_shape) {
-      rhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
-                                           new_shape)
+      rhs = TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type,
+                                      rhs, new_shape)
                 .getOutput();
     }
 
@@ -926,36 +920,31 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
     Value lhs_shape = GetShape(lhs, op->getLoc(), rewriter);
     Value rhs_shape = GetShape(rhs, op->getLoc(), rewriter);
     auto broadcast_shape_value =
-        rewriter
-            .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
-                                         lhs_shape, rhs_shape)
+        TF::BroadcastArgsOp::create(rewriter, op->getLoc(), lhs_shape.getType(),
+                                    lhs_shape, rhs_shape)
             .getR0();
     broadcast_shape_value =
-        rewriter
-            .create<TF::BroadcastArgsOp>(op->getLoc(), lhs_shape.getType(),
-                                         broadcast_shape_value, cond_shape)
+        TF::BroadcastArgsOp::create(rewriter, op->getLoc(), lhs_shape.getType(),
+                                    broadcast_shape_value, cond_shape)
             .getR0();
 
     // Broadcasting inputs using BroadcastTo op.
     auto broadcast_type = RankedTensorType::get(
         symbolic_broadcast_shape, getElementTypeOrSelf(out.getType()));
     auto broadcasted_cond =
-        rewriter
-            .create<TF::BroadcastToOp>(
-                op->getLoc(),
-                RankedTensorType::get(symbolic_broadcast_shape,
-                                      rewriter.getIntegerType(1)),
-                cond, broadcast_shape_value)
+        TF::BroadcastToOp::create(
+            rewriter, op->getLoc(),
+            RankedTensorType::get(symbolic_broadcast_shape,
+                                  rewriter.getIntegerType(1)),
+            cond, broadcast_shape_value)
             .getOutput();
     auto broadcasted_lhs =
-        rewriter
-            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, lhs,
-                                       broadcast_shape_value)
+        TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type, lhs,
+                                  broadcast_shape_value)
             .getOutput();
     auto broadcasted_rhs =
-        rewriter
-            .create<TF::BroadcastToOp>(op->getLoc(), broadcast_type, rhs,
-                                       broadcast_shape_value)
+        TF::BroadcastToOp::create(rewriter, op->getLoc(), broadcast_type, rhs,
+                                  broadcast_shape_value)
             .getOutput();
 
     // Recreate an op with the above BroadcastTo op results.
@@ -1014,21 +1003,18 @@ class ApplyExplicitBroadcasting<TF::SelectV2Op>
         result_shape, getElementTypeOrSelf(lhs.getType()));
 
     if (result_shape != cond_shape) {
-      cond = rewriter
-                 .create<TF::BroadcastToOp>(op->getLoc(), cond_result_type,
-                                            cond, new_shape)
+      cond = TF::BroadcastToOp::create(rewriter, op->getLoc(), cond_result_type,
+                                       cond, new_shape)
                  .getOutput();
     }
     if (result_shape != lhs_shape) {
-      lhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), result_type, lhs,
-                                           new_shape)
+      lhs = TF::BroadcastToOp::create(rewriter, op->getLoc(), result_type, lhs,
+                                      new_shape)
                 .getOutput();
     }
     if (result_shape != rhs_shape) {
-      rhs = rewriter
-                .create<TF::BroadcastToOp>(op->getLoc(), result_type, rhs,
-                                           new_shape)
+      rhs = TF::BroadcastToOp::create(rewriter, op->getLoc(), result_type, rhs,
+                                      new_shape)
                 .getOutput();
     }
 

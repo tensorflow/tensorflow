@@ -294,8 +294,8 @@ llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
 
   // Create the state variable for each device.
   for (llvm::StringRef device : device_list) {
-    state_vars.push_back(builder->create<TF::VarHandleOp>(
-        loc,
+    state_vars.push_back(TF::VarHandleOp::create(
+        *builder, loc,
         llvm::ArrayRef<Type>{RankedTensorType::get(
             {}, TF::ResourceType::get(llvm::ArrayRef<TensorType>{key_type},
                                       builder->getContext()))},
@@ -315,12 +315,12 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
                     llvm::StringRef device) {
   OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
 
-  auto launch = builder->create<tf_device::LaunchOp>(
-      loc, builder->getStringAttr(device), op->getResultTypes());
+  auto launch = tf_device::LaunchOp::create(
+      *builder, loc, builder->getStringAttr(device), op->getResultTypes());
   launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
-  builder->create<tf_device::ReturnOp>(loc, op->getResults());
+  tf_device::ReturnOp::create(*builder, loc, op->getResults());
 
   // Move op inside launch.
   op->moveBefore(launch.GetBody().getTerminator());

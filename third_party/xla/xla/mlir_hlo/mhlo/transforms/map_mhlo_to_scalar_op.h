@@ -337,11 +337,11 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(
     // lmhlo.abs(x, result) ->  result = select((x > 0), x, sub(0, x))
     Value lhs = adaptor.getOperand();
     Value zeroIntval =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
-    auto lhsGtZero = b->create<ScalarIOp<CompareOp>>(
-        loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
-    auto negVal = b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
-    return b->create<::mlir::arith::SelectOp>(loc, lhsGtZero, lhs, negVal);
+        arith::ConstantOp::create(*b, loc, b->getZeroAttr(lhs.getType()));
+    auto lhsGtZero = ScalarIOp<CompareOp>::create(
+        *b, loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
+    auto negVal = ScalarIOp<mhlo::SubtractOp>::create(*b, loc, zeroIntval, lhs);
+    return ::mlir::arith::SelectOp::create(*b, loc, lhsGtZero, lhs, negVal);
   }
   return nullptr;
 }
@@ -449,8 +449,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
     std::optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparisonDirection, !isUnsigned);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
-                                                 rhs);
+    return ScalarIOp<mhlo::CompareOp>::create(*b, loc, predicate.value(), lhs,
+                                              rhs);
   }
   if (auto floatType = mlir::dyn_cast<FloatType>(elementType)) {
     if (adaptor.getCompareType() &&
@@ -493,8 +493,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarFOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
-                                                 rhs);
+    return ScalarFOp<mhlo::CompareOp>::create(*b, loc, predicate.value(), lhs,
+                                              rhs);
   }
   if (auto complexType = mlir::dyn_cast<ComplexType>(elementType))
     return cmpComplex(loc, lhs, rhs, comparisonDirection, b);
@@ -860,7 +860,7 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
       assert(predicate.has_value() && "expected valid comparison direction");
       auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
                                                   args[0], args[1]);
-      return b->create<::mlir::arith::SelectOp>(loc, cmp, args[0], args[1]);
+      return ::mlir::arith::SelectOp::create(*b, loc, cmp, args[0], args[1]);
     }
     return CompareSelectOpToStdScalarOp<Args...>::map(
         loc, comparisonDirection, resultTypes, argTypes, args, b);
@@ -1005,7 +1005,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NegOp>(
     Value lhs = adaptor.getOperand();
     Value zeroIntval =
         arith::ConstantOp::create(*b, loc, b->getZeroAttr(lhs.getType()));
-    return b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
+    return ScalarIOp<mhlo::SubtractOp>::create(*b, loc, zeroIntval, lhs);
   }
   return nullptr;
 }
