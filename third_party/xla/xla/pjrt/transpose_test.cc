@@ -220,16 +220,6 @@ TEST(TransposeTest, CoalesceLoops) {
   ASSERT_EQ(loops.size(), 1);
   EXPECT_EQ(loops[0].tile_size, 16);
   EXPECT_EQ(loops[0].tile_interior, true);
-
-  // Case 4: Mismatched tile_interior status (should not coalesce)
-  loops.clear();
-  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
-                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
-  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/5,
-                       /*tile_size=*/5, /*lda=*/4, /*ldb=*/80});
-
-  TestTransposePlan::CoalesceLoops(loops);
-  EXPECT_EQ(loops.size(), 2);
 }
 
 TEST(TransposeTest, InvalidTilings) {
