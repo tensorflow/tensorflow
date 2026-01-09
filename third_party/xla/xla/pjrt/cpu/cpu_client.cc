@@ -1805,7 +1805,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           execute_event.AndThen([execute_event = execute_event.CopyRef(),
                                  promise = std::move(promise)]() mutable {
             if (auto* error = execute_event.GetErrorIfPresent()) {
-              promise.Set(Internal("Compute error: %s", error->message()));
+              promise.Set(*error);
             } else {
               promise.Set();
             }
