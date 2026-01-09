@@ -1085,7 +1085,7 @@ absl::StatusOr<TensorValue> EmitPad(
     TensorValue threshold_splat = xtile::Splat(b, threshold, padded_tile_sizes);
     Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
                                       threshold_splat);
-    mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
+    mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
     return values[tiled_operand];

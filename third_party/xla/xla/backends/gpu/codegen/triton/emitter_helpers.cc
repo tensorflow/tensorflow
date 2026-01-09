@@ -193,14 +193,24 @@ absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
       return b.getBF16Type();
     case S64:
       return b.getI64Type();
+    case U64:
+      return b.getIntegerType(/*width=*/64, /*isSigned=*/false);
     case S32:
       return b.getI32Type();
+    case U32:
+      return b.getIntegerType(/*width=*/32, /*isSigned=*/false);
     case S16:
       return b.getI16Type();
+    case U16:
+      return b.getIntegerType(/*width=*/16, /*isSigned=*/false);
     case S8:
       return b.getI8Type();
+    case U8:
+      return b.getIntegerType(/*width=*/8, /*isSigned=*/false);
     case S4:
       return b.getI4Type();
+    case U4:
+      return b.getIntegerType(/*width=*/4, /*isSigned=*/false);
     case PRED:
       return b.getI1Type();
     case F8E5M2:
@@ -224,11 +234,11 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isF32()) return F32;
   if (t.isF16()) return F16;
   if (t.isBF16()) return BF16;
-  if (t.isInteger(64)) return S64;
-  if (t.isInteger(32)) return S32;
-  if (t.isInteger(16)) return S16;
-  if (t.isInteger(8)) return S8;
-  if (t.isInteger(4)) return S4;
+  if (t.isInteger(64)) return t.isSignedInteger() ? S64 : U64;
+  if (t.isInteger(32)) return t.isSignedInteger() ? S32 : U32;
+  if (t.isInteger(16)) return t.isSignedInteger() ? S16 : U16;
+  if (t.isInteger(8)) return t.isSignedInteger() ? S8 : U8;
+  if (t.isInteger(4)) return t.isSignedInteger() ? S4 : U4;
   if (t.isInteger(1)) return PRED;
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
@@ -366,10 +376,7 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
 }
 
 Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
-  if (mlir::isa<mlir::IntegerType>(mlir::getElementTypeOrSelf(values[0]))) {
-    return ma::SubIOp::create(b, values[0], values[1]);
-  }
-  return ma::SubFOp::create(b, values[0], values[1]);
+  return mlir::stablehlo::SubtractOp::create(b, values[0], values[1]);
 }
 
 Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
@@ -393,28 +400,22 @@ Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
 
 Value Maximum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
-  if (mlir::isa<mlir::FloatType>(type)) {
-    return ma::MaximumFOp::create(b, values);
-  }
 
   if (type.isInteger(1)) {
     return ma::OrIOp::create(b, values);
   }
 
-  return ma::MaxSIOp::create(b, values);
+  return mlir::stablehlo::MaxOp::create(b, values);
 }
 
 Value Minimum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
   auto type = mlir::getElementTypeOrSelf(values[0]);
-  if (mlir::isa<mlir::FloatType>(type)) {
-    return ma::MinimumFOp::create(b, values);
-  }
 
   if (type.isInteger(1)) {
     return ma::AndIOp::create(b, values);
   }
 
-  return ma::MinSIOp::create(b, values);
+  return mlir::stablehlo::MinOp::create(b, values);
 }
 
 absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
@@ -437,7 +438,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kFloor:
       return mm::FloorOp::create(b, inputs[0]);
     case HloOpcode::kNot:
-      return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0].getType()));
+      return mlir::stablehlo::XorOp::create(b, inputs[0],
+                                            OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
       if (is_integer) {
         return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
@@ -455,16 +457,12 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
         if (getElementTypeOrSelf(inputs[0]).isInteger(1)) {
           return ma::OrIOp::create(b, inputs[0], inputs[1]);
         }
-        return ma::AddIOp::create(b, inputs[0], inputs[1]);
       }
-      return ma::AddFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::AddOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kSubtract:
       return Subtract(b, inputs);
     case HloOpcode::kMultiply:
-      if (is_integer) {
-        return ma::MulIOp::create(b, inputs[0], inputs[1]);
-      }
-      return ma::MulFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::MulOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kMaximum:
       return Maximum(b, inputs);
     case HloOpcode::kMinimum:
@@ -472,21 +470,13 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kClamp:
       return Minimum(b, {Maximum(b, {inputs[0], inputs[1]}), inputs[2]});
     case HloOpcode::kAnd:
-      return ma::AndIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::AndOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kOr:
-      return ma::OrIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::OrOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kXor:
-      return ma::XOrIOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::XorOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kDivide:
-      if (is_integer) {
-        // Unsigned not supported yet.
-        auto div = ma::DivSIOp::create(b, inputs[0], inputs[1]);
-        // Attr signifies that this op should be re-written to guard against
-        // undefined behavior.
-        div->setAttr("xla.guard_ub", b.getUnitAttr());
-        return div;
-      }
-      return ma::DivFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::DivOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kCompare:
       return Compare(
           b, inputs,
@@ -534,14 +524,7 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       }
       return mm::PowFOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRemainder:
-      if (is_integer) {
-        auto rem = ma::RemSIOp::create(b, inputs[0], inputs[1]);
-        // Attr signifies that this op should be re-written to guard against
-        // undefined behavior.
-        rem->setAttr("xla.guard_ub", b.getUnitAttr());
-        return rem;
-      }
-      return ma::RemFOp::create(b, inputs[0], inputs[1]);
+      return mlir::stablehlo::RemOp::create(b, inputs[0], inputs[1]);
     case HloOpcode::kRsqrt:
       return mm::RsqrtOp::create(b, inputs[0]);
     case HloOpcode::kSin:

@@ -218,11 +218,7 @@ ENTRY e {
       R"(
 CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 CHECK: %[[MASKED_INPUT:.*]] = xtile.mask {{.*}}
-CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
-CHECK: reducer(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>)  {
-CHECK:   %[[SUM:.*]] = arith.addf %[[ARG_0]], %[[ARG_1]] : tensor<f32>
-CHECK:   stablehlo.return %[[SUM]] : tensor<f32>
-CHECK: }
+CHECK: %[[RES:.*]] = stablehlo.reduce(%[[MASKED_INPUT]] init: %[[INIT]]) applies stablehlo.add across dimensions = [0] : (tensor<256x16xf32>, tensor<f32>) -> tensor<16xf32>
 )"));
 }
 
@@ -467,7 +463,36 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
       block_level_parameters,
       R"(
 CHECK: stablehlo.all_reduce
-CHECK: arith.addf
+CHECK: stablehlo.add
+)"));
+}
+
+TEST_F(XTileDialectTest, HloUnsignedIntIsLoweredToStableHloUnsignedInt) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t, is_scheduled=true
+
+add_fusion {
+  p0 = u32[150] parameter(0)
+  ROOT add = u32[150] add(p0, p0)
+}
+
+ENTRY e {
+  p0 = u32[150] parameter(0)
+  ROOT custom-call = u32[150] fusion(p0), kind=kCustom,
+    calls=add_fusion,
+    backend_config={"fusion_backend_config": {kind: "__triton"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  BlockLevelParameters block_level_parameters;
+  block_level_parameters.output_tile_sizes = {{16}};
+
+  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+      this, *module->GetComputationWithName("add_fusion"),
+      block_level_parameters,
+      R"(
+CHECK: stablehlo.add{{.*}}: tensor<16xui32>
 )"));
 }
 
