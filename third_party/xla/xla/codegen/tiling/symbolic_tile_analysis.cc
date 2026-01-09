@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_fusion_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiled_hlo_region_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -1191,29 +1192,22 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
 
 }  // namespace
 
-/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusionImpl(
+// TODO(goncharov): why it need to be a static member instead of a free
+// function?
+/* static */ std::variant<
+    std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>, FusionDecision>
+SymbolicTileAnalysis::AnalyzeSubgraph(
+    std::unique_ptr<SymbolicTiledHloInstruction> start_instruction,
     const HloFusionAdaptor& fusion,
     const TilingSpecification::ParameterMapping& parameter_mapping,
-    MLIRContext* mlir_context, const RootIndexing& root_indexing,
+    MLIRContext* mlir_context,
     IndexingMap::SimplifyPointDimensions simplification_mode,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
-    std::vector<SymbolicTiledHloInstruction*> root_runtime_variables) {
+    ConstraintExpression& constraints) {
   UnsafeSymbolicTiledHloInstructionOrderedSet tiled_hlo_instructions_set;
-
-  // TODO(b/372454662): Once we get rid of the restriction of only one real
-  // root, this needs to be adapted.
-  auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
-      std::make_unique<SymbolicTiledHloInstruction>(
-          root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
-          std::move(root_runtime_variables)));
-  if (root_tiled_hlo->hlo()->opcode() == HloOpcode::kFusion) {
-    // This is an acceptable restriction because we expect the user of a nested
-    // fusion to be a dot or concatenate, which prevents it from being a root.
-    return FusionDecision::Forbid("Root fusion instruction is not supported.");
-  }
-
+  auto [root_tiled_hlo, _] =
+      tiled_hlo_instructions_set.Insert(std::move(start_instruction));
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
-  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
 
   while (!worklist.empty()) {
     SymbolicTiledHloInstruction* tiled_hlo_instruction = worklist.back();
@@ -1266,7 +1260,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
             emitter_specific_constraints_builder,
             composed_indexing.rt_operands);
         if (std::holds_alternative<FusionDecision>(analysis_or)) {
-          return analysis_or;
+          return std::get<FusionDecision>(std::move(analysis_or));
         }
         SymbolicTileAnalysis analysis =
             std::get<SymbolicTileAnalysis>(std::move(analysis_or));
@@ -1296,9 +1290,42 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
 
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
-
   // Order instructions in def-before-use order.
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
+  return tiled_hlo_instructions;
+}
+
+/*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusionImpl(
+    const HloFusionAdaptor& fusion,
+    const TilingSpecification::ParameterMapping& parameter_mapping,
+    MLIRContext* mlir_context, const RootIndexing& root_indexing,
+    IndexingMap::SimplifyPointDimensions simplification_mode,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+    std::vector<SymbolicTiledHloInstruction*> root_runtime_variables) {
+  if (root_indexing.GetRealRoot()->opcode() == HloOpcode::kFusion) {
+    // This is an acceptable restriction because we expect the user of a nested
+    // fusion to be a dot or concatenate, which prevents it from being a root.
+    return FusionDecision::Forbid("Root fusion instruction is not supported.");
+  }
+
+  // TODO(b/372454662): Once we get rid of the restriction of only one real
+  // root, this needs to be adapted.
+
+  auto root_tiled_hlo = std::make_unique<SymbolicTiledHloInstruction>(
+      root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
+      std::move(root_runtime_variables));
+
+  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
+  auto tiled_hlo_instructions_or = AnalyzeSubgraph(
+      std::move(root_tiled_hlo), fusion, parameter_mapping, mlir_context,
+      simplification_mode, emitter_specific_constraints_builder, constraints);
+  if (std::holds_alternative<FusionDecision>(tiled_hlo_instructions_or)) {
+    return std::get<FusionDecision>(std::move(tiled_hlo_instructions_or));
+  }
+
+  auto tiled_hlo_instructions =
+      std::get<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>(
+          std::move(tiled_hlo_instructions_or));
 
   // Set symbolic tiles for each tiled hlo instruction and compute combined
   // constraints.

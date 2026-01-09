@@ -214,6 +214,10 @@ HloInstruction* FindInstruction(const HloComputation* computation,
 HloInstruction* FindInstruction(const HloComputation* computation,
                                 HloOpcode opcode);
 
+// Returns true if the instruction is a fusion consisting of a single copy which
+// changes tiling. This is handled by the emitters and effectively are no-ops.
+bool IsChangeTilingCopyFusion(const HloInstruction* instr);
+
 }  // namespace hlo_query
 }  // namespace xla
 

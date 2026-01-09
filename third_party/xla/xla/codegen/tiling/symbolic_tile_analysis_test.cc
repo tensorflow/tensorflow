@@ -2665,5 +2665,120 @@ ENTRY main {
   ASSERT_TRUE(analysis.has_value());
 }
 
+class SymbolicTileAnalysisRegionsTest : public SymbolicTileAnalysisTest {};
+
+TEST_F(SymbolicTileAnalysisRegionsTest, TileNestedDotFusions) {
+  // Tile a dot of [8192,256] x [256,512] = [8192,512].
+  // [M, K] * [K, N] = [M, N].
+  // M is tiled to 128, K: 8, N: 32.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+dot {
+  p0 = bf16[8192,256]{1,0} parameter(0)
+  lhs = bf16[8192,256]{1,0} negate(p0)
+  rhs = bf16[256,512]{1,0} parameter(1)
+
+  ROOT dot = bf16[8192,512]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["8"]}
+}
+
+ENTRY main {
+  main.p0 = bf16[8192,256]{1,0} parameter(0)
+  main.p1 = bf16[256,512]{1,0} parameter(1)
+  ROOT fusion = bf16[8192,512]{1,0} fusion(main.p0, main.p1),
+    kind=kCustom, calls=dot,
+    backend_config={"fusion_backend_config":{
+        "kind":"__triton_nested_gemm",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128","32"]}]}}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const HloInstruction* dot_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  Tiling dot_tiling = Tiling(Tiling::TileMapping({{dot_hlo, {8, 128, 32}}}));
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tiling=*/dot_tiling, default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots().front();
+  EXPECT_EQ(dot->hlo(), dot_hlo);
+}
+
+TEST_F(SymbolicTileAnalysisRegionsTest,
+       DotOperandsUseContractingDimensionFromDotConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+dot {
+  p0 = f32[10,20] parameter(0)
+  lhs = f32[10,20] negate(p0)
+  p1 = f32[20,30] parameter(1)
+
+  ROOT dot = f32[10,30] dot(lhs, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["8"]}
+}
+
+ENTRY main {
+  p0 = f32[10,20] parameter(0)
+  p1 = f32[20,30] parameter(1)
+  ROOT fusion = f32[10,30] fusion(p0, p1), kind=kCustom, calls=dot,
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm","block_level_fusion_config":{"output_tiles":[{"sizes":["8","16"]}]}}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const auto& symbolic_computation = analysis->GetSymbolicTiledHloComputation();
+  const SymbolicTiledHloInstruction* symbolic_dot = nullptr;
+  for (const auto& instr : symbolic_computation) {
+    if (instr->hlo()->opcode() == HloOpcode::kDot) {
+      symbolic_dot = instr.get();
+      break;
+    }
+  }
+  ASSERT_NE(symbolic_dot, nullptr);
+
+  EXPECT_THAT(symbolic_dot->indexing_map(), MatchIndexingMap(R"(
+    (d0, d1, d2) -> (d1, d2),
+    domain:
+    d0 in [0, 19],
+    d1 in [0, 9],
+    d2 in [0, 29]
+  )"));
+
+  const SymbolicTiledHloInstruction* lhs = symbolic_dot->operands()[0];
+  EXPECT_EQ(lhs->hlo()->opcode(), HloOpcode::kNegate);
+
+  // (K, M, N) -> (M, K)
+  // d0 in [0, 19], d1 in [0, 9], d2 in [0, 29]
+  EXPECT_THAT(lhs->indexing_map(), MatchIndexingMap(R"(
+    (d0, d1, d2) -> (d1, d0),
+    domain:
+    d0 in [0, 19],
+    d1 in [0, 9],
+    d2 in [0, 29]
+  )"));
+
+  const SymbolicTiledHloInstruction* rhs = symbolic_dot->operands()[1];
+  // (K, M, N) -> (K, N)
+  EXPECT_THAT(rhs->indexing_map(), MatchIndexingMap(R"(
+    (d0, d1, d2) -> (d0, d2),
+    domain:
+    d0 in [0, 19],
+    d1 in [0, 9],
+    d2 in [0, 29]
+  )"));
+}
+
 }  // namespace
 }  // namespace xla

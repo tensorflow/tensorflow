@@ -249,6 +249,17 @@ class SymbolicTileAnalysis {
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
       std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
 
+  static std::variant<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>,
+                      FusionDecision>
+  AnalyzeSubgraph(
+      std::unique_ptr<SymbolicTiledHloInstruction> root_instruction,
+      const HloFusionAdaptor& fusion,
+      const TilingSpecification::ParameterMapping& parameter_mapping,
+      mlir::MLIRContext* mlir_context,
+      IndexingMap::SimplifyPointDimensions simplification_mode,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+      ConstraintExpression& constraints);
+
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       symbolic_tiled_hlo_instructions_;
