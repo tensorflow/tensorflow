@@ -337,6 +337,37 @@ HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
   return next;
 }
 
+void HloAsyncInstruction::UpdateAsyncChain() {
+  auto update_chain = [this]() {
+    if (this->users().size() == 1) {
+      // If this instruction has more than one user, assuming async_chain_next_
+      // is already pointing to the correct user and the other users are
+      // transient.
+      CHECK(this->users()[0]->opcode() == HloOpcode::kAsyncUpdate ||
+            this->users()[0]->opcode() == HloOpcode::kAsyncDone);
+      Cast<HloAsyncInstruction>(this)->async_chain_next_ =
+          Cast<HloAsyncInstruction>(this->users()[0]);
+    }
+  };
+  auto update_operand_chain = [this]() {
+    CHECK_EQ(this->operand_count(), 1);
+    CHECK(this->operand(0)->opcode() == HloOpcode::kAsyncStart ||
+          this->operand(0)->opcode() == HloOpcode::kAsyncUpdate);
+    Cast<HloAsyncInstruction>(this->mutable_operand(0))->async_chain_next_ =
+        this;
+  };
+  if (this->opcode() == HloOpcode::kAsyncStart) {
+    update_chain();
+  }
+  if (this->opcode() == HloOpcode::kAsyncUpdate) {
+    update_operand_chain();
+    update_chain();
+  }
+  if (this->opcode() == HloOpcode::kAsyncDone) {
+    update_operand_chain();
+  }
+}
+
 std::vector<HloAsyncInstruction*> HloAsyncInstruction::GetAsyncChain() const {
   std::vector<HloAsyncInstruction*> chain;
   HloAsyncInstruction* current = async_chain_start();

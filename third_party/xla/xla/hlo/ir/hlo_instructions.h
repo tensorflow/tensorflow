@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
@@ -294,6 +295,8 @@ class HloAsyncInstruction : public HloInstruction {
   bool HasSideEffect() const override {
     return async_wrapped_instruction()->HasSideEffect();
   }
+
+  void UpdateAsyncChain();
 
  protected:
   // Helper to constructs async-{start,update,done}.
