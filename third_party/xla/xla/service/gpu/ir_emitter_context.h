@@ -176,6 +176,7 @@ class IrEmitterContext {
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;
 
+ public:
   // Generates unique IDs for thunk creation.
   ThunkIdGenerator thunk_id_generator_;
 };

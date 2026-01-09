@@ -39,6 +39,7 @@ namespace xla {
 namespace gpu {
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
+  absl::MutexLock lock(m_);
   for (const auto& [name, entry] : proto.entries()) {
     std::optional<se::ClusterDim> cluster_dim;
     if (entry.has_cluster_dim()) {
@@ -62,6 +63,7 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
 }
 
 CompilationCacheProto KernelReuseCache::Export() const {
+  absl::MutexLock lock(m_);
   CompilationCacheProto proto;
   for (const auto& [fingerprint, cache_entry] : cache_) {
     if (!hits_.contains(fingerprint)) {
@@ -145,15 +147,19 @@ std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     std::string fingerprint,
     const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
-  hits_.insert(fingerprint);
-  auto it = cache_.find(fingerprint);
-  if (it != cache_.end()) {
-    return {&it->second, /*was_cached=*/true};
+  {
+    absl::MutexLock lock(m_);
+    hits_.insert(fingerprint);
+    auto it = cache_.find(fingerprint);
+    if (it != cache_.end()) {
+      return {&it->second, /*was_cached=*/true};
+    }
   }
 
   absl::StatusOr<Entry> entry = generator();
   if (entry.ok()) {
-    it =
+    absl::MutexLock lock(m_);
+    auto it =
         cache_.insert({std::move(fingerprint), std::move(entry.value())}).first;
     return {&it->second, /*was_cached=*/false};
   }
