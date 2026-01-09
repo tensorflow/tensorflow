@@ -20,7 +20,6 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_SHARDING_H_
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -562,7 +561,7 @@ class HloSharding {
       return (it - subgroup_types_.begin()) + TiledDataRank();
     }
     if (replicate_on_last_tile_dim_) {
-      return tile_assignment_.num_dimensions() - 1;
+      return num_dimensions() - 1;
     }
     return -1;
   }
@@ -589,7 +588,7 @@ class HloSharding {
   // This method is not defined for tuple shardings.
   int64_t TiledDataRank() const {
     CHECK(IsTiledLeaf());
-    int64_t rank = tile_assignment_.num_dimensions();
+    int64_t rank = num_dimensions();
     if (ReplicateOnLastTileDim()) {
       rank--;
     }
