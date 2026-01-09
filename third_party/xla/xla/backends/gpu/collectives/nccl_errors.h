@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // Collection of helper macros for handling NCCL errors.
