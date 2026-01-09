@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -40,6 +39,14 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+
+// Include NCCL after XLA headers.
+#include "third_party/nccl/nccl.h"
+
+#if NCCL_VERSION_CODE >= 22800
+// Device initiated collective operations were added in NCCL 2.28.0.
+#include "third_party/nccl/nccl_device.h"
+#endif  // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
@@ -71,6 +78,18 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status Abort() final;
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
+
+  PlatformCommunicatorHandle platform_comm() const final {
+    return PlatformCommunicatorHandle{comm_};
+  }
+
+  bool SupportsDeviceComm() const final;
+
+  absl::StatusOr<std::unique_ptr<DeviceComm>> CreateDeviceComm(
+      const DeviceCommRequirements& requirements) final;
+
+  absl::StatusOr<std::unique_ptr<SymmetricMemory>> CreateSymmetricMemory(
+      se::DeviceAddressBase addr) final;
 
   // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
   // get the base address of buffer. We will use the base address to keep track
@@ -129,8 +148,7 @@ class NcclCommunicator : public GpuCommunicator {
 
   class NcclRegisteredBufferHandle;
 
-  explicit NcclCommunicator(ncclComm_t comm,
-                            std::unique_ptr<tsl::Executor> executor)
+  NcclCommunicator(ncclComm_t comm, std::unique_ptr<tsl::Executor> executor)
       : comm_(comm), executor_(std::move(executor)) {
     VLOG(1) << "Created " << *this;
   }
@@ -241,6 +259,36 @@ class NcclCommunicator : public GpuCommunicator {
   };
   RegisteredBuffers registered_buffers_;
 };
+
+//===----------------------------------------------------------------------===//
+// NCCL device communicator
+//===----------------------------------------------------------------------===//
+
+#if NCCL_VERSION_CODE >= 22800
+
+// A device-side NCCL communicator.
+class NcclDeviceComm : public NcclCommunicator::DeviceComm {
+ public:
+  ~NcclDeviceComm() override;
+
+  // Creates a new instance of a NCCL device communicator from the given host
+  // communicator object.A
+  static absl::StatusOr<std::unique_ptr<NcclDeviceComm>> CreateFrom(
+      const NcclCommunicator& comm,
+      const NcclCommunicator::DeviceCommRequirements& requirements);
+
+  NcclCommunicator::PlatformCommunicatorHandle platform_comm() const final;
+
+  std::string ToString() const final;
+
+ private:
+  explicit NcclDeviceComm(ncclDevComm dev_comm);
+
+  const NcclCommunicator* comm_;
+  ncclDevComm dev_comm_;
+};
+
+#endif  // NCCL_VERSION_CODE >= 22800
 
 }  // namespace xla::gpu
 
