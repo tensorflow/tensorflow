@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "utils/codegen_utils.h"
 
+#include <cassert>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
