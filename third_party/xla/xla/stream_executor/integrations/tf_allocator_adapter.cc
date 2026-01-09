@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/layout.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -35,18 +35,18 @@ limitations under the License.
 
 namespace stream_executor {
 
-TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream)
-    : DeviceMemoryAllocator(CHECK_NOTNULL(stream)->parent()->GetPlatform()),
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped, Stream* stream)
+    : DeviceAddressAllocator(CHECK_NOTNULL(stream)->parent()->GetPlatform()),
       wrapped_(wrapped),
       stream_(stream) {}
 
-TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
-                                       const Platform *platform)
-    : DeviceMemoryAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
+TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator* wrapped,
+                                       const Platform* platform)
+    : DeviceAddressAllocator(platform), wrapped_(wrapped), stream_(nullptr) {}
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
-absl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
+absl::StatusOr<ScopedDeviceAddress<uint8_t>> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   tsl::AllocationAttributes attrs;
@@ -60,11 +60,12 @@ absl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
           size, memory_space == xla::Layout::kHostMemorySpace);
     }
   }
-  return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
+  return ScopedDeviceAddress<uint8_t>(DeviceAddressBase(data, size),
+                                      device_ordinal, this);
 }
 
 absl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                            DeviceMemoryBase mem) {
+                                            DeviceAddressBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return absl::OkStatus();
 }

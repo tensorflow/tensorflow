@@ -29,8 +29,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/global_device_id.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -105,6 +106,12 @@ class HostSendThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(buffer_, shape_),
+    };
+  }
+
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
@@ -170,6 +177,12 @@ class HostRecvThunk : public Thunk {
                 std::optional<GlobalDeviceId> device_constraint);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Write(buffer_, shape_),
+    };
+  }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

@@ -76,13 +76,14 @@ class DeviceDescription final : public xla::PjRtDeviceDescription {
 
 class Device final : public llvm::RTTIExtends<Device, xla::ifrt::Device> {
  public:
-  Device(DeviceDescription description, int local_device_id,
-         int local_hardware_id, bool is_addressable);
+  Device(DeviceDescription description, std::string platform_name,
+         int local_device_id, int local_hardware_id, bool is_addressable);
 
   ifrt::Client* client() const override;
   bool IsAddressable() const override;
 
   DeviceId Id() const override;
+  absl::string_view PlatformName() const override;
   absl::string_view Kind() const override;
   absl::string_view ToString() const override;
   absl::string_view DebugString() const override;
@@ -100,6 +101,7 @@ class Device final : public llvm::RTTIExtends<Device, xla::ifrt::Device> {
 
   ifrt::Client* client_;
   const DeviceDescription description_;
+  const std::string platform_name_;
 
   const AttributeMap attributes_;
 

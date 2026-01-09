@@ -1747,6 +1747,35 @@ absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
           param_shape.tuple_shapes(i).ToString(/*print_layout=*/true));
     }
   }
+
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < async_start->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        async_start->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(async_start->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(async_start->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        async_start->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreBuffer()(operand_subshape, output_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
+    } else {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer()(
+              output_subshape, operand_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
+    }
+  }
   return absl::OkStatus();
 }
 
@@ -2562,16 +2591,13 @@ absl::StatusOr<bool> ShouldSkipDeadlockCheck(const T* instruction) {
   if (instruction->is_host_transfer()) {
     return true;
   }
-  // TODO: b/441038687 - Remove kSendRecvValidationAttr
   // TODO: b/441088186 - update static analyzer logic to also handle
   // instructions annotated with _xla_send_recv_pipeline
   // For now we will skip checks for instructions annotated with
-  // _xla_send_recv_pipeline and _xla_send_recv_validation, since they introduce
-  // extra constraints that have not been modeled by this function.
+  // _xla_send_recv_pipeline, since they introduce extra constraints that have
+  // not been modeled by this function.
   if (instruction->frontend_attributes().map().contains(
-          kSendRecvPipelineAttr) ||
-      instruction->frontend_attributes().map().contains(
-          kSendRecvValidationAttr)) {
+          kSendRecvPipelineAttr)) {
     return true;
   }
   // Check that the instruction itself does not have conflicting
@@ -3186,6 +3212,15 @@ bool IsCollectivesGroupComputation(HloComputation* computation) {
       .has_value();
 }
 
+bool IsAsyncBarrierComputation(HloComputation* computation) {
+  return absl::c_all_of(
+      computation->instructions(),
+      [root = computation->root_instruction()](const HloInstruction* instr) {
+        return root == instr || instr->opcode() == HloOpcode::kParameter ||
+               instr->opcode() == HloOpcode::kGetTupleElement;
+      });
+}
+
 int64_t CountWriters(const HloInstruction* inst,
                      absl::Span<const int64_t> shape_index);
 
@@ -3280,7 +3315,7 @@ absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
 }
 
 absl::Status VerifyPin(const HloCustomCallInstruction* inst,
-                       bool layout_sentitive) {
+                       bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
       inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument(
@@ -3291,7 +3326,7 @@ absl::Status VerifyPin(const HloCustomCallInstruction* inst,
     return InvalidArgument("custom-call to Pin must have one buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape(), inst->shape().buffer_shape())) {
     return InvalidArgument(
         "custom-call to Pin must have the same shape as the operand");
@@ -3319,7 +3354,7 @@ absl::Status VerifyCreateBuffer(const HloInstruction* inst) {
 }
 
 absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
-                         bool layout_sentitive) {
+                         bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument("custom-call to Unpin must have one buffer operand");
   }
@@ -3329,7 +3364,7 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
         "custom-call to Unpin must have one array non-buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape().buffer_shape(), inst->shape())) {
     return InvalidArgument(
         "custom-call to Unpin must have the same shape as the operand");
@@ -3454,15 +3489,15 @@ absl::Status VerifyBuffersInResults(
 // - An HLO buffer result can only be updated at most once.
 //
 absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
-                              bool layout_sentitive) {
+                              bool layout_sensitive) {
   if (inst->IsCustomCall(kPinCustomCallTarget)) {
-    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
   if (inst->IsCustomCall(kCreateBufferCustomCallTarget)) {
     return VerifyCreateBuffer(inst);
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
-    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
 
   TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
@@ -3486,12 +3521,35 @@ absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyBuffers(const HloModule& module, bool layout_sentitive) {
+absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
   for (auto* comp : module.computations()) {
+    if (comp->IsAsyncComputation()) {
+      // For asynchronous computations, we only need to check the root
+      // custom-call op. The root op can also be a call-op expanded from a
+      // stream-annotated-call-op, in which case, the correctness of the op
+      // is guaranteed by the rest of the checking and we skip the check to
+      // allow the op to use buffers.
+      HloInstruction* root = comp->root_instruction();
+      if (root->opcode() == HloOpcode::kCustomCall) {
+        TF_RETURN_IF_ERROR(VerifyCustomCall(
+            Cast<HloCustomCallInstruction>(root), layout_sensitive));
+      }
+      continue;
+    }
     for (auto* inst : comp->instructions()) {
+      if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
+                                     inst->frontend_attributes().map().contains(
+                                         kXlaStreamAnnotationAttr))) {
+        // No need for additional buffer verification as the correctness of
+        // buffer usage in AsyncStart/Update/Done is guaranteed through:
+        //   .Making sure these ops are consistent with the wrapped computation.
+        //   .Buffer verification for the custom-call op inside the wrapped
+        //    computation.
+        continue;
+      }
       if (inst->opcode() == HloOpcode::kCustomCall) {
         TF_RETURN_IF_ERROR(VerifyCustomCall(
-            Cast<HloCustomCallInstruction>(inst), layout_sentitive));
+            Cast<HloCustomCallInstruction>(inst), layout_sensitive));
       } else if (inst->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
@@ -3870,7 +3928,8 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
       // groups on GPU.
       if (computation->IsAsyncComputation() &&
           !computation->OnlyContainsSendRecv() &&
-          !IsCollectivesGroupComputation(computation)) {
+          !IsCollectivesGroupComputation(computation) &&
+          !IsAsyncBarrierComputation(computation)) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }

@@ -111,7 +111,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
     if (ctx->HasAttr("offset")) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("offset", &offset_));
     }
-    string delimiter;
+    std::string delimiter;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
                 errors::InvalidArgument("delimiter should be only 1 char"));
@@ -137,7 +137,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
         errors::InvalidArgument("filename should be a single string, but got ",
                                 vocab_filename_tensor.shape().DebugString()));
 
-    const string& vocab_filename = vocab_filename_tensor.scalar<tstring>()();
+    const std::string& vocab_filename =
+        vocab_filename_tensor.scalar<tstring>()();
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 

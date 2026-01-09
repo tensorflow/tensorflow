@@ -457,6 +457,8 @@ class ApiCompatibilityTest(test.TestCase):
     omit_golden_symbols_map.update(
         self._ignored_is_instance_types(['tensorflow.python_io.TFRecordWriter'])
     )
+    # In OSS we have a different version of ABSL.
+    omit_golden_symbols_map['tensorflow.logging'] = ['log_if']
     self._checkBackwardsCompatibility(
         tf.compat.v1,
         golden_file_patterns,

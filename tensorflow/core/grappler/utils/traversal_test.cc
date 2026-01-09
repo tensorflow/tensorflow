@@ -225,7 +225,7 @@ TEST(TraversalTest, DfsWithAdvancePredicate) {
                DfsPredicates::Advance(advance),
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
-  const std::vector<string> expected_pre = {"1", "4", "5", "6", "2"};
+  const std::vector<std::string> expected_pre = {"1", "4", "5", "6", "2"};
   const std::vector<std::string> expected_post = {"6", "5", "4", "2", "1"};
 
   EXPECT_EQ(pre_order, expected_pre);

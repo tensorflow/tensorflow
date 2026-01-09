@@ -18,19 +18,28 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include <cstdint>
-#include <deque>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/env_time.h"
+#include "absl/types/span.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
+#include "xla/tsl/platform/file_system.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/platform/thread_annotations.h"
 
 #if defined(__APPLE__)
@@ -77,8 +86,8 @@ absl::Status FileSystemRegistryImpl::Register(
   absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
-    return errors::AlreadyExists("File factory for ", scheme,
-                                 " already registered");
+    return absl::AlreadyExistsError(
+        absl::StrCat("File factory for ", scheme, " already registered"));
   }
   return absl::OkStatus();
 }
@@ -87,8 +96,8 @@ absl::Status FileSystemRegistryImpl::Register(
     const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
   absl::MutexLock lock(mu_);
   if (!registry_.emplace(scheme, std::move(filesystem)).second) {
-    return errors::AlreadyExists("File system for ", scheme,
-                                 " already registered");
+    return absl::AlreadyExistsError(
+        absl::StrCat("File system for ", scheme, " already registered"));
   }
   return absl::OkStatus();
 }
@@ -123,8 +132,9 @@ absl::Status Env::GetFileSystemForFile(const std::string& fname,
       scheme = "[local]";
     }
 
-    return errors::Unimplemented("File system scheme '", scheme,
-                                 "' not implemented (file: '", fname, "')");
+    return absl::UnimplementedError(absl::StrCat("File system scheme '", scheme,
+                                                 "' not implemented (file: '",
+                                                 fname, "')"));
   }
   *result = file_system;
   return absl::OkStatus();
@@ -149,8 +159,8 @@ absl::Status Env::SetOption(const std::string& scheme, const std::string& key,
                             const std::string& value) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
-    return errors::Unimplemented("File system scheme '", scheme,
-                                 "' not found to set configuration");
+    return absl::UnimplementedError(absl::StrCat(
+        "File system scheme '", scheme, "' not found to set configuration"));
   }
   return file_system->SetOption(key, value);
 }
@@ -159,8 +169,8 @@ absl::Status Env::SetOption(const std::string& scheme, const std::string& key,
                             const std::vector<std::string>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
-    return errors::Unimplemented("File system scheme '", scheme,
-                                 "' not found to set configuration");
+    return absl::UnimplementedError(absl::StrCat(
+        "File system scheme '", scheme, "' not found to set configuration"));
   }
   return file_system->SetOption(key, values);
 }
@@ -169,8 +179,8 @@ absl::Status Env::SetOption(const std::string& scheme, const std::string& key,
                             const std::vector<int64_t>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
-    return errors::Unimplemented("File system scheme '", scheme,
-                                 "' not found to set configuration");
+    return absl::UnimplementedError(absl::StrCat(
+        "File system scheme '", scheme, "' not found to set configuration"));
   }
   return file_system->SetOption(key, values);
 }
@@ -179,8 +189,8 @@ absl::Status Env::SetOption(const std::string& scheme, const std::string& key,
                             const std::vector<double>& values) {
   FileSystem* file_system = file_system_registry_->Lookup(scheme);
   if (!file_system) {
-    return errors::Unimplemented("File system scheme '", scheme,
-                                 "' not found to set configuration");
+    return absl::UnimplementedError(absl::StrCat(
+        "File system scheme '", scheme, "' not found to set configuration"));
   }
   return file_system->SetOption(key, values);
 }
@@ -250,8 +260,8 @@ bool Env::FilesExist(const std::vector<std::string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        absl::Status s = errors::Unimplemented("File system scheme '",
-                                               itr.first, "' not implemented");
+        absl::Status s = absl::UnimplementedError(absl::StrCat(
+            "File system scheme '", itr.first, "' not implemented"));
         local_status.resize(itr.second.size(), s);
       }
     } else {
@@ -355,8 +365,8 @@ absl::Status Env::RenameFile(const std::string& src,
   TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &src_fs));
   TF_RETURN_IF_ERROR(GetFileSystemForFile(target, &target_fs));
   if (src_fs != target_fs) {
-    return errors::Unimplemented("Renaming ", src, " to ", target,
-                                 " not implemented");
+    return absl::UnimplementedError(
+        absl::StrCat("Renaming ", src, " to ", target, " not implemented"));
   }
   return src_fs->RenameFile(src, target);
 }
@@ -393,7 +403,7 @@ std::string Env::GetExecutablePath() {
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
   string file_path = WideCharToUtf8(wc_file_path);
-  std::copy(file_path.begin(), file_path.end(), exe_path);
+  absl::c_copy(file_path, exe_path);
 #else
   char buf[PATH_MAX] = {0};
   int path_length = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -458,9 +468,8 @@ bool Env::CreateUniqueFileName(std::string* prefix, const std::string& suffix) {
   if (FileExists(*prefix).ok()) {
     prefix->clear();
     return false;
-  } else {
-    return true;
   }
+  return true;
 }
 
 int32_t Env::GetProcessId() {
@@ -494,8 +503,9 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
   if (!s.ok()) {
     data->clear();
   } else if (result.size() != file_size) {
-    s = errors::Aborted("File ", fname, " changed while reading: ", file_size,
-                        " vs. ", result.size());
+    s = absl::AbortedError(absl::StrCat("File ", fname,
+                                        " changed while reading: ", file_size,
+                                        " vs. ", result.size()));
     data->clear();
   } else if (result.data() == p) {
     // Data is already in the correct location
@@ -608,7 +618,8 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
   if (!proto->ParseFromCodedStream(&coded_stream) ||
       !coded_stream.ConsumedEntireMessage()) {
     TF_RETURN_IF_ERROR(stream->status());
-    return errors::DataLoss("Can't parse ", fname, " as binary proto");
+    return absl::DataLossError(
+        absl::StrCat("Can't parse ", fname, " as binary proto"));
   }
   return absl::OkStatus();
 }
@@ -630,7 +641,8 @@ absl::Status ReadTextProto(Env* env, const std::string& fname,
 
   if (!protobuf::TextFormat::Parse(stream.get(), proto)) {
     TF_RETURN_IF_ERROR(stream->status());
-    return errors::DataLoss("Can't parse ", fname, " as text proto");
+    return absl::DataLossError(
+        absl::StrCat("Can't parse ", fname, " as text proto"));
   }
   return absl::OkStatus();
 }

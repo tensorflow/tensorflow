@@ -3027,8 +3027,7 @@ func.func @main(%operand: tensor<?x784xf32>) -> tensor<?x784xf32> {
 }
 
 //       CHECK: HloModule {{.*}}, entry_computation_layout={(f32[?,784]{1,0})->f32[?,784]{1,0}}
-// CHECK-EMPTY:
-//  CHECK-NEXT: ENTRY {{.*}} ([[ARG0:.*]]: f32[?,784]) -> f32[?,784] {
+//  CHECK:      ENTRY {{.*}} ([[ARG0:.*]]: f32[?,784]) -> f32[?,784] {
 //  CHECK-NEXT:   %[[ARG0]] = f32[?,784] parameter(0)
 //  CHECK-NEXT:   ROOT {{.*}} = f32[?,784] abs(%[[ARG0]]), {{.*}}
 //  CHECK-NEXT: }

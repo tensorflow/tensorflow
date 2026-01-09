@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
 
@@ -43,7 +43,7 @@ void PrintBufferContents(stream_executor::Stream*, int input_idx,
 }
 
 void PrintBufferContents(stream_executor::Stream* stream, int input_idx,
-                         stream_executor::DeviceMemoryBase buf) {
+                         stream_executor::DeviceAddressBase buf) {
   auto host_buffer = std::make_unique<char[]>(buf.size());
   CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
   CHECK_OK(stream->BlockHostUntilDone());
@@ -65,9 +65,9 @@ void PrintBufferContents(stream_executor::Stream*, int input_idx,
 
 void PrintBufferContents(
     stream_executor::Stream* stream,
-    absl::Span<const stream_executor::KernelArgument> kernel_args) {
+    absl::Span<const stream_executor::KernelArg> kernel_args) {
   for (int input_idx = 0; input_idx < kernel_args.size(); ++input_idx) {
-    const stream_executor::KernelArgument& arg = kernel_args[input_idx];
+    const stream_executor::KernelArg& arg = kernel_args[input_idx];
     std::visit(
         [&](auto const& arg) { PrintBufferContents(stream, input_idx, arg); },
         arg);

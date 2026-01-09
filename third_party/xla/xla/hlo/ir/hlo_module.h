@@ -448,6 +448,8 @@ class HloModule {
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
+  void PrintStackFrameIndex(Printer* printer,
+                            const HloPrintOptions& options) const;
 
  public:
   // Prints a string representation of the module.
@@ -799,24 +801,20 @@ class HloModule {
                                     HloPrintOptions::ModuleFingerprint()) const;
 
   // Describes a stack frame.
-  struct StackFrame {
-    absl::string_view file_name;
-    absl::string_view function_name;
-    int line = 0;
-    int column = 0;
-
-    // 1-based index of the parent frame.
-    // 0 value indicates that the current frame is the root.
-    int parent_frame_id = 0;
-
-    bool empty() const {
-      return line == 0 && column == 0 && file_name.empty() &&
-             function_name.empty();
-    }
-  };
+  using StackFrame = HloStackFrame;
 
   // Getter for the specific stack frame. Argument is a 1-based index.
-  StackFrame get_stack_frame(int id) const;
+  HloStackFrame get_stack_frame(int id) const;
+
+  // Setter for the stack frame index.
+  void set_stack_frame_index(StackFrameIndexProto stack_frame_index) {
+    stack_frame_index_ = std::move(stack_frame_index);
+  }
+
+  // Getter for the stack frame index.
+  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
+    return stack_frame_index_;
+  }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to

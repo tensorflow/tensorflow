@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {
@@ -157,9 +158,7 @@ TEST(ProfileGrpcTest, ProfileWithOverrideHostname) {
   std::unique_ptr<ProfilerServer> server =
       StartServer(duration, &service_addr, &request);
 
-  (*request.mutable_opts()
-        ->mutable_advanced_configuration())["override_hostname"]
-      .set_string_value("testhost");
+  request.mutable_opts()->set_override_hostname("testhost");
 
   tensorflow::ProfileResponse response;
   absl::Status status = ProfileGrpc(service_addr, request, &response);
@@ -169,6 +168,74 @@ TEST(ProfileGrpcTest, ProfileWithOverrideHostname) {
       request.repository_root(), request.session_id(), "testhost.xplane.pb");
 
   EXPECT_TRUE(Env::Default()->FileExists(expected_filepath).ok());
+}
+
+TEST(ContinuousProfiler, GetSnapshot) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Start a continuous profiling session.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Generate a more substantial CPU workload for the profiler to capture.
+  auto start_time = absl::Now();
+  while (absl::Now() - start_time < absl::Seconds(1)) {
+    volatile int x = 0;
+    for (int i = 0; i < 10000; ++i) {
+      x++;
+    }
+  }
+
+  // Get a snapshot.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  tensorflow::ProfileResponse snapshot_response;
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+  EXPECT_GT(snapshot_response.xspace().planes_size(), 0);
+  snapshot_response.clear_xspace();
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+  EXPECT_GT(snapshot_response.xspace().planes_size(), 0);
+}
+
+TEST(ContinuousProfiler, GetSnapshotBeforeContinuousProfiling) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Get a snapshot before continuous profiling starts.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  tensorflow::ProfileResponse snapshot_response;
+  absl::Status status =
+      GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  EXPECT_TRUE(absl::IsNotFound(status));
+  EXPECT_EQ(status.message(), "No continuous profiling session found.");
+}
+
+TEST(ContinuousProfiler, ContinuousProfilingTwice) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Start a continuous profiling session.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Calling ContinuousProfilingGrpc again should fail.
+  status = ContinuousProfilingGrpc(service_addr, request, &response);
+  EXPECT_TRUE(absl::IsAlreadyExists(status));
 }
 
 }  // namespace

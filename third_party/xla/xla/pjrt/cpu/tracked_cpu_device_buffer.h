@@ -140,35 +140,8 @@ class CpuDeviceMemory {
 // memory. This class is thread-compatible.
 class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
-  // For non-tuple, takes a single buffer.
-  // For tuple, takes the leaf buffers. Tuple index table created internally.
-  // Nested tuple is not supported.
-
-  // Constructor for allocated cpu memory, i.e., `buffer` should have concrete
-  // states. Definition event is after the list of `definition_events`.
-  TrackedCpuDeviceBuffer(
-      bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
-
   // Variant with single definition event.
-  TrackedCpuDeviceBuffer(bool owns_buffers,
-                         tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                         tsl::AsyncValueRef<CpuEvent> definition_event);
-
-  // Constructor for unallocated cpu memory, i.e., `buffer` will have
-  // unconstructed states, and we also need to provide `buffer_size` which will
-  // be the size of the `buffer` after allocation. Definition event is after the
-  // list of `definition_events`. Callers need to ensure cpu memory is allocated
-  // before the definition event is ready.
-  TrackedCpuDeviceBuffer(
-      bool owns_buffers, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-      size_t buffer_size,
-      absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events);
-
-  // Variant with single definition event.
-  TrackedCpuDeviceBuffer(bool owns_buffers,
-                         tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                         size_t buffer_size,
+  TrackedCpuDeviceBuffer(tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
                          tsl::AsyncValueRef<CpuEvent> definition_event);
 
   TrackedCpuDeviceBuffer(TrackedCpuDeviceBuffer&&) noexcept = default;
@@ -185,18 +158,12 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
     return definition_event_;
   }
 
-  absl::Span<const tsl::AsyncValueRef<CpuEvent>> UsageEvents() const {
-    return usage_events_;
-  }
-
   void AddUsageEvents(absl::Span<tsl::AsyncValueRef<CpuEvent>> events);
 
   // Return the usage events for the buffers. After
   // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
   LockUseAndTransferUsageEvents();
-
-  bool owns_buffers() const { return owns_buffers_; }
 
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
@@ -213,13 +180,13 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) override;
 
+  bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
+
+  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
+
  private:
   void ConfirmDonation() override;
 
-  bool owns_buffers_;
-
-  // Should equal raw_buffer()->GetOnDeviceSizeInBytes();
-  size_t buffer_size_;
   // The definition event are associated with CPU operations that write to the
   // buffers.
   tsl::AsyncValueRef<CpuEvent> definition_event_;

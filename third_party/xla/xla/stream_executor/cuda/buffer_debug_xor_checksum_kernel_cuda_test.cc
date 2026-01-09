@@ -27,7 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -59,7 +59,7 @@ class ChecksumKernelTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
 
     if (!executor_->GetDeviceDescription()
              .cuda_compute_capability()
@@ -71,8 +71,8 @@ class ChecksumKernelTest : public ::testing::Test {
   }
 
   template <typename T>
-  absl::StatusOr<se::DeviceMemory<T>> CheckNotNull(
-      se::DeviceMemory<T> device_memory, absl::string_view name) {
+  absl::StatusOr<se::DeviceAddress<T>> CheckNotNull(
+      se::DeviceAddress<T> device_memory, absl::string_view name) {
     if (device_memory.is_null()) {
       return absl::InternalError(
           absl::StrFormat("Device memory for %s is null", name));
@@ -93,7 +93,7 @@ class ChecksumKernelTest : public ::testing::Test {
         registry.LoadKernel<gpu::BufferDebugXorChecksumKernel>(executor_));
 
     // Setup device buffers
-    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> device_input,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
                         CheckNotNull(executor_->AllocateArray<uint8_t>(
                                          input.size() * sizeof(input[0])),
                                      "input"));
@@ -117,11 +117,11 @@ class ChecksumKernelTest : public ::testing::Test {
   se::Platform* platform_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
-  std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint8_t> input = std::vector<uint8_t>(1024, 0x55);
   // Xor with the expected checksum value.
   // Assumes the device uses little-endian byte order.
@@ -146,7 +146,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
 
 TEST_F(ChecksumKernelTest,
        PadsMostSignifantBitsOfIncomplete32BitInputWordWithZeros) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   const std::vector<uint8_t> kInput = std::vector<uint8_t>(1023, 0x55);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_log,
@@ -163,7 +163,7 @@ TEST_F(ChecksumKernelTest,
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
@@ -183,7 +183,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
@@ -203,7 +203,7 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
 }
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
@@ -230,7 +230,7 @@ TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
 }
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(
       sizeof(BufferDebugLogHeader) + sizeof(BufferDebugLogEntry) * 2);
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};

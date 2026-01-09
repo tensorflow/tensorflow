@@ -72,6 +72,10 @@ struct GemmRewriterOptions {
   // In this case, the two GEMMs can be scheduled in parallel.
   enum class BiasMode { kBias, kNoBias };
   BiasMode bias_mode = BiasMode::kBias;
+
+  // Enables the use of cublasLt for non-FP8 GEMMs.
+  // FP8 GEMMs are always rewritten to use cublasLt.
+  bool enable_cublaslt = false;
 };
 
 class GemmRewriter : public HloModulePass {

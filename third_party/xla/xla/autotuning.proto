@@ -64,6 +64,7 @@ message AutotuneResult {
 
   message GemmKey {
     int64 algorithm = 1;
+    int64 autotune_workspace_size = 2;
   }
 
   // Legacy and unused in new data; superseded by AlgorithmProto.
@@ -74,6 +75,7 @@ message AutotuneResult {
   // If you don't need a proto in your code, please use TritonGemmConfig instead
   // of using this proto directly.
   message TritonGemmKey {
+    // LINT.IfChange
     int64 block_m = 1;
     int64 block_n = 2;
     int64 block_k = 3;
@@ -83,6 +85,7 @@ message AutotuneResult {
     int64 num_ctas = 7;
     bool is_tma_allowed = 8;
     bool is_warp_specialization_allowed = 9;
+    // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/matmul_utils.h)
   }
 
   message CustomKernelFusionKey {
@@ -108,6 +111,10 @@ message AutotuneResult {
     stream_executor.dnn.AlgorithmProto algorithm = 16;
     BackendConfigKey other = 19;
   }
+}
+
+message TritonGemmConfigsProto {
+  repeated AutotuneResult.TritonGemmKey config = 1;
 }
 
 message AutotuningLog {

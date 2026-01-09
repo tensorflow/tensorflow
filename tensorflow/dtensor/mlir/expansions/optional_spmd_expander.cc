@@ -54,8 +54,8 @@ StatusOr<mlir::Operation*> OptionalGetValueSPMDExpander::ExpandOp(
     local_types[i] = local_type;
   }
 
-  auto new_op = builder.create<mlir::TF::OptionalGetValueOp>(
-      DT_LOC(op->getLoc()), local_types, original_op->getOperand(0));
+  auto new_op = mlir::TF::OptionalGetValueOp::create(
+      builder, DT_LOC(op->getLoc()), local_types, original_op->getOperand(0));
 
   for (int i = 0; i < original_op->getNumResults(); ++i) {
     original_op.getResult(i).replaceAllUsesWith(new_op.getResult(i));

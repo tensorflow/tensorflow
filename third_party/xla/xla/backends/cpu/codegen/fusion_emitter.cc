@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
+#include "xla/backends/cpu/codegen/tiled/tiled_fusion_emitter.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
 #include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -283,9 +284,20 @@ EmitDynamicUpdateSliceFusionKernel(MLIRContext& context,
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
     MLIRContext& mlir_context, const HloFusionInstruction& fusion,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name) {
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
+    bool enable_tiled_emitter) {
+  TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
+
+  if (enable_tiled_emitter) {
+    if (auto tiling_or = GetTilingIfSupported(mlir_context, fusion);
+        tiling_or.ok()) {
+      return EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment,
+                                   name, GetWorkGroupCount(fusion),
+                                   std::move(*tiling_or));
+    }
+  }
+
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
-    TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
     const HloInstruction& hero =
         FindNonTrivialHero(*fusion.fused_expression_root());
     if (hero.opcode() == HloOpcode::kConcatenate) {

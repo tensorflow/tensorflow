@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
@@ -455,11 +456,11 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
 
     auto copy_proc = [&](absl::Span<const int64_t> indexes) {
       // Map from multi-dimensional index, to source index.
-      std::transform(indexes.begin(), indexes.end(), src_base.begin(),
-                     src_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, src_base, src_indexes.begin(),
+                        std::plus<int64_t>());
       // Map from multi-dimensional index, to destination index.
-      std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
-                     dest_indexes.begin(), std::plus<int64_t>());
+      absl::c_transform(indexes, dest_base, dest_indexes.begin(),
+                        std::plus<int64_t>());
 
       int64_t src_index = linear_index(src_literal.shape(), src_indexes);
       int64_t dest_index = linear_index(shape(), dest_indexes);
@@ -635,8 +636,8 @@ absl::Status LiteralBase::Piece::AllocateBuffers() {
   const int64_t bytes = total_bytes_dense();
   if (bytes > kMaxInlinedBytes) {
     CHECK_EQ(buffer(), nullptr);
-    storage_.Emplace<DenseRep>(
-        static_cast<char*>(tsl::port::AlignedMalloc(bytes, kMinimumAlignment)));
+    storage_.Emplace<DenseRep>(static_cast<char*>(tsl::port::AlignedMalloc(
+        bytes, static_cast<std::align_val_t>(kMinimumAlignment))));
     if (buffer() == nullptr) {
       return absl::ResourceExhaustedError(
           "Failed to allocate buffer for Literal");
@@ -1746,18 +1747,27 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
     if constexpr (!std::is_same_v<NativeDestT, bool> &&
                   !std::numeric_limits<NativeSrcT>::is_integer &&
                   std::numeric_limits<NativeDestT>::is_integer) {
+      // NaN check.
       if (src != src) {
         return NativeDestT{0};
       }
-      if (src >=
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max())) {
+
+      // Clamp values that cannot fit in the destination type to avoid undefined
+      // behavior.
+      // An N-bit integer has a max of 2^N - 1 so max() + 1 is 2^N. Ensure
+      // double can losslessly hold.
+      static_assert((std::numeric_limits<double>::max_exponent - 1) >=
+                    std::numeric_limits<NativeDestT>::digits);
+      if (static_cast<double>(src) >=
+          static_cast<double>(std::numeric_limits<NativeDestT>::max())) {
         return std::numeric_limits<NativeDestT>::max();
       }
-      if (src <=
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest())) {
+      if (static_cast<double>(src) <=
+          static_cast<double>(std::numeric_limits<NativeDestT>::lowest())) {
         return std::numeric_limits<NativeDestT>::lowest();
       }
     }
+
     // TODO(b/370786669): Once ml_dtypes is updated to include
     // https://github.com/jax-ml/ml_dtypes/pull/205, do not special-case e3m4 by
     // casting to half first.
@@ -1916,7 +1926,21 @@ template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64_t>* multi_index) const {
   if (multi_index->size() == subshape().dimensions().size()) {
-    return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
+    const NativeT value = Get<NativeT>(*multi_index);
+    const NativeT other_value = other.Get<NativeT>(*multi_index);
+    // The EqualElements function uses memcmp to compare two literals that have
+    // the same shape (including the layout!). This can be seen as a "fast path"
+    // comparison. This function on the other hand performs an elementwise
+    // comparison and is for cases where shapes or layouts differ.
+    //
+    // Instead of operator==(), we use memcmp so that the comparison of
+    // individual elements is consistent with the fast path.
+    //
+    // This also ensures consistency for hashing, as the hash of a literal is
+    // also computed on the underlying data rather than logical equivalence. If
+    // this were not the case, 0.0f and -0.0f would continue to have different
+    // hash values even though in C++ they are considered equal.
+    return memcmp(&value, &other_value, sizeof(NativeT)) == 0;
   }
   for (int64_t i = 0; i < GetDynamicSize(multi_index->size()); ++i) {
     multi_index->push_back(i);

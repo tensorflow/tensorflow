@@ -33,10 +33,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
@@ -93,7 +94,7 @@ ConditionalThunk::ConditionalThunk(Info info,
 tsl::AsyncValueRef<Thunk::ExecuteEvent> ConditionalThunk::Execute(
     const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase branch_index_data,
+      se::DeviceAddressBase branch_index_data,
       params.buffer_allocations->GetDeviceAddress(branch_index_buffer_));
 
   VLOG(3) << absl::StreamFormat("Conditional: #branches=%d",

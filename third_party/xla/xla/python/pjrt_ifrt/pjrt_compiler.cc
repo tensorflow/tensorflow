@@ -119,11 +119,9 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
   }
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      PjRtCompile(xla_compile_options->compile_options,
-                  xla_program->mlir_module(), *pjrt_topology->description()));
-  return PjRtExecutable::Create(std::move(executable));
+  return PjRtExecutable::Create(xla_program->mlir_module(),
+                                std::move(xla_compile_options->compile_options),
+                                *pjrt_topology->description());
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(

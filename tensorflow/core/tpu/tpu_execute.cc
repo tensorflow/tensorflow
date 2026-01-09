@@ -115,16 +115,16 @@ absl::Status FixTupleTableAsync(se::Stream* stream,
         if (!element_shape.IsTuple()) {
           return absl::OkStatus();
         }
-        std::vector<se::DeviceMemoryBase> elements;
+        std::vector<stream_executor::DeviceAddressBase> elements;
         xla::ShapeIndex element_index = index;
         element_index.push_back(0);
         for (int i = 0; i < element_shape.tuple_shapes().size(); ++i) {
           // Gather all children of the tuple element.
           element_index.back() = i;
-          elements.push_back(mem->Buffer(element_index).AsDeviceMemoryBase());
+          elements.push_back(mem->Buffer(element_index).AsDeviceAddress());
         }
-        se::DeviceMemoryBase tuple_table_addr =
-            mem->Buffer(index).AsDeviceMemoryBase();
+        stream_executor::DeviceAddressBase tuple_table_addr =
+            mem->Buffer(index).AsDeviceAddress();
         return transfer_manager->WriteSingleTupleIndexTable(
             stream, elements, element_shape, &tuple_table_addr);
       });
@@ -160,7 +160,7 @@ bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
 // Metadata contains the sizes of shape without padding, eventually
 // representing the size of valid data.
 absl::Status UpdateDynamicInputs(
-    se::Stream* stream, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream, stream_executor::DeviceAddressAllocator* allocator,
     std::vector<xla::ExecutionInput>* runtime_inputs,
     const std::vector<xla::Shape>& compile_time_shapes) {
   TF_RET_CHECK(runtime_inputs->size() == compile_time_shapes.size());
@@ -193,14 +193,15 @@ absl::Status UpdateDynamicInputs(
           TF_RET_CHECK(
               DynamicShapeIsCompatible(runtime_shape, compile_time_shape));
 
-          xla::MaybeOwningDeviceMemory* mutable_input_mem =
+          xla::MaybeOwningDeviceAddress* mutable_input_mem =
               runtime_input.MutableBuffer(index);
           auto padded_data = std::make_shared<std::vector<int8_t>>(
               ShapeSizeCompact(compile_time_shape), -1);
           auto raw_input_runtime = std::make_shared<std::vector<uint32_t>>(
               ShapeSizeCompact(runtime_shape) / sizeof(uint32_t));
           TF_RETURN_IF_ERROR(stream->MemcpyD2H(
-              se::DeviceMemory<int8_t>(mutable_input_mem->AsDeviceMemoryBase()),
+              stream_executor::DeviceAddress<int8_t>(
+                  mutable_input_mem->AsDeviceAddress()),
               absl::MakeSpan(absl::bit_cast<int8_t*>(raw_input_runtime->data()),
                              ShapeSizeCompactRaw(runtime_shape))));
           TF_RETURN_IF_ERROR(stream->DoHostCallbackWithStatus(
@@ -239,7 +240,7 @@ absl::Status UpdateDynamicInputs(
               allocator->Allocate(stream->parent()->device_ordinal(),
                                   ShapeSizeCompact(compile_time_shape)));
           auto typed_new_input_memory =
-              se::DeviceMemory<int8_t>(new_input.cref());
+              stream_executor::DeviceAddress<int8_t>(new_input.cref());
           TF_RETURN_IF_ERROR(
               stream->MemcpyH2D<int8_t>(*padded_data, &typed_new_input_memory));
 
@@ -249,7 +250,7 @@ absl::Status UpdateDynamicInputs(
           // Modify the memory location in the input shape tree to point to the
           // new input.
           *mutable_input_mem =
-              xla::MaybeOwningDeviceMemory(std::move(new_input));
+              xla::MaybeOwningDeviceAddress(std::move(new_input));
           element_modified = true;
           return absl::OkStatus();
         }));
@@ -474,7 +475,7 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
           << device_ordinal;
 
-  SE_DeviceMemoryBase* device_memory_addrs = nullptr;
+  SE_DeviceAddressBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
       absl::MakeCleanup([device_memory_addrs, device_ordinal]() {
@@ -499,9 +500,9 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   VLOG(1) << "TPUExecute: Adding " << device_memory_addrs_count
           << " TPUEmbedding memory addresses to HLO parameters.";
   for (int i = 0; i < device_memory_addrs_count; ++i) {
-    xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
+    xla::ShapeTree<xla::MaybeOwningDeviceAddress> tree(
         xla::ShapeUtil::MakeOpaqueShape());
-    const SE_DeviceMemoryBase& addr = device_memory_addrs[i];
+    const SE_DeviceAddressBase& addr = device_memory_addrs[i];
     VLOG(2) << absl::StrFormat("Device memory addr[%i] = {%p, %llu, %llu}", i,
                                addr.opaque, addr.size, addr.payload);
     *tree.mutable_element({}) = ApiConverter::FromC(addr);

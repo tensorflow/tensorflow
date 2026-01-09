@@ -217,6 +217,10 @@ class GemmDimensionAdapter {
       VLOG(3) << "Non-default precision is not supported.";
       return std::nullopt;
     }
+    if (dot->precision_config().algorithm() != PrecisionConfig::ALG_UNSET) {
+      VLOG(3) << "Non-default algorithm is not supported.";
+      return std::nullopt;
+    }
     TF_ASSIGN_OR_RETURN(auto analysis,
                         TritonFusionAnalysis::Execute(computation));
     return GemmDimensionAdapter{*dot, std::move(analysis)};

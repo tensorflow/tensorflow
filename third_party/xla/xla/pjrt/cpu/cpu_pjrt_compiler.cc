@@ -34,9 +34,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
@@ -57,21 +59,20 @@ class DummyCpuCollectives : public xla::cpu::CpuCollectives {
 
 // Creates a PjRt CPU client from the given topology description.
 //
-// We only take the number of CPU devices from the topology and assume that the
-// compilation worker and the worker running the compiled CPU computation are on
-// the same CPU platform. This may not be true in the future in a highly
-// disaggregated setup; then, we should extend the PjRt CPU client to
-// support cross compilation for a non-local platform, and use machine
-// attributes captured in a CPU topology description.
 absl::StatusOr<std::unique_ptr<xla::PjRtClient>>
 CreatePjRtCpuClientFromTopology(
     const xla::PjRtTopologyDescription& topology_description) {
-  // TODO(b/373647598): Use PjRtCompile() without creating a PjRt CPU client
-  // once it is supported by XLA:CPU.
   xla::CpuClientOptions options;
   TF_ASSIGN_OR_RETURN(options.cpu_device_count,
                       topology_description.CoreCountOfDefaultTypePerProcess());
   CHECK_GE(*options.cpu_device_count, 1);
+  auto cpu_topology_description =
+      tsl::down_cast<const xla::CpuTopologyDescription*>(&topology_description);
+  if (cpu_topology_description == nullptr) {
+    return absl::InvalidArgumentError(
+        "Topology description is not a CpuTopologyDescription");
+  }
+  options.topology = cpu_topology_description;
   // We need to provide `CpuCollectives` to be able to compile multi-host/-slice
   // CPU computations. The details of the collectives is not important because
   // the compilation only checks if any `CpuCollectives` exists.

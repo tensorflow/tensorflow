@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/source_map_util.h"
@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -319,12 +319,12 @@ absl::StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 }
 
 static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
-    const ShapeTree<MaybeOwningDeviceMemory>& tree, int device_ordinal) {
+    const ShapeTree<MaybeOwningDeviceAddress>& tree, int device_ordinal) {
   ShapedBuffer result(tree.shape(), device_ordinal);
   auto it = tree.begin();
   auto out_it = result.buffers().begin();
   for (; it != tree.end(); ++it, ++out_it) {
-    out_it->second = it->second.AsDeviceMemoryBase();
+    out_it->second = it->second.AsDeviceAddress();
   }
   return result;
 }
@@ -447,6 +447,10 @@ LocalClient::Compile(const XlaComputation& computation,
   local_executables.reserve(executables.size());
 
   for (auto& executable : executables) {
+    if (executable->has_module()) {
+      TF_RETURN_IF_ERROR(executable->DumpExecutableIfEnabled(
+          updated_options, executable->module().config().debug_options()));
+    }
     local_executables.push_back(std::make_unique<LocalExecutable>(
         std::move(executable), local_service_->mutable_backend(),
         updated_options));
@@ -474,23 +478,21 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     const std::string& serialized_aot_result,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform()));
+                      Compiler::GetForPlatform(platform()->id()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::AotCompilationResult> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
-  return LoadInternal(std::move(aot_result), compiler.get(), options);
+  return LoadInternal(std::move(aot_result), options);
 }
 
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     std::unique_ptr<xla::AotCompilationResult> aot_result,
     const ExecutableBuildOptions& options) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(platform()));
-  return LoadInternal(std::move(aot_result), compiler.get(), options);
+  return LoadInternal(std::move(aot_result), options);
 }
 
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
-    std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+    std::unique_ptr<xla::AotCompilationResult> aot_result,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
@@ -498,9 +500,8 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
       se::StreamExecutor * executor,
       backend().stream_executor(updated_options.device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result).LoadExecutable(compiler, executor));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      std::move(*aot_result).LoadExecutable(executor));
   return std::make_unique<LocalExecutable>(std::move(executable),
                                            local_service_->mutable_backend(),
                                            updated_options);
@@ -508,7 +509,7 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
 
 absl::StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
     const LiteralSlice& literal, int device_ordinal,
-    se::DeviceMemoryAllocator* allocator) {
+    se::DeviceAddressAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
   }

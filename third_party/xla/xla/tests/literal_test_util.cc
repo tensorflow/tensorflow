@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -29,35 +30,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
 
 namespace {
-
-// Writes the given literal to a file in the test temporary directory.
-void WriteLiteralToTempFile(const LiteralSlice& literal,
-                            const std::string& name) {
-  // Bazel likes for tests to write "debugging outputs" like these to
-  // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
-  // results, especially when they're run on remote machines.
-  std::string outdir;
-  if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    outdir = tsl::testing::TmpDir();
-  }
-
-  auto* env = tsl::Env::Default();
-  std::string filename = tsl::io::JoinPath(
-      outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
-  TF_CHECK_OK(tsl::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
-                                    literal.ToProto()));
-  TF_CHECK_OK(tsl::WriteStringToFile(env, absl::StrCat(filename, ".txt"),
-                                     literal.ToString()));
-  LOG(ERROR) << "wrote Literal to " << name << " file: " << filename
-             << ".{pb,txt}";
-}
 
 // Callback helper that dumps literals to temporary files in the event of a
 // miscomparison.
@@ -70,9 +48,9 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   LOG(INFO) << "actual:   shape=" << ShapeUtil::HumanString(actual.shape())
             << ", value=" << literal_comparison::ToStringTruncated(actual);
   LOG(INFO) << "Dumping literals to temp files...";
-  WriteLiteralToTempFile(expected, "expected");
-  WriteLiteralToTempFile(actual, "actual");
-  WriteLiteralToTempFile(mismatches, "mismatches");
+  LiteralTestUtil::WriteLiteralToTempFile(expected, "expected");
+  LiteralTestUtil::WriteLiteralToTempFile(actual, "actual");
+  LiteralTestUtil::WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
 ::testing::AssertionResult StatusToAssertion(const absl::Status& s) {
@@ -83,6 +61,27 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
 }
 
 }  // namespace
+
+/* static */ void LiteralTestUtil::WriteLiteralToTempFile(
+    const LiteralSlice& literal, const std::string& name) {
+  // Bazel likes for tests to write "debugging outputs" like these to
+  // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
+  // results, especially when they're run on remote machines.
+  std::string outdir;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    outdir = tsl::testing::TmpDir();
+  }
+
+  auto* env = tsl::Env::Default();
+  std::string filename = tsl::io::JoinPath(
+      outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
+  CHECK_OK(tsl::WriteBinaryProto(env, absl::StrCat(filename, ".pb"),
+                                 literal.ToProto()));
+  CHECK_OK(tsl::WriteStringToFile(env, absl::StrCat(filename, ".txt"),
+                                  literal.ToString()));
+  LOG(ERROR) << "wrote Literal to " << name << " file: " << filename
+             << ".{pb,txt}";
+}
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::EqualShapes(
     const Shape& expected, const Shape& actual) {

@@ -32,7 +32,7 @@ namespace random {
 static void TestPicker(SimplePhilox* rnd, int size);
 static void CheckUniform(SimplePhilox* rnd, WeightedPicker* picker, int trials);
 static void CheckSkewed(SimplePhilox* rnd, WeightedPicker* picker, int trials);
-static void TestPickAt(int items, const int32* weights);
+static void TestPickAt(int items, const int32_t* weights);
 
 TEST(WeightedPicker, Simple) {
   PhiloxRandom philox(testing::RandomSeed(), 17);
@@ -101,7 +101,7 @@ TEST(WeightedPicker, BigWeights) {
 
 TEST(WeightedPicker, Deterministic) {
   VLOG(0) << "======= Testing deterministic pick";
-  static const int32 weights[] = {1, 0, 200, 5, 42};
+  static const int32_t weights[] = {1, 0, 200, 5, 42};
   TestPickAt(TF_ARRAYSIZE(weights), weights);
 }
 
@@ -130,7 +130,7 @@ static void TestPicker(SimplePhilox* rnd, int size) {
   }
 
   // Create zero weights array
-  std::vector<int32> weights(size);
+  std::vector<int32_t> weights(size);
   for (int elem = 0; elem < size; elem++) {
     weights[elem] = 0;
   }
@@ -221,7 +221,7 @@ static void CheckSkewed(SimplePhilox* rnd, WeightedPicker* picker, int trials) {
   delete[] count;
 }
 
-static void TestPickAt(int items, const int32* weights) {
+static void TestPickAt(int items, const int32_t* weights) {
   WeightedPicker picker(items);
   picker.SetWeightsFromArray(items, weights);
   int weight_index = 0;
@@ -245,7 +245,7 @@ BENCHMARK(BM_Create)->Range(1, 1024);
 
 static void BM_CreateAndSetWeights(::testing::benchmark::State& state) {
   int arg = state.range(0);
-  std::vector<int32> weights(arg);
+  std::vector<int32_t> weights(arg);
   for (int i = 0; i < arg; i++) {
     weights[i] = i * 10;
   }

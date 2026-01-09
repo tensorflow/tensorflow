@@ -35,6 +35,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,6 +43,7 @@
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -133,7 +135,8 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   absl::CordReader reader(operand_buffer);
   for (const auto& spec : xla_host_callback.operands) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* p = tsl::port::AlignedMalloc(size, kAlignment);
+    void* p = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(kAlignment));
     CHECK(p != nullptr);
     std::unique_ptr<char, Deleter> buffer(reinterpret_cast<char*>(p));
 
@@ -161,7 +164,8 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
 
   for (const auto& spec : xla_host_callback.results) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
-    void* data = tsl::port::AlignedMalloc(size, kAlignment);
+    void* data = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(kAlignment));
     CHECK(data != nullptr);
 
     result_ptrs.push_back(data);
@@ -337,7 +341,8 @@ class LoadedExecutable::OutputSpecCache {
 
 LoadedExecutable::LoadedExecutable(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
-    uint64_t handle, std::string name, int num_devices, DeviceListRef devices,
+    uint64_t handle, std::string name, int num_devices,
+    std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
     tsl::Future<> ready_future,
@@ -376,8 +381,7 @@ LoadedExecutable::LoadedExecutable(
   // eagerly schedule this fetch since, in some implementations, it may take a
   // long time for sharding information to be available.
 
-  auto [promise, future] =
-      tsl::Future<std::shared_ptr<Metadata>>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<Metadata>>();
   metadata_future_ = std::move(future);
 
   auto req = std::make_unique<LoadedExecutableMetadataRequest>();
@@ -726,25 +730,29 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       req->add_args_handles(handle.handle);
     }
   }
-  TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(),
-                      options.ToProto(rpc_helper_->ifrt_serdes_version()));
+  TF_RETURN_IF_ERROR(options.ToProto(*req->mutable_execute_options(),
+                                     rpc_helper_->ifrt_serdes_version()));
   if (devices.has_value()) {
     for (const auto* device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
     }
   }
 
+  std::optional<uint64_t> device_time_key = xla::GetDeviceTimeMeasurementKey();
+  if (device_time_key.has_value()) {
+    // An active device time measurement requires the server to respond with
+    // measured device times after the execution is complete.
+    req->mutable_execute_options()->set_fill_status(true);
+  }
+
   // Starting version 6, the server populates the status future only if it was
   // explicitly requested via `options.fill_status`.
-  const bool result_needs_exec_status =
-      rpc_helper_->protocol_version() < 6 || options.fill_status;
+  const bool result_needs_exec_status = req->execute_options().fill_status();
 
   // The client generates handles if the protocol version is sufficiently newer,
   // and we've already seen at least one response from an execute (and thus know
   // the number of handles to generate).
   const bool client_generated_handles =
-      (rpc_helper_->protocol_version() >=
-       protocol_version::kClientHandlesExecutableOptimization) &&
       output_spec_cache_->Retrieve().has_value();
 
   xla::ifrt::LoadedExecutable::ExecuteResult result;
@@ -788,10 +796,13 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
     }
     rpc_helper_->LoadedExecutableExecute(std::move(req));
     if (result_needs_exec_status) {
-      // Note that `CheckFuture` needs to be sent after
+      // Note that the RPCs within `FetchExecuteResult` need to be sent after
       // `LoadedExecutableExecute` above, or the server will not recognize the
       // handle being sent.
-      result.status = rpc_helper_->CheckFuture(status_handle);
+      tsl::Future<> status = FetchExecuteResult(status_handle, device_time_key);
+      if (options.fill_status) {
+        result.status = std::move(status);
+      }
     }
 
     return result;
@@ -807,8 +818,8 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
       Array::Destruct(rpc_helper_.get(), ArrayHandle{output.array_handle()});
     }
     if (result_needs_exec_status) {
-      // `CheckFuture` deletes the server-side future handle.
-      rpc_helper_->CheckFuture(response->status_handle());
+      // `FetchExecuteResult` deletes the server-side future handle.
+      FetchExecuteResult(response->status_handle(), device_time_key);
     }
     return status;
   }
@@ -835,7 +846,11 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
     }
   }
   if (result_needs_exec_status) {
-    result.status = rpc_helper_->CheckFuture(response->status_handle());
+    tsl::Future<> status =
+        FetchExecuteResult(response->status_handle(), device_time_key);
+    if (options.fill_status) {
+      result.status = std::move(status);
+    }
   } else {
     CHECK_EQ(response->status_handle(), 0);
   }
@@ -843,11 +858,56 @@ LoadedExecutable::Execute(absl::Span<xla::ifrt::ArrayRef> args,
   return result;
 }
 
-const DeviceListRef& LoadedExecutable::devices() const { return devices_; }
+std::optional<DeviceListRef> LoadedExecutable::devices() const {
+  return devices_;
+}
 
 absl::Span<xla::ifrt::Device* const> LoadedExecutable::addressable_devices()
     const {
   return addressable_devices_;
+}
+
+tsl::Future<> LoadedExecutable::FetchExecuteResult(
+    uint64_t status_handle, std::optional<uint64_t> device_time_key) {
+  if (rpc_helper_->protocol_version() < protocol_version::kExecuteResult) {
+    return rpc_helper_->CheckFuture(status_handle);
+  }
+  auto req = std::make_unique<LoadedExecutableFetchExecuteResultRequest>();
+  req->set_result_status_handle(status_handle);
+
+  using RespT = std::shared_ptr<LoadedExecutableFetchExecuteResultResponse>;
+
+  tsl::Future<RespT> result =
+      rpc_helper_->LoadedExecutableFetchExecuteResult(std::move(req));
+
+  if (device_time_key.has_value()) {
+    result.OnReady([device_time_key](const absl::StatusOr<RespT>& resp) {
+      if (!resp.ok()) {
+        LOG_EVERY_N_SEC(ERROR, 60)
+            << "Device time measurement was requested but failed to retrieve "
+               "the execution result: "
+            << resp.status();
+        return;
+      }
+
+      for (const auto& [device_type_name, duration] : (*resp)->device_time()) {
+        xla::DeviceTimeMeasurement::DeviceType device_type;
+        if (device_type_name == "tpu") {
+          device_type = xla::DeviceTimeMeasurement::DeviceType::kTpu;
+        } else if (device_type_name == "gpu") {
+          device_type = xla::DeviceTimeMeasurement::DeviceType::kGpu;
+        } else {
+          device_type = xla::DeviceTimeMeasurement::DeviceType::kUnknown;
+        }
+        if (device_type != xla::DeviceTimeMeasurement::DeviceType::kUnknown) {
+          xla::RecordDeviceTimeMeasurement(
+              *device_time_key, absl::Microseconds(duration), device_type);
+        }
+      }
+    });
+  }
+
+  return result.GetReadyFuture();
 }
 
 char LoadedExecutable::ID = 0;  // NOLINT

@@ -166,7 +166,7 @@ class HloRunnerInterface {
   // The options used to configure an ExecuteReplicated() call.
   struct ReplicatedExecuteOptions {
     // The number of devices the HLO module should be replicated onto.
-    int64_t num_replicas = 1;
+    int64_t num_devices = 1;
 
     // The arguments to be fed to each replica. Since this is used for a
     // replicated execution, all the arguments are the same for all replicas.
@@ -287,6 +287,16 @@ class HloRunnerInterface {
   // Same as above, but with specified device assignment.
   virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) = 0;
+
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) = 0;
+
+  // Same as above, but with specified device assignment.
+  virtual absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) = 0;
 

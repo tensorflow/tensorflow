@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -74,15 +74,13 @@ static constexpr int64_t kMaxThreadsPerBlock = 512;
 static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
-absl::Status LaunchTypedKernel(TagType, se::Stream* stream,
-                               const LaunchDimensions& launch_dimensions,
-                               se::DeviceMemoryBase symmetric_input_buffer,
-                               se::DeviceMemoryBase local_input_buffer,
-                               se::DeviceMemoryBase output_buffer, int64_t rank,
-                               int64_t num_ranks, int64_t num_elements,
-                               se::DeviceMemoryBase symmetric_signal_buffer,
-                               uint32_t signal_value,
-                               se::DeviceMemoryBase metadata) {
+absl::Status LaunchTypedKernel(
+    TagType, se::Stream* stream, const LaunchDimensions& launch_dimensions,
+    se::DeviceAddressBase symmetric_input_buffer,
+    se::DeviceAddressBase local_input_buffer,
+    se::DeviceAddressBase output_buffer, int64_t rank, int64_t num_ranks,
+    int64_t num_elements, se::DeviceAddressBase symmetric_signal_buffer,
+    uint32_t signal_value, se::DeviceAddressBase metadata) {
   using ElementType = typename TagType::ElementType;
   static constexpr bool kIsTwoShot =
       TagType::kAllReduceStrategy == AllReduceStrategy::kTwoShot;
@@ -204,6 +202,7 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 ReductionKind reduction_kind,
                                 AllReduceStrategy all_reduce_strategy) {
   if (!IsElementReductionSupported(element_type, reduction_kind)) {
+    VLOG(3) << "Element type and reduction kind combination is not supported.";
     return false;
   }
   const int64_t alignment_requirement =
@@ -213,6 +212,8 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
           : se::gpu::kNumElementsPerThread * num_ranks;
 
   if (num_elements % alignment_requirement != 0) {
+    VLOG(3)
+        << "Number of elements is not aligned to the alignment requirement.";
     return false;
   }
 
@@ -221,20 +222,20 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 }
 
 absl::Status RunAllReduceKernel(
-    se::Stream* stream,                            //
-    const LaunchDimensions& launch_dimensions,     //
-    PrimitiveType element_type,                    //
-    ReductionKind reduction_kind,                  //
-    AllReduceStrategy all_reduce_strategy,         //
-    se::DeviceMemoryBase symmetric_input_buffer,   //
-    se::DeviceMemoryBase local_input_buffer,       //
-    se::DeviceMemoryBase output_buffer,            //
-    RankId rank,                                   //
-    int64_t num_ranks,                             //
-    int64_t num_elements,                          //
-    se::DeviceMemoryBase symmetric_signal_buffer,  //
-    uint32_t signal_value,                         //
-    se::DeviceMemoryBase metadata) {
+    se::Stream* stream,                             //
+    const LaunchDimensions& launch_dimensions,      //
+    PrimitiveType element_type,                     //
+    ReductionKind reduction_kind,                   //
+    AllReduceStrategy all_reduce_strategy,          //
+    se::DeviceAddressBase symmetric_input_buffer,   //
+    se::DeviceAddressBase local_input_buffer,       //
+    se::DeviceAddressBase output_buffer,            //
+    RankId rank,                                    //
+    int64_t num_ranks,                              //
+    int64_t num_elements,                           //
+    se::DeviceAddressBase symmetric_signal_buffer,  //
+    uint32_t signal_value,                          //
+    se::DeviceAddressBase metadata) {
   if (!IsAllReduceKernelSupported(num_ranks, num_elements, element_type,
                                   reduction_kind, all_reduce_strategy)) {
     return absl::InvalidArgumentError(
@@ -242,7 +243,7 @@ absl::Status RunAllReduceKernel(
                      "of ranks, elements, element type and reduction kind: ",
                      num_ranks, ", ", num_elements, ", ",
                      primitive_util::LowercasePrimitiveTypeName(element_type),
-                     ", ", ReductionKindToString(reduction_kind)));
+                     ", ", reduction_kind));
   }
 
   const auto launch_kernel_impl = [&](auto tag) -> absl::Status {

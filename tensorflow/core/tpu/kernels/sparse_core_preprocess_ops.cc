@@ -118,9 +118,9 @@ absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
 }
 
 absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
-                                        const int32 total_id_count,
-                                        const int32 sample_count,
-                                        int32* row_ids_before_padding,
+                                        const int32_t total_id_count,
+                                        const int32_t sample_count,
+                                        int32_t* row_ids_before_padding,
                                         std::vector<int> shape_strides) {
   // The only difference between dense tensor, sparse tensor and ragged tensor
   // is the row ids output.
@@ -129,7 +129,7 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // Row ids are just the index ids.
     // Note: this path is also taken when the input is a ragged/sparse tensor
     // with 0 elements. In that case, the row_ids will just be empty as well.
-    for (int32 i = 0; i < total_id_count; ++i) {
+    for (int32_t i = 0; i < total_id_count; ++i) {
       *(row_ids_before_padding + i) = i;
     }
   } else if (indices_or_row_splits.dims() == 2 &&
@@ -140,12 +140,12 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // For 2D sparse tensor, as we always combine on the last dimension.
     // The row ids are just the sample ids which is the first dim of the
     // indices.
-    auto indices_matrix = indices_or_row_splits.matrix<int32>();
+    auto indices_matrix = indices_or_row_splits.matrix<int32_t>();
     // TODO(b/432045101): remove this once the bug is fixed.
     if (indices_matrix.dimension(1) == 2) {
-      int32 previous_row_id = -1;
-      for (int32 i = 0; i < total_id_count; ++i) {
-        int32 current_row_id = indices_matrix(i, 0);
+      int32_t previous_row_id = -1;
+      for (int32_t i = 0; i < total_id_count; ++i) {
+        int32_t current_row_id = indices_matrix(i, 0);
         if (current_row_id < previous_row_id) {
           return absl::InvalidArgumentError(
               "Invalid indices_or_row_splits input, indices of SparseTensor "
@@ -173,7 +173,7 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
             "Invalid shape_strides input, expected non-empty shape_strides for "
             "SparseTensor with rank > 2.");
       }
-      int32 previous_row_id = -1;
+      int32_t previous_row_id = -1;
       int32_t rank = indices_matrix.dimension(1) - 1;
       for (int32_t i = 0; i < total_id_count; ++i) {
         int32_t current_row_id = 0;
@@ -205,10 +205,10 @@ absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
     // Ragged tensor to COO format.
-    const int32* indices_or_row_splits_ptr =
-        indices_or_row_splits.flat<int32>().data();
-    int32 current_row_id = -1;
-    for (int32 i = 0; i < total_id_count; ++i) {
+    const int32_t* indices_or_row_splits_ptr =
+        indices_or_row_splits.flat<int32_t>().data();
+    int32_t current_row_id = -1;
+    for (int32_t i = 0; i < total_id_count; ++i) {
       while (i == *(indices_or_row_splits_ptr + 1 + current_row_id)) {
         current_row_id += 1;
       }
@@ -308,7 +308,7 @@ absl::Status SortDedupAndCountStatsOfCooTensor(
     uint32_t previous_id_array_index = 0;
     for (int32_t index = 0; index < total_id_count; ++index) {
       uint64_t item = per_feature_col_ids_index_list[index];
-      int32 col_id = item >> 32;
+      int32_t col_id = item >> 32;
       uint32_t id_array_index = item & 0xffffffff;
       int32_t row_id = *(row_ids_ptr + id_array_index);
       // If the row ids and col ids are both same as the previous one,
@@ -362,9 +362,9 @@ class ConvertToCooTensorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ValidateInputs(*indices_or_row_splits, *values,
                                        *weights, sample_count_));
 
-    const int32 total_id_count = values->NumElements();
+    const int32_t total_id_count = values->NumElements();
 
-    auto row_ids_before_dedup = std::make_unique<int32[]>(total_id_count);
+    auto row_ids_before_dedup = std::make_unique<int32_t[]>(total_id_count);
 
     OP_REQUIRES_OK(ctx, ComputeRowIdsBeforePadding(
                             *indices_or_row_splits, total_id_count,
@@ -382,14 +382,14 @@ class ConvertToCooTensorOp : public OpKernel {
     auto combiner_scale_transform_fn =
         GetCombinerScaleTransformFunction(combiner_);
 
-    const int32* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
-    const int32* values_ptr = values->flat<int32>().data();
+    const int32_t* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
+    const int32_t* values_ptr = values->flat<int32_t>().data();
     const float* weights_ptr = weights->flat<float>().data();
 
     // Dedup the ids within one sample by just checking the adjacent ids. This
     // will NOT result in a full deduplication.
-    std::vector<int32> row_ids;
-    std::vector<int32> col_ids;
+    std::vector<int32_t> row_ids;
+    std::vector<int32_t> col_ids;
     std::vector<float> gains;
     row_ids.reserve(total_id_count);
     col_ids.reserve(total_id_count);
@@ -400,8 +400,8 @@ class ConvertToCooTensorOp : public OpKernel {
       const float gain = *weights_ptr;
       const float rescaled_gain = combiner_scale_contribution_fn(gain);
       for (int token_id = 0; token_id < total_id_count; ++token_id) {
-        const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
-        const int32 col_id = *(values_ptr + token_id);
+        const int32_t row_id = *(row_ids_before_dedup_ptr + token_id);
+        const int32_t col_id = *(values_ptr + token_id);
         if (gains_rescale.has_value()) {
           // Compute the gain rescale before doing the dedup.
           (*gains_rescale)[row_id] += rescaled_gain;
@@ -417,8 +417,8 @@ class ConvertToCooTensorOp : public OpKernel {
       }
     } else {
       for (int token_id = 0; token_id < total_id_count; ++token_id) {
-        const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
-        const int32 col_id = *(values_ptr + token_id);
+        const int32_t row_id = *(row_ids_before_dedup_ptr + token_id);
+        const int32_t col_id = *(values_ptr + token_id);
         const float gain = *(weights_ptr + token_id);
         if (gains_rescale.has_value()) {
           // Compute the gain rescale before doing the dedup.
@@ -435,7 +435,7 @@ class ConvertToCooTensorOp : public OpKernel {
       }
     }
 
-    const int32 output_id_count = row_ids.size();
+    const int32_t output_id_count = row_ids.size();
 
     Tensor* gains_tensor;
     OP_REQUIRES_OK(ctx,
@@ -450,8 +450,8 @@ class ConvertToCooTensorOp : public OpKernel {
         ctx, ctx->allocate_output("col_ids", TensorShape({output_id_count}),
                                   &col_ids_tensor));
 
-    int32* row_ids_tensor_ptr = row_ids_tensor->flat<int32>().data();
-    int32* col_ids_tensor_ptr = col_ids_tensor->flat<int32>().data();
+    int32_t* row_ids_tensor_ptr = row_ids_tensor->flat<int32_t>().data();
+    int32_t* col_ids_tensor_ptr = col_ids_tensor->flat<int32_t>().data();
     float* gains_tensor_ptr = gains_tensor->flat<float>().data();
 
     if (gains_rescale.has_value()) {
@@ -535,11 +535,11 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                           feature_width_, &max_ids_per_partition,
                           &max_unique_ids_per_partition));
 
-  const int32* row_ids_tensor_ptr = row_ids->flat<int32>().data();
-  const int32* col_ids_tensor_ptr = col_ids->flat<int32>().data();
+  const int32_t* row_ids_tensor_ptr = row_ids->flat<int32_t>().data();
+  const int32_t* col_ids_tensor_ptr = col_ids->flat<int32_t>().data();
   const float* gains_tensor_ptr = gains->flat<float>().data();
-  const int64* splits_tensor_ptr = splits->flat<int64>().data();
-  const int32* id_counts_tensor_ptr = id_counts->flat<int32>().data();
+  const int64_t* splits_tensor_ptr = splits->flat<int64_t>().data();
+  const int32_t* id_counts_tensor_ptr = id_counts->flat<int32_t>().data();
 
   const int32_t total_id_count = row_ids->NumElements();
 
@@ -556,9 +556,9 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   const int max_division_level = GetMinibatchMaxDivisionLevel();
 
-  const int32 kMaxDivisions = 1 << max_division_level;
+  const int32_t kMaxDivisions = 1 << max_division_level;
 
-  int64 binary_splits = 0;
+  int64_t binary_splits = 0;
   for (int i = 0; i < splits->NumElements(); ++i) {
     binary_splits |= *(splits_tensor_ptr + i);
   }
@@ -566,7 +566,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   std::vector<int> bucket_splits =
       ConvertBinarySplitsToBucketSplits(binary_splits, max_division_level);
 
-  const int32 num_minibatch_per_sc = bucket_splits.size() + 1;
+  const int32_t num_minibatch_per_sc = bucket_splits.size() + 1;
   sparse_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
                                          num_minibatch_per_sc, device_name_,
                                          table_name_);
@@ -588,7 +588,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   bucket_splits.insert(bucket_splits.begin(), 0);
   bucket_splits.push_back(kMaxDivisions);
 
-  const int32 max_ids_per_chip = max_ids_per_chip_per_sample_ * sample_count_;
+  const int32_t max_ids_per_chip = max_ids_per_chip_per_sample_ * sample_count_;
 
   OP_REQUIRES(
       ctx, max_ids_per_chip % xla_pad_size == 0,
@@ -596,8 +596,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           "The max_ids_per_chip is set to be ", max_ids_per_chip,
           " which is not divisible by the xla_pad_size ", xla_pad_size, " .")));
 
-  const int32 padded_row_pointers_size_per_sc =
-      xla::RoundUpTo<int32>(num_physical_replica, xla_pad_size);
+  const int32_t padded_row_pointers_size_per_sc =
+      xla::RoundUpTo<int32_t>(num_physical_replica, xla_pad_size);
 
   Tensor* row_pointers_tensor;
   OP_REQUIRES_OK(ctx,
@@ -619,11 +619,12 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("sorted_gains", TensorShape({max_ids_per_chip}),
                                 &sorted_gains_tensor));
-  int32* row_pointers_tensor_ptr = row_pointers_tensor->flat<int32>().data();
-  int32* sorted_sample_ids_tensor_ptr =
-      sorted_sample_ids_tensor->flat<int32>().data();
-  int32* sorted_token_ids_tensor_ptr =
-      sorted_token_ids_tensor->flat<int32>().data();
+  int32_t* row_pointers_tensor_ptr =
+      row_pointers_tensor->flat<int32_t>().data();
+  int32_t* sorted_sample_ids_tensor_ptr =
+      sorted_sample_ids_tensor->flat<int32_t>().data();
+  int32_t* sorted_token_ids_tensor_ptr =
+      sorted_token_ids_tensor->flat<int32_t>().data();
   float* sorted_gains_tensor_ptr = sorted_gains_tensor->flat<float>().data();
 
   // This packed id count is used to track how many ids we have packed into
@@ -631,8 +632,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   // dropped.
   int32_t packed_id_count = 0;
 
-  int32 global_index = 0;
-  int32 row_pointers_index = 0;
+  int32_t global_index = 0;
+  int32_t row_pointers_index = 0;
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
     for (int i = 1; i < bucket_splits.size(); ++i) {
       for (int replica_id = 0; replica_id < num_physical_replica;
@@ -686,8 +687,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         }
 
         *(row_pointers_tensor_ptr + row_pointers_index) = global_index;
-        int32 num_ids_to_pad_per_replica =
-            xla::RoundUpTo<int32>(global_index, xla_pad_size) - global_index;
+        int32_t num_ids_to_pad_per_replica =
+            xla::RoundUpTo<int32_t>(global_index, xla_pad_size) - global_index;
         std::fill_n(sorted_token_ids_tensor_ptr + global_index,
                     num_ids_to_pad_per_replica, kXlaPadValue);
         std::fill_n(sorted_sample_ids_tensor_ptr + global_index,
@@ -698,8 +699,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
         ++row_pointers_index;
       }
       // Pad the row_pointers to be memory aligned.
-      int32 num_row_pointers_to_pad =
-          xla::RoundUpTo<int32>(row_pointers_index, xla_pad_size) -
+      int32_t num_row_pointers_to_pad =
+          xla::RoundUpTo<int32_t>(row_pointers_index, xla_pad_size) -
           row_pointers_index;
       std::fill_n(row_pointers_tensor_ptr + row_pointers_index,
                   num_row_pointers_to_pad, global_index);
@@ -718,7 +719,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                  << " . This could potentially impact the model quality.";
   }
 
-  int32 row_pointers_unpadded_size =
+  int32_t row_pointers_unpadded_size =
       total_num_minibatch * padded_row_pointers_size_per_sc;
 
   Tensor* num_minibatches_per_physical_sparse_core_tensor;
@@ -736,11 +737,11 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->allocate_output("ids_unpadded_size", TensorShape({}),
                                            &ids_unpadded_size_tensor));
 
-  num_minibatches_per_physical_sparse_core_tensor->flat<int32>()(0) =
+  num_minibatches_per_physical_sparse_core_tensor->flat<int32_t>()(0) =
       num_minibatch_per_sc;
-  row_pointers_unpadded_size_tensor->flat<int32>()(0) =
+  row_pointers_unpadded_size_tensor->flat<int32_t>()(0) =
       row_pointers_unpadded_size;
-  ids_unpadded_size_tensor->flat<int32>()(0) = ids_unpadded_size;
+  ids_unpadded_size_tensor->flat<int32_t>()(0) = ids_unpadded_size;
 }
 
 #ifdef LIBTPU_ON_GCE
@@ -778,7 +779,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
 
-  int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
+  int32_t per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
@@ -802,10 +803,10 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* gains;
   OP_REQUIRES_OK(ctx, ctx->input("gains", &gains));
 
-  const int32 total_id_count = row_ids->NumElements();
+  const int32_t total_id_count = row_ids->NumElements();
 
-  const int32* row_ids_ptr = row_ids->flat<int32>().data();
-  const int32* col_ids_ptr = col_ids->flat<int32>().data();
+  const int32_t* row_ids_ptr = row_ids->flat<int32_t>().data();
+  const int32_t* col_ids_ptr = col_ids->flat<int32_t>().data();
   const float* gains_ptr = gains->flat<float>().data();
 
 #ifndef NDEBUG
@@ -829,7 +830,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   const int max_division_level = GetMinibatchMaxDivisionLevel();
 
-  const int32 kMaxDivisions = 1 << max_division_level;
+  const int32_t kMaxDivisions = 1 << max_division_level;
 
   // The id counts tensor is the running sum of the number of ids for all
   // buckets for all the replicas on each SparseCore.
@@ -842,7 +843,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           TensorShape(
               {kMaxDivisions * num_sc_per_chip_ * num_physical_replica + 1}),
           &id_counts_tensor));
-  int32* id_counts_tensor_ptr = id_counts_tensor->flat<int32>().data();
+  int32_t* id_counts_tensor_ptr = id_counts_tensor->flat<int32_t>().data();
   *id_counts_tensor_ptr = 0;
 
   const int32_t division_size =
@@ -855,8 +856,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   //                0001011 -> 0001 01 1
   //      which mean split at level 0 section 0, level 1 section 0 and level
   //      2 section 0. the split points are [128, 256, 512].
-  int64 pre_merge_splits = 0;
-  int64 after_merge_splits = 0;
+  int64_t pre_merge_splits = 0;
+  int64_t after_merge_splits = 0;
   // Vector of uint64_t storing the col ids in the upper 32 bit and the index
   // to the original id array in the lower 32 bit.
   std::vector<std::vector<uint64_t>> col_ids_index_list(
@@ -926,7 +927,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     int32_t previous_row_id = -1;
     uint32_t previous_id_array_index = 0;
     for (uint64_t item : col_ids_index_list[sc_id]) {
-      int32 col_id = item >> 32;
+      int32_t col_id = item >> 32;
       uint32_t id_array_index = item & 0xffffffff;
       int32_t row_id = *(row_ids_ptr + id_array_index);
       // If the row ids and col ids are both same as the previous one,
@@ -1027,9 +1028,9 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           if (level > 0 && (pre_merge_splits &
                             (1LL << (pre_start_bit_pos + (section >> 1)))) == 0)
             continue;
-          int32 id_count = id_counter[(section + 1) * section_size] -
-                           id_counter[section * section_size];
-          int32 unique_id_count =
+          int32_t id_count = id_counter[(section + 1) * section_size] -
+                             id_counter[section * section_size];
+          int32_t unique_id_count =
               unique_id_counter[(section + 1) * section_size] -
               unique_id_counter[section * section_size];
           // If the number of ids or unique ids exceeds the limit, We need to
@@ -1155,17 +1156,17 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   Tensor* splits_tensor;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("splits", TensorShape({}), &splits_tensor));
-  splits_tensor->flat<int64>()(0) = after_merge_splits;
+  splits_tensor->flat<int64_t>()(0) = after_merge_splits;
 
   Tensor* max_ids_tensor;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("max_ids", TensorShape({}), &max_ids_tensor));
-  max_ids_tensor->flat<int32>()(0) = this_max_ids;
+  max_ids_tensor->flat<int32_t>()(0) = this_max_ids;
 
   Tensor* max_uniques_tensor;
   OP_REQUIRES_OK(ctx, ctx->allocate_output("max_uniques", TensorShape({}),
                                            &max_uniques_tensor));
-  max_uniques_tensor->flat<int32>()(0) = this_max_uniques;
+  max_uniques_tensor->flat<int32_t>()(0) = this_max_uniques;
 }
 
 #ifdef LIBTPU_ON_GCE
@@ -1197,12 +1198,12 @@ void StoreMinibatchStatisticsInFdoOp::Compute(OpKernelContext* ctx) {
 
   const Tensor* max_ids_t;
   OP_REQUIRES_OK(ctx, ctx->input("max_ids", &max_ids_t));
-  int64_t max_ids = max_ids_t->scalar<int64>()();
+  int64_t max_ids = max_ids_t->scalar<int64_t>()();
   const Tensor* max_uniques_t;
   OP_REQUIRES_OK(ctx, ctx->input("max_uniques", &max_uniques_t));
-  int64_t max_uniques = max_uniques_t->scalar<int64>()();
+  int64_t max_uniques = max_uniques_t->scalar<int64_t>()();
 
-  int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
+  int32_t per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
@@ -1264,10 +1265,10 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ValidateInputs(*indices_or_row_splits, *values, *weights,
                                      sample_count_));
 
-  const int32 total_id_count = values->NumElements();
+  const int32_t total_id_count = values->NumElements();
 
-  auto row_ids_before_dedup = std::unique_ptr<int32[]>(
-      new std::remove_extent_t<int32[]>[total_id_count]);
+  auto row_ids_before_dedup = std::unique_ptr<int32_t[]>(
+      new std::remove_extent_t<int32_t[]>[total_id_count]);
 
   OP_REQUIRES_OK(ctx, ComputeRowIdsBeforePadding(*indices_or_row_splits,
                                                  total_id_count, sample_count_,
@@ -1285,14 +1286,14 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
   auto combiner_scale_transform_fn =
       GetCombinerScaleTransformFunction(combiner_);
 
-  const int32* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
-  const int32* values_ptr = values->flat<int32>().data();
+  const int32_t* row_ids_before_dedup_ptr = row_ids_before_dedup.get();
+  const int32_t* values_ptr = values->flat<int32_t>().data();
   const float* weights_ptr = weights->flat<float>().data();
 
   // Dedup the ids within one sample by just checking the adjacent ids. This
   // will NOT result in a full deduplication.
-  std::vector<int32> row_ids;
-  std::vector<int32> col_ids;
+  std::vector<int32_t> row_ids;
+  std::vector<int32_t> col_ids;
   std::vector<float> gains;
   row_ids.reserve(total_id_count);
   col_ids.reserve(total_id_count);
@@ -1306,8 +1307,8 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
     const float gain = *weights_ptr;
     const float rescaled_gain = combiner_scale_contribution_fn(gain);
     for (int token_id = 0; token_id < total_id_count; ++token_id) {
-      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
-      const int32 col_id = *(values_ptr + token_id);
+      const int32_t row_id = *(row_ids_before_dedup_ptr + token_id);
+      const int32_t col_id = *(values_ptr + token_id);
       if (gains_rescale.has_value()) {
         // Compute the gain rescale before doing the dedup.
         (*gains_rescale)[row_id] += rescaled_gain;
@@ -1324,8 +1325,8 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
     }
   } else {
     for (int token_id = 0; token_id < total_id_count; ++token_id) {
-      const int32 row_id = *(row_ids_before_dedup_ptr + token_id);
-      const int32 col_id = *(values_ptr + token_id);
+      const int32_t row_id = *(row_ids_before_dedup_ptr + token_id);
+      const int32_t col_id = *(values_ptr + token_id);
       const float gain = *(weights_ptr + token_id);
       if (gains_rescale.has_value()) {
         // Compute the gain rescale before doing the dedup.
@@ -1371,8 +1372,8 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
         ctx, col_ids_output_list.allocate(
                  i, TensorShape({per_sc_token_count[i]}), &col_ids_tensor));
 
-    int32* row_ids_tensor_ptr = row_ids_tensor->flat<int32>().data();
-    int32* col_ids_tensor_ptr = col_ids_tensor->flat<int32>().data();
+    int32_t* row_ids_tensor_ptr = row_ids_tensor->flat<int32_t>().data();
+    int32_t* col_ids_tensor_ptr = col_ids_tensor->flat<int32_t>().data();
     float* gains_tensor_ptr = gains_tensor->flat<float>().data();
 
     WriteToOutputTensor(
@@ -1384,10 +1385,10 @@ void ConvertToListOfSparseCoreCooTensorsOp::Compute(OpKernelContext* ctx) {
 }
 
 void ConvertToListOfSparseCoreCooTensorsOp::WriteToOutputTensor(
-    int32* row_ids, int32* col_ids, float* gains, int32* row_ids_tensor_ptr,
-    int32* col_ids_tensor_ptr, float* gains_tensor_ptr, int32_t begin_index,
-    int32_t end_index, int32_t sc_id,
-    std::optional<std::vector<float>> gains_rescale) {
+    int32_t* row_ids, int32_t* col_ids, float* gains,
+    int32_t* row_ids_tensor_ptr, int32_t* col_ids_tensor_ptr,
+    float* gains_tensor_ptr, int32_t begin_index, int32_t end_index,
+    int32_t sc_id, std::optional<std::vector<float>> gains_rescale) {
   tsl::profiler::TraceMe traceme(
       "ConvertToListOfSparseCoreCooTensorsOp::WriteToOutputTensor");
   if (gains_rescale.has_value()) {
@@ -1407,12 +1408,13 @@ void ConvertToListOfSparseCoreCooTensorsOp::WriteToOutputTensor(
     }
   } else {
     std::transform(row_ids + begin_index, row_ids + end_index,
-                   row_ids_tensor_ptr, [this, &sc_id](int32 row_id) -> int32 {
+                   row_ids_tensor_ptr,
+                   [this, &sc_id](int32_t row_id) -> int32_t {
                      return row_id % per_sc_sample_count_ + per_sc_row_offset_ +
                             per_sc_stacked_table_sample_count_ * sc_id;
                    });
     std::transform(col_ids + begin_index, col_ids + end_index,
-                   col_ids_tensor_ptr, [this](int32 col_id) -> int32 {
+                   col_ids_tensor_ptr, [this](int32_t col_id) -> int32_t {
                      return ((col_id + col_shift_) & num_sc_shards_bit_mod_) +
                             (col_id & num_sc_shards_bit_mod_inv_) + col_offset_;
                    });
@@ -1804,7 +1806,7 @@ void ConvertToSparseCoreCsrWrappedCooTensorOp::Compute(OpKernelContext* ctx) {
         }
 
         *(row_pointers_tensor_ptr + row_pointers_index) = global_index;
-        int32 num_ids_to_pad_per_replica =
+        int32_t num_ids_to_pad_per_replica =
             xla::RoundUpTo<int32_t>(global_index, xla_pad_size) - global_index;
 
         std::fill_n(sorted_token_ids_tensor_ptr + global_index,
@@ -1818,8 +1820,8 @@ void ConvertToSparseCoreCsrWrappedCooTensorOp::Compute(OpKernelContext* ctx) {
         ++row_pointers_index;
       }
       // Pad the row_pointers to be memory aligned.
-      int32 num_row_pointers_to_pad =
-          xla::RoundUpTo<int32>(row_pointers_index, xla_pad_size) -
+      int32_t num_row_pointers_to_pad =
+          xla::RoundUpTo<int32_t>(row_pointers_index, xla_pad_size) -
           row_pointers_index;
       std::fill_n(row_pointers_tensor_ptr + row_pointers_index,
                   num_row_pointers_to_pad, global_index);
@@ -1838,7 +1840,7 @@ void ConvertToSparseCoreCsrWrappedCooTensorOp::Compute(OpKernelContext* ctx) {
                  << " . This could potentially impact the model quality.";
   }
 
-  int32 row_pointers_unpadded_size =
+  int32_t row_pointers_unpadded_size =
       total_num_minibatch * padded_row_pointers_size_per_sc;
 
   Tensor* num_minibatches_per_sc_tensor;
@@ -1855,10 +1857,10 @@ void ConvertToSparseCoreCsrWrappedCooTensorOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->allocate_output("ids_unpadded_size", TensorShape({}),
                                            &ids_unpadded_size_tensor));
 
-  num_minibatches_per_sc_tensor->flat<int32>()(0) = num_minibatch_per_sc;
-  row_pointers_unpadded_size_tensor->flat<int32>()(0) =
+  num_minibatches_per_sc_tensor->flat<int32_t>()(0) = num_minibatch_per_sc;
+  row_pointers_unpadded_size_tensor->flat<int32_t>()(0) =
       row_pointers_unpadded_size;
-  ids_unpadded_size_tensor->flat<int32>()(0) = ids_unpadded_size;
+  ids_unpadded_size_tensor->flat<int32_t>()(0) = ids_unpadded_size;
 }
 
 REGISTER_KERNEL_BUILDER(

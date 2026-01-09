@@ -54,7 +54,7 @@ template <typename Device, typename T, typename S>
 class DequantizeOp : public OpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string mode_string;
+    std::string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(
         ctx,

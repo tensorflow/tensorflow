@@ -24,6 +24,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
@@ -349,7 +351,10 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     }
 
     // The array is sharded, copy the appropriate sub-arrays.
-    TF_ASSIGN_OR_RETURN(auto index_domains, sharding().IndexDomains(shape()));
+    TF_ASSIGN_OR_RETURN(
+        auto index_domains,
+        sharding().IndexDomains(
+            shape(), xla::ifrt::SingleDeviceShardSemantics::kAllShards));
     TF_RET_CHECK(index_domains.size() == sharding().devices()->size());
     std::vector<tsl::RCReference<NanoArray>> shards;
     shards.reserve(index_domains.size());
@@ -509,9 +514,10 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // Allocates an aligned buffer of the given size.
   static absl::StatusOr<OwnedDataPtr> AllocateData(size_t size) {
     OwnedDataPtr owned_data(
-        tsl::port::AlignedMalloc(std::max<size_t>(size, Align()), Align()),
+        tsl::port::AlignedMalloc(std::max<size_t>(size, Align()),
+                                 static_cast<std::align_val_t>(Align())),
         [](void* ptr) { tsl::port::AlignedFree(ptr); });
-    if (ABSL_PREDICT_FALSE(owned_data.get() == nullptr)) {
+    if (ABSL_PREDICT_FALSE(owned_data == nullptr)) {
       return Internal("Failed to allocate memory for NanoArray. Errno: %s",
                       strerror(errno));
     }
@@ -684,7 +690,10 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
       return shards_[0];
     }
 
-    TF_ASSIGN_OR_RETURN(auto index_domains, sharding->IndexDomains(shape()));
+    TF_ASSIGN_OR_RETURN(
+        auto index_domains,
+        sharding->IndexDomains(
+            shape(), xla::ifrt::SingleDeviceShardSemantics::kAllShards));
     if (ABSL_PREDICT_FALSE(index_domains.size() != shards_.size())) {
       return absl::FailedPreconditionError(
           absl::StrCat("Number of index domains ", index_domains.size(),
@@ -821,6 +830,8 @@ class NanoExecutable final
     TF_ASSIGN_OR_RETURN(auto nano_executable,
                         client->nano_client()->Compile(computation));
 
+    TF_ASSIGN_OR_RETURN(auto donatable_input_indices,
+                        GetDonatableInputIndices(computation));
     TF_ASSIGN_OR_RETURN(auto program_shape, computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(auto proto_input_shardings,
                         GetInputShardings(program_shape, computation));
@@ -833,8 +844,8 @@ class NanoExecutable final
 
     return absl::WrapUnique(new NanoExecutable(
         client, std::move(computation), std::move(program_shape),
-        std::move(nano_executable), std::move(input_shardings),
-        std::move(output_shardings)));
+        std::move(nano_executable), std::move(donatable_input_indices),
+        std::move(input_shardings), std::move(output_shardings)));
   }
 
   ifrt::Client* client() const override { return client_; }
@@ -843,8 +854,7 @@ class NanoExecutable final
 
   absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
       const override {
-    return absl::UnimplementedError(
-        "NanoExecutable::GetDonatableInputIndices is not implemented.");
+    return donatable_input_indices_;
   }
 
   absl::StatusOr<ExecuteResult> Execute(
@@ -1009,7 +1019,9 @@ class NanoExecutable final
     return client_->addressable_devices();
   }
 
-  const ifrt::DeviceListRef& devices() const override { return devices_; }
+  std::optional<ifrt::DeviceListRef> devices() const override {
+    return devices_;
+  }
 
   static char ID;  // NOLINT
 
@@ -1017,6 +1029,7 @@ class NanoExecutable final
   NanoExecutable(NanoIfrtClient* client, XlaComputation program,
                  ProgramShape program_shape,
                  std::unique_ptr<NanoRtExecutable> executable,
+                 std::vector<int> donatable_input_indices,
                  std::vector<ifrt::ShardingRef> input_shardings,
                  std::vector<ifrt::ShardingRef> output_shardings)
       : client_(client),
@@ -1024,6 +1037,7 @@ class NanoExecutable final
         program_(std::move(program)),
         program_shape_(std::move(program_shape)),
         executable_(std::move(executable)),
+        donatable_input_indices_(std::move(donatable_input_indices)),
         input_shardings_(std::move(input_shardings)),
         output_shardings_(std::move(output_shardings)),
         user_context_(xla::ifrt::UserContextScope::current()) {}
@@ -1057,6 +1071,29 @@ class NanoExecutable final
           std::move(xla_sharding)));
     }
     return result;
+  }
+
+  // Returns a list of donatable input indices from the given HLO modules.
+  static absl::StatusOr<std::vector<int>> GetDonatableInputIndices(
+      const XlaComputation& xla_computation) {
+    const HloModuleProto& hlo_module_proto = xla_computation.proto();
+    std::vector<int> donatable_input_indices;
+    for (const auto& alias : hlo_module_proto.input_output_alias().entries()) {
+      if (alias.parameter_shape_index().empty()) {
+        donatable_input_indices.push_back(alias.parameter_number());
+      } else {
+        donatable_input_indices.push_back(alias.parameter_shape_index(0));
+      }
+    }
+    for (const auto& buffer_donor : hlo_module_proto.buffer_donor().entries()) {
+      if (buffer_donor.parameter_shape_index().empty()) {
+        donatable_input_indices.push_back(buffer_donor.parameter_number());
+      } else {
+        donatable_input_indices.push_back(
+            buffer_donor.parameter_shape_index(0));
+      }
+    }
+    return donatable_input_indices;
   }
 
   static absl::StatusOr<std::vector<OpSharding>> GetInputShardings(
@@ -1167,6 +1204,7 @@ class NanoExecutable final
   XlaComputation program_;
   ProgramShape program_shape_;
   std::unique_ptr<NanoRtExecutable> executable_;
+  std::vector<int> donatable_input_indices_;
   std::vector<ifrt::ShardingRef> input_shardings_;
   std::vector<ifrt::ShardingRef> output_shardings_;
   const xla::ifrt::UserContextRef user_context_;
@@ -1257,6 +1295,8 @@ class NanoDevice final : public llvm::RTTIExtends<NanoDevice, ifrt::Device> {
     static auto attributes = new ifrt::AttributeMap({});
     return *attributes;
   }
+
+  absl::string_view PlatformName() const override { return "cpu"; }
 
   absl::string_view Kind() const override { return "cpu"; }
 

@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
-#include <numeric>
 #include <sstream>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/hash/hash_testing.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -47,7 +47,7 @@ TEST(ShapeTest, LargeDim) {
 TEST(ShapeTest, ManyDims) {
   const int kNumDims = 65536;  // Arbitrarily large number.
   std::vector<int64_t> dims(kNumDims);
-  std::iota(dims.begin(), dims.end(), 0);
+  absl::c_iota(dims, 0);
   Shape shape(dims);
   EXPECT_THAT(shape.dims(), ElementsAreArray(dims));
 }

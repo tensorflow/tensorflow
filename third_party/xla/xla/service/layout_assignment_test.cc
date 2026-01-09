@@ -47,11 +47,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -310,7 +309,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {1, 0});
   *ShapeUtil::GetMutableSubshape(&result_shape, /*index=*/{1, 0}) =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1});
-  TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
+  CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
       result_shape));
 
   LayoutAssignment layout_assignment(&computation_layout);
@@ -2092,12 +2091,11 @@ ENTRY main {
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
-  TF_CHECK_OK(backend()
-                  .compiler()
-                  ->RunHloPasses(m->Clone(),
-                                 backend().default_stream_executor(),
-                                 /*device_allocator=*/nullptr)
-                  .status());
+  CHECK_OK(backend()
+               .compiler()
+               ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
+                              /*device_allocator=*/nullptr)
+               .status());
 }
 
 TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {

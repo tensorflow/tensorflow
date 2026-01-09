@@ -22,7 +22,7 @@ namespace tensorflow {
 // sharded files, only make its register calls when not __ANDROID_TYPES_SLIM__.
 #if !defined(__ANDROID_TYPES_SLIM__)
 
-REGISTER6(BinaryOp, CPU, "NotEqual", functor::not_equal_to, int32, int64_t,
+REGISTER6(BinaryOp, CPU, "NotEqual", functor::not_equal_to, int32_t, int64_t,
           complex64, complex128, tstring, bool);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

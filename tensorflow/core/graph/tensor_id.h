@@ -44,7 +44,7 @@ struct TensorId : public std::pair<absl::string_view, int> {
   const absl::string_view node() const { return first; }
   int index() const { return second; }
 
-  string ToString() const {
+  std::string ToString() const {
     if (second == Graph::kControlSlot) return absl::StrCat("^", first);
     return absl::StrCat(first, ":", second);
   }
@@ -63,19 +63,19 @@ bool IsTensorIdControl(const TensorId& tensor_id);
 
 // Same as TensorId, except owns the backing storage for the op name. This makes
 // the memory management simpler at the expense of a copy.
-struct SafeTensorId : public std::pair<string, int> {
-  typedef std::pair<string, int> Base;
+struct SafeTensorId : public std::pair<std::string, int> {
+  typedef std::pair<std::string, int> Base;
 
   // NOTE(skyewm): this is required on some platforms. I'm not sure why the
   // using "using Base::pair;" isn't always sufficient.
   SafeTensorId() : Base() {}
-  SafeTensorId(const string& str, int idx) : Base(str, idx) {}
+  SafeTensorId(const std::string& str, int idx) : Base(str, idx) {}
   SafeTensorId(const TensorId& id);
 
-  const string& node() const { return first; }
+  const std::string& node() const { return first; }
   int index() const { return second; }
 
-  string ToString() const {
+  std::string ToString() const {
     if (second == Graph::kControlSlot) return absl::StrCat("^", first);
     return absl::StrCat(first, ":", second);
   }

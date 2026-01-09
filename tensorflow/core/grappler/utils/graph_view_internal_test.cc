@@ -635,8 +635,8 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularUpdate) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -665,8 +665,8 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopRegularNew) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -695,8 +695,8 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedSelfLoopControl) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -725,8 +725,8 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularUpdate) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -755,8 +755,8 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninRegularNew) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -786,7 +786,7 @@ TEST(MutableNodeViewDiffTest, IsWellFormedRenamedMissingFaninControl) {
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
   std::string old_node_name = "d";
-  string new_node_name = "e";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -815,8 +815,8 @@ TEST(MutableNodeViewDiffTest, RenamedAndRemovedFanins) {
   EXPECT_TRUE(IsEmpty(&diff));
   EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
 
-  string old_node_name = "d";
-  string new_node_name = "e";
+  std::string old_node_name = "d";
+  std::string new_node_name = "e";
   updated_node_names.erase(old_node_name);
   updated_node_names.emplace(old_node_name, 3);
   updated_node_names.emplace(new_node_name, -1);
@@ -1048,7 +1048,7 @@ TEST(MutationNewNodeTest, AddOrUpdateAttribute) {
   MutationNewNodeForTest new_node(&graph_view, {});
 
   EXPECT_TRUE(IsWellFormed(&new_node, updated_node_names));
-  string attr_name = "attr_name";
+  std::string attr_name = "attr_name";
   AttrValue attr_1;
   attr_1.set_i(8);
   AddOrUpdateAttribute(&new_node, attr_name, attr_1);
@@ -1070,7 +1070,7 @@ TEST(MutationNewNodeTest, RemoveAttribute) {
   MutationNewNodeForTest new_node(&graph_view, {});
 
   EXPECT_TRUE(IsWellFormed(&new_node, updated_node_names));
-  string attr_name = "attr_name";
+  std::string attr_name = "attr_name";
   AttrValue attr_1;
   attr_1.set_i(8);
   AddOrUpdateAttribute(&new_node, attr_name, attr_1);

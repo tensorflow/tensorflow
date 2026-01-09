@@ -64,7 +64,7 @@ class Subgraph {
   size_t Hash() const { return hash_; }
 
   // Dump the subgraph information to a string.
-  string Dump();
+  std::string Dump();
 
   // Extract this subgraph into a separate graph representation for signature
   // building, that includes only the links between the nodes in the subgraph

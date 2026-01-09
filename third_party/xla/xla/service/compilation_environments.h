@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
 #define XLA_SERVICE_COMPILATION_ENVIRONMENTS_H_
 
-#include <cstdint>
 #include <functional>
 #include <memory>
-#include <typeindex>
-#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/casts.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -37,7 +34,7 @@ namespace xla {
 //
 // CompilationEnvironments uses lazy initialization, (see GetEnv() for more
 // details). Lazy initialization is used so we can avoid:
-// A) Requiring every code path to explitily construct all needed compilation
+// A) Requiring every code path to explicitly construct all needed compilation
 //    environments, particularly when the default constructed environment is
 //    all we need AND
 // B) Requiring CompilationEnvironments to implicitly construct all needed
@@ -48,8 +45,8 @@ namespace xla {
 class CompilationEnvironments {
  public:
   using ProcessNewEnvFn =
-      std::function<absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>(
-          std::unique_ptr<tsl::protobuf::Message>)>;
+      std::function<absl::StatusOr<std::unique_ptr<google::protobuf::Message>>(
+          std::unique_ptr<google::protobuf::Message>)>;
 
   CompilationEnvironments() = default;
   CompilationEnvironments(const CompilationEnvironments& rhs) { *this = rhs; }
@@ -75,9 +72,14 @@ class CompilationEnvironments {
   //
   // REQUIRES:
   // - The output is *not* allowed to be null, even for null input.
-  static void RegisterProcessNewEnvFn(
-      const tsl::protobuf::Descriptor* descriptor,
-      ProcessNewEnvFn process_new_env);
+  // - `descriptor` must stay alive until the process ends, or until
+  //   `DeregisterProcessNewEnvFn` is called.
+  static void RegisterProcessNewEnvFn(const google::protobuf::Descriptor* descriptor,
+                                      ProcessNewEnvFn process_new_env);
+
+  // Deregisters the ProcessNewEnvFn for the given proto descriptor, if one
+  // exists.
+  static void DeregisterProcessNewEnvFn(const google::protobuf::Descriptor* descriptor);
 
   // Adds env to the list of CompilationEnvironments. If an environment with
   // the same proto descriptor has already been added, returns an error.
@@ -85,7 +87,7 @@ class CompilationEnvironments {
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
   // proto type is unknown, an error will be returned.
-  absl::Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnv(std::unique_ptr<google::protobuf::Message> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, ProcessNewEnvFn(nullptr) will be added and
@@ -119,7 +121,7 @@ class CompilationEnvironments {
   // Returns the ProcessNewEnvFn for the given env type. Returns nullptr if no
   // ProcessNewEnvFn has been registered for the env type.
   static ProcessNewEnvFn GetProcessNewEnvFn(
-      const tsl::protobuf::Descriptor& descriptor);
+      const google::protobuf::Descriptor& descriptor);
 
   // Called by GetEnv(), when it lazily creates a new environment, to globally
   // track stats about how many such environments are created by
@@ -131,11 +133,11 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(absl::string_view env_type);
 
-  absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
-                          std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnvImpl(const google::protobuf::Descriptor& descriptor,
+                          std::unique_ptr<google::protobuf::Message> env);
 
-  absl::flat_hash_map<const tsl::protobuf::Descriptor*,
-                      std::unique_ptr<tsl::protobuf::Message>>
+  absl::flat_hash_map<const google::protobuf::Descriptor*,
+                      std::unique_ptr<google::protobuf::Message>>
       environments_;
 };
 
@@ -156,12 +158,12 @@ T& CompilationEnvironments::GetMutableEnv() {
   }
 
   if (it == environments_.end()) {
-    TF_CHECK_OK(AddEnvImpl(*descriptor, nullptr));
+    CHECK_OK(AddEnvImpl(*descriptor, nullptr));
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }
 
-  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
+  return google::protobuf::DownCastToGenerated<T>(*it->second);
 }
 
 template <typename T>

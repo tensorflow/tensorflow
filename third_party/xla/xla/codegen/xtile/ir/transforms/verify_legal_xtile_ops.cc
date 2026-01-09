@@ -83,8 +83,14 @@ std::optional<absl::string_view> IsLegalTensorOp(mlir::Operation* op) {
 std::optional<absl::string_view> IsLegalStablehloOp(mlir::Operation* op) {
   if (mlir::isa<mlir::stablehlo::BroadcastInDimOp, mlir::stablehlo::ReduceOp,
                 mlir::stablehlo::ReturnOp, mlir::stablehlo::TransposeOp,
-                mlir::stablehlo::DotGeneralOp, mlir::stablehlo::ReshapeOp>(
-          op)) {
+                mlir::stablehlo::DotGeneralOp, mlir::stablehlo::ReshapeOp,
+                mlir::stablehlo::DotGeneralOp, mlir::stablehlo::ReshapeOp,
+                mlir::stablehlo::AllReduceOp, mlir::stablehlo::AddOp,
+                mlir::stablehlo::DivOp, mlir::stablehlo::RemOp,
+                mlir::stablehlo::MaxOp, mlir::stablehlo::MinOp,
+                mlir::stablehlo::MulOp, mlir::stablehlo::SubtractOp,
+                mlir::stablehlo::XorOp, mlir::stablehlo::AndOp,
+                mlir::stablehlo::OrOp>(op)) {
     return std::nullopt;
   }
 

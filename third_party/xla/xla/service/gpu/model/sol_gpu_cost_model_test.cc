@@ -27,17 +27,18 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-constexpr int64_t kTenMB = 10 * 1024 * 1024;  // 10MB
+constexpr int64_t kEightMB = 8 * 1024 * 1024;  // 8MB
 
 using ::testing::TestWithParam;
 using ::testing::ValuesIn;
 
-struct RingLatencyTestCase {
+struct LatencyTestCase {
   SolGPUCostModel::CollectiveType collective_type;
+  int num_nodes;
   absl::Duration expected_latency;
 };
 
-class SolGPUCostModelTest : public TestWithParam<RingLatencyTestCase> {
+class SolGPUCostModelTest : public TestWithParam<LatencyTestCase> {
  protected:
   SolGPUCostModelTest()
       : model_({
@@ -45,30 +46,61 @@ class SolGPUCostModelTest : public TestWithParam<RingLatencyTestCase> {
             /*nic_speed_gbps=*/100,
             /*chunk_prep_time=*/absl::Microseconds(100),
             /*rtt=*/absl::Microseconds(100),
-            /*gpus_per_node=*/100,
+            /*gpus_per_node=*/8,
             /*chunk_size_bytes=*/4 * 1024 * 1024,
         }) {}
   SolGPUCostModel model_;
 };
 
-TEST_P(SolGPUCostModelTest, TestRingLatency) {
-  const RingLatencyTestCase& test_case = GetParam();
-  absl::Duration actual_latency =
-      absl::Trunc(*model_.RingLatency(kTenMB, 1, test_case.collective_type,
-                                      /*num_communicators=*/1),
-                  absl::Microseconds(1));
+TEST_P(SolGPUCostModelTest, TestLatency) {
+  const LatencyTestCase& test_case = GetParam();
+  absl::Duration actual_latency;
+  if (test_case.collective_type == SolGPUCostModel::CollectiveType::kAllToAll) {
+    actual_latency =
+        absl::Trunc(*model_.AllToAllLatency(kEightMB, test_case.num_nodes,
+                                            /*num_communicators=*/1),
+                    absl::Microseconds(1));
+  } else {
+    actual_latency =
+        absl::Trunc(*model_.RingLatency(kEightMB, test_case.num_nodes,
+                                        test_case.collective_type,
+                                        /*num_communicators=*/1),
+                    absl::Microseconds(1));
+  }
   EXPECT_EQ(actual_latency, test_case.expected_latency);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    SolGPUCostModelTests, SolGPUCostModelTest,
-    ValuesIn<RingLatencyTestCase>({
-        {SolGPUCostModel::CollectiveType::kAllGather, absl::Microseconds(299)},
-        {SolGPUCostModel::CollectiveType::kAllReduce, absl::Microseconds(498)},
-        {SolGPUCostModel::CollectiveType::kReduceScatter,
-         absl::Microseconds(299)},
-        {SolGPUCostModel::CollectiveType::kSendRecv, absl::Microseconds(353)},
-    }));
+INSTANTIATE_TEST_SUITE_P(SolGPUCostModelTests, SolGPUCostModelTest,
+                         ValuesIn<LatencyTestCase>({
+                             {SolGPUCostModel::CollectiveType::kAllGather,
+                              /*num_nodes=*/1, absl::Microseconds(284)},
+                             {SolGPUCostModel::CollectiveType::kAllGather,
+                              /*num_nodes=*/2, absl::Microseconds(485)},
+                             {SolGPUCostModel::CollectiveType::kAllGather,
+                              /*num_nodes=*/4, absl::Microseconds(885)},
+                             {SolGPUCostModel::CollectiveType::kAllReduce,
+                              /*num_nodes=*/1, absl::Microseconds(468)},
+                             {SolGPUCostModel::CollectiveType::kAllReduce,
+                              /*num_nodes=*/2, absl::Microseconds(870)},
+                             {SolGPUCostModel::CollectiveType::kAllReduce,
+                              /*num_nodes=*/4, absl::Microseconds(1670)},
+                             {SolGPUCostModel::CollectiveType::kReduceScatter,
+                              /*num_nodes=*/1, absl::Microseconds(284)},
+                             {SolGPUCostModel::CollectiveType::kReduceScatter,
+                              /*num_nodes=*/2, absl::Microseconds(485)},
+                             {SolGPUCostModel::CollectiveType::kReduceScatter,
+                              /*num_nodes=*/4, absl::Microseconds(885)},
+                             {SolGPUCostModel::CollectiveType::kSendRecv,
+                              /*num_nodes=*/1, absl::Microseconds(292)},
+                             {SolGPUCostModel::CollectiveType::kSendRecv,
+                              /*num_nodes=*/2, absl::Microseconds(485)},
+                             {SolGPUCostModel::CollectiveType::kAllToAll,
+                              /*num_nodes=*/1, absl::Microseconds(100)},
+                             {SolGPUCostModel::CollectiveType::kAllToAll,
+                              /*num_nodes=*/2, absl::Microseconds(1745)},
+                             {SolGPUCostModel::CollectiveType::kAllToAll,
+                              /*num_nodes=*/4, absl::Microseconds(4966)},
+                         }));
 
 TEST(SolGPUCostModelGetConfigTest, ConfigForHopper) {
   constexpr absl::string_view kDummyModule = R"(

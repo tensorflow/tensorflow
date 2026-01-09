@@ -78,6 +78,16 @@ limitations under the License.
 
 namespace xla {
 
+namespace cpu {
+
+PjRtPlatformId PlatformId();
+
+absl::string_view PlatformName();
+
+absl::string_view PlatformVersion();
+
+}  // namespace cpu
+
 class PjRtCpuClient final : public CommonPjRtClient {
  public:
   ~PjRtCpuClient() override;
@@ -104,13 +114,15 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override {
-    return tsl::Fingerprint64(CpuName());
+  PjRtPlatformId platform_id() const override { return cpu::PlatformId(); }
+
+  absl::string_view platform_name() const override {
+    return cpu::PlatformName();
   }
 
-  absl::string_view platform_name() const override { return CpuName(); }
-
-  absl::string_view platform_version() const override { return CpuName(); }
+  absl::string_view platform_version() const override {
+    return cpu::PlatformVersion();
+  }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -162,7 +174,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> ImportForeignMemory(
       void* device_ptr, absl::AnyInvocable<void() &&> on_delete_callback,
-      size_t on_device_bytes_count, PjRtMemorySpace* memory_space) override;
+      size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
+      bool is_mutable) override;
 
   tsl::thread::ThreadPool* pjrt_client_thread_pool() const {
     return pjrt_client_thread_pool_.get();
@@ -201,12 +214,13 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
-    return &topology_;
+    return topology_.get();
   }
 
   absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
                            PjRtFulfillAliasRawBufferCallback>>
-  CreateRawBufferChannel(PjRtMemorySpace* memory_space) override;
+  CreateRawBufferChannel(PjRtMemorySpace* memory_space,
+                         size_t on_device_bytes_count) override;
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
@@ -221,8 +235,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
       const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-          definition_device_events,
-      bool raw_buffer_is_mutable) override;
+          definition_device_events) override;
 
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
       PjRtMemorySpace* memory_space, const xla::Shape& shape) const override;
@@ -261,7 +274,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous,
       std::function<void(HloModuleConfig&)> customize_hlo_module_config,
-      int max_transpose_threads);
+      int max_transpose_threads,
+      std::unique_ptr<CpuTopologyDescription> topology);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
       const XlaComputation& computation,
@@ -314,7 +328,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   std::shared_ptr<cpu::CpuCollectives> collectives_;
 
-  xla::CpuTopologyDescription topology_;
+  std::unique_ptr<xla::CpuTopologyDescription> topology_;
 
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
@@ -441,8 +455,8 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   absl::Status CheckBufferCompatibilities(
-      absl::Span<std::pair<bool, TrackedCpuDeviceBuffer*> const> input_buffers)
-      const;
+      absl::Span<const CommonPjRtBuffer::ScopedHold> input_buffers,
+      absl::Span<PjRtBuffer* const> argument_handles) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
@@ -460,11 +474,15 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
 
   std::shared_ptr<Executable> cpu_executable_;
 
+  std::vector<Shape> parameter_device_shapes_;
+
   // Caching `result_buffer_indices_` to avoid lookup
   // HLO dataflow analysis data structures in program execution critical path.
 
   // Buffer allocation indices corresponding to each result buffer leaf buffer.
   absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices_;
+  // Reverse mapping of result_buffer_indices_.
+  std::vector<int64_t> output_indices_;
 
   // Size on device of each leaf buffer of the compiled program, cached here
   // for performance reasons.
@@ -486,6 +504,9 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
+
+  // Cached list of memory spaces per output.
+  std::vector<int> output_memory_space_kind_ids_;
 
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.

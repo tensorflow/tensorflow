@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -34,8 +34,8 @@ namespace stream_executor::gpu {
 
 using ::xla::gpu::BufferDebugLogHeader;
 
-absl::StatusOr<DeviceMemory<uint8_t>> BufferDebugLogBase::CreateOnDevice(
-    Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size) {
+absl::StatusOr<DeviceAddress<uint8_t>> BufferDebugLogBase::CreateOnDevice(
+    Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size) {
   if (memory.is_null()) {
     return absl::InvalidArgumentError("Log buffer must be non-null");
   }
@@ -60,7 +60,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> BufferDebugLogBase::CreateOnDevice(
 }
 
 absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
-    Stream& stream, DeviceMemory<uint8_t> memory) const {
+    Stream& stream, DeviceAddress<uint8_t> memory) const {
   BufferDebugLogHeader header;
   TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
@@ -68,7 +68,7 @@ absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
 }
 
 absl::StatusOr<size_t> BufferDebugLogBase::ReadFromDevice(
-    Stream& stream, DeviceMemory<uint8_t> memory, size_t entry_size,
+    Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size,
     void* entries_data) const {
   std::vector<uint8_t> buffer(memory.size());
   TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));

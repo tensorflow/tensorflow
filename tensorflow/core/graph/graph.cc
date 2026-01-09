@@ -190,7 +190,7 @@ void Node::ClearTypeInfo() {
 
 absl::Status Node::ShrinkTypeInfo(
     const absl::flat_hash_map<int, int>& index_mapping,
-    const string& type_attr_name, bool update_full_type) {
+    const std::string& type_attr_name, bool update_full_type) {
   std::vector<DataType> dtypes;
   TF_RETURN_IF_ERROR(GetNodeAttr(def(), type_attr_name, &dtypes));
 
@@ -239,11 +239,11 @@ const OpDef& Node::op_def() const { return *props_->op_def; }
 
 NodeDef* Node::mutable_def() { return &props_->node_def; }
 
-int32 Node::num_inputs() const { return props_->input_types.size(); }
+int32_t Node::num_inputs() const { return props_->input_types.size(); }
 DataType Node::input_type(int32_t i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }
 
-int32 Node::num_outputs() const { return props_->output_types.size(); }
+int32_t Node::num_outputs() const { return props_->output_types.size(); }
 DataType Node::output_type(int32_t o) const { return props_->output_types[o]; }
 const DataTypeVector& Node::output_types() const {
   return props_->output_types;
@@ -416,7 +416,7 @@ bool InputTensor::operator==(const InputTensor& other) const {
   return node == other.node && index == other.index;
 }
 
-uint64 InputTensor::Hash::operator()(InputTensor const& s) const {
+uint64_t InputTensor::Hash::operator()(InputTensor const& s) const {
   return Hash64Combine(std::hash<const Node*>()(s.node),
                        std::hash<int>()(s.index));
 }
@@ -427,7 +427,7 @@ bool OutputTensor::operator==(const OutputTensor& other) const {
   return node == other.node && index == other.index;
 }
 
-uint64 OutputTensor::Hash::operator()(OutputTensor const& s) const {
+uint64_t OutputTensor::Hash::operator()(OutputTensor const& s) const {
   return Hash64Combine(std::hash<const Node*>()(s.node),
                        std::hash<int>()(s.index));
 }
@@ -1086,7 +1086,7 @@ GraphDebugInfo Graph::BuildDebugInfo() const {
 std::string Edge::DebugString() const {
   auto src_name = src_ ? src_->name().c_str() : "<NULL>";
   auto dst_name = dst_ ? dst_->name().c_str() : "<NULL>";
-  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
+  return absl::StrFormat("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
                          dst_name, dst_input_);
 }
 

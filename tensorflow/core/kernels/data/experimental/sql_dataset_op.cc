@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -72,7 +73,7 @@ class SqlDatasetOp : public DatasetOpKernel {
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
     OP_REQUIRES(ctx, driver_name == "sqlite",
-                errors::InvalidArgument(tensorflow::strings::Printf(
+                errors::InvalidArgument(absl::StrFormat(
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));

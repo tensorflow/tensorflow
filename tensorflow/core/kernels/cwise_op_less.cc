@@ -17,9 +17,9 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
-          bfloat16, int32);
-REGISTER7(BinaryOp, CPU, "Less", functor::less, uint8, uint16, uint32, uint64,
-          int8, int16, int64_t);
+          bfloat16, int32_t);
+REGISTER7(BinaryOp, CPU, "Less", functor::less, uint8_t, uint16_t, uint32_t,
+          uint64_t, int8_t, int16_t, int64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -45,6 +45,6 @@ REGISTER_KERNEL_BUILDER(Name("Less")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::less<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::less<int32_t>>);
 }  // namespace tensorflow

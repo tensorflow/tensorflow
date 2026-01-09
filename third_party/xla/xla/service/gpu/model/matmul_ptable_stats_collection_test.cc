@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -127,8 +128,6 @@ TEST_F(MatmulStatsCollectionTest,
       ROOT dot =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
         custom_call_target="__cublas$gemm",
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "gemm_backend_config":{
             "alpha_real":1,
             "beta":1,
@@ -180,8 +179,6 @@ TEST_F(MatmulStatsCollectionTest,
         kind=kCustom,
         calls=comp,
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "fusion_backend_config": {
             "kind":"__triton_gemm",
             "triton_gemm_config":{

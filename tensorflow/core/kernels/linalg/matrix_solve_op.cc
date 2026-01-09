@@ -221,7 +221,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // 1. Compute the partially pivoted LU factorization(s) of the
     // matrix/matrices.
     std::vector<DeviceLapackInfo> dev_info;
-    auto input_copy_ptrs = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptrs = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copt_ptrs",
         /* on_host */ true);
     const int kMaxMatrixSizeToBatchSizeRatio = 128;
@@ -301,10 +301,10 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // fly. (This means that we actually use the LU-factorization of A^T in that
     // case, but that is equally good for solving AX=B). This way we save an
     // explicit transpose in the more common case of adjoint_ == false.
-    auto input_copy_ptr_array = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copy_ptr_array",
         /* on_host */ true);
-    auto transposed_rhs_ptr_array = solver->GetScratchSpace<uint8>(
+    auto transposed_rhs_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "transposed_rhs_ptr_array",
         /* on_host */ true);
     auto transposed_rhs_reshaped =
@@ -367,7 +367,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
     // available.
     auto info_checker = [context, done, dev_info](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {

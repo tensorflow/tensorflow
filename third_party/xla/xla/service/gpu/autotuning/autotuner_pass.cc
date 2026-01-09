@@ -36,12 +36,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -63,7 +64,8 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       !debug_options.xla_gpu_cublas_fallback();
   autotune_config.select_first_config =
       debug_options.xla_gpu_deterministic_ops() ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops();
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      debug_options.xla_gpu_autotune_level() == 0;
 
   if (is_deviceless) {
     // If we are running on a deviceless target, we want to use default configs.
@@ -79,10 +81,12 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   return autotune_config;
 }
 
-ProfileOptions GetProfileOptions(const DebugOptions& debug_options) {
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 const AutotuneConfig& autotune_config) {
   ProfileOptions profile_options;
   profile_options.redzone_padding_bytes =
       debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = autotune_config.check_buffers;
   return profile_options;
 }
 
@@ -94,16 +98,18 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
     const Compiler::GpuTargetConfig* target_config,
-    se::DeviceMemoryAllocator* allocator, bool optimize_scratch_bytes,
+    se::DeviceAddressAllocator* allocator, bool optimize_scratch_bytes,
     MultiProcessKeyValueStore key_value_store) {
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;
   AutotuneConfig autotune_config =
       GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
+  VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
-    profiler = GpuProfiler::Create(stream_executor,
-                                   GetProfileOptions(debug_options), allocator);
+    profiler = GpuProfiler::Create(
+        stream_executor, GetProfileOptions(debug_options, autotune_config),
+        allocator);
   }
 
   std::unique_ptr<AutotunerCacheInterface> cache =
@@ -124,6 +130,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
 absl::StatusOr<bool> AutotunerPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  XLA_SCOPED_LOGGING_TIMER("AutotunerPass");
   VLOG(1) << "Running Autotuner Pass";
 
   bool shard_autotuning =

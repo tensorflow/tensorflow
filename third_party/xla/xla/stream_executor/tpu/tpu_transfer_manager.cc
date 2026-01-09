@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
@@ -276,11 +276,11 @@ bool TpuTransferManager::CanShapedBufferBeAccessedNow(
 
 bool TpuTransferManager::CanBufferBeAccessedNow(
     se::StreamExecutor* executor,
-    const se::DeviceMemoryBase& device_buffer) const {
+    const se::DeviceAddressBase& device_buffer) const {
   auto* tpu_executor = down_cast<stream_executor::tpu::TpuExecutor*>(executor);
-  SE_DeviceMemoryBase c_device_buffer{const_cast<void*>(device_buffer.opaque()),
-                                      device_buffer.size(),
-                                      device_buffer.payload()};
+  SE_DeviceAddressBase c_device_buffer{
+      const_cast<void*>(device_buffer.opaque()), device_buffer.size(),
+      device_buffer.payload()};
   return stream_executor::tpu::ExecutorApiFn()
       ->TpuTransferManager_CanBufferBeAccessedNowFn(
           manager_, tpu_executor->se_executor(), &c_device_buffer);
@@ -288,20 +288,20 @@ bool TpuTransferManager::CanBufferBeAccessedNow(
 
 absl::Status TpuTransferManager::WriteSingleTupleIndexTable(
     stream_executor::Stream* stream,
-    absl::Span<const stream_executor::DeviceMemoryBase> elements,
-    const xla::Shape& shape, stream_executor::DeviceMemoryBase* region) {
+    absl::Span<const stream_executor::DeviceAddressBase> elements,
+    const xla::Shape& shape, stream_executor::DeviceAddressBase* region) {
   CHECK_GT(elements.size(), 0);
-  SE_DeviceMemoryBase* elements_bases =
-      new SE_DeviceMemoryBase[elements.size()];
+  SE_DeviceAddressBase* elements_bases =
+      new SE_DeviceAddressBase[elements.size()];
   for (int i = 0; i < elements.size(); i++) {
     elements_bases[i] =
-        SE_DeviceMemoryBase{const_cast<void*>(elements[i].opaque()),
-                            elements[i].size(), elements[i].payload()};
+        SE_DeviceAddressBase{const_cast<void*>(elements[i].opaque()),
+                             elements[i].size(), elements[i].payload()};
   }
   XLA_Shape c_shape;
   ApiConverter::ToC(shape, &c_shape);
-  SE_DeviceMemoryBase region_base{region->opaque(), region->size(),
-                                  region->payload()};
+  SE_DeviceAddressBase region_base{region->opaque(), region->size(),
+                                   region->payload()};
   StatusHelper status;
 
   stream_executor::tpu::ExecutorApiFn()

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
 #include "xla/tsl/platform/env.h"
@@ -38,14 +40,15 @@ class ReadOnceInputStream : public InputStreamInterface {
 
   virtual absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) {
     if (bytes_to_read < 11) {
-      return errors::InvalidArgument("Not reading all bytes: ", bytes_to_read);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Not reading all bytes: ", bytes_to_read));
     }
     if (start_) {
       *result = "0123456789";
       start_ = false;
-      return errors::OutOfRange("Out of range.");
+      return absl::OutOfRangeError("Out of range.");
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Redudant call to ReadNBytes after an OutOfRange error.");
   }
 

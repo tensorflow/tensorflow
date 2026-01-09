@@ -39,6 +39,7 @@ struct DiffOptions {
   MatchOptions match_options;
   bool run_eval = false;
   std::vector<std::pair<std::string, std::string>> manual_mappings;
+  bool precompute_instruction_dependencies = true;
 };
 
 struct HloGumgraphDiffResults {

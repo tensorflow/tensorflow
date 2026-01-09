@@ -216,8 +216,8 @@ LogicalResult HandleTensorArrayV3Op(
       {}, TF::ResourceType::get(
               ArrayRef<TensorType>{llvm::cast<TensorType>(buffer.getType())},
               ta.getContext()));
-  auto local_var = builder.create<TF::MlirLocalVarOp>(
-      ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
+  auto local_var = TF::MlirLocalVarOp::create(
+      builder, ta.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{});
   cutil::WriteLocalVariable(local_var, buffer, builder, ta.getLoc());
   ta.getHandle().replaceAllUsesWith(local_var);
   // The flow output is just a way for the front end to enforce ordering among
@@ -225,8 +225,9 @@ LogicalResult HandleTensorArrayV3Op(
   // Just create a constant to replace its uses.
   tensorflow::Tensor scalar_tensor(tensorflow::DT_FLOAT, {});
   scalar_tensor.scalar<float>()() = 0.0f;
-  auto flow = builder.create<TF::ConstOp>(
-      ta.getLoc(), tensorflow::ConvertTensor(scalar_tensor, &builder).value());
+  auto flow = TF::ConstOp::create(
+      builder, ta.getLoc(),
+      tensorflow::ConvertTensor(scalar_tensor, &builder).value());
   ta.getFlow().replaceAllUsesWith(flow);
   ta.erase();
   (*stats)[local_var].accumulate_on_write = false;
@@ -274,8 +275,8 @@ LogicalResult HandleTensorArrayWriteV3Op(
                           /*keep_slice_shape=*/true);
     // Add a size-1 leading dimension to elem.
     auto slice_type = llvm::cast<RankedTensorType>(original_elem.getType());
-    elem = builder.create<TF::ReshapeOp>(
-        write.getLoc(), ArrayRef<Type>{slice_type},
+    elem = TF::ReshapeOp::create(
+        builder, write.getLoc(), ArrayRef<Type>{slice_type},
         ArrayRef<Value>{elem, cutil::GetR1Const(slice_type.getShape(), builder,
                                                 write.getLoc())});
     elem =
@@ -305,8 +306,8 @@ LogicalResult HandleTensorArrayConcatV3Op(
   // Merget he first two dimensions.
   auto shape = llvm::to_vector<8>(buffer_type.getShape().drop_front());
   shape[0] *= buffer_type.getDimSize(0);
-  buffer = builder.create<TF::ReshapeOp>(
-      concat.getLoc(),
+  buffer = TF::ReshapeOp::create(
+      builder, concat.getLoc(),
       ArrayRef<Type>{
           RankedTensorType::get(shape, buffer_type.getElementType())},
       ArrayRef<Value>{buffer,
@@ -320,8 +321,8 @@ LogicalResult HandleTensorArrayConcatV3Op(
   for (int64_t i = 0; i < buffer_type.getDimSize(0); ++i) {
     lengths_tensor.vec<int64_t>()(i) = buffer_type.getDimSize(1);
   }
-  concat.getLengths().replaceAllUsesWith(builder.create<TF::ConstOp>(
-      concat.getLoc(),
+  concat.getLengths().replaceAllUsesWith(TF::ConstOp::create(
+      builder, concat.getLoc(),
       tensorflow::ConvertTensor(lengths_tensor, &builder).value()));
   concat.erase();
   return success();
@@ -344,16 +345,14 @@ LogicalResult HandleTensorArraySplitV3Op(
   buffer_shape.push_back(count);
   for (int64_t dim : elem_type.getShape()) buffer_shape.push_back(dim);
   // Reshape the input to match the buffer of the tensor array.
-  Value buffer =
-      builder
-          .create<TF::ReshapeOp>(
-              split.getLoc(),
-              ArrayRef<Type>{RankedTensorType::get(buffer_shape,
-                                                   elem_type.getElementType())},
-              ArrayRef<Value>{
-                  split.getValue(),
-                  cutil::GetR1Const(buffer_shape, builder, split.getLoc())})
-          .getOutput();
+  Value buffer = TF::ReshapeOp::create(
+                     builder, split.getLoc(),
+                     ArrayRef<Type>{RankedTensorType::get(
+                         buffer_shape, elem_type.getElementType())},
+                     ArrayRef<Value>{split.getValue(),
+                                     cutil::GetR1Const(buffer_shape, builder,
+                                                       split.getLoc())})
+                     .getOutput();
   // Accumulate with the old buffer.
   auto old_buffer =
       cutil::ReadLocalVariable(local_var, builder, split.getLoc());
@@ -386,8 +385,8 @@ LogicalResult HandleTensorArraySizeV3Op(
 LogicalResult CreateAndInitializeGradVariable(Type local_var_type,
                                               Operation* op, Value* var) {
   OpBuilder builder(op);
-  *var = builder.create<TF::MlirLocalVarOp>(
-      op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{});
+  *var = TF::MlirLocalVarOp::create(
+      builder, op->getLoc(), ArrayRef<Type>{local_var_type}, ArrayRef<Value>{});
   Value buffer;
   auto buffer_type = llvm::cast<RankedTensorType>(
       llvm::cast<TF::ResourceType>(getElementTypeOrSelf(local_var_type))
@@ -631,9 +630,9 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
     }
   }
   OpBuilder builder(while_op);
-  auto new_while = builder.create<TF::WhileOp>(
-      while_op.getLoc(), body.getFunctionType().getInputs(), operands,
-      while_op->getAttrs());
+  auto new_while = TF::WhileOp::create(builder, while_op.getLoc(),
+                                       body.getFunctionType().getInputs(),
+                                       operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {
     if (ta_arg_buffer_type(i)) {
       while_op.getResult(i).replaceAllUsesWith(while_op.getOperand(i));
@@ -698,9 +697,9 @@ LogicalResult HandleIfOp(TF::IfOp if_op, ModuleOp module,
     }
   }
   OpBuilder builder(if_op);
-  auto new_if = builder.create<TF::IfOp>(
-      if_op.getLoc(), then_branch.getFunctionType().getResults(), operands,
-      if_op->getAttrs());
+  auto new_if = TF::IfOp::create(builder, if_op.getLoc(),
+                                 then_branch.getFunctionType().getResults(),
+                                 operands, if_op->getAttrs());
   auto ret_forwards_input = [](func::FuncOp f, int64_t ret_ind) -> int64_t {
     auto retval = f.front().getTerminator()->getOperand(ret_ind);
     auto arg = dyn_cast<BlockArgument>(retval);
@@ -757,9 +756,10 @@ LogicalResult HandlePartitionedCallOp(
       }
     }
     OpBuilder builder(call);
-    auto new_call = builder.create<CallOp>(
-        call.getLoc(), info.decomposed_callee.getFunctionType().getResults(),
-        new_operands, call->getAttrs());
+    auto new_call =
+        CallOp::create(builder, call.getLoc(),
+                       info.decomposed_callee.getFunctionType().getResults(),
+                       new_operands, call->getAttrs());
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),

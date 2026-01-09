@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/session_manager.h"
 
 #include <algorithm>
+#include <climits>
 #include <string>
 #include <variant>
 #include <vector>
@@ -54,6 +55,20 @@ void SetOption(absl::string_view key,
     LOG(WARNING) << key << " expects an " << typeid(T).name() << " value.";
   }
 }
+
+struct SetAdvancedOption {
+  tensorflow::ProfileOptions* options;
+  const std::string& key;
+  void operator()(int value) {
+    (*options->mutable_advanced_configuration())[key].set_int64_value(value);
+  }
+  void operator()(const std::string& value) {
+    (*options->mutable_advanced_configuration())[key].set_string_value(value);
+  }
+  void operator()(bool value) {
+    (*options->mutable_advanced_configuration())[key].set_bool_value(value);
+  }
+};
 
 // Sets gRPC deadline to a grace period based on the profiling duration.
 void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
@@ -161,6 +176,36 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_string_value(value);
           },
           nullptr);
+    } else if (key == "tracemark_lower") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_lower value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            (*options->mutable_advanced_configuration())["tracemark_lower"]
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (key == "tracemark_upper") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_upper value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            (*options->mutable_advanced_configuration())["tracemark_upper"]
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (absl::StartsWith(key, "tpu_")) {
+      std::visit(
+          SetAdvancedOption{options.mutable_profiler_options(), kw.first},
+          kw.second);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }

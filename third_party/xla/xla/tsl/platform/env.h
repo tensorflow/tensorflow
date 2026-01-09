@@ -18,25 +18,25 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
 
 // Delete leaked Windows definitions.
 #ifdef PLATFORM_WINDOWS
@@ -468,6 +468,9 @@ class Env {
   // Copies current thread name to "name". Returns true if success.
   virtual bool GetCurrentThreadName(std::string* name) = 0;
 
+  // Returns true if the current thread is a cooperatively scheduled fiber.
+  virtual bool IsCurrentThreadFiber() { return false; }
+
   // \brief Schedules the given closure on a thread-pool.
   //
   // NOTE(mrry): This closure may block.
@@ -573,6 +576,9 @@ class EnvWrapper : public Env {
   bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
+  bool IsCurrentThreadFiber() override {
+    return target_->IsCurrentThreadFiber();
+  }
   void SchedClosure(absl::AnyInvocable<void()> closure) override {
     target_->SchedClosure(std::move(closure));
   }
@@ -665,7 +671,7 @@ absl::Status ReadBinaryProto(Env* env, const std::string& fname,
 inline absl::Status WriteTextProto(Env* /* env */,
                                    const std::string& /* fname */,
                                    const protobuf::MessageLite& /* proto */) {
-  return errors::Unimplemented("Can't write text protos with protolite.");
+  return absl::UnimplementedError("Can't write text protos with protolite.");
 }
 absl::Status WriteTextProto(Env* env, const std::string& fname,
                             const protobuf::Message& proto);
@@ -675,7 +681,7 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
 inline absl::Status ReadTextProto(Env* /* env */,
                                   const std::string& /* fname */,
                                   protobuf::MessageLite* /* proto */) {
-  return errors::Unimplemented("Can't parse text protos with protolite.");
+  return absl::UnimplementedError("Can't parse text protos with protolite.");
 }
 absl::Status ReadTextProto(Env* env, const std::string& fname,
                            protobuf::Message* proto);

@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,10 +51,27 @@ using ::testing::SizeIs;
 
 class IrEmissionUtilsTest : public HloHardwareIndependentTestBase {
  public:
-  TransposeSpec GetTransposeSpecFromRoot(absl::string_view hlo_text) {
+  PackedTransposeDescription GetTransposeSpecFromTransposeDescription(
+      absl::string_view hlo_text,
+      std::optional<absl::InlinedVector<int64_t, 3>> permutation = std::nullopt,
+      std::optional<absl::InlinedVector<int64_t, 3>> dimensions =
+          std::nullopt) {
     auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-    auto* root = module->entry_computation()->root_instruction();
-    return GetTransposeSpec(Cast<HloTransposeInstruction>(root));
+    auto* root = Cast<HloTransposeInstruction>(
+        module->entry_computation()->root_instruction());
+
+    if (!permutation.has_value()) {
+      permutation = absl::InlinedVector<int64_t, 3>(root->dimensions().begin(),
+                                                    root->dimensions().end());
+    }
+    if (!dimensions.has_value()) {
+      dimensions = absl::InlinedVector<int64_t, 3>(
+          root->shape().dimensions().begin(), root->shape().dimensions().end());
+    }
+
+    TransposeDescription description{root, *dimensions, *permutation,
+                                     /*shmem_usage=*/0};
+    return PackedTransposeDescription(description);
   }
 };
 
@@ -64,12 +82,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[1536,64]{1,0} parameter(0)
-  ROOT t = f32[64,1536]{1,0} transpose(p), dimensions={1,0}
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,32,48]{2,1,0} transpose(p), dimensions={2,0,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -84,12 +103,12 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[32,48,2]{2,1,0} parameter(0)
-  ROOT t = f32[48,32,2]{2,1,0} transpose(p), dimensions={1,0,2}
+  p = f32[32,48,1,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[48,32,1,2]{3,2,1,0} transpose(p), dimensions={1,0,2,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -394,10 +413,8 @@ fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[48,32,64]{2,1,0} parameter(1)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
-  bc = f32[1,1536,64]{2,1,0} bitcast(p2)
-  t2 = f32[1,64,1536]{2,1,0} transpose(bc), dimensions={0,2,1}
-  bc2 = f32[64,48,32]{2,1,0} bitcast(t2)
-  ROOT add = f32[64,48,32]{2,1,0} add(t, bc2)
+  t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
+  ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
 }
 
 ENTRY main {
@@ -414,6 +431,26 @@ ENTRY main {
   EXPECT_FALSE(GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*r))
                    .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeWithGrouping) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,32,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,32,32]{2,1,0} transpose(p), dimensions={2,0,1}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 1024}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroOutsideFusion) {
@@ -515,13 +552,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[1100,12,8]{2,1,0} parameter(0)
-  ROOT t = f32[8,12,1100]{2,1,0} transpose(p), dimensions={2,1,0}
+  p = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT t = f32[8,12,100,11]{3,2,1,0} transpose(p), dimensions={3,2,0,1}
 }
 
 ENTRY main {
-  param = f32[1100,12,8]{2,1,0} parameter(0)
-  ROOT fusion = f32[8,12,1100]{2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,100,11]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -541,13 +578,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[8,12,1100]{2,1,0} parameter(0)
-  ROOT t = f32[1100,12,8]{2,1,0} transpose(p), dimensions={2,1,0}
+  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT t = f32[100,11,12,8]{3,2,1,0} transpose(p), dimensions={2,3,1,0}
 }
 
 ENTRY main {
-  param = f32[8,12,1100]{2,1,0} parameter(0)
-  ROOT fusion = f32[1100,12,8]{2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[100,11,12,8]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -560,6 +597,28 @@ ENTRY main {
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
   EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       FindTiledLogicalTransposeWithSize1DimensionInRawShape) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,1,16,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[16,1,32,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({16, 32, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
 }
 
 TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {
@@ -957,8 +1016,167 @@ TEST_F(IrEmissionUtilsTest, NonInductionVariableLoopCarriedVariable) {
                    .has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, DynamicVariableLoopCarriedVariable) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        dynamic_var = s32[] get-tuple-element(p0), index=1
+        other_var = s32[] get-tuple-element(p0), index=2
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+        next_dynamic_var = s32[] add(dynamic_var, c1)
+        next_other = s32[] add(other_var, c1)
+
+        ROOT result = (s32[], s32[], s32[]) tuple(next_ivar, next_dynamic_var, next_other)
+      }
+
+      condition {
+        p0 = (s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[], s32[]) tuple(c0, c0, c0)
+        ROOT while = (s32[], s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1]}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("next_ivar"))
+                  .has_value());
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("next_dynamic_var"))
+                  .has_value());
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("next_other"))
+                   .has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, DynamicVariableWithIrrelevantGTE) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        dynamic_var = s32[] get-tuple-element(p0), index=1
+        irrelevant_var = s32[] get-tuple-element(p0), index=2
+        other_var = s32[] get-tuple-element(p0), index=3
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+        
+        dynamic_computation = s32[] add(ivar, c1)
+        
+        irrelevant_computation = s32[] add(irrelevant_var, c1)
+        
+        next_other = s32[] add(other_var, c1)
+
+        ROOT result = (s32[], s32[], s32[], s32[]) tuple(next_ivar, dynamic_computation, irrelevant_computation, next_other)
+      }
+
+      condition {
+        p0 = (s32[], s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
+        ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("next_ivar"))
+                  .has_value());
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("dynamic_computation"))
+                  .has_value());
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("irrelevant_computation"))
+                  .has_value());
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("next_other"))
+                   .has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, MultipleDynamicVariables) {
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        dynamic_var1 = s32[] get-tuple-element(p0), index=1
+        dynamic_var2 = s32[] get-tuple-element(p0), index=2
+        regular_var = s32[] get-tuple-element(p0), index=3
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+        
+        compute1 = s32[] add(dynamic_var1, c1)
+        compute2 = s32[] add(dynamic_var2, c1)
+        compute_regular = s32[] add(regular_var, c1)
+
+        ROOT result = (s32[], s32[], s32[], s32[]) tuple(next_ivar, compute1, compute2, compute_regular)
+      }
+
+      condition {
+        p0 = (s32[], s32[], s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[], s32[], s32[]) tuple(c0, c0, c0, c0)
+        ROOT while = (s32[], s32[], s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"},"dynamic_variable_tuple_indices":[1, 2]}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("compute1"))
+                  .has_value());
+
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("compute2"))
+                  .has_value());
+
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("compute_regular"))
+                   .has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, Transpose_10) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 32] parameter(0)
     ROOT transpose_p0 = f32[32, 8] transpose(p0), dimensions={1, 0}
   })");
@@ -971,7 +1189,7 @@ TEST_F(IrEmissionUtilsTest, Transpose_10) {
 }
 
 TEST_F(IrEmissionUtilsTest, Transpose_210) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 2, 32] parameter(0)
     ROOT transpose_p0 = f32[32, 2, 8] transpose(p0), dimensions={2, 1, 0}
   })");
@@ -982,11 +1200,70 @@ TEST_F(IrEmissionUtilsTest, Transpose_210) {
 }
 
 TEST_F(IrEmissionUtilsTest, Transpose_102) {
-  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+  auto spec = GetTransposeSpecFromTransposeDescription(R"(ENTRY entry {
     p0 = f32[8, 2, 32, 7, 6] parameter(0)
     ROOT transpose_p0 = f32[6, 32, 2, 7, 8] transpose(p0),
       dimensions={4, 2, 1, 3, 0}
   })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       PackedTransposeDescriptionUsesProvidedDims_Grouping) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p = f32[32,32,64]{2,1,0} parameter(0)
+    ROOT t = f32[64,32,32]{2,1,0} transpose(p), dimensions={2,0,1}
+  })",
+      /*permutation=*/InlinedVector({1, 0}),
+      /*dimensions=*/InlinedVector({64, 1024}));
+
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(64, 1, 1024, 1));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_10) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 4, 8] parameter(0)
+    ROOT transpose_p0 = f32[4, 8, 8] transpose(p0), dimensions={1, 2, 0}
+  })",
+      /*permutation=*/InlinedVector({1, 0}),
+      /*dimensions=*/InlinedVector({32, 8}));
+  EXPECT_THAT(spec.permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.inv_permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 1, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 1, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_210) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 2, 4, 8] parameter(0)
+    ROOT transpose_p0 = f32[4, 8, 2, 8] transpose(p0),
+      dimensions={2, 3, 1, 0}
+  })",
+      /*permutation=*/InlinedVector({2, 1, 0}),
+      /*dimensions=*/InlinedVector({32, 2, 8}));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 2, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, PackedTransposeDescriptionUsesProvidedDims_102) {
+  auto spec = GetTransposeSpecFromTransposeDescription(
+      R"(ENTRY entry {
+    p0 = f32[8, 2, 32, 7, 2, 3] parameter(0)
+    ROOT transpose_p0 = f32[2, 3, 32, 2, 7, 8] transpose(p0),
+      dimensions={4, 5, 2, 1, 3, 0}
+  })",
+      /*permutation=*/InlinedVector({4, 2, 1, 3, 0}),
+      /*dimensions=*/InlinedVector({6, 32, 2, 7, 8}));
   EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
   EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
   EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));

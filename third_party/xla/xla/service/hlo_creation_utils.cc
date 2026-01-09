@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -46,11 +47,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 using absl::StrCat;
@@ -439,7 +439,7 @@ absl::StatusOr<HloInstruction*> MakeMapHlo(
                  static_cast<int64_t>(operand->shape().dimensions().size()));
   }
   std::vector<int64_t> map_dims(max_operand_rank);
-  std::iota(map_dims.begin(), map_dims.end(), 0);
+  absl::c_iota(map_dims, 0);
   TF_ASSIGN_OR_RETURN(
       Shape map_shape,
       ShapeInference::InferMapShape(
@@ -537,7 +537,7 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
     const FrontendAttributes* frontend_attributes) {
   DCHECK_NE(nullptr, module);
   std::vector<int64_t> all_dims(operand->shape().dimensions().size());
-  std::iota(all_dims.begin(), all_dims.end(), 0);
+  absl::c_iota(all_dims, 0);
 
   HloComputation* reduce_computation = MakeBinaryScalarComputation(
       binary_opcode, operand->shape().element_type(), operand, module);

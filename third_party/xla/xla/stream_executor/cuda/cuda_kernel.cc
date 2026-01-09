@@ -124,7 +124,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+  if (auto* device_mem = DynCast<KernelArgsDeviceAddressArray>(&args)) {
     auto& pack = args_packing();
     if (!pack) {
       return absl::InternalError(

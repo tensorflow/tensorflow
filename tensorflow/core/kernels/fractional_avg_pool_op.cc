@@ -207,7 +207,7 @@ class FractionalAvgPoolOp : public OpKernel {
       Name("FractionalAvgPool").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       FractionalAvgPoolOp<type>)
 
-REGISTER_FRACTIONALAVGPOOL(int32);
+REGISTER_FRACTIONALAVGPOOL(int32_t);
 REGISTER_FRACTIONALAVGPOOL(int64_t);
 REGISTER_FRACTIONALAVGPOOL(float);
 REGISTER_FRACTIONALAVGPOOL(double);
@@ -411,7 +411,7 @@ class FractionalAvgPoolGradOp : public OpKernel {
                               .TypeConstraint<type>("T"), \
                           FractionalAvgPoolGradOp<type>)
 
-REGISTER_FRACTIONALAVGPOOLGRAD(int32);
+REGISTER_FRACTIONALAVGPOOLGRAD(int32_t);
 REGISTER_FRACTIONALAVGPOOLGRAD(int64_t);
 REGISTER_FRACTIONALAVGPOOLGRAD(float);
 REGISTER_FRACTIONALAVGPOOLGRAD(double);

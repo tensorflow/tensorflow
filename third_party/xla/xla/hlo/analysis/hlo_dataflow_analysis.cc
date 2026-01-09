@@ -44,15 +44,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -1515,7 +1516,7 @@ absl::Status HloDataflowAnalysis::RunImpl() {
   }
   absl::c_sort(values_vector_, HloValue::IdLessThan);
 
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
 
   XLA_VLOG_LINES(1, ToString());
 
@@ -1632,7 +1633,13 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   const Shape& user_subshape =
       ShapeUtil::GetSubshape(user->shape(), user_index);
 
-  auto shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
+  // During tiling assignment, we can add no-op instructions which appear to
+  // change tiling (and memory space) of the operand, but don't.
+  if (hlo_query::IsChangeTilingCopyFusion(user) ||
+      hlo_query::IsChangeTilingCopyFusion(operand)) {
+    return true;
+  }
+  const bool shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
   // Check that operand and user emit the same shape and layout.
   if (shapes_equal) {
     // Must-alias relationship returns true for in-place operations (DUS and DUS

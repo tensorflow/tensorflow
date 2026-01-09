@@ -32,9 +32,9 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   Device* device = device_;
 
   // Filled and used only when VLOG(3) is on.
-  string rpc_description;
+  std::string rpc_description;
   if (VLOG_IS_ON(3)) {
-    std::vector<string> ops;
+    std::vector<std::string> ops;
     ops.reserve(request_->queue_size());
     for (const QueueItem& item : request_->queue()) {
       if (item.has_operation()) {
@@ -96,7 +96,7 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
         }
         for (size_t i = 0; i < retvals.size(); ++i) {
           if (status.ok()) {
-            const string output_device =
+            const std::string output_device =
                 response->queue_response(0).device().empty()
                     ? ""
                     : response->queue_response(0).device(i);

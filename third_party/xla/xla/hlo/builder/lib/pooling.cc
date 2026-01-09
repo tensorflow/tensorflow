@@ -21,7 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/constants.h"
@@ -29,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -217,8 +220,8 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
     const int num_dims = kernel_size.size();
     const int num_gradients = gradients_size.size();
     if (num_gradients != num_dims) {
-      return tsl::errors::InvalidArgument("gradients must be ", num_dims,
-                                          "-dimensional");
+      return absl::InvalidArgumentError(
+          absl::StrCat("gradients must be ", num_dims, "-dimensional"));
     }
 
     TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
@@ -226,8 +229,8 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
     const int backprop_xla_num_dims =
         out_backprop_xla_shape.dimensions().size();
     if (backprop_xla_num_dims != num_dims) {
-      return tsl::errors::InvalidArgument("out_backprop must be ", num_dims,
-                                          "-dimensional");
+      return absl::InvalidArgumentError(
+          absl::StrCat("out_backprop must be ", num_dims, "-dimensional"));
     }
 
     // We can think of average-pooling as:

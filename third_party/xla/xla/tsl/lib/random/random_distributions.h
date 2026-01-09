@@ -29,9 +29,9 @@ namespace tsl {
 namespace random {
 
 // Helper function to convert a 16-bit integer to a half between [0..1).
-PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
+PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16_t x);
 // Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
-PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16_t x);
 
 // Computes a + b. Requires that the result is representable in the destination
 // type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
@@ -158,7 +158,7 @@ class UniformDistribution<Generator, double> {
 };
 
 template <class Generator>
-class UniformDistribution<Generator, int32> {
+class UniformDistribution<Generator, int32_t> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount;
@@ -167,12 +167,13 @@ class UniformDistribution<Generator, int32> {
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static constexpr bool kVariableSamplesPerOutput = false;
-  typedef Array<int32, kResultElementCount> ResultType;
-  typedef int32 ResultElementType;
+  typedef Array<int32_t, kResultElementCount> ResultType;
+  typedef int32_t ResultElementType;
 
   // Must have lo < hi
   UniformDistribution(int32_t lo, int32_t hi)
-      : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
+      : lo_(lo),
+        range_(static_cast<uint32_t>(hi) - static_cast<uint32_t>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
@@ -188,8 +189,8 @@ class UniformDistribution<Generator, int32> {
   // Note that lo_ is intentionally signed while range_ is intentionally
   // unsigned.  This is because hi - lo can overflow signed integers if
   // lo < 0 < hi, but always fits in unsigned.
-  int32 lo_;
-  uint32 range_;
+  int32_t lo_;
+  uint32_t range_;
 };
 
 template <class Generator>
@@ -207,14 +208,16 @@ class UniformDistribution<Generator, int64_t> {
 
   // Must have lo < hi
   UniformDistribution(int64_t lo, int64_t hi)
-      : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
+      : lo_(lo),
+        range_(static_cast<uint64_t>(hi) - static_cast<uint64_t>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
-      auto bits = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
+      auto bits = sample[2 * i] | static_cast<uint64_t>(sample[2 * i + 1])
+                                      << 32;
       result[i] = SignedAdd(lo_, bits % range_);
     }
     return result;
@@ -225,7 +228,7 @@ class UniformDistribution<Generator, int64_t> {
   // unsigned.  This is because hi - lo can overflow signed integers if
   // lo < 0 < hi, but always fits in unsigned.
   int64_t lo_;
-  uint64 range_;
+  uint64_t range_;
 };
 
 // Similar to `UniformDistribution`, except that instead of generating numbers
@@ -276,24 +279,25 @@ class UniformFullIntDistribution64 {
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
-      result[i] = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
+      result[i] = sample[2 * i] | static_cast<uint64_t>(sample[2 * i + 1])
+                                      << 32;
     }
     return result;
   }
 };
 
 template <typename Generator>
-class UniformFullIntDistribution<Generator, int32>
-    : public UniformFullIntDistribution32<Generator, int32> {};
+class UniformFullIntDistribution<Generator, int32_t>
+    : public UniformFullIntDistribution32<Generator, int32_t> {};
 template <typename Generator>
-class UniformFullIntDistribution<Generator, uint32>
-    : public UniformFullIntDistribution32<Generator, uint32> {};
+class UniformFullIntDistribution<Generator, uint32_t>
+    : public UniformFullIntDistribution32<Generator, uint32_t> {};
 template <typename Generator>
 class UniformFullIntDistribution<Generator, int64_t>
     : public UniformFullIntDistribution64<Generator, int64_t> {};
 template <typename Generator>
-class UniformFullIntDistribution<Generator, uint64>
-    : public UniformFullIntDistribution64<Generator, uint64> {};
+class UniformFullIntDistribution<Generator, uint64_t>
+    : public UniformFullIntDistribution64<Generator, uint64_t> {};
 
 // A class that adapts the underlying native multiple samples to return a single
 // sample at a time.
@@ -322,7 +326,7 @@ class SingleSampleAdapter {
   }
 
   PHILOX_DEVICE_INLINE
-  void Skip(uint64 num_skips) {
+  void Skip(uint64_t num_skips) {
     if (!num_skips) {
       return;
     }
@@ -346,7 +350,7 @@ class SingleSampleAdapter {
   // from `generator_`. There is an O(1) implementation for PhiloxRandom
   // in random_distributions.cc.
   PHILOX_DEVICE_INLINE
-  void SkipFromGenerator(uint64 num_skips) {
+  void SkipFromGenerator(uint64_t num_skips) {
     while (num_skips--) {
       (*generator_)();
     }
@@ -372,8 +376,8 @@ template <class Generator, typename RealType>
 class NormalDistribution;
 
 PHILOX_DEVICE_INLINE
-void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
-                     double* d1);
+void BoxMullerDouble(uint32_t x0, uint32_t x1, uint32_t x2, uint32_t x3,
+                     double* d0, double* d1);
 
 // Exactly like the float version, except that we convert to half afterwards;
 // since we don't have half-precision sin/cos even on GPUs, there's nothing to
@@ -527,8 +531,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
       // Repeatedly take samples from the normal distribution, until we have
       // the desired number of elements that fall within the pre-defined cutoff
       // threshold.
-      const uint32 x0 = (*gen)();
-      const uint32 x1 = (*gen)();
+      const uint32_t x0 = (*gen)();
+      const uint32_t x1 = (*gen)();
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
@@ -573,8 +577,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, bfloat16> {
       // Repeatedly take samples from the normal distribution, until we have
       // the desired number of elements that fall within the pre-defined cutoff
       // threshold.
-      const uint32 x0 = (*gen)();
-      const uint32 x1 = (*gen)();
+      const uint32_t x0 = (*gen)();
+      const uint32_t x1 = (*gen)();
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
@@ -620,8 +624,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
       // Repeatedly take samples from the normal distribution, until we have
       // the desired number of elements that fall within the pre-defined cutoff
       // threshold.
-      const uint32 x0 = (*gen)();
-      const uint32 x1 = (*gen)();
+      const uint32_t x0 = (*gen)();
+      const uint32_t x1 = (*gen)();
       float f[2];
       BoxMullerFloat(x0, x1, &f[0], &f[1]);
 
@@ -664,10 +668,10 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
     ResultType results;
     int index = 0;
     while (true) {
-      const uint32 x0 = (*gen)();
-      const uint32 x1 = (*gen)();
-      const uint32 x2 = (*gen)();
-      const uint32 x3 = (*gen)();
+      const uint32_t x0 = (*gen)();
+      const uint32_t x1 = (*gen)();
+      const uint32_t x2 = (*gen)();
+      const uint32_t x3 = (*gen)();
       double d[2];
       BoxMullerDouble(x0, x1, x2, x3, &d[0], &d[1]);
 
@@ -690,8 +694,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
 // Helper function to convert four 32-bit uniform integers to two doubles
 // under the unit normal distribution.
 PHILOX_DEVICE_INLINE
-void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
-                     double* d1) {
+void BoxMullerDouble(uint32_t x0, uint32_t x1, uint32_t x2, uint32_t x3,
+                     double* d0, double* d1) {
   // This function implements the Box-Muller transform:
   // http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform#Basic_form
   // Do not send a really small number to log().
@@ -714,16 +718,16 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
 }
 
 // Helper function to convert an 16-bit integer to a half between [0..1).
-PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
+PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16_t x) {
   // IEEE754 halfs are formatted as follows (MSB first):
   //    sign(1) exponent(5) mantissa(10)
   // Conceptually construct the following:
   //    sign == 0
   //    exponent == 15  -- an excess 15 representation of a zero exponent
   //    mantissa == 10 random bits
-  const uint16 man = x & 0x3ffu;  // 10 bit mantissa
-  const uint16 exp = static_cast<uint16>(15);
-  const uint16 val = (exp << 10) | man;
+  const uint16_t man = x & 0x3ffu;  // 10 bit mantissa
+  const uint16_t exp = static_cast<uint16_t>(15);
+  const uint16_t val = (exp << 10) | man;
 
   Eigen::half result = Eigen::numext::bit_cast<Eigen::half>(val);
   return result - Eigen::half(1.0);
@@ -731,16 +735,16 @@ PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
 
 // Helper function to convert an 16-bit integer to a bfloat16 between [0..1).
 // This can create a uniform distribution of values between [0..1).
-PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16_t x) {
   // bfloat are formatted as follows (MSB first):
   //    sign(1) exponent(8) mantissa(7)
   // Conceptually construct the following:
   //    sign == 0
   //    exponent == 127  -- an excess 127 representation of a zero exponent
   //    mantissa == 7 random bits
-  const uint16 man = x & 0x7fu;  // 7 bit mantissa
-  const uint16 exp = static_cast<uint16>(127);
-  const uint16 val = (exp << 7) | man;
+  const uint16_t man = x & 0x7fu;  // 7 bit mantissa
+  const uint16_t exp = static_cast<uint16_t>(127);
+  const uint16_t val = (exp << 7) | man;
 
   bfloat16 result;
   memcpy(&result, &val, sizeof(val));

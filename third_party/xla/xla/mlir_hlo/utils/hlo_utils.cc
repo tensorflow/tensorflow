@@ -17,21 +17,71 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <complex>
+#include <cstddef>
+#include <cstdint>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace hlo {
+namespace {
+APFloat getScalarLimitOfFloatType(FloatType floatTy, ScalarLimit limit) {
+  auto& semantics = floatTy.getFloatSemantics();
+  switch (limit) {
+    case kLowest:
+      return APFloat::getLargest(semantics, /*negative=*/true);
+    case kInfinityLowest:
+      return APFloat::getInf(semantics, /*negative=*/true);
+    case kMax:
+      return APFloat::getLargest(semantics, /*negative=*/false);
+    case kInfinityMax:
+      return APFloat::getInf(semantics, /*negative=*/false);
+  }
+  llvm_unreachable("invalid limit");
+}
+
+// Returns a scalar value for the given integer type.
+//
+// The argument 'scalar' describes which scalar value to return. `integer_value`
+// is used to specify the integer value for kInteger. For any other scalar,
+// integer_value is ignored.
+APInt getScalarLimitOfIntegerType(IntegerType integerTy, ScalarLimit limit) {
+  unsigned width = integerTy.getWidth();
+  bool isBool = (width == 1);
+  switch (limit) {
+    case kLowest:
+    case kInfinityLowest:
+      if (integerTy.isUnsigned() || isBool) {
+        return APInt::getMinValue(width);
+      } else {
+        return APInt::getSignedMinValue(width);
+      }
+
+    case kMax:
+    case kInfinityMax:
+      if (integerTy.isUnsigned() || isBool) {
+        return APInt::getMaxValue(width);
+      } else {
+        return APInt::getSignedMaxValue(width);
+      }
+  }
+  llvm_unreachable("invalid limit");
+}
+}  // namespace
 
 static constexpr size_t kPaddingSize = 64;
 
@@ -108,50 +158,6 @@ DenseElementsAttr getScalarNegZeroOfType(Type ty) {
     }
   }
   llvm_unreachable("unsupported type");
-}
-
-static APFloat getScalarLimitOfFloatType(FloatType floatTy, ScalarLimit limit) {
-  auto& semantics = floatTy.getFloatSemantics();
-  switch (limit) {
-    case kLowest:
-      return APFloat::getLargest(semantics, /*negative=*/true);
-    case kInfinityLowest:
-      return APFloat::getInf(semantics, /*negative=*/true);
-    case kMax:
-      return APFloat::getLargest(semantics, /*negative=*/false);
-    case kInfinityMax:
-      return APFloat::getInf(semantics, /*negative=*/false);
-  }
-  llvm_unreachable("invalid limit");
-}
-
-// Returns a scalar value for the given integer type.
-//
-// The argument 'scalar' describes which scalar value to return. `integer_value`
-// is used to specify the integer value for kInteger. For any other scalar,
-// integer_value is ignored.
-static APInt getScalarLimitOfIntegerType(IntegerType integerTy,
-                                         ScalarLimit limit) {
-  unsigned width = integerTy.getWidth();
-  bool isBool = (width == 1);
-  switch (limit) {
-    case kLowest:
-    case kInfinityLowest:
-      if (integerTy.isUnsigned() || isBool) {
-        return APInt::getMinValue(width);
-      } else {
-        return APInt::getSignedMinValue(width);
-      }
-
-    case kMax:
-    case kInfinityMax:
-      if (integerTy.isUnsigned() || isBool) {
-        return APInt::getMaxValue(width);
-      } else {
-        return APInt::getSignedMaxValue(width);
-      }
-  }
-  llvm_unreachable("invalid limit");
 }
 
 DenseElementsAttr getScalarLimitOfType(Type ty, ScalarLimit limit) {

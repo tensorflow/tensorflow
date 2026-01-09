@@ -115,17 +115,17 @@ class ReverseOpTest : public OpsTestBase {
   }
 };
 
-TEST_F(ReverseOpTest, Reverse_0_uint8) { Reverse_0<uint8>(); }
+TEST_F(ReverseOpTest, Reverse_0_uint8) { Reverse_0<uint8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_0_int8) { Reverse_0<int8>(); }
+TEST_F(ReverseOpTest, Reverse_0_int8) { Reverse_0<int8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_0_uint16) { Reverse_0<uint16>(); }
+TEST_F(ReverseOpTest, Reverse_0_uint16) { Reverse_0<uint16_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_0_int16) { Reverse_0<int16>(); }
+TEST_F(ReverseOpTest, Reverse_0_int16) { Reverse_0<int16_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_0_float) { Reverse_0<float>(); }
 
-TEST_F(ReverseOpTest, Reverse_0_int32) { Reverse_0<int32>(); }
+TEST_F(ReverseOpTest, Reverse_0_int32) { Reverse_0<int32_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_0_int64) { Reverse_0<int64_t>(); }
 
@@ -135,17 +135,17 @@ TEST_F(ReverseOpTest, Reverse_0_complex64) { Reverse_0<complex64>(); }
 
 TEST_F(ReverseOpTest, Reverse_0_complex128) { Reverse_0<complex128>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_uint8) { Reverse_234<uint8>(); }
+TEST_F(ReverseOpTest, Reverse_234_uint8) { Reverse_234<uint8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_int8) { Reverse_234<int8>(); }
+TEST_F(ReverseOpTest, Reverse_234_int8) { Reverse_234<int8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_uint16) { Reverse_234<uint16>(); }
+TEST_F(ReverseOpTest, Reverse_234_uint16) { Reverse_234<uint16_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_int16) { Reverse_234<int16>(); }
+TEST_F(ReverseOpTest, Reverse_234_int16) { Reverse_234<int16_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_234_float) { Reverse_234<float>(); }
 
-TEST_F(ReverseOpTest, Reverse_234_int32) { Reverse_234<int32>(); }
+TEST_F(ReverseOpTest, Reverse_234_int32) { Reverse_234<int32_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_234_int64) { Reverse_234<int64_t>(); }
 
@@ -155,17 +155,17 @@ TEST_F(ReverseOpTest, Reverse_234_complex64) { Reverse_234<complex64>(); }
 
 TEST_F(ReverseOpTest, Reverse_234_complex128) { Reverse_234<complex128>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_uint8) { Reverse_1234<uint8>(); }
+TEST_F(ReverseOpTest, Reverse_1234_uint8) { Reverse_1234<uint8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_int8) { Reverse_1234<int8>(); }
+TEST_F(ReverseOpTest, Reverse_1234_int8) { Reverse_1234<int8_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_uint16) { Reverse_1234<uint16>(); }
+TEST_F(ReverseOpTest, Reverse_1234_uint16) { Reverse_1234<uint16_t>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_int16) { Reverse_1234<int16>(); }
+TEST_F(ReverseOpTest, Reverse_1234_int16) { Reverse_1234<int16_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_1234_float) { Reverse_1234<float>(); }
 
-TEST_F(ReverseOpTest, Reverse_1234_int32) { Reverse_1234<int32>(); }
+TEST_F(ReverseOpTest, Reverse_1234_int32) { Reverse_1234<int32_t>(); }
 
 TEST_F(ReverseOpTest, Reverse_1234_int64) { Reverse_1234<int64_t>(); }
 
@@ -190,7 +190,7 @@ static Graph* Reverse(const TensorShape& shape, int reverse_axis) {
   Tensor data(DataTypeToEnum<T>::value, shape);
   data.flat<T>().setRandom();
   Tensor axes(DT_INT32, TensorShape({1}));
-  axes.flat<int32>()(0) = reverse_axis;
+  axes.flat<int32_t>()(0) = reverse_axis;
   test::graph::Reverse(g, test::graph::Constant(g, data),
                        test::graph::Constant(g, axes));
   return g;
@@ -229,8 +229,8 @@ void BM_ReverseRowsOf1Channel_1T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 1 /* intra_threads */, 1 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   1 /* intra_threads */, 1 /* channels */);
 }
 
 BENCHMARK(BM_ReverseRowsOf1Channel_1T_uint8)
@@ -257,8 +257,8 @@ void BM_ReverseRowsOf1Channel_4T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 4 /* intra_threads */, 1 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   4 /* intra_threads */, 1 /* channels */);
 }
 
 BENCHMARK(BM_ReverseRowsOf1Channel_4T_uint8)
@@ -286,8 +286,8 @@ void BM_ReverseRowsOf3Channels_1T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 1 /* intra_threads */, 3 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   1 /* intra_threads */, 3 /* channels */);
 }
 
 BENCHMARK(BM_ReverseRowsOf3Channels_1T_uint8)
@@ -316,8 +316,8 @@ void BM_ReverseRowsOf3Channels_4T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 4 /* intra_threads */, 3 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   4 /* intra_threads */, 3 /* channels */);
 }
 BENCHMARK(BM_ReverseRowsOf3Channels_4T_uint8)
     ->UseRealTime()
@@ -344,8 +344,8 @@ void BM_ReverseRowsOf4Channels_1T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 1 /* intra_threads */, 4 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   1 /* intra_threads */, 4 /* channels */);
 }
 
 BENCHMARK(BM_ReverseRowsOf4Channels_1T_uint8)
@@ -372,8 +372,8 @@ void BM_ReverseRowsOf4Channels_4T_uint8(::testing::benchmark::State& state) {
   const int outer_dim = state.range(0);
   const int middle_dim = state.range(1);
 
-  RunReverseRowsBenchmark<uint8>(state, outer_dim, middle_dim,
-                                 4 /* intra_threads */, 4 /* channels */);
+  RunReverseRowsBenchmark<uint8_t>(state, outer_dim, middle_dim,
+                                   4 /* intra_threads */, 4 /* channels */);
 }
 
 BENCHMARK(BM_ReverseRowsOf4Channels_4T_uint8)

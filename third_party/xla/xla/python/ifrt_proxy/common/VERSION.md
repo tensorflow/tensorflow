@@ -116,3 +116,24 @@
 *   Added date: 2025-10-01
 *   Changes:
     *   Added support for `LoadedExecutable::GetHumanReadableProgramText()`.
+
+## Version kMpmdLoadedExecutableMethods
+
+*   Added date: 2025-12-05
+*   Changes:
+    *   Added support for `MpmdLoadedExecutable::GetMpmdAddressableDevices()`.
+    *   Added support for `MpmdLoadedExecutable::GetMpmdCompiledMemoryStats()`.
+    *   Added support for `MpmdLoadedExecutable::GetMpmdCostAnalysis()`.
+
+## Version kExecutionResult
+
+*   Added date: 2025-12-11
+*   Changes:
+    *   Added a new op `LoadedExecutableFetchExecuteResult` for reading
+        execution results.
+
+## Version kkDevicePlatformName
+
+*   Added date: 2025-12-13
+*   Changes:
+    *   Added `Device::PlatformName()` for getting the platform of a device.

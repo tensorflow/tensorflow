@@ -328,8 +328,11 @@ def xla_test(
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
-    # precompile_test is not supported in OSS.
-    kwargs.pop("precompile_test", None)
+    # aot_compile_test is not supported in OSS.
+    kwargs.pop("aot_compile_test", None)
+
+    # TODO: b/382779188 - Remove this once all legacy tests have had this kwarg added.
+    kwargs.pop("use_legacy_runtime", None)
 
     test_names = []
     if not backends:
@@ -374,6 +377,8 @@ def xla_test(
                 ]
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
+                if "multi_gpu" in this_backend_tags:
+                    this_backend_tags.append("exclusive-if-local")
                 backend_deps += [
                     "//xla/stream_executor/rocm:all_runtime",
                     "//xla/stream_executor/rocm:gpu_test_kernels_rocm",

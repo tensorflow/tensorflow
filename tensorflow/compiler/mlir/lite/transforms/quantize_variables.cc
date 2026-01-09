@@ -114,11 +114,12 @@ void QuantizeVariablesPass::QuantizeVariable(
       // Add dequantize.
       builder.setInsertionPointAfter(read_variable_op);
       auto new_read_variable_op =
-          builder.create<ReadVariableOp>(read_variable_op.getLoc(), ref_qtype,
-                                         read_variable_op.getResourceId());
-      auto new_dq_op = builder.create<DequantizeOp>(
-          read_variable_op.getLoc(), read_variable_op.getResult().getType(),
-          new_read_variable_op.getResult());
+          ReadVariableOp::create(builder, read_variable_op.getLoc(), ref_qtype,
+                                 read_variable_op.getResourceId());
+      auto new_dq_op =
+          DequantizeOp::create(builder, read_variable_op.getLoc(),
+                               read_variable_op.getResult().getType(),
+                               new_read_variable_op.getResult());
       read_variable_op->replaceAllUsesWith(new_dq_op);
       read_variable_op.erase();
     }
@@ -135,19 +136,19 @@ void QuantizeVariablesPass::QuantizeVariable(
         if (qtype == quant::QuantizedType::getQuantizedElementType(ref_qtype)) {
           // Same quantization parameters, remove it.
           builder.setInsertionPoint(assign_variable_op);
-          auto new_assign_variable_op = builder.create<AssignVariableOp>(
-              assign_variable_op.getLoc(), assign_variable_op.getResourceId(),
-              dq_op.getInput());
+          auto new_assign_variable_op = AssignVariableOp::create(
+              builder, assign_variable_op.getLoc(),
+              assign_variable_op.getResourceId(), dq_op.getInput());
           assign_variable_op->replaceAllUsesWith(new_assign_variable_op);
         } else {
           // Otherwise, apply re-quantization.
           builder.setInsertionPoint(assign_variable_op);
-          auto new_q_op = builder.create<QuantizeOp>(
-              assign_variable_op.getLoc(), ref_qtype, dq_op.getInput(),
+          auto new_q_op = QuantizeOp::create(
+              builder, assign_variable_op.getLoc(), ref_qtype, dq_op.getInput(),
               TypeAttr::get(ref_qtype));
-          auto new_assign_variable_op = builder.create<AssignVariableOp>(
-              assign_variable_op.getLoc(), assign_variable_op.getResourceId(),
-              new_q_op.getResult());
+          auto new_assign_variable_op = AssignVariableOp::create(
+              builder, assign_variable_op.getLoc(),
+              assign_variable_op.getResourceId(), new_q_op.getResult());
           assign_variable_op->replaceAllUsesWith(new_assign_variable_op);
         }
         assign_variable_op.erase();
@@ -155,12 +156,12 @@ void QuantizeVariablesPass::QuantizeVariable(
       } else {
         // Add quantize op.
         builder.setInsertionPoint(assign_variable_op);
-        auto new_q_op = builder.create<QuantizeOp>(
-            assign_variable_op.getLoc(), ref_qtype,
+        auto new_q_op = QuantizeOp::create(
+            builder, assign_variable_op.getLoc(), ref_qtype,
             assign_variable_op.getValue(), TypeAttr::get(ref_qtype));
-        auto new_assign_variable_op = builder.create<AssignVariableOp>(
-            assign_variable_op.getLoc(), assign_variable_op.getResourceId(),
-            new_q_op.getResult());
+        auto new_assign_variable_op = AssignVariableOp::create(
+            builder, assign_variable_op.getLoc(),
+            assign_variable_op.getResourceId(), new_q_op.getResult());
         assign_variable_op->replaceAllUsesWith(new_assign_variable_op);
         assign_variable_op.erase();
       }
@@ -171,9 +172,9 @@ void QuantizeVariablesPass::QuantizeVariable(
     builder.setInsertionPoint(var_handle_op);
     auto output_type = UnrankedTensorType::get(TF::ResourceType::get(
         {mlir::cast<TensorType>(ref_qtype)}, builder.getContext()));
-    auto new_var_handle_op = builder.create<VarHandleOp>(
-        var_handle_op.getLoc(), output_type, var_handle_op.getContainer(),
-        var_handle_op.getSharedName());
+    auto new_var_handle_op = VarHandleOp::create(
+        builder, var_handle_op.getLoc(), output_type,
+        var_handle_op.getContainer(), var_handle_op.getSharedName());
     var_handle_op->replaceAllUsesWith(new_var_handle_op);
     var_handle_op.erase();
   }

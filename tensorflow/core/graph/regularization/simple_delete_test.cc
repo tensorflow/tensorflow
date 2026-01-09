@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 
+#include <cstdint>
 #include <string>
 
 #include "absl/status/statusor.h"

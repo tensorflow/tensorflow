@@ -2155,18 +2155,13 @@ def ReorderGatherAndCast : Pat<
 // Replace division by a constant with a multiplication by a reciprocal of that
 // constant. Floating point division can be ~10x more expensive than a
 // multiplication.
-// Only do the replacement when arg0 is not a constant, otherwise the newly
-// generated div will be converted to mul again if the const div is not
-// folded (that could happen when const tensor is very large), and that will
-// cause infinite recursion.
 def RealDivWithF32ConstDivisor : Pat<
   (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
   (TFL_MulOp:$dest1 $arg0,
     (TFL_DivOp (Arith_ConstantOp
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
-    $activation),
-  [(NotConstantLike $arg0)]>;
+    $activation)>;
 
 // Replace casting a boolean tensor to a numeric type, followed by comparing
 // with zero. Note it doesn't matter what type we're casting to. HasSameType

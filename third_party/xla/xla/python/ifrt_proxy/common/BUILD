@@ -81,9 +81,8 @@ tf_proto_library(
 tf_proto_library(
     name = "ifrt_service_proto",
     srcs = ["ifrt_service.proto"],
-    protodeps = [
+    deps = [
         ":types_proto",
-        # copybara:uncomment "@com_google_protobuf//:any_proto",
         "//xla:xla_data_proto",
         "//xla/pjrt/proto:executable_metadata_proto",
         "//xla/pjrt/proto:execute_options_proto",
@@ -96,6 +95,7 @@ tf_proto_library(
         "//xla/python/ifrt:shape_proto",
         "//xla/python/ifrt:sharding_proto",
         "//xla/tsl/protobuf:status_proto",
+        "@com_google_protobuf//:any_proto",
     ],
 )
 
@@ -107,7 +107,7 @@ tf_proto_library(
     create_grpc_library = True,
     create_java_proto = False,
     create_kotlin_proto = False,
-    protodeps = [
+    deps = [
         ":ifrt_service_proto",
         "//xla/python/ifrt:attribute_map_proto",
     ],

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -99,6 +100,6 @@ PjRtGpuClientCreationInfo* PjRtState::GetPjRtGpuClientCreationInfo() {
   return pjrt_gpu_client_creation_info_.get();
 }
 
-string PjRtState::DebugString() const { return "PjRtState"; }
+std::string PjRtState::DebugString() const { return "PjRtState"; }
 
 }  // namespace tensorflow

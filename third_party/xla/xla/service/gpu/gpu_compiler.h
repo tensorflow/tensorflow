@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -75,7 +75,7 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      AotCompilationOptions const& options) override;
 
@@ -85,11 +85,11 @@ class GpuCompiler : public LLVMCompiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override;
 
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
+      Executable* executable) override;
 
   absl::Status RunPostSchedulingPipelines(
       HloModule* module, int64_t scheduler_mem_limit,
@@ -105,7 +105,7 @@ class GpuCompiler : public LLVMCompiler {
 
   int64_t GetPointerSize() const { return pointer_size_; }
 
-  static absl::StatusOr<Compiler::GpuTargetConfig> GetTargetConfig(
+  static absl::StatusOr<GpuTargetConfig> GetTargetConfig(
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
@@ -136,7 +136,7 @@ class GpuCompiler : public LLVMCompiler {
       bool is_rocm);
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromAotResult(
-      const AotCompilationResult& aot_result,
+      const CompiledModule& aot_result,
       const se::StreamExecutor& stream_exec) override;
 
  protected:
@@ -144,6 +144,7 @@ class GpuCompiler : public LLVMCompiler {
     std::string asm_text;
     std::vector<uint8_t> binary;
     BinaryMap dnn_compiled_graphs;
+    ModuleStats module_stats;
   };
 
   // During compilation with device, stream_exec != null and autotune_results
@@ -172,8 +173,7 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
       const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config) {
+      se::StreamExecutor* stream_exec, const GpuTargetConfig* target_config) {
     return absl::OkStatus();
   }
 
@@ -192,7 +192,7 @@ class GpuCompiler : public LLVMCompiler {
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const Compiler::GpuTargetConfig* target_config,
+      const GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
     return absl::OkStatus();
   }
@@ -272,6 +272,19 @@ class GpuCompiler : public LLVMCompiler {
       const DebugOptions& debug_options) {
     return Unimplemented("LinkModules is not implemented.");
   }
+
+  // New AOT compilation as part of the AOT split project.
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                        const AotCompilationOptions& options);
+  // Legacy AOT compilation.
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                           const AotCompilationOptions& options);
+
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
+  EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
+                              const AotCompilationOptions& options);
 
   se::Platform::Id platform_id_;
 

@@ -182,9 +182,9 @@ TEST(ExecutionGraphTest, CollectivesResourceOrdering) {
   operations.push_back(Operation({BufferUse::Read(slice1, slice_shape),
                                   BufferUse::Write(slice1, slice_shape)},
                                  {ResourceUse::Write(resource)}));
-  operations.push_back(
-      Operation({BufferUse::Read(slice1), BufferUse::Write(slice1)},
-                {ResourceUse::Write(resource)}));
+  operations.push_back(Operation({BufferUse::Read(slice1, slice_shape),
+                                  BufferUse::Write(slice1, slice_shape)},
+                                 {ResourceUse::Write(resource)}));
 
   TF_ASSERT_OK_AND_ASSIGN(ExecutionGraph execution_graph,
                           ExecutionGraph::Create<Operation>(operations));

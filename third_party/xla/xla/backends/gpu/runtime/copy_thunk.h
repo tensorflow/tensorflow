@@ -1,3 +1,4 @@
+#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,10 +31,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -44,23 +48,27 @@ namespace gpu {
 class DeviceToDeviceCopyThunk : public Thunk {
  public:
   // Constructs a CopyThunk that copies host data from `source_buffer` to the
-  // device buffer `destination_buffer`. `mem_size` is the size of the data in
-  // bytes.
+  // device buffer `destination_buffer`.
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
-                          const BufferAllocation::Slice& source_buffer,
-                          const BufferAllocation::Slice& destination_buffer,
-                          uint64_t mem_size);
+                          const ShapedSlice& source_buffer,
+                          const ShapedSlice& destination_buffer,
+                          int64_t mem_size);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  const BufferAllocation::Slice& source() const { return source_buffer_; }
-  const BufferAllocation::Slice& destination() const {
-    return destination_buffer_;
+  const ShapedSlice& source() const { return source_buffer_; }
+  const ShapedSlice& destination() const { return destination_buffer_; }
+  int64_t size_bytes() const { return mem_size_; }
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_.slice, source_buffer_.shape),
+        BufferUse::Write(destination_buffer_.slice, destination_buffer_.shape),
+    };
   }
-  uint64_t size_bytes() const { return mem_size_; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -70,9 +78,11 @@ class DeviceToDeviceCopyThunk : public Thunk {
 
   friend bool operator==(const DeviceToDeviceCopyThunk& lhs,
                          const DeviceToDeviceCopyThunk& rhs) {
-    return std::tie(lhs.source_buffer_, lhs.destination_buffer_,
-                    lhs.mem_size_) ==
-           std::tie(rhs.source_buffer_, rhs.destination_buffer_, rhs.mem_size_);
+    if (lhs.size_bytes() != rhs.size_bytes()) {
+      return false;
+    }
+    return std::tie(lhs.source_buffer_, lhs.destination_buffer_) ==
+           std::tie(rhs.source_buffer_, rhs.destination_buffer_);
   }
 
   friend bool operator!=(const DeviceToDeviceCopyThunk& lhs,
@@ -81,9 +91,9 @@ class DeviceToDeviceCopyThunk : public Thunk {
   }
 
  private:
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
-  const uint64_t mem_size_;
+  const ShapedSlice source_buffer_;
+  const ShapedSlice destination_buffer_;
+  const int64_t mem_size_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -109,15 +119,19 @@ class CopyThunk : public Thunk {
     absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
         ABSL_GUARDED_BY(mutex_);
   };
-  CopyThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-            const BufferAllocation::Slice& destination_buffer,
-            uint64_t mem_size);
+  CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+            const ShapedSlice& destination_buffer, int64_t mem_size);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-  const BufferAllocation::Slice& source() const { return source_buffer_; }
-  const BufferAllocation::Slice& destination() const {
-    return destination_buffer_;
-  }
+  const ShapedSlice& source() const { return source_buffer_; }
+  const ShapedSlice& destination() const { return destination_buffer_; }
   uint64_t size_bytes() const { return mem_size_; }
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_.slice, source_buffer_.shape),
+        BufferUse::Write(destination_buffer_.slice, destination_buffer_.shape),
+    };
+  }
 
   bool operator==(const CopyThunk& other) const {
     return source() == other.source() && destination() == other.destination() &&
@@ -131,9 +145,9 @@ class CopyThunk : public Thunk {
       absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
-  const uint64_t mem_size_;
+  const ShapedSlice source_buffer_;
+  const ShapedSlice destination_buffer_;
+  const int64_t mem_size_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -148,10 +162,8 @@ class DeviceToHostCopyThunk : public CopyThunk {
   // the device buffer `destination_buffer`. `mem_size` is the size of the data
   // in bytes. `events` are the cuda record/wait events.
   // `instr` is the copy-start instruction.
-  DeviceToHostCopyThunk(ThunkInfo thunk_info,
-                        const BufferAllocation::Slice& source_buffer,
-                        const BufferAllocation::Slice& destination_buffer,
-                        uint64_t mem_size,
+  DeviceToHostCopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+                        const ShapedSlice& destination_buffer, int64_t mem_size,
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -183,10 +195,8 @@ class HostToDeviceCopyThunk : public CopyThunk {
   // the host buffer `destination_buffer`. `mem_size` is the size of the data
   // in bytes. `events` are the cuda record/wait events.
   // `instr` is the copy-start instruction.
-  HostToDeviceCopyThunk(ThunkInfo thunk_info,
-                        const BufferAllocation::Slice& source_buffer,
-                        const BufferAllocation::Slice& destination_buffer,
-                        uint64_t mem_size,
+  HostToDeviceCopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+                        const ShapedSlice& destination_buffer, int64_t mem_size,
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
                         const HloInstruction* instr);
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -267,6 +277,19 @@ class DynamicMemcpyThunk : public Thunk {
     bool depends_on_loop;
     std::vector<int64_t> src_offsets;
     std::vector<int64_t> dst_offsets;
+
+    DynamicMemcpyThunkProto::Offsets ToProto() const;
+    static absl::StatusOr<Offsets> FromProto(
+        const DynamicMemcpyThunkProto::Offsets& proto);
+
+    friend bool operator==(const Offsets& lhs, const Offsets& rhs) {
+      return std::tie(lhs.depends_on_loop, lhs.src_offsets, lhs.dst_offsets) ==
+             std::tie(rhs.depends_on_loop, rhs.src_offsets, rhs.dst_offsets);
+    }
+
+    friend bool operator!=(const Offsets& lhs, const Offsets& rhs) {
+      return !(lhs == rhs);
+    }
   };
 
   DynamicMemcpyThunk(ThunkInfo thunk_info,
@@ -285,10 +308,22 @@ class DynamicMemcpyThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(source_buffer_),
+        BufferUse::Write(destination_buffer_),
+    };
+  }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>> FromProto(
+      ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
  private:
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
-  const uint64_t mem_size_;
+  BufferAllocation::Slice source_buffer_;
+  BufferAllocation::Slice destination_buffer_;
+  uint64_t mem_size_;
   Offsets offsets_;
 };
 

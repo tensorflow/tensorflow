@@ -140,15 +140,15 @@ void PinOpsWithSideEffectsPass::runOnOperation() {
     // Wrap all side-effect producing/dependent operations in a ControlNodeOp.
     builder.setInsertionPoint(op);
     Location loc = op->getLoc();
-    auto outer_op = builder.create<ControlNodeOp>(
-        loc, op->getResultTypes(), ControlType::get(op->getContext()),
-        control_tokens);
+    auto outer_op = ControlNodeOp::create(builder, loc, op->getResultTypes(),
+                                          ControlType::get(op->getContext()),
+                                          control_tokens);
     Region region;
     Block *new_block = new Block;
     region.push_back(new_block);
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
-    builder.create<YieldOp>(loc, inner_op->getResults());
+    YieldOp::create(builder, loc, inner_op->getResults());
     outer_op.getBody().takeBody(region);
     // Careful: We can't use outer_op.getResults(), because that also includes
     // the control token.

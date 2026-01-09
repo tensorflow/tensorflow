@@ -71,7 +71,7 @@ static void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
 
 // Returns the GPU device name if there is one (with arbitrary tie breaking if
 // there are more than one), or "" otherwise.
-string GPUDeviceName(TF_Session* session) {
+std::string GPUDeviceName(TF_Session* session) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_Status* s = status.get();
@@ -90,7 +90,7 @@ string GPUDeviceName(TF_Session* session) {
     CHECK_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     LOG(INFO) << "Device " << i << " has name " << device_name << ", type "
               << device_type;
-    if (string(device_type) == DEVICE_GPU) {
+    if (std::string(device_type) == DEVICE_GPU) {
       return device_name;
     }
   }
@@ -98,7 +98,7 @@ string GPUDeviceName(TF_Session* session) {
   return "";
 }
 
-string GPUDeviceName() {
+std::string GPUDeviceName() {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TF_Status* s = status.get();
@@ -109,7 +109,7 @@ string GPUDeviceName() {
   TF_Session* sess = TF_NewSession(graph.get(), opts, s);
   TF_DeleteSessionOptions(opts);
 
-  const string gpu_device_name = GPUDeviceName(sess);
+  const std::string gpu_device_name = GPUDeviceName(sess);
   TF_DeleteSession(sess, s);
   CHECK_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   return gpu_device_name;
@@ -120,10 +120,10 @@ TEST(CAPI, Version) { EXPECT_STRNE("", TF_Version()); }
 TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
-  EXPECT_EQ(string(), TF_Message(s));
+  EXPECT_EQ(std::string(), TF_Message(s));
   TF_SetStatus(s, TF_CANCELLED, "cancel");
   EXPECT_EQ(TF_CANCELLED, TF_GetCode(s));
-  EXPECT_EQ(string("cancel"), TF_Message(s));
+  EXPECT_EQ(std::string("cancel"), TF_Message(s));
   TF_DeleteStatus(s);
 }
 
@@ -234,7 +234,7 @@ TEST(CAPI, LibraryLoadFunctions) {
   }
 }
 
-void TestEncodeDecode(int line, const std::vector<string>& data) {
+void TestEncodeDecode(int line, const std::vector<std::string>& data) {
   const int64_t n = data.size();
   absl::Status status;
   for (const std::vector<int64_t>& dims :
@@ -265,7 +265,7 @@ TEST(CAPI, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__,
                    {"the", "quick", "brown", "fox", "jumped", "over"});
 
-  string big(1000, 'a');
+  std::string big(1000, 'a');
   TestEncodeDecode(__LINE__, {"small", big, "small2"});
 }
 
@@ -287,7 +287,7 @@ TEST(CAPI, DeprecatedSession) {
          nullptr, 0, run_metadata, s);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ("Session was not created with a graph before Run()!",
-            string(TF_Message(s)));
+            std::string(TF_Message(s)));
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
@@ -470,9 +470,9 @@ TEST(CAPI, Graph) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Test TF_Operation*() query functions.
-  EXPECT_EQ(string("feed"), string(TF_OperationName(feed)));
-  EXPECT_EQ(string("Placeholder"), string(TF_OperationOpType(feed)));
-  EXPECT_EQ(string(""), string(TF_OperationDevice(feed)));
+  EXPECT_EQ(std::string("feed"), std::string(TF_OperationName(feed)));
+  EXPECT_EQ(std::string("Placeholder"), std::string(TF_OperationOpType(feed)));
+  EXPECT_EQ(std::string(""), std::string(TF_OperationDevice(feed)));
   EXPECT_EQ(1, TF_OperationNumOutputs(feed));
   EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{feed, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(feed, "output", s));
@@ -491,8 +491,8 @@ TEST(CAPI, Graph) {
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s));
 
   ASSERT_FALSE(GetAttrValue(feed, "missing", &attr_value, s));
-  EXPECT_EQ(string("Operation 'feed' has no attr named 'missing'."),
-            string(TF_Message(s)));
+  EXPECT_EQ(std::string("Operation 'feed' has no attr named 'missing'."),
+            std::string(TF_Message(s)));
 
   // Make a constant oper with the scalar "3".
   TF_Operation* three = ScalarConst(3, graph, s);
@@ -503,9 +503,9 @@ TEST(CAPI, Graph) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Test TF_Operation*() query functions.
-  EXPECT_EQ(string("add"), string(TF_OperationName(add)));
-  EXPECT_EQ(string("AddN"), string(TF_OperationOpType(add)));
-  EXPECT_EQ(string(""), string(TF_OperationDevice(add)));
+  EXPECT_EQ(std::string("add"), std::string(TF_OperationName(add)));
+  EXPECT_EQ(std::string("AddN"), std::string(TF_OperationOpType(add)));
+  EXPECT_EQ(std::string(""), std::string(TF_OperationDevice(add)));
   EXPECT_EQ(1, TF_OperationNumOutputs(add));
   EXPECT_EQ(TF_INT32, TF_OperationOutputType(TF_Output{add, 0}));
   EXPECT_EQ(1, TF_OperationOutputListLength(add, "sum", s));
@@ -660,13 +660,13 @@ TEST(CAPI, UpdateEdge) {
 
   NodeDef node_def_neg;
   ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
-  EXPECT_EQ(string("add"), node_def_neg.input(0));
+  EXPECT_EQ(std::string("add"), node_def_neg.input(0));
 
   // update edge of neg
   TF_UpdateEdge(graph, TF_Output{one, 0}, TF_Input{neg, 0}, s);
 
   ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
-  EXPECT_EQ(string("one:0"), node_def_neg.input(0));
+  EXPECT_EQ(std::string("one:0"), node_def_neg.input(0));
 
   // Clean up
   TF_DeleteGraph(graph);
@@ -984,7 +984,7 @@ TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_ImportGraphDefResultsMissingUnusedInputMappings(
       results, &num_unused_input_mappings, &src_names, &src_indexes);
   ASSERT_EQ(1, num_unused_input_mappings);
-  EXPECT_EQ(string("fake"), string(src_names[0]));
+  EXPECT_EQ(std::string("fake"), std::string(src_names[0]));
   EXPECT_EQ(0, src_indexes[0]);
 
   TF_DeleteImportGraphDefResults(results);
@@ -1023,8 +1023,8 @@ TEST(CAPI, Session) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
-  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32_t), TF_TensorByteSize(out));
+  int32_t* output_contents = static_cast<int32_t*>(TF_TensorData(out));
   EXPECT_EQ(3 + 2, *output_contents);
 
   // Add another operation to the graph.
@@ -1040,8 +1040,8 @@ TEST(CAPI, Session) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
-  output_contents = static_cast<int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32_t), TF_TensorByteSize(out));
+  output_contents = static_cast<int32_t*>(TF_TensorData(out));
   EXPECT_EQ(-(7 + 2), *output_contents);
 
   // Clean up
@@ -1053,7 +1053,7 @@ TEST(CAPI, Session) {
 
 // If `device` is non-empty, run Min op on that device.
 // Otherwise run it on the default device (CPU).
-void RunMinTest(const string& device, bool use_XLA) {
+void RunMinTest(const std::string& device, bool use_XLA) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
@@ -1084,8 +1084,8 @@ void RunMinTest(const string& device, bool use_XLA) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
-  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32_t), TF_TensorByteSize(out));
+  int32_t* output_contents = static_cast<int32_t*>(TF_TensorData(out));
   EXPECT_EQ(2, *output_contents);
 
   // Clean up
@@ -1100,7 +1100,7 @@ TEST(CAPI, Session_Min_CPU) { RunMinTest(/*device=*/"", /*use_XLA=*/false); }
 TEST(CAPI, Session_Min_XLA_CPU) { RunMinTest(/*device=*/"", /*use_XLA=*/true); }
 
 TEST(CAPI, Session_Min_GPU) {
-  const string gpu_device = GPUDeviceName();
+  const std::string gpu_device = GPUDeviceName();
   // Skip this test if no GPU is available.
   if (gpu_device.empty()) return;
 
@@ -1108,7 +1108,7 @@ TEST(CAPI, Session_Min_GPU) {
 }
 
 TEST(CAPI, Session_Min_XLA_GPU) {
-  const string gpu_device = GPUDeviceName();
+  const std::string gpu_device = GPUDeviceName();
   // Skip this test if no GPU is available.
   if (gpu_device.empty()) return;
 
@@ -1159,7 +1159,7 @@ TEST(CAPI, SessionPRun) {
   TF_SessionPRun(sess, handle, feeds1, feedValues1, 1, fetches1, fetchValues1,
                  1, nullptr, 0, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(3, *(static_cast<int32*>(TF_TensorData(fetchValues1[0]))));
+  EXPECT_EQ(3, *(static_cast<int32_t*>(TF_TensorData(fetchValues1[0]))));
   TF_DeleteTensor(feedValues1[0]);
   TF_DeleteTensor(fetchValues1[0]);
 
@@ -1171,7 +1171,7 @@ TEST(CAPI, SessionPRun) {
   TF_SessionPRun(sess, handle, feeds2, feedValues2, 1, fetches2, fetchValues2,
                  1, nullptr, 0, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(7, *(static_cast<int32*>(TF_TensorData(fetchValues2[0]))));
+  EXPECT_EQ(7, *(static_cast<int32_t*>(TF_TensorData(fetchValues2[0]))));
   TF_DeleteTensor(feedValues2[0]);
   TF_DeleteTensor(fetchValues2[0]);
 
@@ -1221,10 +1221,10 @@ TEST(CAPI, GetOpDef) {
   ASSERT_EQ(TF_OK, TF_GetCode(status));
   const OpDef* expected_op_def;
   TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef("Add", &expected_op_def));
-  string expected_serialized;
+  std::string expected_serialized;
   expected_op_def->SerializeToString(&expected_serialized);
-  string actual_string(reinterpret_cast<const char*>(buffer->data),
-                       buffer->length);
+  std::string actual_string(reinterpret_cast<const char*>(buffer->data),
+                            buffer->length);
   EXPECT_EQ(expected_serialized, actual_string);
 
   TF_GraphGetOpDef(graph, "MyFakeOp", buffer, status);
@@ -1237,7 +1237,7 @@ TEST(CAPI, GetOpDef) {
   TF_DeleteStatus(status);
 }
 
-void StringVectorToArrays(const std::vector<string>& v,
+void StringVectorToArrays(const std::vector<std::string>& v,
                           std::unique_ptr<const void*[]>* ptrs,
                           std::unique_ptr<size_t[]>* lens) {
   ptrs->reset(new const void*[v.size()]);
@@ -1273,7 +1273,7 @@ class CApiColocationTest : public ::testing::Test {
   }
 
   void SetViaStringList(TF_OperationDescription* desc,
-                        const std::vector<string>& list) {
+                        const std::vector<std::string>& list) {
     std::unique_ptr<const void*[]> list_ptrs;
     std::unique_ptr<size_t[]> list_lens;
     StringVectorToArrays(list, &list_ptrs, &list_lens);
@@ -1282,12 +1282,12 @@ class CApiColocationTest : public ::testing::Test {
   }
 
   void SetViaProto(TF_OperationDescription* desc,
-                   const std::vector<string>& list) {
+                   const std::vector<std::string>& list) {
     tensorflow::AttrValue attr;
-    for (const string& v : list) {
+    for (const std::string& v : list) {
       attr.mutable_list()->add_s(v);
     }
-    string bytes;
+    std::string bytes;
     attr.SerializeToString(&bytes);
     TF_SetAttrValueProto(desc, tensorflow::kColocationAttrName, bytes.data(),
                          bytes.size(), s_);
@@ -1295,13 +1295,13 @@ class CApiColocationTest : public ::testing::Test {
   }
 
   void VerifyCollocation(TF_Operation* op,
-                         const std::vector<string>& expected) {
+                         const std::vector<std::string>& expected) {
     TF_AttrMetadata m =
         TF_OperationGetAttrMetadata(op, tensorflow::kColocationAttrName, s_);
     if (expected.empty()) {
       ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
       EXPECT_EQ("Operation 'add' has no attr named '_class'.",
-                string(TF_Message(s_)));
+                std::string(TF_Message(s_)));
       return;
     }
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1317,12 +1317,12 @@ class CApiColocationTest : public ::testing::Test {
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
     for (int i = 0; i < expected.size(); ++i) {
       EXPECT_EQ(expected[i],
-                string(static_cast<const char*>(values[i]), lens[i]));
+                std::string(static_cast<const char*>(values[i]), lens[i]));
     }
   }
 
   void FinishAndVerify(TF_OperationDescription* desc,
-                       const std::vector<string>& expected) {
+                       const std::vector<std::string>& expected) {
     TF_Operation* op = TF_FinishOperation(desc_, s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
     VerifyCollocation(op, expected);
@@ -1407,7 +1407,7 @@ TEST_F(CApiColocationTest, ClearViaProto) {
 
 TEST(CAPI, SavedModel) {
   // Load the saved model.
-  const string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+  const std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       tensorflow::io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
                                "half_plus_two", "00000123"));
   TF_SessionOptions* opt = TF_NewSessionOptions();
@@ -1431,9 +1431,9 @@ TEST(CAPI, SavedModel) {
   const auto signature_def_map = metagraph_def.signature_def();
   const auto signature_def = signature_def_map.at("regress_x_to_y");
 
-  const string input_name =
+  const std::string input_name =
       signature_def.inputs().at(tensorflow::kRegressInputs).name();
-  const string output_name =
+  const std::string output_name =
       signature_def.outputs().at(tensorflow::kRegressOutputs).name();
 
   // Write {0, 1, 2, 3} as tensorflow::Example inputs.
@@ -1445,7 +1445,7 @@ TEST(CAPI, SavedModel) {
     input.flat<tstring>()(i) = example.SerializeAsString();
   }
 
-  const tensorflow::string input_op_name(
+  const std::string input_op_name(
       tensorflow::ParseTensorName(input_name).first);
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
@@ -1454,7 +1454,7 @@ TEST(CAPI, SavedModel) {
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
   ASSERT_TRUE(status.ok()) << status.message();
 
-  const tensorflow::string output_op_name(
+  const std::string output_op_name(
       tensorflow::ParseTensorName(output_name).first);
   TF_Operation* output_op =
       TF_GraphOperationByName(graph, output_op_name.c_str());
@@ -1483,7 +1483,7 @@ TEST(CAPI, SavedModel) {
 }
 
 TEST(CAPI, SavedModelNullArgsAreValid) {
-  const string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+  const std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
       tensorflow::io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
                                "half_plus_two", "00000123"));
   TF_SessionOptions* opt = TF_NewSessionOptions();
@@ -1648,7 +1648,7 @@ class CApiGradientsTest : public ::testing::Test {
     AddGradients(grad_inputs_provided, nullptr, inputs, 1, outputs, 1,
                  grad_outputs);
 
-    string expected_msg =
+    std::string expected_msg =
         "No gradient defined for op: TestOpWithNoGradient. Please see "
         "https://www.tensorflow.org/code/"
         "tensorflow/cc/gradients/README.md"
@@ -2016,10 +2016,10 @@ class CApiAttributesTest : public ::testing::Test {
     TF_DeleteStatus(s_);
   }
 
-  TF_OperationDescription* init(string type) {
+  TF_OperationDescription* init(std::string type) {
     // Construct op_name to match the name used by REGISTER_OP in the
     // ATTR_TEST_REGISTER calls above.
-    string op_name = "CApiAttributesTestOp";
+    std::string op_name = "CApiAttributesTestOp";
     if (type.find("list(") == 0) {
       op_name += "List";
       type = type.replace(0, 5, "");
@@ -2064,11 +2064,11 @@ TEST_F(CApiAttributesTest, String) {
 
   TF_OperationGetAttrString(oper, "v", value.get(), 5, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  EXPECT_EQ("bunny", string(static_cast<const char*>(value.get()), 5));
+  EXPECT_EQ("bunny", std::string(static_cast<const char*>(value.get()), 5));
 }
 
 TEST_F(CApiAttributesTest, StringList) {
-  std::vector<string> list = {"bugs", "bunny", "duck"};
+  std::vector<std::string> list = {"bugs", "bunny", "duck"};
   std::unique_ptr<const void*[]> list_ptrs;
   std::unique_ptr<size_t[]> list_lens;
   StringVectorToArrays(list, &list_ptrs, &list_lens);
@@ -2094,7 +2094,8 @@ TEST_F(CApiAttributesTest, StringList) {
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   for (size_t i = 0; i < list.size(); ++i) {
     EXPECT_EQ(list[i].size(), lens[i]) << i;
-    EXPECT_EQ(list[i], string(static_cast<const char*>(values[i]), lens[i]))
+    EXPECT_EQ(list[i],
+              std::string(static_cast<const char*>(values[i]), lens[i]))
         << i;
   }
 }
@@ -2280,7 +2281,7 @@ TEST_F(CApiAttributesTest, TensorShapeProto) {
   const int64_t pts[] = {2, 4, -1, 8};
   tensorflow::TensorShapeProto proto;
   tensorflow::PartialTensorShape(pts).AsProto(&proto);
-  string bytes;
+  std::string bytes;
   proto.SerializeToString(&bytes);
 
   auto desc = init("shape");
@@ -2299,7 +2300,7 @@ TEST_F(CApiAttributesTest, TensorShapeProto) {
 }
 
 TEST_F(CApiAttributesTest, TensorShapeProtoList) {
-  string bytes1, bytes2;
+  std::string bytes1, bytes2;
   tensorflow::TensorShapeProto proto;
 
   const int64_t pts1[] = {2, 4, -1, 8};
@@ -2312,7 +2313,7 @@ TEST_F(CApiAttributesTest, TensorShapeProtoList) {
 
   std::unique_ptr<const void*[]> list_ptrs;
   std::unique_ptr<size_t[]> list_lens;
-  const std::vector<string> list = {bytes1, bytes2};
+  const std::vector<std::string> list = {bytes1, bytes2};
   StringVectorToArrays(list, &list_ptrs, &list_lens);
 
   auto desc = init("list(shape)");
@@ -2501,7 +2502,7 @@ TEST(TestApiDef, TestCreateApiDef) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
-  string op_name = "TestCApi";
+  std::string op_name = "TestCApi";
   status = TF_NewStatus();
   auto* api_def_buf =
       TF_ApiDefMapGet(api_def_map, op_name.c_str(), op_name.size(), status);
@@ -2529,7 +2530,7 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
-  string api_def_overwrites = R"(op: <
+  std::string api_def_overwrites = R"(op: <
   graph_op_name: "TestCApi"
   summary: "New summary"
 >
@@ -2540,7 +2541,7 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
-  string op_name = "TestCApi";
+  std::string op_name = "TestCApi";
   status = TF_NewStatus();
   auto* api_def_buf =
       TF_ApiDefMapGet(api_def_map, op_name.c_str(), op_name.size(), status);

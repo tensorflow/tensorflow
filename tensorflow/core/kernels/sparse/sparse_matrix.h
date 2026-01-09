@@ -217,40 +217,40 @@ class CSRSparseMatrix {
     return dense_shape_;
   }
 
-  inline TTypes<int32>::UnalignedVec row_pointers_vec(int batch) {
+  inline TTypes<int32_t>::UnalignedVec row_pointers_vec(int batch) {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
     const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
-    return TTypes<int32>::UnalignedVec(row_pointers_vec_->data() + offset,
-                                       rows + 1);
+    return TTypes<int32_t>::UnalignedVec(row_pointers_vec_->data() + offset,
+                                         rows + 1);
   }
 
-  inline TTypes<int32>::UnalignedConstVec row_pointers_vec(int batch) const {
+  inline TTypes<int32_t>::UnalignedConstVec row_pointers_vec(int batch) const {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
     const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
-    return TTypes<int32>::UnalignedConstVec(row_pointers_vec_->data() + offset,
-                                            rows + 1);
+    return TTypes<int32_t>::UnalignedConstVec(
+        row_pointers_vec_->data() + offset, rows + 1);
   }
 
-  inline TTypes<int32>::UnalignedVec col_indices_vec(int batch) {
+  inline TTypes<int32_t>::UnalignedVec col_indices_vec(int batch) {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return TTypes<int32>::UnalignedVec(col_indices_vec_->data() + offset,
-                                       nnz_in_batch);
+    return TTypes<int32_t>::UnalignedVec(col_indices_vec_->data() + offset,
+                                         nnz_in_batch);
   }
 
-  inline TTypes<int32>::UnalignedConstVec col_indices_vec(int batch) const {
+  inline TTypes<int32_t>::UnalignedConstVec col_indices_vec(int batch) const {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return TTypes<int32>::UnalignedConstVec(col_indices_vec_->data() + offset,
-                                            nnz_in_batch);
+    return TTypes<int32_t>::UnalignedConstVec(col_indices_vec_->data() + offset,
+                                              nnz_in_batch);
   }
 
   template <typename T>
@@ -411,9 +411,11 @@ class CSRSparseMatrix {
   void SetupVecs() {
     if (!metadata_.validated) return;
     batch_pointers_vec_.reset(
-        new TTypes<int32>::Vec(batch_pointers_.vec<int32>()));
-    row_pointers_vec_.reset(new TTypes<int32>::Vec(row_pointers_.vec<int32>()));
-    col_indices_vec_.reset(new TTypes<int32>::Vec(col_indices_.vec<int32>()));
+        new TTypes<int32_t>::Vec(batch_pointers_.vec<int32_t>()));
+    row_pointers_vec_.reset(
+        new TTypes<int32_t>::Vec(row_pointers_.vec<int32_t>()));
+    col_indices_vec_.reset(
+        new TTypes<int32_t>::Vec(col_indices_.vec<int32_t>()));
   }
 
   void ClearVecs() {
@@ -537,9 +539,9 @@ class CSRSparseMatrix {
   Tensor row_pointers_;
   Tensor col_indices_;
   Tensor values_;
-  std::unique_ptr<TTypes<int32>::Vec> batch_pointers_vec_;
-  std::unique_ptr<TTypes<int32>::Vec> row_pointers_vec_;
-  std::unique_ptr<TTypes<int32>::Vec> col_indices_vec_;
+  std::unique_ptr<TTypes<int32_t>::Vec> batch_pointers_vec_;
+  std::unique_ptr<TTypes<int32_t>::Vec> row_pointers_vec_;
+  std::unique_ptr<TTypes<int32_t>::Vec> col_indices_vec_;
 };
 
 // Call BinaryFunctor<Device, T>()(ctx, a, b, c)
@@ -616,16 +618,16 @@ absl::Status CSRSparseMatrixUnaryHelper(OpKernelContext* ctx,
 
 template <typename T>
 struct ConstCSRComponent {
-  TTypes<int32>::UnalignedConstVec row_ptr;
-  TTypes<int32>::UnalignedConstVec col_ind;
+  TTypes<int32_t>::UnalignedConstVec row_ptr;
+  TTypes<int32_t>::UnalignedConstVec col_ind;
   typename TTypes<T>::UnalignedConstVec values;
   TTypes<int64_t>::ConstVec dense_shape_host;
 };
 
 template <typename T>
 struct CSRComponent {
-  TTypes<int32>::UnalignedVec row_ptr;
-  TTypes<int32>::UnalignedVec col_ind;
+  TTypes<int32_t>::UnalignedVec row_ptr;
+  TTypes<int32_t>::UnalignedVec col_ind;
   typename TTypes<T>::UnalignedVec values;
   TTypes<int64_t>::Vec dense_shape_host;
 };

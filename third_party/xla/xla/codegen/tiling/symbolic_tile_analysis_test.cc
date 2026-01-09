@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -2611,6 +2610,59 @@ ENTRY main {
     pid_0 in [0, 7]
   )",
                                          num_m_tiles, num_n_tiles, tile_n)));
+}
+
+// Check that we don't hit the exponential complexity edge case (it will timeout
+// if we do).
+TEST_F(SymbolicTileAnalysisTest, FibonacciSucceeds) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fibonacci {
+    fib0 = f32[5] parameter(0)
+    fib1 = f32[5] parameter(1)
+    fib2 = f32[5] add(f32[5] fib0, f32[5] fib1)
+    fib3 = f32[5] add(f32[5] fib2, f32[5] fib1)
+    fib4 = f32[5] add(f32[5] fib3, f32[5] fib2)
+    fib5 = f32[5] add(f32[5] fib4, f32[5] fib3)
+    fib6 = f32[5] add(f32[5] fib5, f32[5] fib4)
+    fib7 = f32[5] add(f32[5] fib6, f32[5] fib5)
+    fib8 = f32[5] add(f32[5] fib7, f32[5] fib6)
+    fib9 = f32[5] add(f32[5] fib8, f32[5] fib7)
+    fib10 = f32[5] add(f32[5] fib9, f32[5] fib8)
+    fib11 = f32[5] add(f32[5] fib10, f32[5] fib9)
+    fib12 = f32[5] add(f32[5] fib11, f32[5] fib10)
+    fib13 = f32[5] add(f32[5] fib12, f32[5] fib11)
+    fib14 = f32[5] add(f32[5] fib13, f32[5] fib12)
+    fib15 = f32[5] add(f32[5] fib14, f32[5] fib13)
+    fib16 = f32[5] add(f32[5] fib15, f32[5] fib14)
+    fib17 = f32[5] add(f32[5] fib16, f32[5] fib15)
+    fib18 = f32[5] add(f32[5] fib17, f32[5] fib16)
+    fib19 = f32[5] add(f32[5] fib18, f32[5] fib17)
+    fib20 = f32[5] add(f32[5] fib19, f32[5] fib18)
+    fib21 = f32[5] add(f32[5] fib20, f32[5] fib19)
+    fib22 = f32[5] add(f32[5] fib21, f32[5] fib20)
+    fib23 = f32[5] add(f32[5] fib22, f32[5] fib21)
+    fib24 = f32[5] add(f32[5] fib23, f32[5] fib22)
+    fib25 = f32[5] add(f32[5] fib24, f32[5] fib23)
+    fib26 = f32[5] add(f32[5] fib25, f32[5] fib24)
+    fib27 = f32[5] add(f32[5] fib26, f32[5] fib25)
+    fib28 = f32[5] add(f32[5] fib27, f32[5] fib26)
+    fib29 = f32[5] add(f32[5] fib28, f32[5] fib27)
+    fib30 = f32[5] add(f32[5] fib29, f32[5] fib28)
+    fib31 = f32[5] add(f32[5] fib30, f32[5] fib29)
+    fib32 = f32[5] add(f32[5] fib31, f32[5] fib30)
+    fib33 = f32[5] add(f32[5] fib32, f32[5] fib31)
+    fib34 = f32[5] add(f32[5] fib33, f32[5] fib32)
+    ROOT fib35 = f32[5] add(f32[5] fib34, f32[5] fib33)
+}
+
+ENTRY main {
+  p0 = f32[5] parameter(0)
+  p1 = f32[5] parameter(1)
+  ROOT fusion = f32[5] fusion(p0, p1), kind=kCustom, calls=fibonacci
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
 }
 
 }  // namespace

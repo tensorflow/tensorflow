@@ -215,6 +215,7 @@ def StableHLOLowerToTritonPass
   let dependentDialects = [
     "::mlir::stablehlo::StablehloDialect",
     "::mlir::triton::TritonDialect",
+    "::mlir::triton::xla::XlaTritonDialect",
     "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateStableHLOLowerToTritonPass()";
@@ -246,7 +247,6 @@ def TritonXLAMathToLibdevicePass
   ];
 }
 
-
 def XTileLowerToTritonPass
     : Pass<"xtile-lower-to-triton", "mlir::ModuleOp"> {
   let summary = "Lowers XTile operations to their Triton equivalent.";
@@ -255,6 +255,23 @@ def XTileLowerToTritonPass
     "::xla::xtile::XTileDialect",
   ];
   let constructor = "CreateXTileLowerToTritonPass()";
+}
+
+def ArithFP8ConversionToTritonPass
+    : Pass<"arith-fp8-conversion-to-triton", "mlir::ModuleOp"> {
+  let summary =
+    "Converts arith extf and truncf operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::triton::TritonDialect",
+  ];
+}
+def UnsupportedElementwiseToTritonPass
+    : Pass<"unsupported-elementwise-to-triton"> {
+  let summary =
+    "Converts unsupported elementwise operations to their Triton equivalent.";
+  let dependentDialects = [
+    "::mlir::arith::ArithDialect",
+  ];
 }
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

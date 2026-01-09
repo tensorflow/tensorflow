@@ -202,8 +202,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     // `WaitForDependencies` may block if the collective instances on which this
     // op depends have not yet launched.  When this function returns, this op is
     // ready to go.
-    profiler::TraceMe activity("WaitForDependencies",
-                               profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("WaitForDependencies",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     col_ctx->col_exec->WaitForDependencies(*col_params);
     nccl_manager_.SignalMultiNodeReady(nccl_collective_key);
   }
@@ -212,7 +212,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     // `NcclManager` will enqueue the NCCL kernel on the NCCL stream.  Thus the
     // implementation of `UnblockDependencies` keeps track of the number of
     // devices that have launched.
-    profiler::TraceMe activity("Schedule", profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("Schedule",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     col_ctx->col_exec->UnblockDependencies(*col_params);
   }
 }

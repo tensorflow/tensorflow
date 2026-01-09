@@ -70,6 +70,9 @@ enum class MixedPriorityBatchingPolicy {
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
     absl::string_view attr_value);
 
+absl::StatusOr<absl::string_view> GetMixedPriorityBatchingPolicyString(
+    MixedPriorityBatchingPolicy policy);
+
 // The abstract superclass for a unit of work to be done as part of a batch.
 //
 // An implementing subclass typically contains (or points to):

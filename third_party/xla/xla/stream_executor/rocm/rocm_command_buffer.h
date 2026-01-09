@@ -30,7 +30,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -63,23 +63,23 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateSetCaseConditionNode(
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default,
       absl::Span<const GraphNodeHandle> dependencies) override;
 
   absl::Status UpdateSetCaseConditionNode(
       GraphNodeHandle handle,
       absl::Span<const GraphConditionalHandle> conditionals,
-      DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+      DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
       bool enable_conditional_default) override;
 
   absl::StatusOr<GraphNodeHandle> CreateSetWhileConditionNode(
-      GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+      GraphConditionalHandle conditional, DeviceAddress<bool> predicate,
       absl::Span<const GraphNodeHandle> dependencies) override;
 
   absl::Status UpdateSetWhileConditionNode(
       GraphNodeHandle handle, GraphConditionalHandle conditional,
-      DeviceMemory<bool> predicate) override;
+      DeviceAddress<bool> predicate) override;
 
   //===--------------------------------------------------------------------===//
 
@@ -89,42 +89,46 @@ class RocmCommandBuffer : public GpuCommandBuffer {
 
   absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, BitPattern bit_pattern,
+      DeviceAddressBase destination, BitPattern bit_pattern,
       size_t num_elements) override;
 
   absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
-                                DeviceMemoryBase destination,
+                                DeviceAddressBase destination,
                                 BitPattern bit_pattern,
                                 size_t num_elements) override;
 
   absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
       absl::Span<const GraphNodeHandle> dependencies,
-      DeviceMemoryBase destination, DeviceMemoryBase source,
+      DeviceAddressBase destination, DeviceAddressBase source,
       uint64_t size) override;
 
   absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
-                                   DeviceMemoryBase destination,
-                                   DeviceMemoryBase source,
+                                   DeviceAddressBase destination,
+                                   DeviceAddressBase source,
                                    uint64_t size) override;
 
   absl::Status PopulateDnnGraphNode(
-      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) override {
+      dnn::DnnGraph&, Stream&,
+      absl::Span<DeviceAddressBase> operands) override {
     return absl::UnimplementedError("Not implemented.");
   }
 
   absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
-                                  absl::Span<DeviceMemoryBase> operands,
+                                  absl::Span<DeviceAddressBase> operands,
                                   GraphNodeHandle) override {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::StatusOr<GraphNodeHandle> CreateChildNode(
-      ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
-      CommandBuffer& nested) override;
+  absl::StatusOr<GraphNodeHandle> CreateClonedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      const CommandBuffer& nested) override;
 
-  absl::Status UpdateChildNode(ChildCommandType type,
-                               GraphNodeHandle node_handle,
-                               const CommandBuffer& nested) override;
+  absl::StatusOr<GraphNodeHandle> CreateMovedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      CommandBuffer* nested) override;
+
+  absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
+                                     const CommandBuffer& nested) override;
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
       absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,

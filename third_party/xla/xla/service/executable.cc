@@ -25,15 +25,16 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -60,16 +61,16 @@ ExecutionInput::ExecutionInput(ExecutionInput&& rhs) noexcept
 absl::Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
   const Shape& input_shape = shape();
   if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
-    return tsl::errors::InvalidArgument(
-        "Cannot set dynamic shape: ", input_shape.ToString(), " vs. ",
-        dynamic_shape.ToString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Cannot set dynamic shape: ", input_shape.ToString(),
+                     " vs. ", dynamic_shape.ToString()));
   }
   dynamic_shape_ = std::make_unique<Shape>(std::move(dynamic_shape));
   return absl::OkStatus();
 }
 
 void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
-                                      MaybeOwningDeviceMemory buffer) {
+                                      MaybeOwningDeviceAddress buffer) {
   *buffers_.mutable_element(index) = std::move(buffer);
   unowned_indices_.insert(index);
 }
@@ -85,12 +86,12 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   return result;
 }
 
-static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
+static ExecutionInput MakeMaybeOwningDeviceAddressTree(
     const ShapedBuffer& shaped_buffer) {
   ExecutionInput result(shaped_buffer.on_device_shape());
   shaped_buffer.buffers().ForEachElement(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& mem) {
-        result.SetBuffer(index, MaybeOwningDeviceMemory(mem));
+      [&](const ShapeIndex& index, const se::DeviceAddressBase& mem) {
+        result.SetBuffer(index, MaybeOwningDeviceAddress(mem));
       });
   return result;
 }
@@ -101,7 +102,7 @@ absl::StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
   std::vector<ExecutionInput> args;
   args.reserve(arguments.size());
   for (const ShapedBuffer* arg : arguments) {
-    args.emplace_back(MakeMaybeOwningDeviceMemoryTree(*arg));
+    args.emplace_back(MakeMaybeOwningDeviceAddressTree(*arg));
   }
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStream(run_options, std::move(args)));
@@ -252,7 +253,7 @@ void Executable::MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                            ExecutionOutput& result) {
   for (ExecutionInput& argument : arguments) {
     for (auto& index_buffer : *argument.MutableBuffers()) {
-      if (std::optional<se::OwningDeviceMemory> maybe_owning_buffer =
+      if (std::optional<se::ScopedDeviceAddress<uint8_t>> maybe_owning_buffer =
               index_buffer.second.Release()) {
         result.AddToBeReleased(std::move(*maybe_owning_buffer));
       }

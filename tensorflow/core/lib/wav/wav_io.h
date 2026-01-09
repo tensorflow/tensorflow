@@ -65,9 +65,9 @@ extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
 // The results are output as floats within the range -1 to 1,
 absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
                                           std::vector<float>* float_values,
-                                          uint32* sample_count,
-                                          uint16* channel_count,
-                                          uint32* sample_rate);
+                                          uint32_t* sample_count,
+                                          uint16_t* channel_count,
+                                          uint32_t* sample_rate);
 
 // Everything below here is only exposed publicly for testing purposes.
 
@@ -88,8 +88,8 @@ absl::Status ReadValue(const std::string& data, T* value, int* offset) {
     memcpy(value, data.data() + *offset, sizeof(T));
   } else {
     *value = 0;
-    const uint8* data_buf =
-        reinterpret_cast<const uint8*>(data.data() + *offset);
+    const uint8_t* data_buf =
+        reinterpret_cast<const uint8_t*>(data.data() + *offset);
     int shift = 0;
     for (int i = 0; i < sizeof(T); ++i, shift += 8) {
       *value = *value | (data_buf[i] << shift);

@@ -51,7 +51,7 @@ absl::Status HandleSliceToElement(const Tensor& parent, Tensor* element,
 
 QueueBase::QueueBase(int32_t capacity, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
-                     const string& name)
+                     const std::string& name)
     : capacity_(capacity),
       component_dtypes_(component_dtypes),
       component_shapes_(component_shapes),
@@ -78,8 +78,9 @@ absl::Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
 }
 
 // static
-string QueueBase::ShapeListString(const absl::Span<const TensorShape>& shapes) {
-  string result = "[";
+std::string QueueBase::ShapeListString(
+    const absl::Span<const TensorShape>& shapes) {
+  std::string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
     absl::StrAppend(&result, first ? "" : ", ", shape.DebugString());
@@ -90,7 +91,7 @@ string QueueBase::ShapeListString(const absl::Span<const TensorShape>& shapes) {
 }
 
 absl::Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
-                                         const string& op) const {
+                                         const std::string& op) const {
   if (node_def.op() != op) {
     return errors::InvalidArgument("Shared queue '", name_, "' has type '", op,
                                    "' that does not match type of Node '",

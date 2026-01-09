@@ -203,7 +203,8 @@ mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
         CreateTupleValue(func_builder, loc, flatten_values, child_type));
   }
 
-  return func_builder->create<mlir::stablehlo::TupleOp>(loc, flatten_sub_values)
+  return mlir::stablehlo::TupleOp::create(*func_builder, loc,
+                                          flatten_sub_values)
       .getResult();
 }
 

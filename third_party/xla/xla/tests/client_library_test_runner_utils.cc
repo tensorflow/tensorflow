@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 
 namespace xla {
 
@@ -36,7 +35,7 @@ XlaComputation CreateScalarReluF32() {
   XlaOp zero = ConstantR0<float>(&builder, 0.0f);
   Max(std::move(z_value), std::move(zero));
   absl::StatusOr<XlaComputation> computation = builder.Build();
-  TF_CHECK_OK(computation.status());
+  CHECK_OK(computation.status());
   return *std::move(computation);
 }
 
@@ -47,7 +46,7 @@ XlaComputation CreateScalarMax(const PrimitiveType test_type) {
   XlaOp y = Parameter(&builder, 1, shape, "y");
   Max(std::move(x), std::move(y));
   absl::StatusOr<XlaComputation> computation = builder.Build();
-  TF_CHECK_OK(computation.status());
+  CHECK_OK(computation.status());
   return *std::move(computation);
 }
 

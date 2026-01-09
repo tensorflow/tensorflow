@@ -416,7 +416,7 @@ tsl::Future<> PjRtArray::CopyToHostBuffer(
         static_cast<char*>(data), xla_shape);
   }
   auto* literal_ptr = literal.get();
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),
@@ -550,15 +550,15 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   if (new_client == nullptr) {
     new_client = client_;
   }
-  std::shared_ptr<const xla::PjRtLayout> layout;
-  static MemoryKind kUnpinnedHostMemoryKind(UnpinnedHostMemorySpace::kKind);
-  // Unpinned host supports default layouts only; a custom layout would be
-  // ignored.
-  // TODO(hyeontaek): This behavior should be informed by the underlying PjRt
-  // client instead of following a convention.
-  if (layout_ != nullptr &&
-      canonicalized_sharding_memory_kind != kUnpinnedHostMemoryKind) {
-    layout = layout_;
+  std::shared_ptr<const xla::PjRtLayout> layout = layout_;
+  // If a copy has happened across clients or across different memory spaces,
+  // the layout of a new buffer may be different from that of the original
+  // buffer. Refreshing the custom layout using the new buffer layout makes sure
+  // that `PjRtArray` tracks a valid custom layout.
+  if (layout != nullptr &&
+      (client_ != new_client ||
+       sharding_->memory_kind() != canonicalized_sharding_memory_kind)) {
+    layout = buffers.front()->layout();
   }
   return std::visit(
       [this, new_client, &new_sharding, &buffers,

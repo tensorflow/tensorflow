@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_lib.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -53,13 +53,13 @@ absl::StatusOr<std::unique_ptr<TopKThunk>> TopKThunk::Create(
 tsl::AsyncValueRef<Thunk::ExecuteEvent> TopKThunk::Execute(
     const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase values,
+      se::DeviceAddressBase values,
       params.buffer_allocations->GetDeviceAddress(values_buffer_));
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase output,
+      se::DeviceAddressBase output,
       params.buffer_allocations->GetDeviceAddress(output_buffer_));
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase indices,
+      se::DeviceAddressBase indices,
       params.buffer_allocations->GetDeviceAddress(indices_buffer_));
 
   internal::TopK<float>(batch_size_, input_size_, k_,

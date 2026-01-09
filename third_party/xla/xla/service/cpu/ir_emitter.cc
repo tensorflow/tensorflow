@@ -106,7 +106,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -168,7 +167,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       &hlo_module, &thread_local_computations_, &global_computations_);
   absl::c_sort(thread_local_computations_);
   absl::c_sort(global_computations_);
-  TF_CHECK_OK(s) << "Should have failed buffer assignment.";
+  CHECK_OK(s) << "Should have failed buffer assignment.";
   SetModuleMemoryRegionName(*module_, "ir_emitter");
 }
 

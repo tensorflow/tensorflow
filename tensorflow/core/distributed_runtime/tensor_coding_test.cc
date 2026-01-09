@@ -48,7 +48,7 @@ class DummyDevice : public DeviceBase {
 
 class StringSource : public TensorResponse::Source {
  public:
-  explicit StringSource(const string* s, int block_size)
+  explicit StringSource(const std::string* s, int block_size)
       : s_(s), stream_(nullptr), block_size_(block_size) {}
   ~StringSource() override { DeleteStream(); }
 
@@ -66,7 +66,7 @@ class StringSource : public TensorResponse::Source {
   }
 
  private:
-  const string* s_;
+  const std::string* s_;
   protobuf::io::ArrayInputStream* stream_;
   char space_[sizeof(protobuf::io::ArrayInputStream)];
   int block_size_;
@@ -83,7 +83,7 @@ class TensorResponseTest : public ::testing::Test {
     } else {
       src.AsProtoField(proto.mutable_tensor());
     }
-    string encoded;
+    std::string encoded;
     proto.AppendToString(&encoded);
 
     StringSource source(&encoded, 1024);
@@ -136,11 +136,11 @@ class TensorResponseTest : public ::testing::Test {
 TEST_F(TensorResponseTest, Simple) {
   DoTest<float>(DT_FLOAT);
   DoTest<double>(DT_DOUBLE);
-  DoTest<int32>(DT_INT32);
-  DoTest<uint16>(DT_UINT16);
-  DoTest<uint8>(DT_UINT8);
-  DoTest<int16>(DT_INT16);
-  DoTest<int8>(DT_INT8);
+  DoTest<int32_t>(DT_INT32);
+  DoTest<uint16_t>(DT_UINT16);
+  DoTest<uint8_t>(DT_UINT8);
+  DoTest<int16_t>(DT_INT16);
+  DoTest<int8_t>(DT_INT8);
   DoTest<complex64>(DT_COMPLEX64);
   DoTest<complex128>(DT_COMPLEX128);
   DoTest<int64_t>(DT_INT64);
@@ -156,19 +156,19 @@ TEST_F(TensorResponseTest, Simple) {
 
 TEST_F(TensorResponseTest, StringTensor) { DoTestForStrings(DT_STRING); }
 
-string MakeFloatTensorTestCase(int num_elems) {
-  std::vector<int8> v(num_elems);
+std::string MakeFloatTensorTestCase(int num_elems) {
+  std::vector<int8_t> v(num_elems);
   for (int i = 0; i < num_elems; i++) {
     v[i] = i % 10;
   }
   Tensor src(DT_INT8, TensorShape({1, static_cast<int64_t>(v.size())}));
-  test::FillValues<int8>(&src, v);
+  test::FillValues<int8_t>(&src, v);
 
   RecvTensorResponse proto;
   proto.set_is_dead(false);
   proto.set_send_start_micros(123456);
   src.AsProtoTensorContent(proto.mutable_tensor());
-  string encoded;
+  std::string encoded;
   proto.AppendToString(&encoded);
   return encoded;
 }
@@ -176,7 +176,7 @@ string MakeFloatTensorTestCase(int num_elems) {
 static void BM_TensorResponse(::testing::benchmark::State& state) {
   const int arg = state.range(0);
 
-  string encoded = MakeFloatTensorTestCase(arg);
+  std::string encoded = MakeFloatTensorTestCase(arg);
   DummyDevice cpu_device(Env::Default());
   size_t bytes = 0;
   for (auto i : state) {

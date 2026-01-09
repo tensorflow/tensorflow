@@ -2275,7 +2275,8 @@ ENTRY main {
 void DOT_ReorderContracting(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  stream_executor::StreamExecutorAddressAllocator allocator(platform,
+                                                            executors);
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);

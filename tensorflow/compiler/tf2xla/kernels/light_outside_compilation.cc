@@ -485,7 +485,7 @@ class TfCallbackDevice : public DeviceBase {
         tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch buffer.
         /*scratch=*/nullptr);
-    return OkStatus();
+    return absl::OkStatus();
 #else
     LOG(FATAL) << "CUDA-enabled build is required";  // Crash OK
 #endif
@@ -548,7 +548,8 @@ absl::Status PopulateMetadataBufferIfNeeded(OpKernelContext& ctx,
               callback_data.outputs(i).buffer_description().shape()));
       void* location = static_cast<char*>(allocated->data()) +
                        xla::ShapeUtil::ByteSizeOf(xla_shape);
-      se::DeviceMemoryBase m{location, num_dimensions * sizeof(int32_t)};
+      stream_executor::DeviceAddressBase m{location,
+                                           num_dimensions * sizeof(int32_t)};
       TF_RETURN_IF_ERROR(stream->Memcpy(&m, shape_info.data(),
                                         num_dimensions * sizeof(int32_t)));
     }

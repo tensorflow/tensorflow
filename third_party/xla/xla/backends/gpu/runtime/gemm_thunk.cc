@@ -25,10 +25,12 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
@@ -54,7 +56,7 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
 absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
-  se::DeviceMemoryBase workspace(/*opaque=*/nullptr, /*size=*/0);
+  se::DeviceAddressBase workspace(/*opaque=*/nullptr, /*size=*/0);
   if (workspace_.has_value()) {
     workspace = allocs.GetDeviceAddress(workspace_.value());
   }
@@ -79,6 +81,21 @@ absl::Status GemmThunk::Initialize(const InitializeParams& params) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
   return absl::OkStatus();
+}
+
+Thunk::BufferUses GemmThunk::buffer_uses() const {
+  BufferUses res{
+      BufferUse::Read(lhs_buffer_, config_.lhs_layout.ToShape()),
+      BufferUse::Read(rhs_buffer_, config_.rhs_layout.ToShape()),
+      BufferUse::Write(output_buffer_, config_.output_layout.ToShape()),
+  };
+
+  if (workspace_.has_value()) {
+    res.push_back(BufferUse::Write(
+        *workspace_, ShapeUtil::MakeShape(S8, {workspace_->size()})));
+  }
+
+  return res;
 }
 
 absl::StatusOr<ThunkProto> GemmThunk::ToProto() const {

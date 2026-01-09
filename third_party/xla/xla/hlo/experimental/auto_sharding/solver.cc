@@ -18,9 +18,12 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <iostream>
 #include <optional>
+#include <random>  // Required for std::seed_seq
 
+#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
@@ -40,12 +43,14 @@ absl::StatusOr<Solution> Solver::Solve(const Problem& problem,
   const absl::Time start_time = absl::Now();
   std::optional<TotalCost> best_cost;
   std::optional<Solution> best_solution;
-  unsigned int seed = 2025;
+  std::seed_seq seed_seq({2025});
+  absl::BitGen gen(seed_seq);
   while (absl::Now() - start_time < timeout) {
     Solution solution;
     solution.reserve(problem.nodes.size());
     for (const Node& node : problem.nodes) {
-      solution.push_back(rand_r(&seed) % node.strategies.size());
+      solution.push_back(
+          absl::Uniform<uint64_t>(gen, 0, node.strategies.size()));
     }
     auto cost = Evaluate(problem, solution);
     if (!cost.ok() || (best_cost && *best_cost <= *cost)) {

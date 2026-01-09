@@ -10,14 +10,7 @@ cc_library(
     srcs = ["executable_metadata_extension.cc"],
     hdrs = ["executable_metadata_extension.h"],
     deps = [
-        "//xla:future",
-        "//xla:shape_util",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
-        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
     ],
 )

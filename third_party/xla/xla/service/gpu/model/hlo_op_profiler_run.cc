@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -58,9 +59,8 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(
-      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                             tsl::LegacyUnredactedDebugString(literal)));
+  CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                                  tsl::LegacyUnredactedDebugString(literal)));
 }
 
 int RunProfiler(int argc, char** argv) {
@@ -84,37 +84,14 @@ int RunProfiler(int argc, char** argv) {
       runner.backend().stream_executors()[0]->GetDeviceDescription();
   VLOG(0) << dev_info.name() << " @ " << dev_info.clock_rate_ghz() << " GHz";
 
-  const std::vector<PrimitiveType> dtypes = {
-      S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
-  };
-  const std::vector<HloOpcode> ops = {
-      // Unary
-      HloOpcode::kCbrt,
-      HloOpcode::kCos,
-      HloOpcode::kErf,
-      HloOpcode::kExp,
-      HloOpcode::kExpm1,
-      HloOpcode::kLog,
-      HloOpcode::kLog1p,
-      HloOpcode::kLogistic,
-      HloOpcode::kRsqrt,
-      HloOpcode::kSin,
-      HloOpcode::kSinh,
-      HloOpcode::kSqrt,
-      HloOpcode::kTanh,
-      // Binary
-      HloOpcode::kAdd,
-      HloOpcode::kAtan2,
-      HloOpcode::kDivide,
-      HloOpcode::kMultiply,
-      HloOpcode::kPower,
-      HloOpcode::kSubtract,
-  };
-
   HloInstructionProfileList instr_profiles;
 
   for (const PrimitiveType data_type : HloOpProfiler::AllSupportedDtypes()) {
     for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
+      if (HloOpProfiler::TooFastToMeasure().count(op) ||
+          HloOpProfiler::Unsupported().count(op)) {
+        continue;
+      }
       auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);

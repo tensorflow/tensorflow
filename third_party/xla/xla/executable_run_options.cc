@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace xla {
 
-RunId::RunId() {
+/*static*/ RunId RunId::CreateUniqueId() {
   static std::atomic<int64_t> counter{0};
-  data_ = counter.fetch_add(1);
+  return RunId(counter.fetch_add(1));
 }
 
 bool operator==(const RunId& a, const RunId& b) { return a.data_ == b.data_; }
@@ -55,12 +55,12 @@ int ExecutableRunOptions::physical_device_ordinal() const {
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_allocator(
-    stream_executor::DeviceMemoryAllocator* allocator) {
+    stream_executor::DeviceAddressAllocator* allocator) {
   allocator_ = allocator;
   return *this;
 }
 
-stream_executor::DeviceMemoryAllocator* ExecutableRunOptions::allocator()
+stream_executor::DeviceAddressAllocator* ExecutableRunOptions::allocator()
     const {
   return allocator_;
 }

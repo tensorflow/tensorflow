@@ -972,8 +972,8 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
     TF_ASSIGN_OR_RETURN(auto value_attr,
                         ConvertTensor(xla_arg.constant_value, &builder));
     // TODO(hinsu): Use the actual location of the constant.
-    auto constant = builder.create<mlir::TF::ConstOp>(
-        mlir::UnknownLoc::get(module_op.getContext()), value_attr);
+    auto constant = mlir::TF::ConstOp::create(
+        builder, mlir::UnknownLoc::get(module_op.getContext()), value_attr);
     mlir_arg.replaceAllUsesWith(constant);
     args_to_erase.push_back(idx);
   }

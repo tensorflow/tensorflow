@@ -160,6 +160,10 @@ inline absl::Status InsertConvertIfNecessary(
   return absl::OkStatus();
 }
 
+inline bool IsElementwiseAndNotConstant(const HloInstruction* instr) {
+  return instr->IsElementwise() && !instr->IsConstant();
+}
+
 }  // namespace
 
 absl::StatusOr<LibraryMatcher*> LibraryRewriter::ChooseLibrary(
@@ -298,7 +302,7 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
       fusion_starters.push_back(*it);
     } else if (fuse_reduce_ && (*it)->opcode() == HloOpcode::kReduce) {
       fusion_starters.push_back(*it);
-    } else if (fuse_eltwise_ && (*it)->IsElementwise()) {
+    } else if (fuse_eltwise_ && IsElementwiseAndNotConstant(*it)) {
       eltwise_ops.push_back(*it);
     }
   }

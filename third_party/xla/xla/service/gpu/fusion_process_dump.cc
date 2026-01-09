@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
@@ -59,7 +59,7 @@ HloInstruction* AddFusionInstruction(HloInstruction* producer,
   auto fusion_instruction = computation->AddInstruction(
       HloInstruction::CreateFusion(consumer->shape(), kind, consumer),
       /*new_name=*/fusion_name);
-  TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+  CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
 
   return fusion_instruction;
 }
@@ -76,7 +76,7 @@ HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
   }
 
   if (producer->user_count() == 0) {
-    TF_CHECK_OK(computation->RemoveInstruction(producer));
+    CHECK_OK(computation->RemoveInstruction(producer));
   }
 
   return fusion_instruction;

@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -75,11 +74,11 @@ class DummyCopyEmitter : public EmitterBase {
     mlir::ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
     b.setInsertionPointToStart(entry_function.addEntryBlock());
     auto thread_id = EmitThreadId(b, 0);
-    auto value = b.create<mlir::tensor::ExtractOp>(
-        entry_function.getArgument(0), mlir::ValueRange{thread_id});
-    auto result = b.create<mlir::tensor::InsertOp>(
-        value, entry_function.getArgument(1), mlir::ValueRange{thread_id});
-    b.create<mlir::func::ReturnOp>(result->getResults());
+    auto value = mlir::tensor::ExtractOp::create(
+        b, entry_function.getArgument(0), mlir::ValueRange{thread_id});
+    auto result = mlir::tensor::InsertOp::create(
+        b, value, entry_function.getArgument(1), mlir::ValueRange{thread_id});
+    mlir::func::ReturnOp::create(b, result->getResults());
     return absl::OkStatus();
   }
 };

@@ -42,8 +42,8 @@ static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
 TEST(StreamExecutorTest, HostMemoryAllocate) {
   TF_ASSERT_OK_AND_ASSIGN(auto executor, NewStreamExecutor());
   TF_ASSERT_OK_AND_ASSIGN(auto allocation, executor->HostMemoryAllocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
 }
 
 TEST(StreamExecutorTest, GetOrCreateResource) {

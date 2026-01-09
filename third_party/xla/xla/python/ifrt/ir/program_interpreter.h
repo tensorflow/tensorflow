@@ -21,23 +21,22 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "mlir/Analysis/Liveness.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
@@ -46,59 +45,75 @@ namespace ifrt {
 struct Environment;
 
 // Interpreter for an IFRT IR program.
+//
+// The program interpreter is responsible for executing an IFRT IR program. The
+// interpreter works in two stages. First, when `BuildExecuteFn` is called, it
+// traverses the program and builds a function that can be invoked to execute
+// the program, which happens only once during compilation. Second, the returned
+// execute function can be called multiple times to interpret the IFRT IR
+// program.
+//
+// This two-stage design has two primary purposes:
+//
+// 1. It allows us to leverage the static information available in the program
+//    as much as possible. For example, `RemapArraysOp` builds its remap plan
+//    during the first stage and the plan is reused for all executions.
+//
+// 2. It avoids running any LLVM/MLIR code during execution. This is
+//    particularly useful in environments where the use of LLVM/MLIR
+//    synchronization primitives may cause deadlocks, e.g., cooperatively
+//    scheduled fibers.
 class ProgramInterpreter {
  public:
+  using ExecuteFn = absl::AnyInvocable<
+      absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>(
+          absl::Span<xla::ifrt::ArrayRef> arrays,
+          const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
+          std::optional<xla::ifrt::DeviceListRef> devices)>;
+
   static absl::StatusOr<std::unique_ptr<ProgramInterpreter>> Create(
-      xla::ifrt::Client* client, std::shared_ptr<CompiledIfrtIrProgram> program,
+      xla::ifrt::Client* client, absl::string_view program_name,
+      mlir::ModuleOp mlir_module,
+      std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
       xla::ifrt::DeviceListRef devices);
 
-  // Executes the IFRT IR program.
-  absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> Execute(
-      absl::Span<xla::ifrt::ArrayRef> arrays,
-      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-      std::optional<xla::ifrt::DeviceListRef> devices);
+  absl::StatusOr<ExecuteFn> BuildExecuteFn();
 
  private:
-  ProgramInterpreter(
-      xla::ifrt::Client* client, std::shared_ptr<CompiledIfrtIrProgram> program,
-      xla::ifrt::DeviceListRef devices, mlir::Liveness liveness,
-      llvm::DenseMap<xla::ifrt::IfrtArrayType, xla::ifrt::ShardingRef>
-          array_type_to_sharding)
-      : client_(client),
-        program_(std::move(program)),
-        devices_(std::move(devices)),
-        liveness_(std::move(liveness)),
-        array_type_to_sharding_(std::move(array_type_to_sharding)) {}
+  using OpFn = absl::AnyInvocable<absl::Status(Environment& env) const>;
 
-  absl::Status ExecuteOp(xla::ifrt::CallLoadedExecutableOp call_loaded_op,
-                         Environment& env);
-  absl::Status ExecuteOp(xla::ifrt::RemapArraysOp remap_op, Environment& env);
-  absl::Status ExecuteOp(xla::ifrt::CopyArraysOp copy_arrays_op,
-                         Environment& env);
-  absl::Status ExecuteOp(mlir::func::ReturnOp return_op, Environment& env);
+  ProgramInterpreter(
+      xla::ifrt::Client* client, absl::string_view program_name,
+      mlir::ModuleOp mlir_module,
+      std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
+      xla::ifrt::DeviceListRef devices, mlir::Liveness liveness)
+      : client_(client),
+        program_name_(program_name),
+        mlir_module_(mlir_module),
+        atom_program_executables_(std::move(atom_program_executables)),
+        devices_(std::move(devices)),
+        liveness_(std::move(liveness)) {}
+
+  absl::StatusOr<OpFn> HandleOp(
+      xla::ifrt::CallLoadedExecutableOp call_loaded_op);
+  absl::StatusOr<OpFn> HandleOp(xla::ifrt::RemapArraysOp remap_op);
+  absl::StatusOr<OpFn> HandleOp(xla::ifrt::CopyArraysOp copy_arrays_op);
+  absl::StatusOr<OpFn> HandleOp(mlir::func::ReturnOp return_op);
 
   // Returns a pretty string representation of the op.
   std::string PrettyPrint(mlir::Operation* op);
 
   xla::ifrt::Client* client_;
   mlir::SymbolTableCollection symbol_table_;
-  std::shared_ptr<CompiledIfrtIrProgram> program_;
+  std::string program_name_;
+  mlir::ModuleOp mlir_module_;
+  std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables_;
 
   // All the devices the program uses.
   xla::ifrt::DeviceListRef devices_;
 
   // Cached liveness analysis of the IFRT IR program.
   mlir::Liveness liveness_;
-
-  // Mapping between IfrtArrayType and Sharding. This map is used to cache
-  // the Shardings at IFRT IR program compilation time in order to avoid
-  // overheads at execution time.
-  llvm::DenseMap<xla::ifrt::IfrtArrayType, xla::ifrt::ShardingRef>
-      array_type_to_sharding_;
-
-  // Set of donated program arguments, which can be deleted after their last
-  // use. Entries are removed upon deletion or if they are aliased.
-  llvm::DenseSet<mlir::Value> deletable_program_arguments_;
 };
 
 }  // namespace ifrt

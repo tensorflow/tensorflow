@@ -31,14 +31,13 @@
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client.h"
-#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -67,7 +66,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto [init_response_promise, init_response_future] =
-      tsl::Future<std::shared_ptr<InitResponse>>::MakePromise();
+      tsl::MakePromise<std::shared_ptr<InitResponse>>();
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.
@@ -104,8 +103,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   GrpcIfrtSessionMetadata metadata;
   {
     GrpcGetVersionRequest request;
-    request.mutable_min_version()->set_protocol_version(kClientMinVersion);
-    request.mutable_max_version()->set_protocol_version(kClientMaxVersion);
+    request.mutable_min_version()->set_protocol_version(
+        protocol_version::kClientMin);
+    request.mutable_max_version()->set_protocol_version(
+        protocol_version::kClientMax);
     request.mutable_min_version()->set_ifrt_serdes_version_number(
         SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     request.mutable_max_version()->set_ifrt_serdes_version_number(
@@ -116,15 +117,18 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     TF_RETURN_IF_ERROR(xla::FromGrpcStatus(
         control_path_stub->GetVersion(&context, request, &response)));
 
-    CHECK_GE(response.version().protocol_version(), kClientMinVersion);
-    CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
+    CHECK_GE(response.version().protocol_version(),
+             protocol_version::kClientMin);
+    CHECK_LE(response.version().protocol_version(),
+             protocol_version::kClientMax);
     CHECK_GE(response.version().ifrt_serdes_version_number(),
              SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     CHECK_LE(response.version().ifrt_serdes_version_number(),
              SerDesVersion::current().version_number().value());
     *metadata.mutable_version() = response.version();
   }
-  *metadata.mutable_initialization_data() = options.initialization_data.ToProto(
+  options.initialization_data.ToProto(
+      *metadata.mutable_initialization_data(),
       SerDesAnyVersionAccessor::Get(SerDesVersionNumber(
           metadata.version().ifrt_serdes_version_number())));
 
@@ -147,15 +151,10 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
   TF_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
-  bool reuse_control_path_stub_for_data_path =
-      GetGlobalClientFlags()->synchronous_host_buffer_store ||
-      (metadata.version().protocol_version() < 10);
-  auto data_path_stub = reuse_control_path_stub_for_data_path
-                            ? control_path_stub
-                            : CreateGrpcStub(server_address);
-
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
-      data_path_stub, metadata.version(), init_response->session_id());
+      CreateGrpcStub(server_address), metadata.version(),
+      init_response->session_id());
+
   rpc_helper->set_host_buffer_store(std::move(host_buffer_store));
 
   return Client::Create(std::move(rpc_helper), std::move(*init_response));

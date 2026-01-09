@@ -326,6 +326,12 @@ class HloComputation {
   // the control dependencies from the predecessors to the successors of the
   // removed instructions, so that the logical exeuction order of the remaining
   // unremoved instructions are preserved.
+  //
+  // Parameters from the entry computation can never be removed.
+  // If caller allows this with `remove_dead_parameters_from_entry_computation`
+  // then they need to update the entry computation layout of the module too.
+  // Note: This breaks the contract with the frontend. Use only in tests.
+  //
   absl::Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
@@ -333,7 +339,8 @@ class HloComputation {
       bool ignore_control_dependencies = false,
       std::optional<absl::FunctionRef<
           std::vector<HloInstruction*>(const HloComputation*)>>
-          computation_callers = std::nullopt);
+          computation_callers = std::nullopt,
+      bool remove_dead_parameters_from_entry_computation = false);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -505,10 +512,6 @@ class HloComputation {
             HloInstructionConstIterator(&instructions_, end, end)};
   }
 
-  using ChannelDependencies =
-      absl::flat_hash_map<const HloInstruction*,
-                          absl::InlinedVector<HloInstruction*, 1>>;
-
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
@@ -516,8 +519,6 @@ class HloComputation {
   // computation, not just the root. Describes the corresponding subgraph.
   std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
       HloInstruction&) const;
-  std::vector<HloInstruction*> MakeInstructionPostOrder(
-      const ChannelDependencies& channel_dependencies) const;
   // Same as MakeInstructionPostOrder but with special tie-breaking behavior.
   // Specifically, when ties (in ordering) between instructions occur, Reshapes
   // will be sorted before other operations.
@@ -798,6 +799,11 @@ class HloComputation {
   // via computation_callers. This is expected to be equivalent to
   // CallGraph::GetComputationCallers().
   //
+  // Parameters from the entry computation can never be removed.
+  // If caller allows this with `remove_dead_parameters_from_entry_computation`
+  // then they need to update the entry computation layout of the module too.
+  // Note: This breaks the contract with the frontend. Use only in tests.
+  //
   // Note that IsSafelyRemovable() is a necessary condition to remove an
   // instruction rather than a sufficient condition. For example, instructions
   // with side-effect (e.g., Send, Infeed) may be removed from a computation,
@@ -808,15 +814,8 @@ class HloComputation {
       const HloInstruction* instruction, bool ignore_control_dependency = false,
       std::optional<absl::FunctionRef<
           std::vector<HloInstruction*>(const HloComputation*)>>
-          computation_callers = std::nullopt) const;
-
-  // Returns a map from an instruction to the group of instructions associated
-  // with the same channel. These instructions will be considered as a single
-  // node for dependency purposes.
-  // RecvDone ops will map to the corresponding Send op.
-  // Cross-partition collectives will map to every other instruction with the
-  // same channel ID (it doesn't map to itself).
-  ChannelDependencies ComputeChannelDependencies() const;
+          computation_callers = std::nullopt,
+      bool remove_dead_parameters_from_entry_computation = false) const;
 
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
@@ -971,6 +970,10 @@ class HloComputation {
 
   void ClearCalledComputations();
 
+  // Permutes the parameter numbers of this computation according to the
+  // provided permutation.
+  absl::Status PermuteParameters(absl::Span<const int64_t> permutation);
+
  private:
   friend class HloModule;
 
@@ -1018,14 +1021,13 @@ class HloComputation {
 
   class VisitMap;
   void ComputeInstructionPostOrder(
-      HloInstruction* root, const ChannelDependencies& channel_dependencies,
-      VisitMap& visited, std::vector<HloInstruction*>& post_order,
+      HloInstruction* root, VisitMap& visited,
+      std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-      const ChannelDependencies& channel_dependencies, VisitMap& visited,
-      std::vector<HloInstruction*>* dfs_stack_scratch) const;
+      VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   absl::Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 

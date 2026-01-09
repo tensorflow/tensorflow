@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -35,9 +35,9 @@ namespace gpu {
 // allocated device buffers.
 class BufferAllocations {
  public:
-  BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
+  BufferAllocations(absl::Span<se::DeviceAddressBase const> buffers,
                     int device_ordinal,
-                    se::DeviceMemoryAllocator* memory_allocator)
+                    se::DeviceAddressAllocator* memory_allocator)
       : buffers_(buffers.begin(), buffers.end()),
         device_ordinal_(device_ordinal),
         memory_allocator_(memory_allocator) {}
@@ -47,7 +47,7 @@ class BufferAllocations {
   BufferAllocations(const BufferAllocations&) = delete;
   BufferAllocations& operator=(const BufferAllocations&) = delete;
 
-  se::DeviceMemoryAllocator* memory_allocator() const {
+  se::DeviceAddressAllocator* memory_allocator() const {
     return memory_allocator_;
   }
   int device_ordinal() const { return device_ordinal_; }
@@ -55,21 +55,21 @@ class BufferAllocations {
   // Returns the device address of buffer `buffer_index`. `buffer_index` must be
   // a valid index, i.e., in [0, buffer_count). This function returns null if
   // `buffer_index` is not assigned to a buffer address.
-  se::DeviceMemoryBase GetDeviceAddress(
+  se::DeviceAddressBase GetDeviceAddress(
       BufferAllocation::Index buffer_index) const;
 
   // Returns a mutable value for the allocation at a given `buffer_index`.
-  se::DeviceMemoryBase& GetMutableDeviceAddress(
+  se::DeviceAddressBase& GetMutableDeviceAddress(
       BufferAllocation::Index buffer_index);
 
   // Same as above, but also adjusts the returned address for the offset and
   // size contained in the given slice.
-  se::DeviceMemoryBase GetDeviceAddress(
+  se::DeviceAddressBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  absl::Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
+  absl::Status TearDown(const std::set<se::DeviceAddressBase>& live_addresses,
                         absl::Span<const BufferAllocation* const> allocations);
 
   std::string ToString() const {
@@ -88,9 +88,9 @@ class BufferAllocations {
   // An array of device pointers that stores the address of each buffer
   // indexed by Index. Each element can point to a temporary buffer, an
   // input buffer, or nullptr if no buffer is needed for that Index.
-  std::vector<se::DeviceMemoryBase> buffers_;
+  std::vector<se::DeviceAddressBase> buffers_;
   int device_ordinal_;
-  se::DeviceMemoryAllocator* memory_allocator_;
+  se::DeviceAddressAllocator* memory_allocator_;
 };
 
 }  // namespace gpu

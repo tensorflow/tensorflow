@@ -54,8 +54,8 @@ LogicalResult LowerGetRankOp(GetRankOp get_rank, PatternRewriter& rewriter) {
   }
 
   // The rank id is stored as a first element under the metadata pointer.
-  Value loadOp = rewriter.create<LoadOp>(
-      get_rank.getLoc(), expected_result_type, metadata,
+  Value loadOp = LoadOp::create(
+      rewriter, get_rank.getLoc(), expected_result_type, metadata,
       /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
       /*padding=*/nullptr,
       CacheModifierAttr::get(get_rank.getContext(), CacheModifier::NONE),
@@ -95,10 +95,10 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
 
   // Size of the pointer in bytes.
   Value pointer_size_bytes_const =
-      builder.create<arith::ConstantIntOp>(type_i64, sizeof(int64_t));
+      arith::ConstantIntOp::create(builder, type_i64, sizeof(int64_t));
 
   // 1. Load metadata->rank.
-  Value current_rank_load_op = builder.create<GetRankOp>(metadata);
+  Value current_rank_load_op = GetRankOp::create(builder, metadata);
 
   // 2. Calculate argument_offset = num_ranks * argument_index.
   const int32_t argument_index = get_peer_ptr.getArgumentIndex();
@@ -107,25 +107,25 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
       world_size * argument_index * sizeof(uint64_t);
 
   // 3. Load metadata->param_to_peers[argument_offset + metadata->rank].
-  Value local_buffers_ptrs_offset = builder.create<arith::ConstantIntOp>(
-      type_i64, offsetof(CollectiveKernelMetadata, param_to_peers));
+  Value local_buffers_ptrs_offset = arith::ConstantIntOp::create(
+      builder, type_i64, offsetof(CollectiveKernelMetadata, param_to_peers));
 
   Value rank_offset =
-      builder.create<arith::ExtUIOp>(type_i64, current_rank_load_op);
+      arith::ExtUIOp::create(builder, type_i64, current_rank_load_op);
   Value argument_offset_bytes =
-      builder.create<arith::ConstantIntOp>(type_i64, argument_offset);
+      arith::ConstantIntOp::create(builder, type_i64, argument_offset);
   Value current_rank_offset_bytes =
-      builder.create<arith::MulIOp>(rank_offset, pointer_size_bytes_const);
-  Value argument_ptr_offset_bytes = builder.create<arith::AddIOp>(
-      local_buffers_ptrs_offset, argument_offset_bytes);
-  Value current_ptr_offset_bytes = builder.create<arith::AddIOp>(
-      argument_ptr_offset_bytes, current_rank_offset_bytes);
+      arith::MulIOp::create(builder, rank_offset, pointer_size_bytes_const);
+  Value argument_ptr_offset_bytes = arith::AddIOp::create(
+      builder, local_buffers_ptrs_offset, argument_offset_bytes);
+  Value current_ptr_offset_bytes = arith::AddIOp::create(
+      builder, argument_ptr_offset_bytes, current_rank_offset_bytes);
 
-  Value current_range_address = builder.create<AddPtrOp>(
-      metadata.getType(), metadata, current_ptr_offset_bytes);
+  Value current_range_address = AddPtrOp::create(
+      builder, metadata.getType(), metadata, current_ptr_offset_bytes);
 
-  Value current_range_address_value = builder.create<LoadOp>(
-      type_i64, current_range_address,
+  Value current_range_address_value = LoadOp::create(
+      builder, type_i64, current_range_address,
       /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
       /*padding=*/nullptr, CacheModifierAttr::get(ctx, CacheModifier::NONE),
       EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
@@ -134,21 +134,21 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
   // 4. Calculate offset =
   //      address - metadata->param_to_peers[argument_offset + metadata->rank].
   Value current_range_address_int =
-      builder.create<PtrToIntOp>(type_i64, address);
-  Value offsetInt = builder.create<arith::SubIOp>(current_range_address_int,
-                                                  current_range_address_value);
+      PtrToIntOp::create(builder, type_i64, address);
+  Value offsetInt = arith::SubIOp::create(builder, current_range_address_int,
+                                          current_range_address_value);
 
   // 5. Load metadata->param_to_peers[argument_offset + peer_id].
-  Value peer_index = builder.create<arith::ExtUIOp>(type_i64, peer_id);
+  Value peer_index = arith::ExtUIOp::create(builder, type_i64, peer_id);
   Value peer_index_offset_bytes =
-      builder.create<arith::MulIOp>(peer_index, pointer_size_bytes_const);
-  Value peer_range_offset_bytes = builder.create<arith::AddIOp>(
-      argument_ptr_offset_bytes, peer_index_offset_bytes);
-  Value peer_range_address = builder.create<AddPtrOp>(
-      metadata.getType(), metadata, peer_range_offset_bytes);
+      arith::MulIOp::create(builder, peer_index, pointer_size_bytes_const);
+  Value peer_range_offset_bytes = arith::AddIOp::create(
+      builder, argument_ptr_offset_bytes, peer_index_offset_bytes);
+  Value peer_range_address = AddPtrOp::create(
+      builder, metadata.getType(), metadata, peer_range_offset_bytes);
 
-  Value peer_range_address_value = builder.create<LoadOp>(
-      type_i64, peer_range_address,
+  Value peer_range_address_value = LoadOp::create(
+      builder, type_i64, peer_range_address,
       /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
       /*padding=*/nullptr, CacheModifierAttr::get(ctx, CacheModifier::NONE),
       EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
@@ -156,8 +156,8 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
 
   // 6. Calculate the result address: peerBasePtr + offset.
   Value result_int =
-      builder.create<arith::AddIOp>(peer_range_address_value, offsetInt);
-  Value result_address = builder.create<IntToPtrOp>(result_type, result_int);
+      arith::AddIOp::create(builder, peer_range_address_value, offsetInt);
+  Value result_address = IntToPtrOp::create(builder, result_type, result_int);
   rewriter.replaceOp(get_peer_ptr, result_address);
   return success();
 }

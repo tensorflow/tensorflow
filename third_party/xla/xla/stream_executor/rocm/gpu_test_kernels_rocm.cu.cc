@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/gpu_test_kernel_traits.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_lib.cu.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 
@@ -40,7 +40,7 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
       // which accepts a constant scalar argument and an addressable pointer
       // argument. We use a custom args packing spec to pass a constant scalar
       // value of 5 to the kernel.
-      stream_executor::KernelArgumentsPackingSpec spec;
+      stream_executor::KernelArgsPackingSpec spec;
       spec.AddConstantArgument<int32_t>(5);
       spec.AddAddressArgument(/*argument_index=*/0);
       spec.AddAddressArgument(/*argument_index=*/1);
@@ -76,9 +76,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           "AddI32Ptrs3", arity,
           [&](const stream_executor::Kernel& kernel,
               const stream_executor::KernelArgs& args) {
-            auto bufs = stream_executor::Cast<
-                            stream_executor::KernelArgsDeviceMemoryArray>(&args)
-                            ->device_memory_args();
+            auto bufs =
+                stream_executor::Cast<
+                    stream_executor::KernelArgsDeviceAddressArray>(&args)
+                    ->device_addr_args();
             auto cast = [](auto m) {
               return reinterpret_cast<int32_t*>(m.opaque());
             };

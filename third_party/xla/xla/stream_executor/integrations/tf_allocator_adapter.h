@@ -28,8 +28,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -41,7 +41,7 @@ namespace stream_executor {
 //
 // Assumes that the Tensorflow allocator permits asynchronous deallocation:
 // see comment on `AllowsAsynchronousDeallocation()`.
-class TfAllocatorAdapter : public DeviceMemoryAllocator {
+class TfAllocatorAdapter : public DeviceAddressAllocator {
  public:
   // stream: a Stream on which the allocator can only be used. If non-null, the
   // allocator can not be used on any other stream.
@@ -52,11 +52,11 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 
   ~TfAllocatorAdapter() override;
 
-  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                              bool retry_on_failure,
-                                              int64_t memory_space) override;
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override;
 
-  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
+  absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -79,7 +79,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 // Adapter class that wraps per-device TF allocators with corresponding streams
 // as a TfAllocatorAdapter. Assumes that the Tensorflow allocator permits
 // asynchronous deallocation; see comment on `AllowsAsynchronousDeallocation()`.
-class MultiDeviceAdapter : public DeviceMemoryAllocator {
+class MultiDeviceAdapter : public DeviceAddressAllocator {
  public:
   struct AllocatorInfo {
     std::unique_ptr<tsl::Allocator> allocator;
@@ -99,9 +99,9 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
           platform(platform) {}
   };
 
-  MultiDeviceAdapter(const Platform *platform,
+  MultiDeviceAdapter(const Platform* platform,
                      std::vector<AllocatorInfo> tf_allocators)
-      : DeviceMemoryAllocator(platform) {
+      : DeviceAddressAllocator(platform) {
     tf_allocators_.reserve(tf_allocators.size());
     for (AllocatorInfo &info : tf_allocators) {
       auto &per_device_allocators =
@@ -127,9 +127,9 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     }
   }
 
-  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                              bool retry_on_failure,
-                                              int64_t memory_space) override {
+  absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
+      int device_ordinal, uint64_t size, bool retry_on_failure,
+      int64_t memory_space) override {
     // memory_space is used here to select allocator. This isn't a need to pass
     // it any lower to TfAllocatorAdapter.
     auto it = memory_space_to_per_device_allocators_.find(memory_space);
@@ -144,7 +144,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     return result;
   }
 
-  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
+  absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override {
     if (mem.opaque() == nullptr) return absl::OkStatus();
     // Memory space is not passed to deallocate, look up in
     // buffer_memory_spaces_.

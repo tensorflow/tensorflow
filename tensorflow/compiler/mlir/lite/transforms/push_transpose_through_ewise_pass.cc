@@ -173,8 +173,8 @@ class CommuteBothInputsTransposedWithEwiseOps : public RewritePattern {
                         new_out_type, op->getAttrs());
 
     // Apply original tranpose to output of ewise op.
-    auto out_tpose_op = rewriter.create<TFL::TransposeOp>(
-        new_ewise_op->getLoc(), op->getResult(0).getType(),
+    auto out_tpose_op = TFL::TransposeOp::create(
+        rewriter, new_ewise_op->getLoc(), op->getResult(0).getType(),
         new_ewise_op->getResults()[0], perm1);
     rewriter.replaceOp(op, out_tpose_op.getOperation());
     return success();
@@ -273,7 +273,7 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
           RankedTensorType::get(inverse_perm.size(), rewriter.getI32Type()),
           inverse_perm);
       auto inverse_perm_op =
-          rewriter.create<arith::ConstantOp>(perm.getLoc(), inverse_perm_attr);
+          arith::ConstantOp::create(rewriter, perm.getLoc(), inverse_perm_attr);
 
       // Transpose the input constant.
       auto in_rtt =
@@ -283,9 +283,9 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
           RankedTensorType::get(PermuteShape(in_rtt.getShape(), inverse_perm),
                                 in_rtt.getElementType());
 
-      tposed_const = rewriter.create<TFL::TransposeOp>(
-          cst_arg->getLoc(), inverse_type, cst_arg->getResult(0),
-          inverse_perm_op);
+      tposed_const =
+          TFL::TransposeOp::create(rewriter, cst_arg->getLoc(), inverse_type,
+                                   cst_arg->getResult(0), inverse_perm_op);
     }
 
     auto current_out_type =
@@ -301,8 +301,8 @@ class CommuteTransposeWithEwiseOps : public RewritePattern {
                         new_out_type, op->getAttrs());
 
     // Apply original tranpose to output of ewise op.
-    auto out_tpose_op = rewriter.create<TFL::TransposeOp>(
-        new_ewise_op->getLoc(), op->getResult(0).getType(),
+    auto out_tpose_op = TFL::TransposeOp::create(
+        rewriter, new_ewise_op->getLoc(), op->getResult(0).getType(),
         new_ewise_op->getResults()[0], perm);
     rewriter.replaceOp(op, out_tpose_op.getOperation());
     return success();

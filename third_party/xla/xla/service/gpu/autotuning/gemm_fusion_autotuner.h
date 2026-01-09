@@ -28,8 +28,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
 
@@ -96,6 +99,12 @@ class GemmFusionAutotuner : public HloModulePass {
   absl::StatusOr<bool> RunViaNewInfra(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
+
+  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+  GetPlatformCodegenBackends(se::StreamExecutor* stream_exec,
+                             Compiler* compiler,
+                             const Compiler::GpuTargetConfig* target_config,
+                             const DebugOptions* debug_options);
 
  private:
   AutotuneConfig config_;

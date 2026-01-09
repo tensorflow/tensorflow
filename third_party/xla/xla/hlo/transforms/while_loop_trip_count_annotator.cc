@@ -44,6 +44,13 @@ absl::StatusOr<bool> WhileLoopTripCountAnnotator::RunImpl(
         // The following analyses all need the induction variable index.
         WhileLoopBackendConfig config;
 
+        // Preserve existing backend config data
+        if (auto existing_config =
+                instr->backend_config<WhileLoopBackendConfig>();
+            existing_config.ok()) {
+          config = *existing_config;
+        }
+
         config.mutable_known_induction_variable()->set_tuple_index(
             *induction_variable_index);
         if (auto range = MatchTrivialLoopRange(instr);

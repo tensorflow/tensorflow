@@ -199,12 +199,6 @@ mlir::stablehlo::DotAlgorithmAttr ConvertDotAlgorithm(
       numPrimitiveOperations = 6;
       break;
     }
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9: {
-      lhs = rhs = builder->getBF16Type();
-      accum = builder->getF32Type();
-      numPrimitiveOperations = 9;
-      break;
-    }
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32: {
       lhs = rhs = builder->getTF32Type();
       accum = builder->getF32Type();

@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -89,11 +88,11 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -180,7 +179,7 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              absl::string_view entry_function_name) {
   bool should_dump_mlir_passes =
       DumpingEnabledForHloModule(hlo_module) &&
-      DumpingEnabledForHloPass("mlir-fusion-emitter",
+      DumpingEnabledForEmitter("mlir-fusion",
                                hlo_module.config().debug_options());
 
   std::string mlir_passes_dump_result;
@@ -229,7 +228,7 @@ Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
   int64_t count = dim == WorkGroupDimension::x   ? counts.x
                   : dim == WorkGroupDimension::y ? counts.y
                                                  : counts.z;
-  auto block_id = builder.create<WorkGroupIdOp>(dim);
+  auto block_id = WorkGroupIdOp::create(builder, dim);
   block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return block_id;
 }
@@ -238,8 +237,8 @@ Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
   const auto& counts = launch_dimensions().block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
-  auto block_id = builder.create<mlir::gpu::BlockIdOp>(
-      static_cast<mlir::gpu::Dimension>(dim));
+  auto block_id = mlir::gpu::BlockIdOp::create(
+      builder, static_cast<mlir::gpu::Dimension>(dim));
   block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return block_id;
 }
@@ -248,8 +247,8 @@ Value EmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
                                 int dim) const {
   const auto& counts = launch_dimensions().thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
-  auto thread_id = builder.create<mlir::gpu::ThreadIdOp>(
-      static_cast<mlir::gpu::Dimension>(dim));
+  auto thread_id = mlir::gpu::ThreadIdOp::create(
+      builder, static_cast<mlir::gpu::Dimension>(dim));
   thread_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return thread_id;
 }
@@ -270,42 +269,34 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                                      GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
   mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
+  std::unique_ptr<llvm::Module> module;
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
           [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-            std::string kernel_name =
-                ir_emitter_context.name_uniquer()->GetUniqueName(
-                    llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
+            std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
+                std::string(fusion.name()));
             if (ir_emitter_context.emit_kernels()) {
               mlir_context.appendDialectRegistry(GetDialectRegistry());
               mlir_context.loadAllAvailableDialects();
               TF_ASSIGN_OR_RETURN(
-                  auto module,
+                  module,
                   CreateLLVMModule(
-                      mlir_context,
-                      ir_emitter_context.llvm_module()->getContext(),
+                      mlir_context, *ir_emitter_context.llvm_context(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
               auto* kernel_func = module->getFunction(kernel_name);
               AddRanges(kernel_func, launch_dims, module.get());
 
-              auto* target = ir_emitter_context.llvm_module();
-              module->setDataLayout(target->getDataLayout());
-              module->setTargetTriple(target->getTargetTriple());
+              module->setDataLayout(ir_emitter_context.data_layout());
+              module->setTargetTriple(ir_emitter_context.target_triple());
 
               llvm::IRBuilder<> builder(module->getContext());
               AnnotateFunctionAsGpuKernel(module.get(), kernel_func, &builder);
               TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
                   ir_emitter_context.gpu_device_info(), launch_dims,
                   kernel_func, module.get()));
-
-              // Use override flag because libdevice functions can be present in
-              // both.
-              CHECK(!llvm::Linker::linkModules(
-                  *target, std::move(module),
-                  llvm::Linker::Flags::OverrideFromSrc));
             } else {
               VLOG(3) << "Skipped kernel compilation.";
             }
@@ -321,6 +312,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
   }
 
   FusionEmissionResult result;
+  result.module = std::move(module);
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
@@ -344,8 +336,8 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
   AddLoopTransformationPasses(pm, device);
   AddLoweringPasses(pm, device);
 
-  auto pipeline_status = RunPassPipeline(module.get(), *fusion.GetModule(), pm,
-                                         entry_function_name);
+  TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
+                                     entry_function_name));
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
@@ -519,7 +511,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerToLLVMPass(device));
+  pm.addPass(emitters::CreateLowerToLLVMGPUPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 

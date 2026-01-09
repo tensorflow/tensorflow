@@ -117,7 +117,8 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
           [](const BufferValue& buffer) {
             return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
           },
-          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; }));
+          &alias_info, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+          BufferAssigner::Options{}));
 
   TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
 
@@ -290,12 +291,14 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
 
   auto memory_alignment = [](LogicalBuffer::Color) { return MinAlign(); };
   // Run buffer allocation on the HLO graph.
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          &module, std::make_unique<SequentialHloOrdering>(schedule),
-          buffer_size_bytes_function, &alias_info, memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(&module,
+                          std::make_unique<SequentialHloOrdering>(schedule),
+                          buffer_size_bytes_function, &alias_info,
+                          memory_alignment, std::move(opts)));
 
   auto target_machine_features =
       std::make_unique<TargetMachineFeatures>(jit_compiler.target_machine());

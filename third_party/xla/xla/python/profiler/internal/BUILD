@@ -1,4 +1,4 @@
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -21,9 +21,9 @@ cc_library(
         "//tensorflow/python/profiler/internal:__subpackages__",
     ]),
     deps = [
+        ":traceme_state",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
@@ -39,6 +39,19 @@ cc_library(
         "@pybind11",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "traceme_state",
+    srcs = ["traceme_state.cc"],
+    hdrs = ["traceme_state.h"],
+    copts = tf_profiler_copts() + if_windows(["/DTF_COMPILE_LIBRARY"]),
+    visibility = internal_visibility([
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ]),
+    deps = [
+        "//xla/tsl/platform:macros",
+    ],
 )
 
 cc_library(

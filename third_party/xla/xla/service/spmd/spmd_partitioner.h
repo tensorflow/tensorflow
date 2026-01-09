@@ -203,66 +203,69 @@ struct SPMDCollectiveOpsCreator {
   // Function used to create a cross-partition all-reduce HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
-      const std::vector<std::vector<int64_t>>& partition_subgroups,
-      int64_t channel_id)>
-      create_cross_partition_all_reduce;
+      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id)>
+      create_all_reduce;
 
   // Function used to create a cross-partition all-reduce HLO using device list
   // in iota format. This function is optional: if it is a nullptr, use
-  // create_cross_partition_all_reduce.
-  // TODO(b/316622399): Merge this and create_cross_partition_all_reduce into a
+  // create_all_reduce.
+  // TODO(b/316622399): Merge this and create_all_reduce into a
   // function that uses CollectiveDeviceList.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, HloComputation* reduction,
       const IotaReplicaGroupList& partition_group_list, int64_t channel_id)>
-      create_cross_partition_all_reduce_with_iota_device_list;
+      create_all_reduce_with_iota_device_list;
 
   // Function used to create a cross-partition collective-permute HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand,
       std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
       int64_t next_channel_id)>
-      create_cross_partition_collective_permute;
+      create_collective_permute;
 
   // Function used to create a cross-partition all-to-all HLO.
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
-      const std::vector<std::vector<int64_t>>& partition_subgroups,
-      int64_t channel_id, std::optional<int64_t> split_dimension)>
-      create_cross_partition_all_to_all;
+      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
+      std::optional<int64_t> split_dimension)>
+      create_all_to_all;
 
   // Function used to create a cross-partition all-to-all HLO using device list
   // in iota format. This function is optional: if it is a nullptr, use
-  // create_cross_partition_all_to_all.
+  // create_all_to_all.
   std::function<HloInstruction*(
       SpmdBuilder*, absl::Span<HloInstruction* const> operands,
       const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
       std::optional<int64_t> split_dimension)>
-      create_cross_partition_all_to_all_with_iota_device_list;
+      create_all_to_all_with_iota_device_list;
 
   // Function used to create a cross-partition all-gather HLO. This is optional:
   // if it is nullptr, the partitioner will use all-reduce instead.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
-      const std::vector<std::vector<int64_t>>& partition_subgroups,
-      int64_t channel_id, int64_t all_gather_dimension)>
-      create_cross_partition_all_gather;
+      const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
+      int64_t all_gather_dimension)>
+      create_all_gather;
 
   // Function used to create a cross-partition all-gather HLO using device list
   // in iota format. This function is optional: if it is a nullptr, use
-  // create_cross_partition_all_gather.
-  // TODO(b/316622399): Merge this and create_cross_partition_all_gather into a
+  // create_all_gather.
+  // TODO(b/316622399): Merge this and create_all_gather into a
   // function that uses CollectiveDeviceList.
   std::function<HloInstruction*(
       SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
       const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
       int64_t all_gather_dimension)>
-      create_cross_partition_all_gather_with_iota_device_list;
+      create_all_gather_with_iota_device_list;
 };
 
 // Create a default SPMDCollectiveOpsCreator.
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas);
+
+// Create a default SPMDCollectiveOpsCreator for use in execution tests.
+SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(
+    bool use_global_device_ids_in_iota = false);
 
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
@@ -485,8 +488,7 @@ class PartitionedHlo {
     SpmdPartitioner* partitioner;
   };
   PartitionedHlo(HloInstruction* hlo, Shape base_shape, PartitioningState state)
-      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
-  }
+      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {}
 
   PartitionedHlo(PartitionedHlo&& other) = default;
   PartitionedHlo(const PartitionedHlo& other) = default;
@@ -824,12 +826,12 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   }
 
   virtual double GetCommunicationTimeInMilliSec(
-      int64_t bytes, const CollectiveDeviceList& collective_device_list) {
+      int64_t bytes, const CollectiveDeviceListBase& collective_device_list) {
     return 0.0;
   }
 
   virtual int GetCommunicationMultiplier(
-      const CollectiveDeviceList& collective_device_list) {
+      const CollectiveDeviceListBase& collective_device_list) {
     return 1;
   }
 

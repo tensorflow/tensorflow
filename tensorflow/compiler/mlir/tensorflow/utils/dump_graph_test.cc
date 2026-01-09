@@ -15,11 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -68,7 +79,7 @@ class StringWritableFile : public WritableFile {
 TEST(Dump, TextualIrToFileSuccess) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+  CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
 
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
   UseMlirForGraphDump(MlirDumpConfig());
@@ -98,7 +109,7 @@ TEST(Dump, TextualIrWithOptions) {
 TEST(Dump, DumpToTFG) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+  CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
 
   std::string actual;
   StringWritableFile file(&actual);

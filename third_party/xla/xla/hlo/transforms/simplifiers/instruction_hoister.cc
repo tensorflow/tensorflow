@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -72,7 +71,7 @@ bool HoistParameters(
     modified = true;
     HloInstructionSequence new_sequence;
     for (HloInstruction* parameter : computation->parameter_instructions()) {
-      TF_CHECK_OK(parameter->DropAllControlDeps());
+      CHECK_OK(parameter->DropAllControlDeps());
       new_sequence.push_back(parameter);
     }
     for (HloInstruction* instruction : sequence.instructions()) {

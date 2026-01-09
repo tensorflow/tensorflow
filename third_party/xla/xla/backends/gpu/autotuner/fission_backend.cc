@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
@@ -83,6 +84,8 @@ absl::Status InlineFissionedComputation(HloInstruction* fusion_instr,
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
+    VLOG(3) << "Instruction not supported by " << name() << ": "
+            << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
@@ -90,6 +93,8 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   absl::StatusOr<HloInstruction*> supported_instr =
       FindFirstSupportedInstruction(hlo_module.get());
   if (supported_instr.status().code() == absl::StatusCode::kNotFound) {
+    VLOG(3) << "No supported instructions found by " << name() << ": "
+            << instr.ToString();
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
   TF_RETURN_IF_ERROR(supported_instr.status());
@@ -130,12 +135,15 @@ absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
 
 absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
                                          const BackendConfig& config) {
+  HloModule* module = instr.GetModule();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                       GetFissionedAndRewrittenModule(instr));
   TF_ASSIGN_OR_RETURN(HloInstruction * supported_instr,
                       FindFirstSupportedInstruction(hlo_module.get()));
   TF_RETURN_IF_ERROR(codegen_backend_->ApplyConfig(*supported_instr, config));
-  return InlineFissionedComputation(&instr, hlo_module->entry_computation());
+  TF_RETURN_IF_ERROR(
+      InlineFissionedComputation(&instr, hlo_module->entry_computation()));
+  return module->RemoveUnusedComputations();
 }
 
 bool FissionBackend::IsSupported(const HloInstruction& instr) {

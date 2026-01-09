@@ -107,7 +107,7 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
     auto findOrCreateConstant = [&](int64_t c) {
       auto it = constants.find(c);
       if (it != constants.end()) return it->second;
-      Value newlyCreated = rewriter.create<arith::ConstantIndexOp>(loc, c);
+      Value newlyCreated = arith::ConstantIndexOp::create(rewriter, loc, c);
       constants[c] = newlyCreated;
       return newlyCreated;
     };
@@ -123,19 +123,19 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
           // Othwerise, extract the dimension from the unique operand.
           Value operand = shapes[symResultDim->operandIndex];
           Value operandDim = findOrCreateConstant(symResultDim->operandDim);
-          return rewriter.create<tensor::ExtractOp>(loc, operand, operandDim)
+          return tensor::ExtractOp::create(rewriter, loc, operand, operandDim)
               .getResult();
         }));
     Type indexTy = rewriter.getIndexType();
     Type concreteResultTy =
         RankedTensorType::get({static_cast<int64_t>(elements.size())}, indexTy);
-    Value result = rewriter.create<tensor::FromElementsOp>(
-        loc, concreteResultTy, elements);
+    Value result = tensor::FromElementsOp::create(rewriter, loc,
+                                                  concreteResultTy, elements);
 
     // Insert cast, if needed.
     Type expectedTy = op.getResult().getType();
     if (result.getType() != expectedTy) {
-      result = rewriter.create<tensor::CastOp>(loc, expectedTy, result);
+      result = tensor::CastOp::create(rewriter, loc, expectedTy, result);
     }
 
     rewriter.replaceOp(op, result);
@@ -273,11 +273,12 @@ LogicalResult materializeReshapeAsScalarExpand(RankedTensorType operandTy,
   auto loc = op.getLoc();
   SmallVector<int64_t> unitDims(resultTy.getRank(), 1);
   auto expandedTy = RankedTensorType::get(unitDims, resultTy.getElementType());
-  Value expandedScalar = rewriter.create<tensor::ExpandShapeOp>(
-      loc, expandedTy, op.getOperand(), ArrayRef<ReassociationIndices>{});
+  Value expandedScalar =
+      tensor::ExpandShapeOp::create(rewriter, loc, expandedTy, op.getOperand(),
+                                    ArrayRef<ReassociationIndices>{});
   if (expandedScalar.getType() != resultTy) {
     expandedScalar =
-        rewriter.create<tensor::CastOp>(loc, resultTy, expandedScalar);
+        tensor::CastOp::create(rewriter, loc, resultTy, expandedScalar);
   }
   rewriter.replaceOp(op, expandedScalar);
   return success();
@@ -294,10 +295,10 @@ LogicalResult materializeReshapeAsScalarCollapse(RankedTensorType operandTy,
   auto castedOperandTy =
       RankedTensorType::get(unitDims, operandTy.getElementType());
   if (operand.getType() != castedOperandTy) {
-    operand = rewriter.create<tensor::CastOp>(loc, castedOperandTy, operand);
+    operand = tensor::CastOp::create(rewriter, loc, castedOperandTy, operand);
   }
-  Value collapsedScalar = rewriter.create<tensor::CollapseShapeOp>(
-      loc, operand, ArrayRef<ReassociationIndices>{});
+  Value collapsedScalar = tensor::CollapseShapeOp::create(
+      rewriter, loc, operand, ArrayRef<ReassociationIndices>{});
   rewriter.replaceOp(op, collapsedScalar);
   return success();
 }
@@ -582,22 +583,22 @@ LogicalResult materializeReshapeAsExpandAndCollapse(
       concretizeOperandShape(operandTy.getShape(), *operandShapeInfo),
       operandTy.getElementType());
   if (operandTy != castedOperandTy) {
-    interm = rewriter.create<tensor::CastOp>(loc, castedOperandTy, interm);
+    interm = tensor::CastOp::create(rewriter, loc, castedOperandTy, interm);
   }
   if (auto reassociation = requiresReassociationOfKind(
           DimensionGroupKind::kExpanding, dimensionGroups)) {
-    interm = rewriter.create<tensor::ExpandShapeOp>(
-        loc,
+    interm = tensor::ExpandShapeOp::create(
+        rewriter, loc,
         RankedTensorType::get(expandedIntermShape, operandTy.getElementType()),
         interm, *reassociation);
   }
   if (auto reassociation = requiresReassociationOfKind(
           DimensionGroupKind::kCollapsing, dimensionGroups)) {
     interm =
-        rewriter.create<tensor::CollapseShapeOp>(loc, interm, *reassociation);
+        tensor::CollapseShapeOp::create(rewriter, loc, interm, *reassociation);
   }
   if (interm.getType() != resultTy) {
-    interm = rewriter.create<tensor::CastOp>(loc, resultTy, interm);
+    interm = tensor::CastOp::create(rewriter, loc, resultTy, interm);
   }
   rewriter.replaceOp(op, interm);
   return success();
@@ -696,8 +697,8 @@ std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
     maxRank = std::max(maxRank, foundShape->size());
   }
   if (maxRank == 0) {
-    return Value(builder->create<tensor::FromElementsOp>(
-        loc, shapes[0].getType(), SmallVector<Value>()));
+    return Value(tensor::FromElementsOp::create(
+        *builder, loc, shapes[0].getType(), SmallVector<Value>()));
   }
 
   SmallVector<const ShapeComponentAnalysis::SymbolicExpr *> joinedDimensions(
@@ -732,17 +733,17 @@ std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
       auto one = builder->getIntegerAttr(
           mlir::cast<RankedTensorType>(shapes[0].getType()).getElementType(),
           1);
-      elements.push_back(builder->create<arith::ConstantOp>(loc, one));
+      elements.push_back(arith::ConstantOp::create(*builder, loc, one));
       continue;
     }
     // Extract from one of the shapes, accounting for the reverse indexing
     // performed by broadcast.
-    Value index = builder->create<arith::ConstantIndexOp>(
-        loc, i - maxRank + shapeAndRankForDim[i].second);
-    elements.push_back(builder->create<tensor::ExtractOp>(
-        loc, shapeAndRankForDim[i].first, index));
+    Value index = arith::ConstantIndexOp::create(
+        *builder, loc, i - maxRank + shapeAndRankForDim[i].second);
+    elements.push_back(tensor::ExtractOp::create(
+        *builder, loc, shapeAndRankForDim[i].first, index));
   }
-  return Value(builder->create<tensor::FromElementsOp>(loc, elements));
+  return Value(tensor::FromElementsOp::create(*builder, loc, elements));
 }
 
 // Replace shape.broadcast with a shape if it's statically known.
@@ -759,8 +760,8 @@ struct BroadcastOpLowering final
     // Insert cast, if needed.
     Type expectedTy = op.getType();
     if (newBroadcast->getType() != expectedTy) {
-      newBroadcast = rewriter.create<tensor::CastOp>(op.getLoc(), expectedTy,
-                                                     *newBroadcast);
+      newBroadcast = tensor::CastOp::create(rewriter, op.getLoc(), expectedTy,
+                                            *newBroadcast);
     }
 
     rewriter.replaceOp(op, {*newBroadcast});

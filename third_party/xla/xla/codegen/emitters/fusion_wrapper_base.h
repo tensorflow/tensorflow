@@ -29,7 +29,7 @@ namespace emitters {
 // the type of the wrapper.
 class FusionWrapperBase : public HloModulePass {
  public:
-  virtual bool MustWrapInstruction(HloOpcode opcode) = 0;
+  virtual bool MustWrapInstruction(const HloInstruction& instruction) = 0;
   virtual HloInstruction::FusionKind ChooseFusionKind(
       const HloInstruction& producer, const HloInstruction& consumer) {
     return HloInstruction::FusionKind::kLoop;

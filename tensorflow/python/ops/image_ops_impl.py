@@ -1718,6 +1718,12 @@ def resize_images_v2(images,
   >>> max_10_20.shape.as_list()
   [1, 10, 10, 1]
 
+  Note:
+    The `bicubic` interpolation method currently does not have a GPU kernel
+    implementation. As a result, `tf.image.resize(..., method='bicubic')`
+    always executes on the CPU, even when GPU devices are available.
+
+
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.

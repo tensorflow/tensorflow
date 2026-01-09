@@ -24,7 +24,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -50,6 +49,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
@@ -338,8 +339,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
                                      absl::Span<const int64_t> b) {
   CHECK_EQ(a.size(), b.size());
   std::vector<int64_t> result;
-  std::transform(a.begin(), a.end(), b.begin(), std::back_inserter(result),
-                 std::multiplies<int64_t>());
+  absl::c_transform(a, b, std::back_inserter(result),
+                    std::multiplies<int64_t>());
   return result;
 }
 

@@ -109,8 +109,7 @@ GatherScatterOperandPartitionedOnTrivialSliceDims(
   int64_t trivial_slice_dims_partitions = 1;
   for (int64_t dim : index_map) {
     if (slice_size[dim] == 1) {
-      trivial_slice_dims_partitions *=
-          operand.sharding().tile_assignment().dim(dim);
+      trivial_slice_dims_partitions *= operand.sharding().dimension(dim);
       slice_dims.push_back(dim);
     }
   }
@@ -273,7 +272,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
   std::vector<HloInstruction*> max_indices;
   for (int64_t i = 0; i < index_map.size(); ++i) {
     int64_t dim = index_map[i];
-    int64_t partitions = operand.sharding().tile_assignment().dim(dim);
+    int64_t partitions = operand.sharding().dimension(dim);
     if (partitions == 1 || !absl::c_linear_search(trivial_slice_dims, dim)) {
       min_indices.push_back(CreateR0WithType<int32_t>(indices_type, 0, b));
       max_indices.push_back(CreateR0WithType<int32_t>(
@@ -447,7 +446,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     const int64_t num_tiles = operand.sharding().TotalNumTiles();
     absl::InlinedVector<int64_t, 4> output_grouping_dims;
     for (int64_t i = 0; i < maybe_passthrough->TiledDataRank(); ++i) {
-      if (maybe_passthrough->tile_assignment().dim(i) != 1) {
+      if (maybe_passthrough->dimension(i) != 1) {
         output_grouping_dims.push_back(i);
       }
     }
@@ -1356,7 +1355,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     const int64_t num_tiles = operands[0].sharding().TotalNumTiles();
     absl::InlinedVector<int64_t, 4> update_grouping_dims;
     for (int64_t i = 0; i < maybe_passthrough->TiledDataRank(); ++i) {
-      if (maybe_passthrough->tile_assignment().dim(i) != 1) {
+      if (maybe_passthrough->dimension(i) != 1) {
         update_grouping_dims.push_back(i);
       }
     }
@@ -1496,8 +1495,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   auto partition_id = indices.state().partition_id;
   if (indices.sharding().ReplicateOnLastTileDim()) {
     auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        indices.sharding(),
-        {indices.sharding().tile_assignment().num_dimensions() - 1});
+        indices.sharding(), {indices.sharding().num_dimensions() - 1});
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         indices.state(), sharding_grouped.device_groups, b);
     partition_id = per_group_partitioner_state.partition_id;
@@ -1884,8 +1882,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   // guaranteed by the scatter semantics.
   for (auto i = 0; i != indices.num_dimensions(); ++i) {
     if (indices.base_shape().dimensions(i) !=
-        indices_sharding.tile_assignment().dim(i) *
-            indices.hlo()->shape().dimensions(i)) {
+        indices_sharding.dimension(i) * indices.hlo()->shape().dimensions(i)) {
       // Reshard only when we know that some dimension is padded.
       indices = indices.Replicate().Reshard(
           indices_sharding, /*pad_value=*/LiteralUtil::CreateR0<int32_t>(-1));

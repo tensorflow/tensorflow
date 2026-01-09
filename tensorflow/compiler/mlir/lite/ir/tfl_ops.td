@@ -951,11 +951,15 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [
   let summary = "External const op.";
 
   let description = [{
-    External const op holds a `buffer_index` which points to a constant
-    in the flatbuffer.
+    External const op that can hold :
+    - `buffer_index` which points to a constant in the flatbuffer.
+    - `external_buffer` which contains metadata for external buffer outside flatbuffer.
   }];
 
-  let arguments = (ins I32Attr:$buffer_index);
+  let arguments = (ins
+    OptionalAttr<I32Attr>:$buffer_index,
+    OptionalAttr<TFL_ExternalBufferAttr>:$external_buffer
+  );
 
   let results = (outs AnyTensor:$output);
 }
@@ -1699,7 +1703,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);

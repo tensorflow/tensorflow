@@ -24,6 +24,7 @@ limitations under the License.
 #include "rocm/include/rocprim/thread/radix_key_codec.hpp"
 #include "rocm/include/rocprim/type_traits.hpp"
 #include "rocm/rocm_config.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -251,7 +252,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                          \
           .Attr<size_t>("batch_size"));                                       \
   XLA_FFI_REGISTER_HANDLER(                                                   \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                \
        /* .initialize = */ kCubSortKeysInitialize_##suffix,                   \
        /* .execute = */ kCubSortKeysExecute_##suffix});
@@ -277,7 +278,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                           \
           .Attr<size_t>("batch_size"));                                        \
   XLA_FFI_REGISTER_HANDLER(                                                    \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                 \
        /* .initialize = */ kCubSortPairsInitialize_##suffix,                   \
        /* .execute = */ kCubSortPairsExecute_##suffix});
@@ -347,6 +348,9 @@ XLA_CUB_DEFINE_SORT_PAIRS(u16_b64, uint16_t, uint64_t)
 #endif
 
 // Pairs with 32-bit key.
+#ifdef CUB_TYPE_S32_B32
+XLA_CUB_DEFINE_SORT_PAIRS(s32_b32, int32_t, uint32_t)
+#endif
 #ifdef CUB_TYPE_U32_B16
 XLA_CUB_DEFINE_SORT_PAIRS(u32_b16, uint32_t, uint16_t)
 #endif

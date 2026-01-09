@@ -99,9 +99,9 @@ class CUDABlas : public blas::BlasSupport {
   absl::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream* stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, Scalar alpha,
-      const DeviceMemorySlice<T>& a_array, int lda,
-      const DeviceMemorySlice<T>& b_array, int ldb, Scalar beta,
-      const DeviceMemorySlice<T>& c_array, int ldc, int batch_count,
+      const DeviceAddressSlice<T>& a_array, int lda,
+      const DeviceAddressSlice<T>& b_array, int ldb, Scalar beta,
+      const DeviceAddressSlice<T>& c_array, int ldc, int batch_count,
       const EngineOptions& engine_options, ScratchAllocator* scratch_allocator);
 
   // Guards the cuBLAS handle for this device.

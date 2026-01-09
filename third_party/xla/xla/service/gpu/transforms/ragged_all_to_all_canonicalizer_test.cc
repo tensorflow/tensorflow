@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -51,7 +52,7 @@ ENTRY main {
   RaggedAllToAllCanonicalizer canonicalizer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_TRUE(changed);
-  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
 
   auto* ragged_all_to_all =
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
@@ -83,7 +84,7 @@ ENTRY main {
   RaggedAllToAllCanonicalizer canonicalizer;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, canonicalizer.Run(module.get(), {}));
   EXPECT_FALSE(changed);
-  TF_EXPECT_OK(VerifyHloModule(module.get(), true, true));
+  EXPECT_OK(VerifyHloModule(module.get(), true, true));
 }
 
 }  // namespace

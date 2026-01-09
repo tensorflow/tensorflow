@@ -15,36 +15,36 @@ limitations under the License.
 
 #include "xla/service/host_offload_utils.h"
 
-#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace host_offload_utils {
 namespace {
 
-class HostOffloadUtilsTest : public HloHardwareIndependentTestBase {};
+using HostOffloadUtilsTest = HloHardwareIndependentTestBase;
 
 TEST_F(HostOffloadUtilsTest, SimpleGetSuccessorsGetPredecessorsTest) {
-  const std::string& hlo_string = R"(
-HloModule my_module
-ENTRY main {
-  data_param = f32[1,2048,2048] parameter(0)
-  index_param = s32[] parameter(1)
-  constant_f32_0 = f32[] constant(0)
-  constant_s32_0 = s32[] constant(0)
-  broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
-  offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
-  dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
-  dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
-  ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
-}
-)";
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[1,2048,2048] parameter(0)
+      index_param = s32[] parameter(1)
+      constant_f32_0 = f32[] constant(0)
+      constant_s32_0 = s32[] constant(0)
+      broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+      offload_custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+      dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, offload_custom_call, index_param, constant_s32_0, constant_s32_0)
+      dynamic_slice = f32[1,2048,2048] dynamic-slice(dynamic_update_slice, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+      ROOT load_custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+    }
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -69,23 +69,23 @@ ENTRY main {
 }
 
 TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
-  const std::string& hlo_string = R"(
-HloModule my_module
-other_computation {
-  param_0 = f32[2048] parameter(0)
-  param_1 = f32[2048] parameter(1)
-  ROOT tuple = (f32[2048], f32[2048]) tuple(param_0, param_1)
-}
-ENTRY main {
-  data_param = f32[2048] parameter(0)
-  other_param = f32[2048] parameter(1)
-  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
-  call = (f32[2048], f32[2048]) call(offload_custom_call, other_param), to_apply=other_computation
-  gte_0 = f32[2048] get-tuple-element(call), index=0
-  gte_1 = f32[2048] get-tuple-element(call), index=1
-  ROOT load_custom_call = f32[2048] custom-call(gte_0), custom_call_target="MoveToDevice"
-}
-)";
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    other_computation {
+      param_0 = f32[2048] parameter(0)
+      param_1 = f32[2048] parameter(1)
+      ROOT tuple = (f32[2048], f32[2048]) tuple(param_0, param_1)
+    }
+    ENTRY main {
+      data_param = f32[2048] parameter(0)
+      other_param = f32[2048] parameter(1)
+      offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+      call = (f32[2048], f32[2048]) call(offload_custom_call, other_param), to_apply=other_computation
+      gte_0 = f32[2048] get-tuple-element(call), index=0
+      gte_1 = f32[2048] get-tuple-element(call), index=1
+      ROOT load_custom_call = f32[2048] custom-call(gte_0), custom_call_target="MoveToDevice"
+    }
+  )hlo";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -107,6 +107,118 @@ ENTRY main {
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(tuple, {0})};
   EXPECT_EQ(pred, expected_pred);
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[1,2048,2048] parameter(0)
+      index_param = s32[] parameter(1)
+      constant_f32_0 = f32[] constant(0)
+      constant_s32_0 = s32[] constant(0)
+      broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+      custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+      dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, custom_call, index_param, constant_s32_0, constant_s32_0)
+      ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToHostNotWithDynamicUpdateSliceTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[1,2048,2048] parameter(0)
+      custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+      ROOT result = f32[1,2048,2048] copy(custom_call)
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_FALSE(IsMoveToHostWithDynamicUpdateSlice(instr));
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[2,2048,2048] parameter(0)
+      index_param = s32[] parameter(1)
+      constant_s32_0 = s32[] constant(0)
+      dynamic_slice = f32[1,2048,2048] dynamic-slice(data_param, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+      ROOT custom_call = f32[1,2048,2048] custom-call(dynamic_slice), custom_call_target="MoveToDevice"
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceNotWithDynamicSliceTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[1,2048,2048] parameter(0)
+      ROOT custom_call = f32[1,2048,2048] custom-call(data_param), custom_call_target="MoveToDevice"
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_FALSE(IsMoveToDeviceWithDynamicSlice(instr));
+}
+
+TEST_F(HostOffloadUtilsTest,
+       IsMoveToHostWithDynamicUpdateSliceThroughReshapeTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[2048,2048] parameter(0)
+      index_param = s32[] parameter(1)
+      constant_f32_0 = f32[] constant(0)
+      constant_s32_0 = s32[] constant(0)
+      broadcast = f32[2,2048,2048] broadcast(constant_f32_0), dimensions={}
+      custom_call = f32[2048,2048] custom-call(data_param), custom_call_target="MoveToHost"
+      reshape = f32[1,2048,2048] reshape(custom_call)
+      dynamic_update_slice = f32[2,2048,2048] dynamic-update-slice(broadcast, reshape, index_param, constant_s32_0, constant_s32_0)
+      ROOT result = f32[2,2048,2048] copy(dynamic_update_slice)
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_TRUE(IsMoveToHostWithDynamicUpdateSlice(instr));
+}
+
+TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceThroughReshapeTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[2,2048,2048] parameter(0)
+      index_param = s32[] parameter(1)
+      constant_s32_0 = s32[] constant(0)
+      dynamic_slice = f32[1,2048,2048] dynamic-slice(data_param, index_param, constant_s32_0, constant_s32_0), dynamic_slice_sizes={1,2048,2048}
+      reshape = f32[2048,2048] reshape(dynamic_slice)
+      ROOT custom_call = f32[2048,2048] custom-call(reshape), custom_call_target="MoveToDevice"
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* instr = FindInstruction(module.get(), "custom_call");
+  ASSERT_NE(instr, nullptr);
+  EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
 }
 
 }  // namespace

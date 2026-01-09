@@ -23,6 +23,8 @@ namespace xla {
 using ::tsl::Future;
 using ::tsl::FutureHelpers;
 using ::tsl::JoinFutures;
+using ::tsl::MakeFutureOn;
+using ::tsl::MakePromise;
 using ::tsl::Promise;
 
 }  // namespace xla

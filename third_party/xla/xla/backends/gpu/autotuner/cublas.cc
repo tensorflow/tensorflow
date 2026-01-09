@@ -25,18 +25,13 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
@@ -49,12 +44,22 @@ namespace se = ::stream_executor;
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  if (!IsLegacyCublasMatmul(instr)) {
+  if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
+  if (ShouldUseCublasLt(instr)) {
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+    AutotuneResult::GemmKey gemm_key;
+    gemm_key.set_algorithm(0);
+    configs.push_back(std::make_unique<google::protobuf::Any>());
+    configs.back()->PackFrom(gemm_key);
+    return configs;
+  }
+
+  std::unique_ptr<se::DeviceAddressAllocator> allocator =
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor());
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       allocator->GetStream(stream_executor()->device_ordinal()));
@@ -76,7 +81,7 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
     TF_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
-        /*data=*/se::DeviceMemoryBase(), layout.leading_dim_stride,
+        /*data=*/se::DeviceAddressBase(), layout.leading_dim_stride,
         layout.batch_stride, type,
         // BLAS is column-major by default.
         (layout.order == se::gpu::MatrixLayout::Order::kColumnMajor
@@ -100,7 +105,8 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
       out_desc.compute_type,
       se::gpu::GetBlasComputationType(
           gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
-          gemm_config.output_layout.dtype, gemm_config.compute_precision));
+          gemm_config.output_layout.dtype, gemm_config.compute_precision,
+          target_config().device_description.gpu_compute_capability()));
 
   se::blas::BlasSupport* blas = stream_executor()->AsBlas();
   if (blas == nullptr) {
@@ -126,14 +132,16 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> CublasBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  if (!IsLegacyCublasMatmul(instr)) {
+  if (!IsSupported(instr)) {
     return absl::InvalidArgumentError(
         "CublasBackend does not support this instruction.");
   }
-
   AutotuneResult::GemmKey gemm_key;
   gemm_key.set_algorithm(se::blas::kDefaultAlgorithm);
   auto any = std::make_unique<google::protobuf::Any>();
+  if (ShouldUseCublasLt(instr)) {
+    gemm_key.set_algorithm(0);
+  }
   any->PackFrom(gemm_key);
   return any;
 }
@@ -145,16 +153,25 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
     return absl::InvalidArgumentError(
         "Failed to unpack CublasBackendConfig from Any.");
   }
+  if (ShouldUseCublasLt(instr) && gemm_key.algorithm() == -1) {
+    gemm_key.set_algorithm(0);
+  }
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
+  backend_config.set_autotune_workspace_size(
+      gemm_key.autotune_workspace_size());
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();
 }
 
 bool CublasBackend::IsSupported(const HloInstruction& instr) {
-  return IsLegacyCublasMatmul(instr);
+  return IsLegacyCublasMatmul(instr) || ShouldUseCublasLt(instr);
+}
+
+bool CublasBackend::ShouldUseCublasLt(const HloInstruction& instr) {
+  return fp8_lt_fallback_ && IsCublasLtMatmulF8(instr);
 }
 
 }  // namespace gpu

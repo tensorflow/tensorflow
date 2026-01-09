@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
@@ -59,13 +59,13 @@ class RedzoneBuffers {
   };
 
   static absl::StatusOr<RedzoneBuffers> FromInstruction(
-      const HloInstruction& instruction, se::DeviceMemoryAllocator* allocator,
+      const HloInstruction& instruction, se::DeviceAddressAllocator* allocator,
       se::Stream* stream, BuffersToCreate buffers_to_create,
       bool should_init_buffers, bool should_check_correctness,
       int redzone_padding_bytes);
 
   static absl::StatusOr<RedzoneBuffers> FromComputation(
-      const HloComputation& computation, se::DeviceMemoryAllocator* allocator,
+      const HloComputation& computation, se::DeviceAddressAllocator* allocator,
       se::Stream* stream, BuffersToCreate buffers_to_create,
       bool should_init_buffers, bool should_check_correctness,
       int redzone_padding_bytes);
@@ -73,16 +73,16 @@ class RedzoneBuffers {
   static absl::StatusOr<RedzoneBuffers> FromProgramShape(
       const ProgramShape& program_shape, BuffersToCreate buffers_to_create,
       bool should_init_buffers, bool should_check_correctness,
-      int redzone_padding_bytes, se::DeviceMemoryAllocator* allocator,
+      int redzone_padding_bytes, se::DeviceAddressAllocator* allocator,
       se::Stream* stream);
 
-  const std::vector<se::DeviceMemoryBase>& input_buffers() const {
+  const std::vector<se::DeviceAddressBase>& input_buffers() const {
     return input_buffers_;
   }
 
   const std::vector<Shape>& input_shapes() const { return input_shapes_; }
 
-  const std::vector<se::DeviceMemoryBase>& output_buffers() const {
+  const std::vector<se::DeviceAddressBase>& output_buffers() const {
     return output_buffers_;
   }
 
@@ -98,9 +98,9 @@ class RedzoneBuffers {
                              bool should_init_buffers, int64_t& rng_state);
 
   std::unique_ptr<se::RedzoneAllocator> redzone_allocator_;
-  std::vector<se::DeviceMemoryBase> input_buffers_;
+  std::vector<se::DeviceAddressBase> input_buffers_;
   std::vector<Shape> input_shapes_;
-  std::vector<se::DeviceMemoryBase> output_buffers_;
+  std::vector<se::DeviceAddressBase> output_buffers_;
   Shape output_shape_;
 };
 

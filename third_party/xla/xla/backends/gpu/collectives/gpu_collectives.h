@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -35,8 +36,8 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/runtime/device_id.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
@@ -46,8 +47,8 @@ namespace xla::gpu {
 // XLA:GPU extension of the Collectives interface with GPU-specific APIs.
 class GpuCollectives : public Collectives {
  public:
-  // Returns the default collectives implementation for GPU backend.
-  static GpuCollectives* Default();
+  // Returns the default collectives implementation for the given platform.
+  static GpuCollectives* Default(absl::string_view platform_name);
 
   // A callback to get a unique clique id.
   using CliqueIdCallback =  // NOLINT
@@ -134,8 +135,8 @@ class GpuCollectives : public Collectives {
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
-  static stream_executor::DeviceMemoryBase Slice(
-      stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
+  static stream_executor::DeviceAddressBase Slice(
+      stream_executor::DeviceAddressBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
   // TODO(b/410686553): Use smart wrapper instead of void*.

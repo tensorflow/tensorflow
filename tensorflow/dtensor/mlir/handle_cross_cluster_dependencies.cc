@@ -206,8 +206,8 @@ mlir::LogicalResult HandleCopyToMeshWithinCluster(
       }
     }
     mlir::OpBuilder builder(op);
-    auto identity_op = builder.create<mlir::TF::IdentityOp>(
-        op.getLoc(), input.getType(), input);
+    auto identity_op = mlir::TF::IdentityOp::create(builder, op.getLoc(),
+                                                    input.getType(), input);
     op->getResult(0).replaceAllUsesWith(identity_op.getOutput());
     op->erase();
     return mlir::WalkResult::advance();
@@ -246,8 +246,9 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
 
   // Create send op that sends data from input cluster to target cluster.
   const Mesh& target_mesh = mesh_or_status.value();
-  builder.create<mlir::TF::DTensorSend>(
-      copy_to_mesh.getLoc(), value_to_send, builder.getStringAttr(op_key),
+  mlir::TF::DTensorSend::create(
+      builder, copy_to_mesh.getLoc(), value_to_send,
+      builder.getStringAttr(op_key),
       mlir::dtensor::MeshAttr::get(context, target_mesh));
 
   // Create recv op that recvs data from send op.
@@ -258,8 +259,8 @@ mlir::LogicalResult LowerToSendRecv(mlir::TF::CopyToMeshOp copy_to_mesh,
         "CopyToMesh op must have static shape.");
 
   builder.setInsertionPoint(copy_to_mesh);
-  auto recv_op = builder.create<mlir::TF::DTensorRecv>(
-      copy_to_mesh.getLoc(), value_to_send.getType(),
+  auto recv_op = mlir::TF::DTensorRecv::create(
+      builder, copy_to_mesh.getLoc(), value_to_send.getType(),
       builder.getStringAttr(op_key),
       mlir::TF::ShapeAttr::get(context, tensor_type),
       mlir::dtensor::MeshAttr::get(context, target_mesh));
@@ -396,8 +397,9 @@ mlir::LogicalResult InsertCopyToMesh(mlir::tf_device::ClusterOp cluster) {
     if (input_mesh == mesh) continue;
     mlir::OpBuilder builder(op);
 
-    auto new_op = builder.create<mlir::TF::CopyToMeshOp>(
-        op->getLoc(), op->getResult(0).getType(), input, mesh.ToString());
+    auto new_op = mlir::TF::CopyToMeshOp::create(builder, op->getLoc(),
+                                                 op->getResult(0).getType(),
+                                                 input, mesh.ToString());
     op->replaceUsesOfWith(input, new_op.getResult());
   }
   return mlir::success();

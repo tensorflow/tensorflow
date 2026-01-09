@@ -19,6 +19,7 @@ limitations under the License.
 #define XLA_LITERAL_UTIL_H_
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

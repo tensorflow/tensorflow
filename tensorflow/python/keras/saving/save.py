@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras model saving code."""
-
+import os
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving import saving_utils
@@ -25,6 +25,9 @@ from tensorflow.python.keras.utils.io_utils import path_to_string
 
 # pylint: disable=g-import-not-at-top
 try:
+  # Disable loading HDF5 plugins from a default path and prevent ZDI-CAN-25480.
+  # Importing h5py prior to importing tensorflow will restore the old behavior.
+  os.environ['HDF5_PLUGIN_PATH'] = 'disable'
   import h5py
 except ImportError:
   h5py = None

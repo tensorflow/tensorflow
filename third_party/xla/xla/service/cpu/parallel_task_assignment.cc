@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "xla/shape.h"
 #include "xla/shape_partition.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -286,7 +286,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     absl::c_copy(dim_partition_counts,
                  tsl::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
-    TF_CHECK_OK(instruction->set_backend_config(backend_config));
+    CHECK_OK(instruction->set_backend_config(backend_config));
 
     VLOG(2) << "Assigned parallel task count: " << total_partition_count
             << " to instruction: " << instruction->name();

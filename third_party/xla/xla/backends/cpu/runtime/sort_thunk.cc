@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -164,13 +164,13 @@ SortThunk::SortThunk(Info info, absl::Span<const Input> inputs,
 
 // Sorts `data` of the given `shape` along the `dimension` inplace.
 static void SortInplace(const SortThunk::SortDims& sort_dims,
-                        absl::Span<se::DeviceMemoryBase> data,
+                        absl::Span<se::DeviceAddressBase> data,
                         absl::Span<const Shape> shapes, bool is_stable,
                         SortThunk::LessThan* less_than,
                         std::optional<SortThunk::SortDirection> direction) {
   absl::InlinedVector<std::byte*, 16> raw_data;
   absl::c_transform(data, std::back_inserter(raw_data),
-                    [](const se::DeviceMemoryBase& mem) {
+                    [](const se::DeviceAddressBase& mem) {
                       return reinterpret_cast<std::byte*>(mem.opaque());
                     });
 
@@ -210,7 +210,7 @@ tsl::AsyncValueRef<SortThunk::ExecuteEvent> SortThunk::Execute(
       "Sort %d inputs along dimension %d (is_stable=%v)", inputs_.size(),
       dimension_, is_stable_);
 
-  absl::InlinedVector<se::DeviceMemoryBase, 8> data;
+  absl::InlinedVector<se::DeviceAddressBase, 8> data;
   data.reserve(inputs_.size());
 
   absl::InlinedVector<Shape, 8> shapes;

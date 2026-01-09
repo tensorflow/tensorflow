@@ -53,12 +53,12 @@ class CpuAotLoader {
       const xla::cpu::CompilationResultProto& aot_result_proto);
 
   static absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      xla::AotCompilationResult&& compilation_result);
+      CompiledModule&& compilation_result);
 
-  static absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  static absl::StatusOr<std::unique_ptr<CompiledModule>>
   LoadAotCompilationResult(const std::string& serialized_aot_result);
 
-  static absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  static absl::StatusOr<std::unique_ptr<CompiledModule>>
   LoadAotCompilationResult(
       const xla::cpu::CompilationResultProto& aot_result_proto);
 };

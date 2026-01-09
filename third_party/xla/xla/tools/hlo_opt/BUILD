@@ -171,7 +171,6 @@ cc_library(
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/service:batchnorm_expander",
         "//xla/service:buffer_value",
         "//xla/service:change_op_data_type",
@@ -259,18 +258,8 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "gpu_specs/a100_pcie_80.txtpb",
-        "gpu_specs/mi200.txtpb",
+        "//xla/backends/gpu/target_config:all_gpu_specs",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )
-
-filegroup(
-    name = "all_gpu_specs",
-    data = glob(["gpu_specs/*.txtpb"]),
-)
-
-exports_files(glob([
-    "gpu_specs/*.txtpb",
-]))

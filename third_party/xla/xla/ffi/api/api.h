@@ -287,6 +287,12 @@ class Ffi {
   // Creates an empty binding for the instantiate stage.
   static Binding<ExecutionStage::kInstantiate> BindInstantiate();
 
+  // Creates an empty binding for the prepare stage.
+  static Binding<ExecutionStage::kPrepare> BindPrepare();
+
+  // Creates an empty binding for the initialize stage.
+  static Binding<ExecutionStage::kInitialize> BindInitialize();
+
   // Automatic FFI binding that does binding specification inference from the
   // `fn` type signature and binds `fn` to it. This enables a more concise FFI
   // handler registration with fully automatic type inference at the cost of
@@ -469,6 +475,32 @@ inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
   }
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// XLA_FFI_Error helpers
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+inline void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
+  XLA_FFI_Error_Destroy_Args args;
+  args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.error = error;
+  api->XLA_FFI_Error_Destroy(&args);
+}
+
+inline const char* GetErrorMessage(const XLA_FFI_Api* api,
+                                   XLA_FFI_Error* error) {
+  XLA_FFI_Error_GetMessage_Args args;
+  args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.error = error;
+  api->XLA_FFI_Error_GetMessage(&args);
+  return args.message;
+}
+
+}  // namespace internal
 
 //===----------------------------------------------------------------------===//
 // Type tags for distinguishing handler argument types
@@ -726,6 +758,14 @@ Binding<stage> Ffi::Bind() {
 
 inline Binding<ExecutionStage::kInstantiate> Ffi::BindInstantiate() {
   return Bind<ExecutionStage::kInstantiate>();
+}
+
+inline Binding<ExecutionStage::kPrepare> Ffi::BindPrepare() {
+  return Bind<ExecutionStage::kPrepare>();
+}
+
+inline Binding<ExecutionStage::kInitialize> Ffi::BindInitialize() {
+  return Bind<ExecutionStage::kInitialize>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1664,7 +1704,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected at least ",
                    kNumArgs - kNumOptionalArgs - 1, " but got ",
                    call_frame->args.size));
       }
@@ -1672,15 +1713,21 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->args.size < kNumArgs)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected at least ",
                    kNumArgs - kNumOptionalArgs, " but got ",
                    call_frame->args.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs)) {
+      // It is safe to not theck the number of arguments if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->args.size != kNumArgs &&
+                                kNumArgs > 0)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of arguments: expected ", kNumArgs,
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of arguments: expected ", kNumArgs,
                    " but got ", call_frame->args.size));
       }
     }
@@ -1691,7 +1738,8 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected at least ",
                    kNumRets - kNumOptionalRets - 1, " but got ",
                    call_frame->rets.size));
       }
@@ -1699,28 +1747,43 @@ class Handler : public Ffi {
       if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size < kNumRets)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected at least ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected at least ",
                    kNumRets - kNumOptionalRets, " but got ",
                    call_frame->rets.size));
       }
     } else {
-      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets)) {
+      // It is safe to not theck the number of results if we don't plan to
+      // decode any of them, i.e. for prepare/initialize stages where the FFI
+      // handler might be interested only in the attributes or context.
+      if (XLA_FFI_PREDICT_FALSE(call_frame->rets.size != kNumRets &&
+                                kNumRets > 0)) {
         return InvalidArgument(
             call_frame->api,
-            StrCat("Wrong number of results: expected ", kNumRets, " but got ",
+            StrCat("[", call_frame->stage, "] ",
+                   "Wrong number of results: expected ", kNumRets, " but got ",
                    call_frame->rets.size));
       }
     }
 
     // Check that the number of passed attributes matches the signature. Each
-    // individual attribute decoding will check the actual type. If we decode
-    // attributes into a dictionary (or a custom struct decoded from a
-    // dictionary), then there is no need to check attributes, as the FFI
-    // handler (or a struct decoding) should be responsible for it.
-    if (XLA_FFI_PREDICT_FALSE(kNumDictAttrs == 0 &&
+    // individual attribute decoding will check the actual type.
+    //
+    // If we decode attributes into a dictionary (or a custom struct decoded
+    // from a dictionary), then there is no need to check the number of
+    // attributes, as the FFI handler (or a struct decoding) should be
+    // responsible for it.
+    //
+    // If the number of bound attributes is zero, then we also don't care about
+    // the number of attributes in the call frame. FFI handler can safely choose
+    // to ignore attributes in this case. We only need to check the number of
+    // attributes if we plan to decode them, as we build a mapping from the
+    // attribute name to its index in the call frame attributes.
+    if (XLA_FFI_PREDICT_FALSE(kNumDictAttrs == 0 && kNumAttrs > 0 &&
                               call_frame->attrs.size != kNumAttrs)) {
       std::stringstream msg;
-      msg << "Wrong number of attributes: expected " << kNumAttrs << " but got "
+      msg << "[" << call_frame->stage << "] "
+          << "Wrong number of attributes: expected " << kNumAttrs << " but got "
           << call_frame->attrs.size;
       if (call_frame->attrs.size > 0) {
         msg << " with name(s): ";
@@ -2205,6 +2268,14 @@ auto DictionaryDecoder(Members... m) {
 
 // Following two APIs are intended for users who want to export XLA FFI handler
 // from a shared library as a C function symbol.
+
+// Declares C function that returns FFI type id.
+#define XLA_FFI_DECLARE_TYPE_ID_SYMBOL(type_id_fn) \
+  extern "C" XLA_FFI_TypeId* type_id_fn()
+
+// Declares C function that returns FFI type info.
+#define XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(type_info_fn) \
+  extern "C" const XLA_FFI_TypeInfo* type_info_fn()
 
 // Declares C function that implements FFI handler.
 #define XLA_FFI_DECLARE_HANDLER_SYMBOL(fn) \

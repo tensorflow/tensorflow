@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -105,10 +105,10 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
   const se::ThreadDim thread_dim(
       executor->GetDeviceDescription().threads_per_block_limit(), 1, 1);
 
-  se::DeviceMemory<uint8_t> log_ptr(
+  se::DeviceAddress<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
   auto buffer_debug_log =
-      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceMemoryUnchecked(
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
           log_ptr);
 
   for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
@@ -122,7 +122,7 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     const BufferDebugLogEntryId log_entry_id =
         metadata_store_->AssignId(metadata);
 
-    se::DeviceMemory<uint8_t> device_buffer(
+    se::DeviceAddress<uint8_t> device_buffer(
         params.buffer_allocations->GetDeviceAddress(buffer));
 
     TF_RETURN_IF_ERROR(kernel->Launch(

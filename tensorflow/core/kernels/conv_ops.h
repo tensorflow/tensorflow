@@ -45,8 +45,8 @@ template <typename Device, typename T>
 struct LaunchConvOp {
   void operator()(OpKernelContext* context, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter,
-                  const std::vector<int64>& dilations,
-                  const std::vector<int64>& strides, Padding padding,
+                  const std::vector<int64_t>& dilations,
+                  const std::vector<int64_t>& strides, Padding padding,
                   const std::vector<int64_t>& explicit_paddings,
                   TensorFormat data_format, Tensor* output);
 };
@@ -85,13 +85,13 @@ struct Im2ColBufferResource : public ResourceBase {
   // the buffer memory held by this resource.
   mutex mu;
   T* data;
-  string DebugString() const { return "Im2ColBufferResource"; }
+  std::string DebugString() const { return "Im2ColBufferResource"; }
 };
 
 // Convolution parameters specified by Op attributes.
 struct Conv2DParameters {
-  std::vector<int32> dilations;
-  std::vector<int32> strides;
+  std::vector<int32_t> dilations;
+  std::vector<int32_t> strides;
   Padding padding;
   TensorFormat data_format;
   std::vector<int64_t> explicit_paddings;

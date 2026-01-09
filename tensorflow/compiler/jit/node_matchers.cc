@@ -15,16 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/node_matchers.h"
 
+#include <cstdint>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
@@ -515,7 +530,7 @@ impl::NodeMatcherProperties impl::Attr(std::string name) {
 
 NodeMatcherProperties ConstantValue(
     const ::tensorflow::Input::Initializer& val) {
-  TF_CHECK_OK(val.status);
+  CHECK_OK(val.status);
   NodeMatcherProperties props;
   props.set_constant_value(val.tensor);
   return props;

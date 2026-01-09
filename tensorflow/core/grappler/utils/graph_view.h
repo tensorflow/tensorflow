@@ -481,15 +481,15 @@ class MutableGraphView
 
   void FixRenamedNodes(
       std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
-      absl::flat_hash_map<string, NodeViewFanouts>* renamed_fanouts,
+      absl::flat_hash_map<std::string, NodeViewFanouts>* renamed_fanouts,
       std::vector<bool>* overwritten_name_removed_nodes);
 
   void AddNewNodes(
-      absl::flat_hash_map<string, NodeViewFanouts>* renamed_fanouts,
+      absl::flat_hash_map<std::string, NodeViewFanouts>* renamed_fanouts,
       std::vector<int>* new_node_indices);
 
   void FixRenamedFanouts(
-      const absl::flat_hash_map<string, NodeViewFanouts>& renamed_fanouts);
+      const absl::flat_hash_map<std::string, NodeViewFanouts>& renamed_fanouts);
 
   inline void RemoveRegularFaninFanoutInternal(MutableNodeView* node_view,
                                                int i);

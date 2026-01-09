@@ -101,6 +101,9 @@ class Shape {
   // opposed to crashing) if the proto has logically invalid fields.
   static absl::StatusOr<Shape> FromProto(const ShapeProto& shape_proto);
 
+  // Converts the Shape to a ShapeProto. Clears `proto` first.
+  void ToProto(ShapeProto& proto) const;
+
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
 
@@ -666,6 +669,9 @@ class Shape {
 
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
+
+  // Converts this shape to a proto. `proto` must be an empty message.
+  void SaveToEmptyProto(ShapeProto& proto) const;
 
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;

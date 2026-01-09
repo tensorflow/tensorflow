@@ -132,7 +132,7 @@ FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(
   OpBuilder builder(module.getContext());
 
   OwningOpRef<ModuleOp> stablehlo_module =
-      builder.create<ModuleOp>(op.getLoc());
+      ModuleOp::create(builder, op.getLoc());
   builder.setInsertionPointToEnd(stablehlo_module->getBody());
 
   // Copy all referenced StableHLO functions to the new module.

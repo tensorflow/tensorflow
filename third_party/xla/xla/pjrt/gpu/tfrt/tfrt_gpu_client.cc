@@ -29,6 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -48,24 +50,26 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
-#include "xla/pjrt/gpu/gpu_topology.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_async_host_to_device_transfer_manager.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_executable.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -82,6 +86,8 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu_topology.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
@@ -89,21 +95,25 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/unbounded_work_queue.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA
@@ -119,6 +129,37 @@ limitations under the License.
 #endif
 
 namespace xla {
+
+namespace {
+
+class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
+ public:
+  explicit UnboundedAsyncWorkRunner(const std::string& name)
+      : queue_(tsl::Env::Default(), name, {/*stack_size=*/512 * 1024}) {}
+
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    // TSL TheadPool expects std::function that must be copyable, so we are
+    // forced to do a little bit of manual memory management here.
+    queue_.Schedule(
+        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
+          std::move (*ptr)();
+          delete ptr;
+        });
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
+      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
+    });
+  }
+
+ private:
+  tsl::UnboundedWorkQueue queue_;
+};
+
+}  // namespace
 
 TfrtGpuMemorySpace::TfrtGpuMemorySpace(int id, PjRtDevice* device,
                                        absl::string_view kind, int kind_id)
@@ -137,13 +178,34 @@ const int TfrtGpuDeviceMemorySpace::kKindId = []() {
 TfrtGpuDeviceMemorySpace::TfrtGpuDeviceMemorySpace(int id, PjRtDevice* device)
     : TfrtGpuMemorySpace(id, device, kKind, kKindId) {}
 
+namespace {
+
+std::shared_ptr<HostMemoryAllocator> CreateHostMemoryAllocator(
+    TfrtGpuClient* client, HostMemoryAllocator::Factory factory) {
+  if (factory == nullptr) {
+    return nullptr;
+  }
+
+  HostMemoryAllocator::Options allocator_options;
+  allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
+  allocator_options.map_fn = [client](void* data, size_t size) {
+    return client->DmaMap(data, size);
+  };
+  allocator_options.unmap_fn = [client](void* data) {
+    return client->DmaUnmap(data);
+  };
+  return factory(std::move(allocator_options));
+}
+
+}  // namespace
+
 TfrtGpuClient::TfrtGpuClient(
     std::string platform_name, int process_index, xla::LocalClient* xla_client,
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
     bool abort_collectives_on_failure,
-    MaybeOwning<se::DeviceMemoryAllocator> allocator,
-    std::unique_ptr<tsl::Allocator> host_memory_allocator,
+    MaybeOwning<se::DeviceAddressAllocator> allocator,
+    HostMemoryAllocator::Factory host_memory_allocator_factory,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     std::shared_ptr<const GpuTopology> gpu_topology)
@@ -154,8 +216,8 @@ TfrtGpuClient::TfrtGpuClient(
           should_stage_host_to_device_transfers),
       abort_collectives_on_failure_(abort_collectives_on_failure),
       allocator_(std::move(allocator)),
-      host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
-          std::move(host_memory_allocator))),
+      host_memory_allocator_(CreateHostMemoryAllocator(
+          this, std::move(host_memory_allocator_factory))),
       devices_(InitializeDevices(this, devices)),
       id_to_device_(GetIdToDeviceMap(devices)),
       addressable_devices_(GetAddressableDevicePointers(devices)),
@@ -174,21 +236,36 @@ TfrtGpuClient::TfrtGpuClient(
           "TfrtGpuClient_compile_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
           true)),
-      blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), tsl::ThreadOptions(),
-          "TfrtGpuClient_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
-          true)),
-      non_blocking_thread_pool_(std::make_unique<tsl::thread::ThreadPool>(
-          tsl::Env::Default(), tsl::ThreadOptions(),
-          "TfrtGpuClient_non_blocking_thread_pool",
-          std::max<int>(DefaultThreadPoolSize(), xla_client->device_count()),
-          true)) {
+      blocking_thread_pool_(std::make_unique<UnboundedAsyncWorkRunner>(
+          "TfrtGpuClient_blocking_thread_pool")),
+      non_blocking_thread_pool_(std::make_unique<UnboundedAsyncWorkRunner>(
+          "TfrtGpuClient_non_blocking_thread_pool")) {
   LOG(INFO) << "TfrtGpuClient created with " << addressable_devices_.size()
             << " / " << devices_.size() << " addressable devices.";
 }
 
-TfrtGpuClient::~TfrtGpuClient() { LOG(INFO) << "TfrtGpuClient destroyed."; }
+TfrtGpuClient::~TfrtGpuClient() {
+  // Destroy objects that may invoke CUDA APIs (e.g., allocators) on a separate
+  // thread pool. See the comments on `TfrtGpuThreadChecker` for more info.
+  absl::WrapUnique(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "TfrtGpuClientDestructor", [&]() {
+        // Thread pools must be destructed first, to make all the pending tasks
+        // are completed before the client is destructed.
+        compile_thread_pool_ = {};
+        blocking_thread_pool_ = {};
+        non_blocking_thread_pool_ = {};
+
+        // Destructed after the thread pools, to ensure that all kernels in the
+        // streams are finished.
+        owned_devices_.clear();
+        owned_memory_spaces_.clear();
+
+        host_memory_allocator_ = {};
+        allocator_ = {};
+      }));
+
+  LOG(INFO) << "TfrtGpuClient destroyed.";
+}
 
 absl::string_view TfrtGpuClient::platform_version() const {
 #define STRINGIFY2(X) #X
@@ -431,7 +508,7 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
   CHECK_EQ(memory_space->devices().size(), 1);
   auto* device = memory_space->devices().front();
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
-  se::DeviceMemoryBase device_memory(device_ptr, byte_size);
+  se::DeviceAddressBase device_memory(device_ptr, byte_size);
   auto non_owning_buffer = GpuDeviceMemory(device_memory);
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
@@ -570,7 +647,7 @@ TfrtGpuClient::DeserializeToLocalExecutable(
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal("Proto is too large (>2GB)");
   }
-  if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
+  if (!proto.ParseFromString(serialized)) {
     return Internal("Proto deserialization failed");
   }
   if (!proto.pjrt_client_name().empty() &&
@@ -882,7 +959,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     options.elem_size_in_bytes = primitive_util::ByteWidth(type);
     options.dims = dims;
     options.permutation = permutation;
-    options.input_layout = TransposePlan::Striding{*byte_strides};
+    options.input_striding = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
@@ -916,14 +993,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   bool must_use_staging_buffer =
       host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall ||
       !host_and_device_strides_equal || packed_size != byte_size;
-
-  // Allocating multigigabyte pinned buffers can be very slow. In that case,
-  // using a staging buffer is probably worse than not using one.
-  bool should_stage_transfers = !IsDmaMapped(data, packed_size) &&
-                                should_stage_host_to_device_transfers() &&
-                                packed_size < (int64_t{1} << 30);
-
-  bool use_staging_buffer = must_use_staging_buffer || should_stage_transfers;
+  bool use_staging_buffer = must_use_staging_buffer ||
+                            ShouldStageHostToDeviceTransfers(data, packed_size);
 
   auto copy_to_staging_buffer = [allocator = host_memory_allocator(), byte_size,
                                  type, packed_size,
@@ -966,7 +1037,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     });
     auto stream = device->stream();
 
-    se::DeviceMemoryBase dest = gpu_buffer->buffer();
+    se::DeviceAddressBase dest = gpu_buffer->buffer();
     VLOG(3) << "H2D copy: " << src_buf << " -> " << dest.opaque() << " ("
             << packed_size << " bytes) on device " << device->DebugString();
 
@@ -1008,31 +1079,31 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       }
 
       // Copy the data from the staging buffer to GPU.
-      EnqueueWork(blocking_thread_pool_.get(),
-                  [h2d_do_copy(std::move(h2d_do_copy)),
-                   staging_buffer(std::move(staging_buffer))]() {
-                    h2d_do_copy(staging_buffer.get());
-                  });
+      blocking_thread_pool_->Schedule(
+          [h2d_do_copy(std::move(h2d_do_copy)),
+           staging_buffer(std::move(staging_buffer))]() {
+            h2d_do_copy(staging_buffer.get());
+          });
     } else {
-      EnqueueWork(blocking_thread_pool_.get(),
-                  [h2d_do_copy(std::move(h2d_do_copy)), data,
-                   on_done_with_host_buffer =
-                       std::move(on_done_with_host_buffer)]() mutable {
-                    // Copy the data directly to GPU.
-                    h2d_do_copy(data);
+      blocking_thread_pool_->Schedule(
+          [h2d_do_copy(std::move(h2d_do_copy)), data,
+           on_done_with_host_buffer =
+               std::move(on_done_with_host_buffer)]() mutable {
+            // Copy the data directly to GPU.
+            h2d_do_copy(data);
 
-                    // Call on_done_with_host_buffer to release the data buffer.
-                    if (on_done_with_host_buffer) {
-                      std::move(on_done_with_host_buffer)();
-                    }
-                  });
+            // Call on_done_with_host_buffer to release the data buffer.
+            if (on_done_with_host_buffer) {
+              std::move(on_done_with_host_buffer)();
+            }
+          });
     }
   };
 
   if (host_buffer_semantics == HostBufferSemantics::kImmutableOnlyDuringCall) {
     h2d_copy();
   } else {
-    EnqueueWork(non_blocking_thread_pool_.get(), std::move(h2d_copy));
+    non_blocking_thread_pool_->Schedule(std::move(h2d_copy));
   }
 
   return output_buffer;
@@ -1090,8 +1161,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // It is OK to capture `buffer` pointer because the `output_buffer` can't
   // be deleted until all the usage holds have gone away.
   VLOG(4) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
-  EnqueueWork(
-      non_blocking_thread_pool_.get(),
+  non_blocking_thread_pool_->Schedule(
       [literal, definition_event, device_buffer, shape, this,
        device = tsl::down_cast<TfrtGpuDevice*>(device),
        usage_event = std::move(usage_event)]() mutable {
@@ -1108,8 +1178,8 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
         ShapedBuffer shaped_buffer = buffer->AsShapedBuffer(shape, device);
 
-        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-            stream, literal, shaped_buffer));
+        CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
+                                                                shaped_buffer));
 
         absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
         CHECK_OK(status) << "Failed to block host until done";
@@ -1123,35 +1193,41 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 }
 
 absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
-  tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaMap");
-  se::StreamExecutor* executor =
-      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
-          ->executor();
-  DCHECK(executor);
-  bool success = executor->HostMemoryRegister(data, buffer_size);
-  if (!success) {
-    return absl::InternalError(absl::StrFormat(
-        "Failed to register host memory at address: %ps", data));
-  }
-  absl::MutexLock lock(dma_maps_mutex_);
-  dma_maps_.insert({data, buffer_size});
-  return absl::OkStatus();
+  return RunOnAsyncWorkRunner(
+      non_blocking_thread_pool(), [&]() -> absl::Status {
+        tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaMap");
+        se::StreamExecutor* executor =
+            tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+                ->executor();
+        DCHECK(executor);
+        bool success = executor->HostMemoryRegister(data, buffer_size);
+        if (!success) {
+          return absl::InternalError(absl::StrFormat(
+              "Failed to register host memory at address: %ps", data));
+        }
+        absl::MutexLock lock(dma_maps_mutex_);
+        dma_maps_.insert({data, buffer_size});
+        return absl::OkStatus();
+      });
 }
 
 absl::Status TfrtGpuClient::DmaUnmap(void* data) {
-  tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaUnmap");
-  se::StreamExecutor* executor =
-      tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
-          ->executor();
-  DCHECK(executor);
-  bool success = executor->HostMemoryUnregister(data);
-  if (!success) {
-    return absl::InternalError(absl::StrFormat(
-        "Failed to unregister host memory at address: %ps", data));
-  }
-  absl::MutexLock lock(dma_maps_mutex_);
-  dma_maps_.erase(data);
-  return absl::OkStatus();
+  return RunOnAsyncWorkRunner(
+      non_blocking_thread_pool(), [&]() -> absl::Status {
+        tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaUnmap");
+        se::StreamExecutor* executor =
+            tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+                ->executor();
+        DCHECK(executor);
+        bool success = executor->HostMemoryUnregister(data);
+        if (!success) {
+          return absl::InternalError(absl::StrFormat(
+              "Failed to unregister host memory at address: %ps", data));
+        }
+        absl::MutexLock lock(dma_maps_mutex_);
+        dma_maps_.erase(data);
+        return absl::OkStatus();
+      });
 }
 
 bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
@@ -1168,7 +1244,9 @@ bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
   return data_end <= map_end;
 }
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
+namespace {
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClientInternal(
     const GpuClientOptions& options) {
 #if TENSORFLOW_USE_ROCM
   const auto* pjrt_platform_name = xla::RocmName();
@@ -1183,11 +1261,19 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   EnablePeerAccess(xla_client->backend().stream_executors());
 
-  std::unique_ptr<tsl::Allocator> host_memory_allocator;
-  if (!xla_client->backend().stream_executors().empty()) {
+  HostMemoryAllocator::Factory host_memory_allocator_factory =
+      options.host_memory_allocator_factory;
+  if (host_memory_allocator_factory == nullptr &&
+      !xla_client->backend().stream_executors().empty()) {
     TF_ASSIGN_OR_RETURN(
-        host_memory_allocator,
+        std::unique_ptr<tsl::Allocator> allocator,
         GetGpuHostAllocator(xla_client->backend().stream_executors().front()));
+    host_memory_allocator_factory =
+        [allocator = allocator.release()](
+            const HostMemoryAllocator::Options& options) mutable {
+          return std::make_unique<BasicHostMemoryAllocator>(
+              absl::WrapUnique(allocator), tsl::Allocator::kAllocatorAlignment);
+        };
   }
 
   auto gpu_run_options = std::make_unique<gpu::GpuExecutableRunOptions>();
@@ -1228,8 +1314,22 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
       std::move(pjrt_platform_name), options.node_id, xla_client,
       std::move(devices), options.should_stage_host_to_device_transfers,
       options.abort_collectives_on_failure, std::move(allocator),
-      std::move(host_memory_allocator), std::move(gpu_run_options),
+      std::move(host_memory_allocator_factory), std::move(gpu_run_options),
       std::move(kv_store), std::move(gpu_topology)));
+}
+
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
+    const GpuClientOptions& options) {
+  absl::StatusOr<std::unique_ptr<PjRtClient>> result;
+  {
+    // Bounce through a thread to avoid calling CUDA inline.
+    absl::WrapUnique(tsl::Env::Default()->StartThread(
+        {}, "GetTfrtGpuClient",
+        [&]() { result = GetTfrtGpuClientInternal(options); }));
+  }
+  return result;
 }
 
 }  // namespace xla

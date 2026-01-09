@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
@@ -55,6 +56,13 @@ void WarnIfBadPtxasVersion(absl::string_view method,
 // Unsupported .version 99.99; current version is '8.8'
 absl::StatusOr<int> GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
     absl::string_view error_log);
+
+// Extracts the module stats from the ptxas log.
+//
+// Example: "Registers are spilled to local memory in function 'rr', 1080 bytes
+// spill stores, 968 bytes spill loads" will return:
+// ModuleStats{ KernelStats{"rr", {1080, 968}} }
+ModuleStats ExtractModuleStatsFromLog(absl::string_view log);
 
 }  // namespace stream_executor
 

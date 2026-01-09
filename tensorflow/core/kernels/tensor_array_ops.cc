@@ -836,24 +836,24 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 REGISTER_KERNEL_BUILDER(
     Name("TensorArrayGather")
         .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
+        .TypeConstraint<int32_t>("dtype")
         .HostMemory("indices")
         .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>);
+    TensorArrayPackOrGatherOp<CPUDevice, int32_t, false /* LEGACY_PACK */>);
 REGISTER_KERNEL_BUILDER(
     Name("TensorArrayGatherV2")
         .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
+        .TypeConstraint<int32_t>("dtype")
         .HostMemory("indices")
         .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>);
+    TensorArrayPackOrGatherOp<CPUDevice, int32_t, false /* LEGACY_PACK */>);
 REGISTER_KERNEL_BUILDER(
     Name("TensorArrayGatherV3")
         .Device(DEVICE_GPU)
-        .TypeConstraint<int32>("dtype")
+        .TypeConstraint<int32_t>("dtype")
         .HostMemory("indices")
         .HostMemory("handle"),
-    TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>);
+    TensorArrayPackOrGatherOp<CPUDevice, int32_t, false /* LEGACY_PACK */>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1050,22 +1050,22 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
+                            .TypeConstraint<int32_t>("dtype")
                             .HostMemory("lengths")
                             .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>);
+                        TensorArrayConcatOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
+                            .TypeConstraint<int32_t>("dtype")
                             .HostMemory("lengths")
                             .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>);
+                        TensorArrayConcatOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("dtype")
+                            .TypeConstraint<int32_t>("dtype")
                             .HostMemory("lengths")
                             .HostMemory("handle"),
-                        TensorArrayConcatOp<CPUDevice, int32>);
+                        TensorArrayConcatOp<CPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -68,7 +68,8 @@ NvptxcompilerCompilationProvider::CompileToRelocatableModule(
                       CompileHelper(cc, ptx, options,
                                     /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(assembly.cubin),
-                           std::move(assembly.compilation_log)};
+                           std::move(assembly.compilation_log),
+                           std::move(assembly.module_stats)};
 }
 
 absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::CompileAndLink(

@@ -1,5 +1,39 @@
 # PJRT C API changelog
 
+## 0.89
+
+* Add `PJRT_Event_Create` and `PJRT_Event_Set`.
+
+## 0.88
+
+* Add `PJRT_Buffer_DonateWithControlDependency`.
+
+## 0.87
+
+* Add `PJRT_Executable_GetCompileOptions`.
+
+## 0.86
+
+* Add `PJRT_Device_CreateAsyncTrackingEvent`.
+
+* Add `PJRT_AsyncTrackingEvent_Destroy`.
+
+## 0.85
+
+* Add `PJRT_Device_PoisonExecution`.
+
+## 0.84
+
+* Add `PJRT_Buffer_CopyRawToHostFuture`.
+
+## 0.83
+
+* Add `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral`.
+
+## 0.82
+
+* Add `PJRT_Client_CreateErrorBuffer`.
+
 ## 0.81
 
 * Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.

@@ -39,13 +39,15 @@ char PjRtCompatibleDevice::ID = 0;
 char PjRtDevice::ID = 0;
 
 PjRtDevice::PjRtDevice(
-    PjRtClient* client, DeviceId id, std::string kind, std::string to_string,
-    std::string debug_string, int process_index,
+    PjRtClient* client, DeviceId id, std::string platform_name,
+    std::string kind, std::string to_string, std::string debug_string,
+    int process_index,
     absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes,
     xla::PjRtDevice* pjrt_device)
     : client_(client),
       id_(id),
       attributes_(FromPjRtAttributeMap(std::move(attributes))),
+      platform_name_(std::move(platform_name)),
       kind_(std::move(kind)),
       to_string_(std::move(to_string)),
       debug_string_(std::move(debug_string)),
@@ -55,6 +57,8 @@ PjRtDevice::PjRtDevice(
 DeviceId PjRtDevice::Id() const { return id_; }
 
 const AttributeMap& PjRtDevice::Attributes() const { return attributes_; }
+
+absl::string_view PjRtDevice::PlatformName() const { return platform_name_; }
 
 absl::string_view PjRtDevice::Kind() const { return kind_; }
 

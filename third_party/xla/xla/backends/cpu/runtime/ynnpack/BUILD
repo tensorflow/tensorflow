@@ -1,5 +1,5 @@
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tsl/xnnpack:build_defs.bzl", "ynn_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,10 +22,7 @@ cc_library(
         "//xla/backends/cpu/runtime:work_queue",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -33,7 +30,7 @@ cc_library(
     ],
 )
 
-ynn_cc_test(
+xla_cc_test(
     name = "slinky_threadpool_test",
     srcs = ["slinky_threadpool_test.cc"],
     deps = [
@@ -72,15 +69,10 @@ cc_library(
         ":slinky_threadpool",
         ":ynn_interop",
         "@XNNPACK//ynnpack:ynnpack_h",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@slinky//slinky/base:thread_pool",
     ],
 )
 
@@ -96,7 +88,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -118,7 +110,7 @@ cc_library(
     ],
 )
 
-ynn_cc_test(
+xla_cc_test(
     name = "ynn_fusion_thunk_test",
     srcs = ["ynn_fusion_thunk_test.cc"],
     deps = [

@@ -297,6 +297,7 @@ cc_library(
     deps = [
         ":tf_xplane_visitor",
         ":timespan",
+        ":tpu_xplane_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
@@ -311,8 +312,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:dso_loader",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -344,17 +345,20 @@ tsl_cc_test(
         ":preprocess_xplane",
         ":tf_xplane_visitor",
         ":timespan",
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_test_utils",
         ":xplane_utils",
         ":xplane_visitor",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
@@ -560,7 +564,6 @@ tsl_cc_test(
     deps = [
         ":lock_free_queue",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
@@ -591,7 +594,6 @@ tsl_cc_test(
     deps = [
         ":per_thread",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

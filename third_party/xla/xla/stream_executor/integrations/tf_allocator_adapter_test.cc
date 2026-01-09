@@ -27,12 +27,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -76,7 +75,7 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(auto* platform,
                           xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(std::vector<StreamExecutor*> executors,
-                          xla::PlatformUtil::GetStreamExecutors(platform))
+                          xla::PlatformUtil::GetStreamExecutors(platform));
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executors[0]->CreateStream());
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> infos;
@@ -88,27 +87,27 @@ TEST(MultiDeviceAdapter, UsesCorrectAllocator) {
                      /*memory_space=*/1, /*device_ordinal=*/0);
   infos.emplace_back(std::make_unique<TestAllocator>(0x4000), stream.get(),
                      /*memory_space=*/1, /*device_ordinal=*/1);
-  std::unique_ptr<DeviceMemoryAllocator> allocator =
+  std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(infos));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff0,
+      ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff1,
+      ScopedDeviceAddress<uint8_t> buff1,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff1->opaque()), 0x1002);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff2,
+      ScopedDeviceAddress<uint8_t> buff2,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff2->opaque()), 0x3001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff3,
+      ScopedDeviceAddress<uint8_t> buff3,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/0));
   CHECK_EQ(reinterpret_cast<size_t>(buff3->opaque()), 0x2001);
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff4,
+      ScopedDeviceAddress<uint8_t> buff4,
       allocator->Allocate(/*device_ordinal=*/1, 4, false, /*memory_space=*/1));
   CHECK_EQ(reinterpret_cast<size_t>(buff4->opaque()), 0x4001);
 }
@@ -127,27 +126,27 @@ TEST(MultiDeviceAdapter, DeallocationWithDifferentAllocator) {
       std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
       /*memory_space=*/0, /*device_ordinal=*/0);
 
-  std::unique_ptr<DeviceMemoryAllocator> allocator =
+  std::unique_ptr<DeviceAddressAllocator> allocator =
       std::make_unique<MultiDeviceAdapter>(platform, std::move(info_allocator));
 
   std::vector<MultiDeviceAdapter::AllocatorInfo> info_deallocator;
   info_deallocator.emplace_back(
       std::make_unique<TestAllocator>(0x1000, allocations), stream.get(),
       /*memory_space=*/0, /*device_ordinal=*/0);
-  std::unique_ptr<DeviceMemoryAllocator> deallocator =
+  std::unique_ptr<DeviceAddressAllocator> deallocator =
       std::make_unique<MultiDeviceAdapter>(platform,
                                            std::move(info_deallocator));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      OwningDeviceMemory buff0,
+      ScopedDeviceAddress<uint8_t> buff0,
       allocator->Allocate(/*device_ordinal=*/0, 4, false, /*memory_space=*/0));
   CHECK_EQ(allocations->size(), 1);
   CHECK_EQ(reinterpret_cast<size_t>(buff0->opaque()), 0x1001);
 
-  TF_CHECK_OK(deallocator->Deallocate(/*device_ordinal=*/0, buff0.cref()));
+  CHECK_OK(deallocator->Deallocate(/*device_ordinal=*/0, buff0.cref()));
   CHECK_EQ(allocations->size(), 0);
 
-  // Place back memory pointer to remove it during with ScopedDeviceMemory
+  // Place back memory pointer to remove it during with ScopedDeviceAddress
   // destruction.
   allocations->insert(buff0->opaque());
 }

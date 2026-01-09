@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -200,25 +199,6 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
 
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
-      ArrayCopySemantics semantics) {
-    return AssembleArrayFromSingleDeviceArrays(
-        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
-        semantics, SingleDeviceShardSemantics::kAddressableShards);
-  }
-
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
-      ArrayCopySemantics array_copy_semantics,
-      SingleDeviceShardSemantics single_device_shard_semantics) {
-    return AssembleArrayFromSingleDeviceArrays(
-        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
-        array_copy_semantics, single_device_shard_semantics);
-  }
-
   // Copies the arrays to a new set of devices.
   //
   // This method copies individual buffers of each array to the destination
@@ -359,11 +339,6 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const;
-
-  // Returns a UserContext that captures the current context information such as
-  // the stack trace. IFRT implementations that do not support UserContext will
-  // return a nullptr.
-  virtual tsl::RCReference<UserContext> CreateUserContext() = 0;
 
   static char ID;  // NOLINT
 };

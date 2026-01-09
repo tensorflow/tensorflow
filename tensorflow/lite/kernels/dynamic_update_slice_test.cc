@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -112,10 +113,9 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF16InPlaceInput) {
   DynamicUpdateSliceOpModel m({TensorType_FLOAT16, {3, 3}},
                               {TensorType_FLOAT16, {2, 1}},
                               {TensorType_INT32, {2}});
-  m.SetInput<Eigen::half>({Eigen::half(1), Eigen::half(2), Eigen::half(3),
-                           Eigen::half(4), Eigen::half(5), Eigen::half(6),
-                           Eigen::half(7), Eigen::half(8), Eigen::half(9)});
-  m.SetUpdate<Eigen::half>({Eigen::half(-1), Eigen::half(-2)});
+  m.SetInput<half>({half(1), half(2), half(3), half(4), half(5), half(6),
+                    half(7), half(8), half(9)});
+  m.SetUpdate<half>({half(-1), half(-2)});
   m.SetStartIndices<int32_t>({1, 1});
   const int kInplaceInputTensorIdx = 0;
   const int kInplaceOutputTensorIdx = 0;
@@ -123,11 +123,10 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestF16InPlaceInput) {
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<Eigen::half>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {Eigen::half(1), Eigen::half(2), Eigen::half(3),
-                   Eigen::half(4), Eigen::half(-1), Eigen::half(6),
-                   Eigen::half(7), Eigen::half(-2), Eigen::half(9)})));
+  EXPECT_THAT(m.GetOutput<half>(),
+              ElementsAreArray(
+                  ArrayFloatNear({half(1), half(2), half(3), half(4), half(-1),
+                                  half(6), half(7), half(-2), half(9)})));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 

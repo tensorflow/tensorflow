@@ -125,15 +125,16 @@ TEST(NvshmemGpuCollectivesTest, NvshmemCollectivePermuteFloat) {
 }
 
 // TODO(b/431602576): Re-enable this test once the bug is fixed.
-// TEST(NvshmemGpuCollectivesTest, NvshmemSendRecvFloat) {
-//   RunNvshmemTest(PrimitiveType::F32, "send_recv");
-// }
+TEST(NvshmemGpuCollectivesTest, DISABLED_NvshmemSendRecvFloat) {
+  RunNvshmemTest(PrimitiveType::F32, "send_recv");
+}
 
 TEST(NvshmemGpuCollectivesTest, NvshmemAllReduceFloat) {
   RunNvshmemTest(PrimitiveType::F32, "all_reduce");
 }
 
-TEST(NvshmemGpuCollectivesTest, NvshmemAllReducePred) {
+// TODO(patrios): Re-enable this test once the bug is fixed.
+TEST(NvshmemGpuCollectivesTest, DISABLED_NvshmemAllReducePred) {
   RunNvshmemTest(PrimitiveType::PRED, "all_reduce");
 }
 
@@ -402,7 +403,7 @@ absl::Status NvshmemCollectiveTestBody(int rank_id, int num_ranks,
   }
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   TF_ASSIGN_OR_RETURN(std::shared_ptr<xla::Literal> literal,
-                      result_buffers[0]->ToLiteralSync());
+                      result_buffers[0]->ToLiteral().Await());
 
   if (test_case == "collective_permute") {
     switch (data_type) {

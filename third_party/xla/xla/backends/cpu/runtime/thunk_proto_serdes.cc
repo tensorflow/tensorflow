@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -60,10 +61,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
-#include "xla/backends/cpu/xnn_fusion_options.pb.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
+#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/backends/cpu/ynn_emitter.h"
 #include "xla/backends/cpu/ynn_fusion_options.pb.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -74,17 +74,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
-
-#ifdef XLA_YNNPACK
-#include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
-#include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
-#include "xla/backends/cpu/ynn_emitter.h"
-#endif  // XLA_YNNPACK
 
 namespace xla::cpu {
 
@@ -124,20 +118,6 @@ ProtoCollectiveThunkToCollectiveThunkKind(const CollectiveThunkProto& proto) {
   }
 }
 
-static absl::StatusOr<XnnFusionThunk::XnnFusionKind>
-ProtoXnnFusionThunkToXnnFusionThunkKind(const XnnFusionThunkProto& proto) {
-  switch (proto.impl_case()) {
-    case XnnFusionThunkProto::ImplCase::kXnnFusionThunk:
-      return XnnFusionThunk::XnnFusionKind::kFusion;
-    case XnnFusionThunkProto::ImplCase::kXnnDotThunk:
-      return XnnFusionThunk::XnnFusionKind::kDot;
-    case XnnFusionThunkProto::ImplCase::kXnnConvolutionThunk:
-      return XnnFusionThunk::XnnFusionKind::kConvolution;
-    case XnnFusionThunkProto::ImplCase::IMPL_NOT_SET:
-      return Internal("XNN fusion thunk kind not set.");
-  }
-}
-
 static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
     const ThunkProto& proto) {
   switch (proto.impl_case()) {
@@ -172,7 +152,7 @@ static absl::StatusOr<Thunk::Kind> ProtoThunkToThunkKind(
     case ThunkProto::ImplCase::kWhileThunk:
       return Thunk::Kind::kWhile;
     case ThunkProto::ImplCase::kXnnFusionThunk:
-      return Thunk::Kind::kXnnFusion;
+      return Internal("Thunk kind kXnnFusionThunk is deprecated.");
     case ThunkProto::ImplCase::kPartitionIdThunk:
       return Thunk::Kind::kPartitionId;
     case ThunkProto::ImplCase::kReplicaIdThunk:
@@ -408,10 +388,7 @@ static absl::Status ToProto(const AllGatherThunk& thunk,
 
 static absl::Status ToProto(const AllReduceThunk& thunk,
                             AllReduceThunkProto& proto) {
-  absl::string_view reduction_kind_as_string_view =
-      ReductionKindToString(thunk.reduction_kind());
-  std::string reduction_kind_as_string(reduction_kind_as_string_view.begin(),
-                                       reduction_kind_as_string_view.end());
+  std::string reduction_kind_as_string = absl::StrCat(thunk.reduction_kind());
   proto.set_reduction_kind(reduction_kind_as_string);
   proto.set_single_replica(thunk.single_replica());
   return absl::OkStatus();
@@ -425,10 +402,7 @@ static absl::Status ToProto(const AllToAllThunk& thunk,
 
 static absl::Status ToProto(const ReduceScatterThunk& thunk,
                             ReduceScatterThunkProto& proto) {
-  absl::string_view reduction_kind_as_string_view =
-      ReductionKindToString(thunk.reduction_kind());
-  std::string reduction_kind_as_string(reduction_kind_as_string_view.begin(),
-                                       reduction_kind_as_string_view.end());
+  std::string reduction_kind_as_string = absl::StrCat(thunk.reduction_kind());
   proto.set_reduction_kind(reduction_kind_as_string);
   return absl::OkStatus();
 }
@@ -739,7 +713,6 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
-#ifdef XLA_YNNPACK
 static absl::Status ToProto(const YnnFusionThunk& thunk, ThunkProto& proto) {
   YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
   ynn_fusion_proto->mutable_options()->set_use_threadpool(
@@ -756,67 +729,6 @@ static absl::Status ToProto(const YnnFusionThunk& thunk, ThunkProto& proto) {
     TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
         result.slice, result.shape, ynn_fusion_proto->add_results_shapes()));
   }
-
-  return absl::OkStatus();
-}
-#endif  // XLA_YNNPACK
-
-static absl::Status ToProto(const XnnFusionThunk& thunk, ThunkProto& proto) {
-  // TODO(basioli) XnnFusionThunk is not serializable because it contains
-  // a builder function that is not serializable.
-  // This would require a serialization of the XNNPACK subgraph.
-  return absl::UnimplementedError("XnnFusionThunk is not serializable.");
-}
-
-static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
-  XnnDotThunkProto* xnn_dot_thunk_proto =
-      proto.mutable_xnn_fusion_thunk()->mutable_xnn_dot_thunk();
-  *xnn_dot_thunk_proto->mutable_dot_dimensions() = thunk.dot_dimensions();
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.dot_slices().lhs_buffer, thunk.dot_slices().lhs_shape,
-      xnn_dot_thunk_proto->mutable_lhs_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.dot_slices().rhs_buffer, thunk.dot_slices().rhs_shape,
-      xnn_dot_thunk_proto->mutable_rhs_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.dot_slices().out_buffer, thunk.dot_slices().out_shape,
-      xnn_dot_thunk_proto->mutable_out_buffer_shape()));
-  proto.mutable_xnn_fusion_thunk()->mutable_options()->set_use_threadpool(
-      thunk.options().use_threadpool);
-  xnn_dot_thunk_proto->set_capture_rhs(thunk.capture_rhs());
-  return absl::OkStatus();
-}
-
-static absl::Status ToProto(const XnnConvolutionThunk& thunk,
-                            ThunkProto& proto) {
-  XnnConvolutionThunkProto* convolution_thunk_proto =
-      proto.mutable_xnn_fusion_thunk()->mutable_xnn_convolution_thunk();
-
-  const std::string dnums_as_str = thunk.dnums().SerializeAsString();
-  convolution_thunk_proto->mutable_dimension_numbers()->ParseFromString(
-      dnums_as_str);
-
-  const std::string window_as_str = thunk.window().SerializeAsString();
-  convolution_thunk_proto->mutable_window()->ParseFromString(window_as_str);
-
-  convolution_thunk_proto->set_feature_group_count(thunk.feature_group_count());
-
-  const ConvolutionSlices& convolution_slices = thunk.convolution_slices();
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.input_buffer, convolution_slices.input_shape,
-      convolution_thunk_proto->mutable_input_buffer_shape()));
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.output_buffer, convolution_slices.output_shape,
-      convolution_thunk_proto->mutable_output_buffer_shape()));
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      convolution_slices.kernel_buffer, convolution_slices.kernel_shape,
-      convolution_thunk_proto->mutable_kernel_buffer_shape()));
-
-  proto.mutable_xnn_fusion_thunk()->mutable_options()->set_use_threadpool(
-      thunk.options().use_threadpool);
 
   return absl::OkStatus();
 }
@@ -988,25 +900,6 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
       TF_RETURN_IF_ERROR(
           ::xla::cpu::ToProto(tsl::down_cast<const WhileThunk&>(thunk), proto));
       break;
-    case Thunk::Kind::kXnnFusion: {
-      const XnnFusionThunk& xnn_fusion_thunk =
-          tsl::down_cast<const XnnFusionThunk&>(thunk);
-      switch (xnn_fusion_thunk.xnn_fusion_kind()) {
-        case XnnFusionThunk::XnnFusionKind::kFusion:
-          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-              tsl::down_cast<const XnnFusionThunk&>(thunk), proto));
-          break;
-        case XnnFusionThunk::XnnFusionKind::kDot:
-          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-              tsl::down_cast<const XnnDotThunk&>(thunk), proto));
-          break;
-        case XnnFusionThunk::XnnFusionKind::kConvolution:
-          TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-              tsl::down_cast<const XnnConvolutionThunk&>(thunk), proto));
-          break;
-      }
-      break;
-    }
     case Thunk::Kind::kPartitionId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           static_cast<const PartitionIdThunk&>(
@@ -1021,12 +914,10 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
                   internal::LogicalIdKind::kReplicaId>&>(thunk)),
           proto));
       break;
-#ifdef XLA_YNNPACK
     case Thunk::Kind::kYnnFusion:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           tsl::down_cast<const YnnFusionThunk&>(thunk), proto));
       break;
-#endif  // XLA_YNNPACK
     default:
       return absl::UnimplementedError(
           absl::StrFormat("ToProto is not implemented for thunk kind: %s",
@@ -1064,7 +955,7 @@ static absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunkFromProto(
   const auto& [op_params, op_buffers, op_resources] = collective_thunk_params;
   TF_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
-      StringToReductionKind(
+      ParseReductionKind(
           proto.collective_thunk().all_reduce_thunk().reduction_kind()));
 
   return AllReduceThunk::Create(
@@ -1126,7 +1017,7 @@ ReduceScatterThunkFromProto(
 
   TF_ASSIGN_OR_RETURN(
       ReductionKind reduction_kind,
-      StringToReductionKind(
+      ParseReductionKind(
           proto.collective_thunk().reduce_scatter_thunk().reduction_kind()));
   return ReduceScatterThunk::Create(info, reduction_kind, op_params, op_buffers,
                                     op_resources);
@@ -1557,7 +1448,6 @@ static absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunkFromProto(
                             std::move(*body_sequence), trip_count);
 }
 
-#ifdef XLA_YNNPACK
 static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
     const ThunkProto& proto, const HloModule* hlo_module,
     const std::vector<BufferAllocation>& buffer_allocations) {
@@ -1605,7 +1495,7 @@ static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
   }
 
   absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>
+      absl::Span<const se::DeviceAddressBase> arguments_buffers)>
       builder;
   absl::Span<const int64_t> captured_arguments_ids;
   if (hlo->opcode() == HloOpcode::kDot) {
@@ -1634,94 +1524,6 @@ static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
         return b(arg_buffers);
       },
       captured_arguments_ids);
-}
-#endif  // XLA_YNNPACK
-
-static absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  return absl::UnimplementedError("XnnFusionThunkFromProto is not implemented");
-}
-
-static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  XnnDotThunk::Options options = {
-      proto.xnn_fusion_thunk().options().use_threadpool(),
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      auto lhs_slice_shape,
-      DeserializeSliceShapeFromProto(
-          proto.xnn_fusion_thunk().xnn_dot_thunk().lhs_buffer_shape(),
-          buffer_allocations));
-
-  TF_ASSIGN_OR_RETURN(
-      auto rhs_slice_shape,
-      DeserializeSliceShapeFromProto(
-          proto.xnn_fusion_thunk().xnn_dot_thunk().rhs_buffer_shape(),
-          buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto out_slice_shape,
-      DeserializeSliceShapeFromProto(
-          proto.xnn_fusion_thunk().xnn_dot_thunk().out_buffer_shape(),
-          buffer_allocations));
-
-  const auto& [lhs_buffer, lhs_shape] = lhs_slice_shape;
-  const auto& [rhs_buffer, rhs_shape] = rhs_slice_shape;
-  const auto& [out_buffer, out_shape] = out_slice_shape;
-
-  bool capture_rhs = proto.xnn_fusion_thunk().xnn_dot_thunk().capture_rhs();
-
-  return XnnDotThunk::Create(
-      std::move(options), std::move(info),
-      proto.xnn_fusion_thunk().xnn_dot_thunk().dot_dimensions(), lhs_buffer,
-      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape, capture_rhs);
-}
-
-static absl::StatusOr<std::unique_ptr<XnnConvolutionThunk>>
-XnnConvolutionThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  XnnConvolutionThunk::Options options = {
-      proto.xnn_fusion_thunk().options().use_threadpool(),
-  };
-
-  const auto& conv_proto = proto.xnn_fusion_thunk().xnn_convolution_thunk();
-
-  // Dimension numbers.
-  ConvolutionDimensionNumbers dnums = conv_proto.dimension_numbers();
-
-  // Window.
-  Window window = conv_proto.window();
-
-  // Feature group count.
-  int64_t feature_group_count = conv_proto.feature_group_count();
-
-  TF_ASSIGN_OR_RETURN(auto input_slice_shape,
-                      DeserializeSliceShapeFromProto(
-                          conv_proto.input_buffer_shape(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_slice_shape,
-      DeserializeSliceShapeFromProto(conv_proto.kernel_buffer_shape(),
-                                     buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto output_slice_shape,
-      DeserializeSliceShapeFromProto(conv_proto.output_buffer_shape(),
-                                     buffer_allocations));
-
-  const auto& [input_buffer, input_shape] = input_slice_shape;
-  const auto& [kernel_buffer, kernel_shape] = kernel_slice_shape;
-  const auto& [output_buffer, output_shape] = output_slice_shape;
-
-  return XnnConvolutionThunk::Create(
-      std::move(options), std::move(info), std::move(input_buffer), input_shape,
-      std::move(kernel_buffer), kernel_shape, std::move(output_buffer),
-      output_shape, dnums, window, feature_group_count);
 }
 
 static absl::StatusOr<std::unique_ptr<Thunk>> PartitionIdThunkFromProto(
@@ -1818,27 +1620,12 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return TopKThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kWhile:
       return WhileThunkFromProto(proto, hlo_module_, buffer_allocations_);
-    case Thunk::Kind::kXnnFusion: {
-      TF_ASSIGN_OR_RETURN(
-          auto xnn_fusion_kind,
-          ProtoXnnFusionThunkToXnnFusionThunkKind(proto.xnn_fusion_thunk()));
-      switch (xnn_fusion_kind) {
-        case XnnFusionThunk::XnnFusionKind::kFusion:
-          return XnnFusionThunkFromProto(proto, *buffer_allocations_);
-        case XnnFusionThunk::XnnFusionKind::kDot:
-          return XnnDotThunkFromProto(proto, *buffer_allocations_);
-        case XnnFusionThunk::XnnFusionKind::kConvolution:
-          return XnnConvolutionThunkFromProto(proto, *buffer_allocations_);
-      }
-    }
     case Thunk::Kind::kPartitionId:
       return PartitionIdThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kReplicaId:
       return ReplicaIdThunkFromProto(proto, *buffer_allocations_);
-#ifdef XLA_YNNPACK
     case Thunk::Kind::kYnnFusion:
       return YnnFusionThunkFromProto(proto, hlo_module_, *buffer_allocations_);
-#endif  // XLA_YNNPACK
     default:
       return absl::Status(absl::StatusCode::kInvalidArgument,
                           absl::StrFormat("Unsupported thunk kind: %s",

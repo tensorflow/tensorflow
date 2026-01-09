@@ -253,7 +253,8 @@ TEST(LowerWhileOpTest, ForwardAssignedInputDevice) {
   TF_CHECK_OK(NodeBuilder("placed_node", "Placeholder")
                   .Attr("dtype", type)
                   .Finalize(graph.get(), &placeholder));
-  const string assigned_device_name = "/job:localhost/replica:0/task:0/gpu:0";
+  const std::string assigned_device_name =
+      "/job:localhost/replica:0/task:0/gpu:0";
   placeholder->set_assigned_device_name(assigned_device_name);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(placeholder)});
@@ -343,11 +344,11 @@ TEST(LowerWhileOpTest, ForwardRequestedInputDevice) {
   TF_ASSERT_OK(graph->AddFunctionLibrary(f_lib_proto));
   auto type = DT_FLOAT;
   // We will place the loop var on the gpu:0.
-  const string gpu_0_device = "/job:localhost/replica:0/task:0/gpu:0";
+  const std::string gpu_0_device = "/job:localhost/replica:0/task:0/gpu:0";
   // We will place loop's control input on the gpu:1.
-  const string gpu_1_device = "/job:localhost/replica:0/task:0/gpu:1";
+  const std::string gpu_1_device = "/job:localhost/replica:0/task:0/gpu:1";
   // We will place While op on gpu:2.
-  const string gpu_2_device = "/job:localhost/replica:0/task:0/gpu:2";
+  const std::string gpu_2_device = "/job:localhost/replica:0/task:0/gpu:2";
   Node* gpu_0_ph;
   TF_CHECK_OK(NodeBuilder("placed_node", "Placeholder")
                   .Attr("dtype", type)
@@ -483,11 +484,11 @@ TEST(LowerWhileOpTest, ForwardColocationKeyAttribute) {
   TF_ASSERT_OK(graph->AddFunctionLibrary(f_lib_proto));
   auto type = DT_FLOAT;
   // We will place the loop var on the gpu:0.
-  const string gpu_0_device = "/job:localhost/replica:0/task:0/gpu:0";
+  const std::string gpu_0_device = "/job:localhost/replica:0/task:0/gpu:0";
   // We will place loop's control input on the gpu:1.
-  const string gpu_1_device = "/job:localhost/replica:0/task:0/gpu:1";
+  const std::string gpu_1_device = "/job:localhost/replica:0/task:0/gpu:1";
   // We will place While op on gpu:2.
-  const string gpu_2_device = "/job:localhost/replica:0/task:0/gpu:2";
+  const std::string gpu_2_device = "/job:localhost/replica:0/task:0/gpu:2";
   Node* gpu_0_ph;
   AttrValue gpu_0_colocation_attr;
   gpu_0_colocation_attr.mutable_list()->add_s("loc@:some_op_on_gpu_0_device");

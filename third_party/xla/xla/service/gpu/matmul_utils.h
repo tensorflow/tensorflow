@@ -32,9 +32,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -145,8 +146,9 @@ struct GemmConfig : public se::gpu::GemmConfig {
     bool operands_swapped;
   };
   absl::StatusOr<DescriptorsTuple> GetMatrixDescriptors(
-      se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
-      se::DeviceMemoryBase out_buf) const;
+      se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
+      se::DeviceAddressBase out_buf,
+      const se::GpuComputeCapability& gpu_version) const;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration
@@ -154,9 +156,9 @@ struct GemmConfig : public se::gpu::GemmConfig {
 //
 // If `algorithm` is provided, it overrides the one specified in `config`.
 absl::Status RunGemm(
-    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase workspace_buffer, bool deterministic_ops,
+    const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
+    se::DeviceAddressBase rhs_buffer, se::DeviceAddressBase output_buffer,
+    se::DeviceAddressBase workspace_buffer, bool deterministic_ops,
     se::Stream* stream,
     std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
     se::blas::ProfileResult* profile_result = nullptr);
@@ -190,6 +192,7 @@ struct TritonGemmConfig {
         num_ctas(num_ctas),
         is_tma_allowed(is_tma_allowed),
         is_warp_specialization_allowed(is_warp_specialization_allowed) {}
+  // LINT.IfChange
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -202,6 +205,7 @@ struct TritonGemmConfig {
   bool is_tma_allowed = false;
   // Allow/disallow automatic warp specialization.
   bool is_warp_specialization_allowed = false;
+  // LINT.ThenChange(//tensorflow/compiler/xla/autotuning.proto)
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.

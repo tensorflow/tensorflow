@@ -1,2071 +1,857 @@
+diff --git a/docs/sdy_dialect.md b/docs/sdy_dialect.md
+index ad4deef..0c63197 100755
+--- a/docs/sdy_dialect.md
++++ b/docs/sdy_dialect.md
+@@ -769,17 +769,17 @@ Syntax:
+ operation ::= `sdy.reshard` $input $sharding attr-dict `:` type($result)
+ ```
+ 
+-Reshards the input tensor with the specified sharding, which is different
+-from the input tensor's existing sharding.
+-
+-Both ShardingConstraintOp and ReshardOp attach a sharding to a tensor. Their
+-lifespan is:
+-1. Before sharding propagation, ShardingConstraintOp is added by users.
+-2. Sharding propagation consumes ShardingConstraintOp. There is no
+-   ShardingConstraintOp in the results of sharding propagation. Instead,
+-   ReshardOp may be added if needed.
+-3. A partitioner converts a ReshardOp into a collective op (or an identity
+-   op). There should be no ReshardOp in the results of the partitioner.
++  Reshards the input tensor with the specified sharding, which is different
++  from the input tensor's existing sharding.
++
++  Both ShardingConstraintOp and ReshardOp attach a sharding to a tensor. Their
++  lifespan is:
++  1. Before sharding propagation, ShardingConstraintOp is added by users.
++  2. Sharding propagation consumes ShardingConstraintOp. There is no
++     ShardingConstraintOp in the results of sharding propagation. Instead,
++     ReshardOp may be added if needed.
++  3. A partitioner converts a ReshardOp into a collective op (or an identity
++     op). There should be no ReshardOp in the results of the partitioner.
+ 
+ Traits: `AlwaysSpeculatableImplTrait`, `SameOperandsAndResultType`
+ 
+diff --git a/shardy/dialect/sdy/ir/BUILD b/shardy/dialect/sdy/ir/BUILD
+index d42c5dc..ce57a60 100644
+--- a/shardy/dialect/sdy/ir/BUILD
++++ b/shardy/dialect/sdy/ir/BUILD
+@@ -26,7 +26,6 @@ td_library(
+         "@llvm-project//mlir:BuiltinDialectBytecodeTdFiles",
+         "@llvm-project//mlir:BuiltinDialectTdFiles",
+         "@llvm-project//mlir:BytecodeOpInterfaceTdFiles",
+-        "@llvm-project//mlir:ControlFlowInterfacesTdFiles",
+         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
+         "@llvm-project//mlir:OpBaseTdFiles",
+         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+@@ -167,7 +166,6 @@ cc_library(
+         "//shardy/common:logging",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:BytecodeOpInterface",
+-        "@llvm-project//mlir:ControlFlowInterfaces",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:InferTypeOpInterface",
+diff --git a/shardy/dialect/sdy/ir/dialect.h b/shardy/dialect/sdy/ir/dialect.h
+index d4a7a76..280c2e7 100644
+--- a/shardy/dialect/sdy/ir/dialect.h
++++ b/shardy/dialect/sdy/ir/dialect.h
+@@ -41,7 +41,6 @@ limitations under the License.
+ #include "mlir/IR/Types.h"
+ #include "mlir/IR/ValueRange.h"
+ #include "mlir/Interfaces/CallInterfaces.h"
+-#include "mlir/Interfaces/ControlFlowInterfaces.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
+diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
+index bf3283f..613e203 100644
+--- a/shardy/dialect/sdy/ir/ops.td
++++ b/shardy/dialect/sdy/ir/ops.td
+@@ -16,11 +16,11 @@ limitations under the License.
+ #ifndef SDY_OPS
+ #define SDY_OPS
+ 
++include "mlir/Interfaces/SideEffectInterfaces.td"
+ include "mlir/IR/AttrTypeBase.td"
+ include "mlir/IR/BuiltinAttributeInterfaces.td"
+ include "mlir/IR/OpBase.td"
+ include "mlir/IR/SymbolInterfaces.td"
+-include "mlir/Interfaces/ControlFlowInterfaces.td"
+ include "mlir/Interfaces/InferTypeOpInterface.td"
+ include "mlir/Interfaces/SideEffectInterfaces.td"
+ include "shardy/dialect/sdy/ir/attrs.td"
+@@ -106,7 +106,7 @@ def Sdy_ReshardOp : Sdy_Op<"reshard",
+   let hasCanonicalizer = 1;
+ }
+ 
+-def Sdy_ReturnOp : Sdy_Op<"return", [Pure, ReturnLike, Terminator]> {
++def Sdy_ReturnOp : Sdy_Op<"return", [Pure, Terminator]> {
+   let summary = [{
+     The `sdy.return` operation terminates the regions attached to
+     `sdy` region-based ops and any other Shardy region-based ops. It is
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 927ab50..2eff859 100644
+index 509398d..e53a142 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,4 +1,13 @@
+@@ -1 +1,746 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/test/OpenMP/parallel_default_variableCategory_codegen.cpp b/clang/test/OpenMP/parallel_default_variableCategory_codegen.cpp
-+--- a/clang/test/OpenMP/parallel_default_variableCategory_codegen.cpp
-++++ b/clang/test/OpenMP/parallel_default_variableCategory_codegen.cpp
-+@@ -1,4 +1,4 @@
-+-// RUN: %clangxx -Xclang -verify -Wno-vla -fopenmp -fopenmp-version=60 -x c++ -S -emit-llvm %s -o - | FileCheck %s
-++// RUN: %clang_cc1 -verify -fopenmp -fopenmp-version=60 -x c++ -emit-llvm %s -o - | FileCheck %s
-+ // expected-no-diagnostics
-+ #ifndef HEADER
-+ #define HEADER
- diff -ruN --strip-trailing-cr a/libcxx/docs/ReleaseNotes/22.rst b/libcxx/docs/ReleaseNotes/22.rst
- --- a/libcxx/docs/ReleaseNotes/22.rst
- +++ b/libcxx/docs/ReleaseNotes/22.rst
-@@ -42,18 +51,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
-  private:
-    char* __extbuf_;
-    const char* __extbufnext_;
--diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
----- a/libcxx/include/__hash_table
--+++ b/libcxx/include/__hash_table
--@@ -1910,6 +1910,8 @@
--         __bucket_list_[__next_chash] = __before_first;
--         __chash                      = __next_chash;
--       }
--+    } else { // When __next is a nullptr we've fully erased the last bucket. Update the bucket list accordingly.
--+      __bucket_list_[__chash] = nullptr;
--     }
--   }
-- 
- diff -ruN --strip-trailing-cr a/libcxx/test/benchmarks/streams/fstream.bench.cpp b/libcxx/test/benchmarks/streams/fstream.bench.cpp
- --- a/libcxx/test/benchmarks/streams/fstream.bench.cpp
- +++ b/libcxx/test/benchmarks/streams/fstream.bench.cpp
-@@ -151,1860 +148,168 @@ diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/input.output/file.streams/fst
-  
-  // FIXME: As of commit r324062 Clang incorrectly generates a diagnostic about mismatching
-  // exception specifications for types which are already invalid for one reason or another.
--diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
----- a/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
--+++ b/libcxx/test/std/containers/unord/unord.map/unord.map.modifiers/erase_range.pass.cpp
--@@ -57,6 +57,28 @@
--     assert(c.size() == 0);
--     assert(k == c.end());
--   }
--+  { // Make sure that we're properly updating the bucket list when we're erasing to the end
--+    std::unordered_map<int, int> m;
--+    m.insert(std::make_pair(1, 1));
--+    m.insert(std::make_pair(2, 2));
--+
--+    {
--+      auto pair = m.equal_range(1);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    {
--+      auto pair = m.equal_range(2);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    m.insert(std::make_pair(3, 3));
--+    assert(m.size() == 1);
--+    assert(*m.begin() == std::make_pair(3, 3));
--+    assert(++m.begin() == m.end());
--+  }
-- #if TEST_STD_VER >= 11
--   {
--     typedef std::unordered_map<int,
--diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
----- a/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
--+++ b/libcxx/test/std/containers/unord/unord.multimap/unord.multimap.modifiers/erase_range.pass.cpp
--@@ -122,6 +122,28 @@
--     for (const auto& v : map)
--       assert(v.first == 1 || v.first == collision_val);
--   }
--+  { // Make sure that we're properly updating the bucket list when we're erasing to the end
--+    std::unordered_multimap<int, int> m;
--+    m.insert(std::make_pair(1, 1));
--+    m.insert(std::make_pair(2, 2));
--+
--+    {
--+      auto pair = m.equal_range(1);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    {
--+      auto pair = m.equal_range(2);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    m.insert(std::make_pair(3, 3));
--+    assert(m.size() == 1);
--+    assert(*m.begin() == std::make_pair(3, 3));
--+    assert(++m.begin() == m.end());
--+  }
-- #if TEST_STD_VER >= 11
--   {
--     typedef std::unordered_multimap<int,
--diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
----- a/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
--+++ b/libcxx/test/std/containers/unord/unord.multiset/erase_range.pass.cpp
--@@ -64,6 +64,28 @@
--     for (const auto& v : map)
--       assert(v == 1 || v == collision_val);
--   }
--+  { // Make sure that we're properly updating the bucket list when we're erasing to the end
--+    std::unordered_multiset<int> m;
--+    m.insert(1);
--+    m.insert(2);
--+
--+    {
--+      auto pair = m.equal_range(1);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    {
--+      auto pair = m.equal_range(2);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    m.insert(3);
--+    assert(m.size() == 1);
--+    assert(*m.begin() == 3);
--+    assert(++m.begin() == m.end());
--+  }
-- #if TEST_STD_VER >= 11
--   {
--     typedef std::unordered_multiset<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
--diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp b/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
----- a/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
--+++ b/libcxx/test/std/containers/unord/unord.set/erase_range.pass.cpp
--@@ -47,6 +47,28 @@
--     assert(c.size() == 0);
--     assert(k == c.end());
--   }
--+  { // Make sure that we're properly updating the bucket list when we're erasing to the end
--+    std::unordered_set<int> m;
--+    m.insert(1);
--+    m.insert(2);
--+
--+    {
--+      auto pair = m.equal_range(1);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
--+
--+    {
--+      auto pair = m.equal_range(2);
--+      assert(pair.first != pair.second);
--+      m.erase(pair.first, pair.second);
--+    }
-+diff -ruN --strip-trailing-cr a/lldb/unittests/Editline/EditlineTest.cpp b/lldb/unittests/Editline/EditlineTest.cpp
-+--- a/lldb/unittests/Editline/EditlineTest.cpp
-++++ b/lldb/unittests/Editline/EditlineTest.cpp
-+@@ -9,6 +9,8 @@
-+ #include "lldb/Host/Config.h"
-+ #include "lldb/Host/File.h"
-+ #include "lldb/Host/HostInfo.h"
-++#include "lldb/lldb-forward.h"
-++#include "llvm/Testing/Support/Error.h"
++diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
++--- a/clang/lib/Serialization/ASTReader.cpp
+++++ b/clang/lib/Serialization/ASTReader.cpp
++@@ -555,25 +555,7 @@
 + 
-+ #if LLDB_ENABLE_LIBEDIT
-+ 
-+@@ -25,7 +27,6 @@
-+ #include "TestingSupport/SubsystemRAII.h"
-+ #include "lldb/Host/Editline.h"
-+ #include "lldb/Host/FileSystem.h"
-+-#include "lldb/Host/Pipe.h"
-+ #include "lldb/Host/PseudoTerminal.h"
-+ #include "lldb/Host/StreamFile.h"
-+ #include "lldb/Utility/Status.h"
-+@@ -37,27 +38,6 @@
-+ const size_t TIMEOUT_MILLIS = 5000;
-+ }
-+ 
-+-class FilePointer {
++ using MacroDefinitionsMap =
++     llvm::StringMap<std::pair<StringRef, bool /*IsUndef*/>>;
++-
++-class DeclsSet {
++-  SmallVector<NamedDecl *, 64> Decls;
++-  llvm::SmallPtrSet<NamedDecl *, 8> Found;
++-
 +-public:
-+-  FilePointer() = delete;
++-  operator ArrayRef<NamedDecl *>() const { return Decls; }
 +-
-+-  FilePointer(const FilePointer &) = delete;
++-  bool empty() const { return Decls.empty(); }
 +-
-+-  FilePointer(FILE *file_p) : _file_p(file_p) {}
-+-
-+-  ~FilePointer() {
-+-    if (_file_p != nullptr) {
-+-      const int close_result = fclose(_file_p);
-+-      EXPECT_EQ(0, close_result);
-+-    }
++-  bool insert(NamedDecl *ND) {
++-    auto [_, Inserted] = Found.insert(ND);
++-    if (Inserted)
++-      Decls.push_back(ND);
++-    return Inserted;
 +-  }
-+-
-+-  operator FILE *() { return _file_p; }
-+-
-+-private:
-+-  FILE *_file_p;
 +-};
 +-
-+ /**
-+  Wraps an Editline class, providing a simple way to feed
-+  input (as if from the keyboard) and receive output from Editline.
-+@@ -90,44 +70,39 @@
-+   std::recursive_mutex output_mutex;
-+   std::unique_ptr<lldb_private::Editline> _editline_sp;
++-using DeclsMap = llvm::DenseMap<DeclarationName, DeclsSet>;
+++using DeclsMap = llvm::DenseMap<DeclarationName, SmallVector<NamedDecl *, 8>>;
 + 
-+-  PseudoTerminal _pty;
-+-  int _pty_primary_fd = -1;
-+-  int _pty_secondary_fd = -1;
-+-
-+-  std::unique_ptr<FilePointer> _el_secondary_file;
-++  lldb::FileSP _el_primary_file;
-++  lldb::FileSP _el_secondary_file;
-+ };
++ } // namespace
 + 
-+-EditlineAdapter::EditlineAdapter()
-+-    : _editline_sp(), _pty(), _el_secondary_file() {
-++EditlineAdapter::EditlineAdapter() : _editline_sp(), _el_secondary_file() {
-+   lldb_private::Status error;
-++  PseudoTerminal pty;
-+ 
-+   // Open the first primary pty available.
-+-  EXPECT_THAT_ERROR(_pty.OpenFirstAvailablePrimary(O_RDWR), llvm::Succeeded());
-++  EXPECT_THAT_ERROR(pty.OpenFirstAvailablePrimary(O_RDWR), llvm::Succeeded());
-++  // Open the corresponding secondary pty.
-++  EXPECT_THAT_ERROR(pty.OpenSecondary(O_RDWR), llvm::Succeeded());
-+ 
-+   // Grab the primary fd.  This is a file descriptor we will:
-+   // (1) write to when we want to send input to editline.
-+   // (2) read from when we want to see what editline sends back.
-+-  _pty_primary_fd = _pty.GetPrimaryFileDescriptor();
-+-
-+-  // Open the corresponding secondary pty.
-+-  EXPECT_THAT_ERROR(_pty.OpenSecondary(O_RDWR), llvm::Succeeded());
-+-  _pty_secondary_fd = _pty.GetSecondaryFileDescriptor();
-+-
-+-  _el_secondary_file.reset(new FilePointer(fdopen(_pty_secondary_fd, "rw")));
-+-  EXPECT_FALSE(nullptr == *_el_secondary_file);
-+-  if (*_el_secondary_file == nullptr)
-+-    return;
-++  _el_primary_file.reset(
-++      new NativeFile(pty.ReleasePrimaryFileDescriptor(),
-++                     lldb_private::NativeFile::eOpenOptionReadWrite, true));
- +
--+    m.insert(3);
--+    assert(m.size() == 1);
--+    assert(*m.begin() == 3);
--+    assert(++m.begin() == m.end());
--+  }
-- #if TEST_STD_VER >= 11
--   {
--     typedef std::unordered_set<int, std::hash<int>, std::equal_to<int>, min_allocator<int>> C;
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--@@ -1103,6 +1103,7 @@
--         ":func_realloc",
--         ":hdr_stdio_macros",
--         ":hdr_stdio_overlay",
--+        ":string_memory_utils",
--         ":types_off_t",
--     ],
-- )
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
--@@ -2193,92 +2193,253 @@
--     {
--         "name": "AArch64",
--         "short_name": "AArch64",
---        "tbl_outs": {
---            "lib/Target/AArch64/AArch64GenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/AArch64/AArch64GenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/AArch64/AArch64GenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/AArch64/AArch64GenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/AArch64/AArch64GenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/AArch64/AArch64GenAsmWriter1.inc": [
---                "-gen-asm-writer",
---                "-asmwriternum=1",
---            ],
---            "lib/Target/AArch64/AArch64GenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/AArch64/AArch64GenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/AArch64/AArch64GenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/AArch64/AArch64GenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=AArch64O0PreLegalizerCombiner",
---            ],
---            "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=AArch64PreLegalizerCombiner",
---            ],
---            "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=AArch64PostLegalizerCombiner",
---            ],
---            "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=AArch64PostLegalizerLowering",
---            ],
---            "lib/Target/AArch64/AArch64GenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/AArch64/AArch64GenSDNodeInfo.inc": ["-gen-sd-node-info"],
---            "lib/Target/AArch64/AArch64GenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/AArch64/AArch64GenDisassemblerTables.inc": [
---                "-gen-disassembler",
---            ],
---            "lib/Target/AArch64/AArch64GenSystemOperands.inc": ["-gen-searchable-tables"],
---            "lib/Target/AArch64/AArch64GenExegesis.inc": ["-gen-exegesis"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/AArch64/AArch64GenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/AArch64/AArch64GenRegisterInfo.inc",
--+                    "lib/Target/AArch64/AArch64GenRegisterInfoEnums.inc",
--+                    "lib/Target/AArch64/AArch64GenRegisterInfoMCDesc.inc",
--+                    "lib/Target/AArch64/AArch64GenRegisterInfoHeader.inc",
--+                    "lib/Target/AArch64/AArch64GenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/AArch64/AArch64GenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/AArch64/AArch64GenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/AArch64/AArch64GenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/AArch64/AArch64GenAsmWriter.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-asm-writer",
--+                    "-asmwriternum=1",
--+                ],
--+                "lib/Target/AArch64/AArch64GenAsmWriter1.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/AArch64/AArch64GenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/AArch64/AArch64GenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/AArch64/AArch64GenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/AArch64/AArch64GenGlobalISel.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=AArch64O0PreLegalizerCombiner",
--+                ],
--+                "lib/Target/AArch64/AArch64GenO0PreLegalizeGICombiner.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=AArch64PreLegalizerCombiner",
--+                ],
--+                "lib/Target/AArch64/AArch64GenPreLegalizeGICombiner.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=AArch64PostLegalizerCombiner",
--+                ],
--+                "lib/Target/AArch64/AArch64GenPostLegalizeGICombiner.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=AArch64PostLegalizerLowering",
--+                ],
--+                "lib/Target/AArch64/AArch64GenPostLegalizeGILowering.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/AArch64/AArch64GenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/AArch64/AArch64GenSDNodeInfo.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/AArch64/AArch64GenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/AArch64/AArch64GenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/AArch64/AArch64GenSystemOperands.inc",
--+            ),
--+            (
--+                ["-gen-exegesis"],
--+                "lib/Target/AArch64/AArch64GenExegesis.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "ARM",
--         "short_name": "ARM",
---        "tbl_outs": {
---            "lib/Target/ARM/ARMGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/ARM/ARMGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/ARM/ARMGenSystemRegister.inc": ["-gen-searchable-tables"],
---            "lib/Target/ARM/ARMGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/ARM/ARMGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/ARM/ARMGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/ARM/ARMGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/ARM/ARMGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/ARM/ARMGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/ARM/ARMGenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/ARM/ARMGenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/ARM/ARMGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/ARM/ARMGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/ARM/ARMGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---                "-ignore-non-decodable-operands",
---            ],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/ARM/ARMGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/ARM/ARMGenRegisterInfo.inc",
--+                    "lib/Target/ARM/ARMGenRegisterInfoEnums.inc",
--+                    "lib/Target/ARM/ARMGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/ARM/ARMGenRegisterInfoHeader.inc",
--+                    "lib/Target/ARM/ARMGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/ARM/ARMGenSystemRegister.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/ARM/ARMGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/ARM/ARMGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/ARM/ARMGenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/ARM/ARMGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/ARM/ARMGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/ARM/ARMGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/ARM/ARMGenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/ARM/ARMGenGlobalISel.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/ARM/ARMGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/ARM/ARMGenSubtargetInfo.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-disassembler",
--+                    "-ignore-non-decodable-operands",
--+                ],
--+                "lib/Target/ARM/ARMGenDisassemblerTables.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "AMDGPU",
--         "short_name": "AMDGPU",
---        "tbl_outs": {
---            "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---                "--specialize-decoders-per-bitwidth",
---                "-ignore-non-decodable-operands",
---                "-ignore-fully-defined-operands",
---            ],
---            "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc": ["-gen-searchable-tables"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc",
--+                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoEnums.inc",
--+                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoHeader.inc",
--+                    "lib/Target/AMDGPU/AMDGPUGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-disassembler",
--+                    "--specialize-decoders-per-bitwidth",
--+                    "-ignore-non-decodable-operands",
--+                    "-ignore-fully-defined-operands",
--+                ],
--+                "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/AMDGPU/AMDGPUGenSDNodeInfo.inc",
--+            ),
--+        ],
--         "tbl_deps": [
--             ":InstCombineTableGen",
--             ":amdgpu_isel_target_gen",
--@@ -2288,184 +2449,567 @@
--     {
--         "name": "AVR",
--         "short_name": "AVR",
---        "tbl_outs": {
---            "lib/Target/AVR/AVRGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/AVR/AVRGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/AVR/AVRGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/AVR/AVRGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/AVR/AVRGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---            ],
---            "lib/Target/AVR/AVRGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/AVR/AVRGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/AVR/AVRGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/AVR/AVRGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---            "lib/Target/AVR/AVRGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/AVR/AVRGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/AVR/AVRGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/AVR/AVRGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/AVR/AVRGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/AVR/AVRGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/AVR/AVRGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/AVR/AVRGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/AVR/AVRGenRegisterInfo.inc",
--+                    "lib/Target/AVR/AVRGenRegisterInfoEnums.inc",
--+                    "lib/Target/AVR/AVRGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/AVR/AVRGenRegisterInfoHeader.inc",
--+                    "lib/Target/AVR/AVRGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/AVR/AVRGenSDNodeInfo.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/AVR/AVRGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "BPF",
--         "short_name": "BPF",
---        "tbl_outs": {
---            "lib/Target/BPF/BPFGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/BPF/BPFGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/BPF/BPFGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/BPF/BPFGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/BPF/BPFGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/BPF/BPFGenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/BPF/BPFGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/BPF/BPFGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/BPF/BPFGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/BPF/BPFGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/BPF/BPFGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/BPF/BPFGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/BPF/BPFGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/BPF/BPFGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/BPF/BPFGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/BPF/BPFGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/BPF/BPFGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/BPF/BPFGenGlobalISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/BPF/BPFGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/BPF/BPFGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/BPF/BPFGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/BPF/BPFGenRegisterInfo.inc",
--+                    "lib/Target/BPF/BPFGenRegisterInfoEnums.inc",
--+                    "lib/Target/BPF/BPFGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/BPF/BPFGenRegisterInfoHeader.inc",
--+                    "lib/Target/BPF/BPFGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/BPF/BPFGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/BPF/BPFGenSDNodeInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "Hexagon",
--         "short_name": "Hexagon",
---        "tbl_outs": {
---            "lib/Target/Hexagon/HexagonGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/Hexagon/HexagonGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/Hexagon/HexagonGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/Hexagon/HexagonGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/Hexagon/HexagonGenDFAPacketizer.inc": ["-gen-dfa-packetizer"],
---            "lib/Target/Hexagon/HexagonGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---            ],
---            "lib/Target/Hexagon/HexagonGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/Hexagon/HexagonGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/Hexagon/HexagonGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/Hexagon/HexagonGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/Hexagon/HexagonGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/Hexagon/HexagonGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/Hexagon/HexagonGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/Hexagon/HexagonGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-dfa-packetizer"],
--+                "lib/Target/Hexagon/HexagonGenDFAPacketizer.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/Hexagon/HexagonGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/Hexagon/HexagonGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/Hexagon/HexagonGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/Hexagon/HexagonGenRegisterInfo.inc",
--+                    "lib/Target/Hexagon/HexagonGenRegisterInfoEnums.inc",
--+                    "lib/Target/Hexagon/HexagonGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/Hexagon/HexagonGenRegisterInfoHeader.inc",
--+                    "lib/Target/Hexagon/HexagonGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/Hexagon/HexagonGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "Lanai",
--         "short_name": "Lanai",
---        "tbl_outs": {
---            "lib/Target/Lanai/LanaiGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/Lanai/LanaiGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/Lanai/LanaiGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/Lanai/LanaiGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/Lanai/LanaiGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/Lanai/LanaiGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/Lanai/LanaiGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/Lanai/LanaiGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/Lanai/LanaiGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---            "lib/Target/Lanai/LanaiGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/Lanai/LanaiGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/Lanai/LanaiGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/Lanai/LanaiGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/Lanai/LanaiGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/Lanai/LanaiGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/Lanai/LanaiGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/Lanai/LanaiGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/Lanai/LanaiGenRegisterInfo.inc",
--+                    "lib/Target/Lanai/LanaiGenRegisterInfoEnums.inc",
--+                    "lib/Target/Lanai/LanaiGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/Lanai/LanaiGenRegisterInfoHeader.inc",
--+                    "lib/Target/Lanai/LanaiGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/Lanai/LanaiGenSDNodeInfo.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/Lanai/LanaiGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "LoongArch",
--         "short_name": "LoongArch",
---        "tbl_outs": {
---            "lib/Target/LoongArch/LoongArchGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/LoongArch/LoongArchGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/LoongArch/LoongArchGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/LoongArch/LoongArchGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/LoongArch/LoongArchGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/LoongArch/LoongArchGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/LoongArch/LoongArchGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/LoongArch/LoongArchGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/LoongArch/LoongArchGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/LoongArch/LoongArchGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/LoongArch/LoongArchGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/LoongArch/LoongArchGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/LoongArch/LoongArchGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/LoongArch/LoongArchGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/LoongArch/LoongArchGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/LoongArch/LoongArchGenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/LoongArch/LoongArchGenRegisterInfo.inc",
--+                    "lib/Target/LoongArch/LoongArchGenRegisterInfoEnums.inc",
--+                    "lib/Target/LoongArch/LoongArchGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/LoongArch/LoongArchGenRegisterInfoHeader.inc",
--+                    "lib/Target/LoongArch/LoongArchGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/LoongArch/LoongArchGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "Mips",
--         "short_name": "Mips",
---        "tbl_outs": {
---            "lib/Target/Mips/MipsGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/Mips/MipsGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/Mips/MipsGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/Mips/MipsGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/Mips/MipsGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---                "-ignore-non-decodable-operands",
---            ],
---            "lib/Target/Mips/MipsGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/Mips/MipsGenExegesis.inc": ["-gen-exegesis"],
---            "lib/Target/Mips/MipsGenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/Mips/MipsGenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/Mips/MipsGenPostLegalizeGICombiner.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=MipsPostLegalizerCombiner",
---            ],
---            "lib/Target/Mips/MipsGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/Mips/MipsGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/Mips/MipsGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/Mips/MipsGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/Mips/MipsGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/Mips/MipsGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/Mips/MipsGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/Mips/MipsGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/Mips/MipsGenDAGISel.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-disassembler",
--+                    "-ignore-non-decodable-operands",
--+                ],
--+                "lib/Target/Mips/MipsGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/Mips/MipsGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-exegesis"],
--+                "lib/Target/Mips/MipsGenExegesis.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/Mips/MipsGenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/Mips/MipsGenGlobalISel.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=MipsPostLegalizerCombiner",
--+                ],
--+                "lib/Target/Mips/MipsGenPostLegalizeGICombiner.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/Mips/MipsGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/Mips/MipsGenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/Mips/MipsGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/Mips/MipsGenRegisterInfo.inc",
--+                    "lib/Target/Mips/MipsGenRegisterInfoEnums.inc",
--+                    "lib/Target/Mips/MipsGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/Mips/MipsGenRegisterInfoHeader.inc",
--+                    "lib/Target/Mips/MipsGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/Mips/MipsGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "MSP430",
--         "short_name": "MSP430",
---        "tbl_outs": {
---            "lib/Target/MSP430/MSP430GenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/MSP430/MSP430GenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/MSP430/MSP430GenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/MSP430/MSP430GenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/MSP430/MSP430GenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/MSP430/MSP430GenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/MSP430/MSP430GenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/MSP430/MSP430GenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/MSP430/MSP430GenSDNodeInfo.inc": ["-gen-sd-node-info"],
---            "lib/Target/MSP430/MSP430GenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/MSP430/MSP430GenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/MSP430/MSP430GenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/MSP430/MSP430GenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/MSP430/MSP430GenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/MSP430/MSP430GenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/MSP430/MSP430GenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/MSP430/MSP430GenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/MSP430/MSP430GenRegisterInfo.inc",
--+                    "lib/Target/MSP430/MSP430GenRegisterInfoEnums.inc",
--+                    "lib/Target/MSP430/MSP430GenRegisterInfoMCDesc.inc",
--+                    "lib/Target/MSP430/MSP430GenRegisterInfoHeader.inc",
--+                    "lib/Target/MSP430/MSP430GenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/MSP430/MSP430GenSDNodeInfo.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/MSP430/MSP430GenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "NVPTX",
--         "short_name": "NVPTX",
---        "tbl_outs": {
---            "lib/Target/NVPTX/NVPTXGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/NVPTX/NVPTXGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/NVPTX/NVPTXGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/NVPTX/NVPTXGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/NVPTX/NVPTXGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/NVPTX/NVPTXGenRegisterInfo.inc",
--+                    "lib/Target/NVPTX/NVPTXGenRegisterInfoEnums.inc",
--+                    "lib/Target/NVPTX/NVPTXGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/NVPTX/NVPTXGenRegisterInfoHeader.inc",
--+                    "lib/Target/NVPTX/NVPTXGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/NVPTX/NVPTXGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/NVPTX/NVPTXGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/NVPTX/NVPTXGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/NVPTX/NVPTXGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "PowerPC",
--         "short_name": "PPC",
---        "tbl_outs": {
---            "lib/Target/PowerPC/PPCGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/PowerPC/PPCGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/PowerPC/PPCGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/PowerPC/PPCGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/PowerPC/PPCGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/PowerPC/PPCGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/PowerPC/PPCGenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/PowerPC/PPCGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/PowerPC/PPCGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/PowerPC/PPCGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/PowerPC/PPCGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/PowerPC/PPCGenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/PowerPC/PPCGenExegesis.inc": ["-gen-exegesis"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/PowerPC/PPCGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/PowerPC/PPCGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/PowerPC/PPCGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/PowerPC/PPCGenRegisterInfo.inc",
--+                    "lib/Target/PowerPC/PPCGenRegisterInfoEnums.inc",
--+                    "lib/Target/PowerPC/PPCGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/PowerPC/PPCGenRegisterInfoHeader.inc",
--+                    "lib/Target/PowerPC/PPCGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/PowerPC/PPCGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/PowerPC/PPCGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/PowerPC/PPCGenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/PowerPC/PPCGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/PowerPC/PPCGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/PowerPC/PPCGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/PowerPC/PPCGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/PowerPC/PPCGenGlobalISel.inc",
--+            ),
--+            (
--+                ["-gen-exegesis"],
--+                "lib/Target/PowerPC/PPCGenExegesis.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "RISCV",
--         "short_name": "RISCV",
---        "tbl_outs": {
---            "lib/Target/RISCV/RISCVGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/RISCV/RISCVGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/RISCV/RISCVGenCompressInstEmitter.inc": ["-gen-compress-inst-emitter"],
---            "lib/Target/RISCV/RISCVGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/RISCV/RISCVGenDisassemblerTables.inc": [
---                "-gen-disassembler",
---                "--specialize-decoders-per-bitwidth",
---            ],
---            "lib/Target/RISCV/RISCVGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/RISCV/RISCVGenMacroFusion.inc": ["-gen-macro-fusion-pred"],
---            "lib/Target/RISCV/RISCVGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/RISCV/RISCVGenMCPseudoLowering.inc": ["-gen-pseudo-lowering"],
---            "lib/Target/RISCV/RISCVGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/RISCV/RISCVGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/RISCV/RISCVGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/RISCV/RISCVGenSearchableTables.inc": ["-gen-searchable-tables"],
---            "lib/Target/RISCV/RISCVGenExegesis.inc": ["-gen-exegesis"],
---            "lib/Target/RISCV/RISCVGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/RISCV/RISCVGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/RISCV/RISCVGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-compress-inst-emitter"],
--+                "lib/Target/RISCV/RISCVGenCompressInstEmitter.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/RISCV/RISCVGenDAGISel.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-disassembler",
--+                    "--specialize-decoders-per-bitwidth",
--+                ],
--+                "lib/Target/RISCV/RISCVGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/RISCV/RISCVGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-macro-fusion-pred"],
--+                "lib/Target/RISCV/RISCVGenMacroFusion.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/RISCV/RISCVGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-pseudo-lowering"],
--+                "lib/Target/RISCV/RISCVGenMCPseudoLowering.inc",
--+            ),
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/RISCV/RISCVGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/RISCV/RISCVGenRegisterInfo.inc",
--+                    "lib/Target/RISCV/RISCVGenRegisterInfoEnums.inc",
--+                    "lib/Target/RISCV/RISCVGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/RISCV/RISCVGenRegisterInfoHeader.inc",
--+                    "lib/Target/RISCV/RISCVGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/RISCV/RISCVGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/RISCV/RISCVGenSearchableTables.inc",
--+            ),
--+            (
--+                ["-gen-exegesis"],
--+                "lib/Target/RISCV/RISCVGenExegesis.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/RISCV/RISCVGenSDNodeInfo.inc",
--+            ),
--+        ],
--         "tbl_deps": [
--             ":riscv_isel_target_gen",
--         ],
--@@ -2473,135 +3017,400 @@
--     {
--         "name": "Sparc",
--         "short_name": "Sparc",
---        "tbl_outs": {
---            "lib/Target/Sparc/SparcGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/Sparc/SparcGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/Sparc/SparcGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/Sparc/SparcGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/Sparc/SparcGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/Sparc/SparcGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/Sparc/SparcGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/Sparc/SparcGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/Sparc/SparcGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/Sparc/SparcGenSearchableTables.inc": ["-gen-searchable-tables"],
---            "lib/Target/Sparc/SparcGenSDNodeInfo.inc": [
---                "-gen-sd-node-info",
---                "-sdnode-namespace=SPISD",
---            ],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/Sparc/SparcGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/Sparc/SparcGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/Sparc/SparcGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/Sparc/SparcGenRegisterInfo.inc",
--+                    "lib/Target/Sparc/SparcGenRegisterInfoEnums.inc",
--+                    "lib/Target/Sparc/SparcGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/Sparc/SparcGenRegisterInfoHeader.inc",
--+                    "lib/Target/Sparc/SparcGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/Sparc/SparcGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/Sparc/SparcGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/Sparc/SparcGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/Sparc/SparcGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/Sparc/SparcGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/Sparc/SparcGenSearchableTables.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-sd-node-info",
--+                    "-sdnode-namespace=SPISD",
--+                ],
--+                "lib/Target/Sparc/SparcGenSDNodeInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "SPIRV",
--         "short_name": "SPIRV",
---        "tbl_outs": {
---            "lib/Target/SPIRV/SPIRVGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/SPIRV/SPIRVGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/SPIRV/SPIRVGenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/SPIRV/SPIRVGenPreLegalizeGICombiner.inc": [
---                "-gen-global-isel-combiner",
---                "-combiners=SPIRVPreLegalizerCombiner",
---            ],
---            "lib/Target/SPIRV/SPIRVGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/SPIRV/SPIRVGenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/SPIRV/SPIRVGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/SPIRV/SPIRVGenTables.inc": ["-gen-searchable-tables"],
---            "lib/Target/SPIRV/SPIRVGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/SPIRV/SPIRVGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/SPIRV/SPIRVGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/SPIRV/SPIRVGenGlobalISel.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-global-isel-combiner",
--+                    "-combiners=SPIRVPreLegalizerCombiner",
--+                ],
--+                "lib/Target/SPIRV/SPIRVGenPreLegalizeGICombiner.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/SPIRV/SPIRVGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/SPIRV/SPIRVGenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/SPIRV/SPIRVGenRegisterInfo.inc",
--+                    "lib/Target/SPIRV/SPIRVGenRegisterInfoEnums.inc",
--+                    "lib/Target/SPIRV/SPIRVGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/SPIRV/SPIRVGenRegisterInfoHeader.inc",
--+                    "lib/Target/SPIRV/SPIRVGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-searchable-tables"],
--+                "lib/Target/SPIRV/SPIRVGenTables.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/SPIRV/SPIRVGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "SystemZ",
--         "short_name": "SystemZ",
---        "tbl_outs": {
---            "lib/Target/SystemZ/SystemZGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/SystemZ/SystemZGenGNUAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/SystemZ/SystemZGenHLASMAsmWriter.inc": [
---                "-gen-asm-writer",
---                "-asmwriternum=1",
---            ],
---            "lib/Target/SystemZ/SystemZGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/SystemZ/SystemZGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/SystemZ/SystemZGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/SystemZ/SystemZGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/SystemZ/SystemZGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/SystemZ/SystemZGenGNUAsmWriter.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-asm-writer",
--+                    "-asmwriternum=1",
--+                ],
--+                "lib/Target/SystemZ/SystemZGenHLASMAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/SystemZ/SystemZGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/SystemZ/SystemZGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/SystemZ/SystemZGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/SystemZ/SystemZGenRegisterInfo.inc",
--+                    "lib/Target/SystemZ/SystemZGenRegisterInfoEnums.inc",
--+                    "lib/Target/SystemZ/SystemZGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/SystemZ/SystemZGenRegisterInfoHeader.inc",
--+                    "lib/Target/SystemZ/SystemZGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "VE",
--         "short_name": "VE",
---        "tbl_outs": {
---            "lib/Target/VE/VEGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/VE/VEGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/VE/VEGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/VE/VEGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/VE/VEGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/VE/VEGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/VE/VEGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/VE/VEGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/VE/VEGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/VE/VEGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/VE/VEGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/VE/VEGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/VE/VEGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/VE/VEGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/VE/VEGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/VE/VEGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/VE/VEGenRegisterInfo.inc",
--+                    "lib/Target/VE/VEGenRegisterInfoEnums.inc",
--+                    "lib/Target/VE/VEGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/VE/VEGenRegisterInfoHeader.inc",
--+                    "lib/Target/VE/VEGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/VE/VEGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/VE/VEGenSDNodeInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "WebAssembly",
--         "short_name": "WebAssembly",
---        "tbl_outs": {
---            "lib/Target/WebAssembly/WebAssemblyGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/WebAssembly/WebAssemblyGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/WebAssembly/WebAssemblyGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/WebAssembly/WebAssemblyGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/WebAssembly/WebAssemblyGenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/WebAssembly/WebAssemblyGenMCCodeEmitter.inc": ["-gen-emitter"],
---            "lib/Target/WebAssembly/WebAssemblyGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/WebAssembly/WebAssemblyGenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/WebAssembly/WebAssemblyGenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/WebAssembly/WebAssemblyGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/WebAssembly/WebAssemblyGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/WebAssembly/WebAssemblyGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/WebAssembly/WebAssemblyGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/WebAssembly/WebAssemblyGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/WebAssembly/WebAssemblyGenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-emitter"],
--+                "lib/Target/WebAssembly/WebAssemblyGenMCCodeEmitter.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfo.inc",
--+                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoEnums.inc",
--+                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoHeader.inc",
--+                    "lib/Target/WebAssembly/WebAssemblyGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/WebAssembly/WebAssemblyGenSubtargetInfo.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/WebAssembly/WebAssemblyGenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/WebAssembly/WebAssemblyGenSDNodeInfo.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "X86",
--         "short_name": "X86",
---        "tbl_outs": {
---            "lib/Target/X86/X86GenRegisterBank.inc": ["-gen-register-bank"],
---            "lib/Target/X86/X86GenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/X86/X86GenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/X86/X86GenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/X86/X86GenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/X86/X86GenAsmWriter1.inc": [
---                "-gen-asm-writer",
---                "-asmwriternum=1",
---            ],
---            "lib/Target/X86/X86GenAsmMatcher.inc": ["-gen-asm-matcher"],
---            "lib/Target/X86/X86GenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/X86/X86GenFastISel.inc": ["-gen-fast-isel"],
---            "lib/Target/X86/X86GenGlobalISel.inc": ["-gen-global-isel"],
---            "lib/Target/X86/X86GenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/X86/X86GenSubtargetInfo.inc": ["-gen-subtarget"],
---            "lib/Target/X86/X86GenFoldTables.inc": [
---                "-gen-x86-fold-tables",
---                "-asmwriternum=1",
---            ],
---            "lib/Target/X86/X86GenInstrMapping.inc": ["-gen-x86-instr-mapping"],
---            "lib/Target/X86/X86GenExegesis.inc": ["-gen-exegesis"],
---            "lib/Target/X86/X86GenMnemonicTables.inc": [
---                "-gen-x86-mnemonic-tables",
---                "-asmwriternum=1",
---            ],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-register-bank"],
--+                "lib/Target/X86/X86GenRegisterBank.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/X86/X86GenRegisterInfo.inc",
--+                    "lib/Target/X86/X86GenRegisterInfoEnums.inc",
--+                    "lib/Target/X86/X86GenRegisterInfoMCDesc.inc",
--+                    "lib/Target/X86/X86GenRegisterInfoHeader.inc",
--+                    "lib/Target/X86/X86GenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/X86/X86GenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/X86/X86GenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/X86/X86GenAsmWriter.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-asm-writer",
--+                    "-asmwriternum=1",
--+                ],
--+                "lib/Target/X86/X86GenAsmWriter1.inc",
--+            ),
--+            (
--+                ["-gen-asm-matcher"],
--+                "lib/Target/X86/X86GenAsmMatcher.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/X86/X86GenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-fast-isel"],
--+                "lib/Target/X86/X86GenFastISel.inc",
--+            ),
--+            (
--+                ["-gen-global-isel"],
--+                "lib/Target/X86/X86GenGlobalISel.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/X86/X86GenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/X86/X86GenSubtargetInfo.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-x86-fold-tables",
--+                    "-asmwriternum=1",
--+                ],
--+                "lib/Target/X86/X86GenFoldTables.inc",
--+            ),
--+            (
--+                ["-gen-x86-instr-mapping"],
--+                "lib/Target/X86/X86GenInstrMapping.inc",
--+            ),
--+            (
--+                ["-gen-exegesis"],
--+                "lib/Target/X86/X86GenExegesis.inc",
--+            ),
--+            (
--+                [
--+                    "-gen-x86-mnemonic-tables",
--+                    "-asmwriternum=1",
--+                ],
--+                "lib/Target/X86/X86GenMnemonicTables.inc",
--+            ),
--+        ],
--     },
--     {
--         "name": "XCore",
--         "short_name": "XCore",
---        "tbl_outs": {
---            "lib/Target/XCore/XCoreGenAsmWriter.inc": ["-gen-asm-writer"],
---            "lib/Target/XCore/XCoreGenCallingConv.inc": ["-gen-callingconv"],
---            "lib/Target/XCore/XCoreGenDAGISel.inc": ["-gen-dag-isel"],
---            "lib/Target/XCore/XCoreGenDisassemblerTables.inc": ["-gen-disassembler"],
---            "lib/Target/XCore/XCoreGenInstrInfo.inc": ["-gen-instr-info"],
---            "lib/Target/XCore/XCoreGenRegisterInfo.inc": ["-gen-register-info"],
---            "lib/Target/XCore/XCoreGenSDNodeInfo.inc": ["-gen-sd-node-info"],
---            "lib/Target/XCore/XCoreGenSubtargetInfo.inc": ["-gen-subtarget"],
---        },
--+        "tbl_outs": [
--+            (
--+                ["-gen-asm-writer"],
--+                "lib/Target/XCore/XCoreGenAsmWriter.inc",
--+            ),
--+            (
--+                ["-gen-callingconv"],
--+                "lib/Target/XCore/XCoreGenCallingConv.inc",
--+            ),
--+            (
--+                ["-gen-dag-isel"],
--+                "lib/Target/XCore/XCoreGenDAGISel.inc",
--+            ),
--+            (
--+                ["-gen-disassembler"],
--+                "lib/Target/XCore/XCoreGenDisassemblerTables.inc",
--+            ),
--+            (
--+                ["-gen-instr-info"],
--+                "lib/Target/XCore/XCoreGenInstrInfo.inc",
--+            ),
--+            (
--+                ["-gen-register-info"],
--+                [
--+                    "lib/Target/XCore/XCoreGenRegisterInfo.inc",
--+                    "lib/Target/XCore/XCoreGenRegisterInfoEnums.inc",
--+                    "lib/Target/XCore/XCoreGenRegisterInfoMCDesc.inc",
--+                    "lib/Target/XCore/XCoreGenRegisterInfoHeader.inc",
--+                    "lib/Target/XCore/XCoreGenRegisterInfoTargetDesc.inc",
--+                ],
--+            ),
--+            (
--+                ["-gen-sd-node-info"],
--+                "lib/Target/XCore/XCoreGenSDNodeInfo.inc",
--+            ),
--+            (
--+                ["-gen-subtarget"],
--+                "lib/Target/XCore/XCoreGenSubtargetInfo.inc",
--+            ),
--+        ],
--     },
-- ] if lib["name"] in llvm_targets]
-++  _el_secondary_file.reset(
-++      new NativeFile(pty.ReleaseSecondaryFileDescriptor(),
-++                     lldb_private::NativeFile::eOpenOptionReadWrite, true));
-+ 
-+   lldb::LockableStreamFileSP output_stream_sp =
-+-      std::make_shared<LockableStreamFile>(*_el_secondary_file,
-+-                                           NativeFile::Unowned, output_mutex);
-++      std::make_shared<LockableStreamFile>(_el_secondary_file, output_mutex);
-+   lldb::LockableStreamFileSP error_stream_sp =
-+-      std::make_shared<LockableStreamFile>(*_el_secondary_file,
-+-                                           NativeFile::Unowned, output_mutex);
-++      std::make_shared<LockableStreamFile>(_el_secondary_file, output_mutex);
-  
--@@ -2639,16 +3448,46 @@
-- gentbl_cc_library(
--     name = "r600_target_gen",
--     strip_include_prefix = "lib/Target/AMDGPU",
---    tbl_outs = {
---        "lib/Target/AMDGPU/R600GenAsmWriter.inc": ["-gen-asm-writer"],
---        "lib/Target/AMDGPU/R600GenCallingConv.inc": ["-gen-callingconv"],
---        "lib/Target/AMDGPU/R600GenDAGISel.inc": ["-gen-dag-isel"],
---        "lib/Target/AMDGPU/R600GenDFAPacketizer.inc": ["-gen-dfa-packetizer"],
---        "lib/Target/AMDGPU/R600GenInstrInfo.inc": ["-gen-instr-info"],
---        "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc": ["-gen-emitter"],
---        "lib/Target/AMDGPU/R600GenRegisterInfo.inc": ["-gen-register-info"],
---        "lib/Target/AMDGPU/R600GenSubtargetInfo.inc": ["-gen-subtarget"],
---    },
--+    tbl_outs = [
--+        (
--+            ["-gen-asm-writer"],
--+            "lib/Target/AMDGPU/R600GenAsmWriter.inc",
--+        ),
--+        (
--+            ["-gen-callingconv"],
--+            "lib/Target/AMDGPU/R600GenCallingConv.inc",
--+        ),
--+        (
--+            ["-gen-dag-isel"],
--+            "lib/Target/AMDGPU/R600GenDAGISel.inc",
--+        ),
--+        (
--+            ["-gen-dfa-packetizer"],
--+            "lib/Target/AMDGPU/R600GenDFAPacketizer.inc",
--+        ),
--+        (
--+            ["-gen-instr-info"],
--+            "lib/Target/AMDGPU/R600GenInstrInfo.inc",
--+        ),
--+        (
--+            ["-gen-emitter"],
--+            "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc",
--+        ),
--+        (
--+            ["-gen-register-info"],
--+            [
--+                "lib/Target/AMDGPU/R600GenRegisterInfo.inc",
--+                "lib/Target/AMDGPU/R600GenRegisterInfoEnums.inc",
--+                "lib/Target/AMDGPU/R600GenRegisterInfoMCDesc.inc",
--+                "lib/Target/AMDGPU/R600GenRegisterInfoHeader.inc",
--+                "lib/Target/AMDGPU/R600GenRegisterInfoTargetDesc.inc",
--+            ],
--+        ),
--+        (
--+            ["-gen-subtarget"],
--+            "lib/Target/AMDGPU/R600GenSubtargetInfo.inc",
--+        ),
--+    ],
--     tblgen = ":llvm-tblgen",
--     td_file = "lib/Target/AMDGPU/R600.td",
--     deps = [
--@@ -3381,7 +4220,10 @@
-- gentbl_cc_library(
--     name = "LibOptionsTableGen",
--     strip_include_prefix = "lib/ToolDrivers/llvm-lib",
---    tbl_outs = {"lib/ToolDrivers/llvm-lib/Options.inc": ["-gen-opt-parser-defs"]},
--+    tbl_outs = [(
--+        ["-gen-opt-parser-defs"],
--+        "lib/ToolDrivers/llvm-lib/Options.inc",
--+    )],
--     tblgen = ":llvm-tblgen",
--     td_file = "lib/ToolDrivers/llvm-lib/Options.td",
--     deps = [":OptParserTdFiles"],
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--@@ -10318,6 +10318,8 @@
--     ),
--     includes = ["include"],
--     deps = [
--+        ":FunctionInterfaces",
--+        ":IR",
--         ":OpenACCDialect",
--         ":OpenACCOpsIncGen",
--         ":OpenACCPassIncGen",
--@@ -10325,6 +10327,7 @@
--         ":Support",
--         ":ViewLikeInterface",
--         "//llvm:Support",
--+        "//llvm:ir_headers",
--     ],
-- )
-+   // Create an Editline instance.
-+   _editline_sp.reset(new lldb_private::Editline(
-+-      "gtest editor", *_el_secondary_file, output_stream_sp, error_stream_sp,
-++      "gtest editor", _el_secondary_file->GetStream(), output_stream_sp,
-++      error_stream_sp,
-+       /*color=*/false));
-+   _editline_sp->SetPrompt("> ");
-  
--@@ -13105,6 +13108,7 @@
--         ":RuntimeVerifiableOpInterface",
--         ":ShapedOpInterfaces",
--         ":SideEffectInterfaces",
--+        ":UBDialect",
--         ":ValueBoundsOpInterface",
--         ":ViewLikeInterface",
--         "//llvm:Support",
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
----- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
--+++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
--@@ -153,7 +153,7 @@
--     args.add("-o", ctx.outputs.out)
-+@@ -140,7 +115,7 @@
-  
--     ctx.actions.run(
---        outputs = [ctx.outputs.out],
--+        outputs = [ctx.outputs.out] + ctx.outputs.additional_outputs,
--         inputs = trans_srcs,
--         executable = ctx.executable.tblgen,
--         execution_requirements = {"supports-path-mapping": "1"},
--@@ -195,6 +195,9 @@
--             doc = "The output file for the TableGen invocation.",
--             mandatory = True,
--         ),
--+        "additional_outputs": attr.output_list(
--+            doc = "Extra output files from the TableGen invocation. The primary 'out' is used for the -o argument.",
--+        ),
--         "opts": attr.string_list(
--             doc = "Additional command line options to add to the TableGen" +
--                   " invocation. For include arguments, prefer to use" +
--@@ -313,9 +316,12 @@
--       name: The name of the generated filegroup rule for use in dependencies.
--       tblgen: The binary used to produce the output.
--       td_file: The primary table definitions file.
---      tbl_outs: Either a dict {out: [opts]} or a list of tuples ([opts], out),
---        where each 'opts' is a list of options passed to tblgen, each option
---        being a string, and 'out' is the corresponding output file produced.
--+      tbl_outs: Either a dict {out: [opts]}, a list of tuples ([opts], out),
--+        or a list of tuples ([opts], [outs]). Each 'opts' is a list of options
--+        passed to tblgen, each option being a string,
--+        and 'out' is the corresponding output file produced. If 'outs' are used,
--+        the first path in the list is passed to '-o' but tblgen is expected
--+        to produce all listed outputs.
--       td_srcs: See gentbl_rule.td_srcs
--       includes: See gentbl_rule.includes
--       deps: See gentbl_rule.deps
--@@ -325,9 +331,14 @@
--       **kwargs: Extra keyword arguments to pass to all generated rules.
--     """
-+ void EditlineAdapter::CloseInput() {
-+   if (_el_secondary_file != nullptr)
-+-    _el_secondary_file.reset(nullptr);
-++    _el_secondary_file->Close();
-+ }
-+ 
-+ bool EditlineAdapter::SendLine(const std::string &line) {
-+@@ -148,19 +123,14 @@
-+   if (!IsValid())
++@@ -8752,23 +8734,14 @@
 +     return false;
 + 
-++  std::string out = line + "\n";
++   // Load the list of declarations.
++-  DeclsSet DS;
+++  SmallVector<NamedDecl *, 64> Decls;
+++  llvm::SmallPtrSet<NamedDecl *, 8> Found;
++ 
++   auto Find = [&, this](auto &&Table, auto &&Key) {
++     for (GlobalDeclID ID : Table.find(Key)) {
++       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
++-      if (ND->getDeclName() != Name)
++-        continue;
++-      // Special case for namespaces: There can be a lot of redeclarations of
++-      // some namespaces, and we import a "key declaration" per imported module.
++-      // Since all declarations of a namespace are essentially interchangeable,
++-      // we can optimize namespace look-up by only storing the key declaration
++-      // of the current TU, rather than storing N key declarations where N is
++-      // the # of imported modules that declare that namespace.
++-      // TODO: Try to generalize this optimization to other redeclarable decls.
++-      if (isa<NamespaceDecl>(ND))
++-        ND = cast<NamedDecl>(getKeyDeclaration(ND));
++-      DS.insert(ND);
+++      if (ND->getDeclName() == Name && Found.insert(ND).second)
+++        Decls.push_back(ND);
++     }
++   };
++ 
++@@ -8803,8 +8776,8 @@
++     Find(It->second.Table, Name);
++   }
++ 
++-  SetExternalVisibleDeclsForName(DC, Name, DS);
++-  return !DS.empty();
+++  SetExternalVisibleDeclsForName(DC, Name, Decls);
+++  return !Decls.empty();
++ }
++ 
++ void ASTReader::completeVisibleDeclsMap(const DeclContext *DC) {
++@@ -8822,16 +8795,7 @@
++ 
++     for (GlobalDeclID ID : It->second.Table.findAll()) {
++       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
++-      // Special case for namespaces: There can be a lot of redeclarations of
++-      // some namespaces, and we import a "key declaration" per imported module.
++-      // Since all declarations of a namespace are essentially interchangeable,
++-      // we can optimize namespace look-up by only storing the key declaration
++-      // of the current TU, rather than storing N key declarations where N is
++-      // the # of imported modules that declare that namespace.
++-      // TODO: Try to generalize this optimization to other redeclarable decls.
++-      if (isa<NamespaceDecl>(ND))
++-        ND = cast<NamedDecl>(getKeyDeclaration(ND));
++-      Decls[ND->getDeclName()].insert(ND);
+++      Decls[ND->getDeclName()].push_back(ND);
++     }
++ 
++     // FIXME: Why a PCH test is failing if we remove the iterator after findAll?
++@@ -8841,9 +8805,9 @@
++   findAll(ModuleLocalLookups, NumModuleLocalVisibleDeclContexts);
++   findAll(TULocalLookups, NumTULocalVisibleDeclContexts);
++ 
++-  for (auto &[Name, DS] : Decls)
++-    SetExternalVisibleDeclsForName(DC, Name, DS);
++-
+++  for (DeclsMap::iterator I = Decls.begin(), E = Decls.end(); I != E; ++I) {
+++    SetExternalVisibleDeclsForName(DC, I->first, I->second);
+++  }
++   const_cast<DeclContext *>(DC)->setHasExternalVisibleStorage(false);
++ }
++ 
++diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
++--- a/clang/lib/Serialization/ASTWriter.cpp
+++++ b/clang/lib/Serialization/ASTWriter.cpp
++@@ -4397,20 +4397,20 @@
++ 
++   template <typename Coll> data_type getData(const Coll &Decls) {
++     unsigned Start = DeclIDs.size();
++-    auto AddDecl = [this](NamedDecl *D) {
+++    for (NamedDecl *D : Decls) {
++       NamedDecl *DeclForLocalLookup =
++           getDeclForLocalLookup(Writer.getLangOpts(), D);
++ 
++       if (Writer.getDoneWritingDeclsAndTypes() &&
++           !Writer.wasDeclEmitted(DeclForLocalLookup))
++-        return;
+++        continue;
++ 
++       // Try to avoid writing internal decls to reduced BMI.
++       // See comments in ASTWriter::WriteDeclContextLexicalBlock for details.
++       if (Writer.isGeneratingReducedBMI() &&
++           !DeclForLocalLookup->isFromExplicitGlobalModule() &&
++           IsInternalDeclFromFileContext(DeclForLocalLookup))
++-        return;
+++        continue;
++ 
++       auto ID = Writer.GetDeclRef(DeclForLocalLookup);
++ 
++@@ -4424,7 +4424,7 @@
++             ModuleLocalDeclsMap.insert({Key, DeclIDsTy{ID}});
++           else
++             Iter->second.push_back(ID);
++-          return;
+++          continue;
++         }
++         break;
++       case LookupVisibility::TULocal: {
++@@ -4433,7 +4433,7 @@
++           TULocalDeclsMap.insert({D->getDeclName(), DeclIDsTy{ID}});
++         else
++           Iter->second.push_back(ID);
++-        return;
+++        continue;
++       }
++       case LookupVisibility::GenerallyVisibile:
++         // Generally visible decls go into the general lookup table.
++@@ -4441,24 +4441,6 @@
++       }
++ 
++       DeclIDs.push_back(ID);
++-    };
++-    ASTReader *Chain = Writer.getChain();
++-    for (NamedDecl *D : Decls) {
++-      if (Chain && isa<NamespaceDecl>(D) && D->isFromASTFile() &&
++-          D == Chain->getKeyDeclaration(D)) {
++-        // In ASTReader, we stored only the key declaration of a namespace decl
++-        // for this TU rather than storing all of the key declarations from each
++-        // imported module. If we have an external namespace decl, this is that
++-        // key declaration and we need to re-expand it to write out all of the
++-        // key declarations from each imported module again.
++-        //
++-        // See comment 'ASTReader::FindExternalVisibleDeclsByName' for details.
++-        Chain->forEachImportedKeyDecl(D, [&AddDecl](const Decl *D) {
++-          AddDecl(cast<NamedDecl>(const_cast<Decl *>(D)));
++-        });
++-      } else {
++-        AddDecl(D);
++-      }
++     }
++     return std::make_pair(Start, DeclIDs.size());
++   }
++diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/CMakeLists.txt b/clang/unittests/Serialization/CMakeLists.txt
++--- a/clang/unittests/Serialization/CMakeLists.txt
+++++ b/clang/unittests/Serialization/CMakeLists.txt
++@@ -2,7 +2,6 @@
++   ForceCheckFileInputTest.cpp
++   InMemoryModuleCacheTest.cpp
++   ModuleCacheTest.cpp
++-  NamespaceLookupTest.cpp
++   NoCommentsTest.cpp
++   PreambleInNamedModulesTest.cpp
++   LoadSpecLazilyTest.cpp
++diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/NamespaceLookupTest.cpp b/clang/unittests/Serialization/NamespaceLookupTest.cpp
++--- a/clang/unittests/Serialization/NamespaceLookupTest.cpp
+++++ b/clang/unittests/Serialization/NamespaceLookupTest.cpp
++@@ -1,247 +0,0 @@
++-//== unittests/Serialization/NamespaceLookupOptimizationTest.cpp =======//
++-//
++-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++-// See https://llvm.org/LICENSE.txt for license information.
++-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++-//
++-//===----------------------------------------------------------------------===//
++-
++-#include "clang/Driver/CreateInvocationFromArgs.h"
++-#include "clang/Frontend/CompilerInstance.h"
++-#include "clang/Frontend/FrontendAction.h"
++-#include "clang/Frontend/FrontendActions.h"
++-#include "clang/Parse/ParseAST.h"
++-#include "clang/Serialization/ASTReader.h"
++-#include "clang/Tooling/Tooling.h"
++-#include "gtest/gtest.h"
++-
++-using namespace llvm;
++-using namespace clang;
++-using namespace clang::tooling;
++-
++-namespace {
++-
++-class NamespaceLookupTest : public ::testing::Test {
++-  void SetUp() override {
++-    ASSERT_FALSE(
++-        sys::fs::createUniqueDirectory("namespace-lookup-test", TestDir));
++-  }
++-
++-  void TearDown() override { sys::fs::remove_directories(TestDir); }
++-
++-public:
++-  SmallString<256> TestDir;
++-
++-  void addFile(StringRef Path, StringRef Contents) {
++-    ASSERT_FALSE(sys::path::is_absolute(Path));
++-
++-    SmallString<256> AbsPath(TestDir);
++-    sys::path::append(AbsPath, Path);
++-
++-    ASSERT_FALSE(
++-        sys::fs::create_directories(llvm::sys::path::parent_path(AbsPath)));
++-
++-    std::error_code EC;
++-    llvm::raw_fd_ostream OS(AbsPath, EC);
++-    ASSERT_FALSE(EC);
++-    OS << Contents;
++-  }
++-
++-  std::string GenerateModuleInterface(StringRef ModuleName,
++-                                      StringRef Contents) {
++-    std::string FileName = llvm::Twine(ModuleName + ".cppm").str();
++-    addFile(FileName, Contents);
++-
++-    IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS =
++-        llvm::vfs::createPhysicalFileSystem();
++-    DiagnosticOptions DiagOpts;
++-    IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
++-        CompilerInstance::createDiagnostics(*VFS, DiagOpts);
++-    CreateInvocationOptions CIOpts;
++-    CIOpts.Diags = Diags;
++-    CIOpts.VFS = VFS;
++-
++-    std::string CacheBMIPath =
++-        llvm::Twine(TestDir + "/" + ModuleName + ".pcm").str();
++-    std::string PrebuiltModulePath =
++-        "-fprebuilt-module-path=" + TestDir.str().str();
++-    const char *Args[] = {"clang++",
++-                          "-std=c++20",
++-                          "--precompile",
++-                          PrebuiltModulePath.c_str(),
++-                          "-working-directory",
++-                          TestDir.c_str(),
++-                          "-I",
++-                          TestDir.c_str(),
++-                          FileName.c_str(),
++-                          "-o",
++-                          CacheBMIPath.c_str()};
++-    std::shared_ptr<CompilerInvocation> Invocation =
++-        createInvocation(Args, CIOpts);
++-    EXPECT_TRUE(Invocation);
++-
++-    CompilerInstance Instance(std::move(Invocation));
++-    Instance.setDiagnostics(Diags);
++-    Instance.getFrontendOpts().OutputFile = CacheBMIPath;
++-    // Avoid memory leaks.
++-    Instance.getFrontendOpts().DisableFree = false;
++-    GenerateModuleInterfaceAction Action;
++-    EXPECT_TRUE(Instance.ExecuteAction(Action));
++-    EXPECT_FALSE(Diags->hasErrorOccurred());
++-
++-    return CacheBMIPath;
++-  }
++-};
++-
++-struct NamespaceLookupResult {
++-  int NumLocalNamespaces = 0;
++-  int NumExternalNamespaces = 0;
++-};
++-
++-class NamespaceLookupConsumer : public ASTConsumer {
++-  NamespaceLookupResult &Result;
++-
++-public:
++-  explicit NamespaceLookupConsumer(NamespaceLookupResult &Result)
++-      : Result(Result) {}
++-
++-  void HandleTranslationUnit(ASTContext &Context) override {
++-    TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
++-    ASSERT_TRUE(TU);
++-    ASTReader *Chain = dyn_cast_or_null<ASTReader>(Context.getExternalSource());
++-    ASSERT_TRUE(Chain);
++-    for (const Decl *D :
++-         TU->lookup(DeclarationName(&Context.Idents.get("N")))) {
++-      if (!isa<NamespaceDecl>(D))
++-        continue;
++-      if (!D->isFromASTFile()) {
++-        ++Result.NumLocalNamespaces;
++-      } else {
++-        ++Result.NumExternalNamespaces;
++-        EXPECT_EQ(D, Chain->getKeyDeclaration(D));
++-      }
++-    }
++-  }
++-};
++-
++-class NamespaceLookupAction : public ASTFrontendAction {
++-  NamespaceLookupResult &Result;
++-
++-public:
++-  explicit NamespaceLookupAction(NamespaceLookupResult &Result)
++-      : Result(Result) {}
++-
++-  std::unique_ptr<ASTConsumer>
++-  CreateASTConsumer(CompilerInstance &CI, StringRef /*Unused*/) override {
++-    return std::make_unique<NamespaceLookupConsumer>(Result);
++-  }
++-};
++-
++-TEST_F(NamespaceLookupTest, ExternalNamespacesOnly) {
++-  GenerateModuleInterface("M1", R"cpp(
++-export module M1;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M2", R"cpp(
++-export module M2;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M3", R"cpp(
++-export module M3;
++-namespace N {}
++-  )cpp");
++-  const char *test_file_contents = R"cpp(
++-import M1;
++-import M2;
++-import M3;
++-  )cpp";
++-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
++-  NamespaceLookupResult Result;
++-  EXPECT_TRUE(runToolOnCodeWithArgs(
++-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
++-      {
++-          "-std=c++20",
++-          DepArg.c_str(),
++-          "-I",
++-          TestDir.c_str(),
++-      },
++-      "main.cpp"));
++-
++-  EXPECT_EQ(0, Result.NumLocalNamespaces);
++-  EXPECT_EQ(1, Result.NumExternalNamespaces);
++-}
++-
++-TEST_F(NamespaceLookupTest, ExternalReplacedByLocal) {
++-  GenerateModuleInterface("M1", R"cpp(
++-export module M1;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M2", R"cpp(
++-export module M2;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M3", R"cpp(
++-export module M3;
++-namespace N {}
++-  )cpp");
++-  const char *test_file_contents = R"cpp(
++-import M1;
++-import M2;
++-import M3;
++-
++-namespace N {}
++-  )cpp";
++-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
++-  NamespaceLookupResult Result;
++-  EXPECT_TRUE(runToolOnCodeWithArgs(
++-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
++-      {
++-          "-std=c++20",
++-          DepArg.c_str(),
++-          "-I",
++-          TestDir.c_str(),
++-      },
++-      "main.cpp"));
++-
++-  EXPECT_EQ(1, Result.NumLocalNamespaces);
++-  EXPECT_EQ(0, Result.NumExternalNamespaces);
++-}
++-
++-TEST_F(NamespaceLookupTest, LocalAndExternalInterleaved) {
++-  GenerateModuleInterface("M1", R"cpp(
++-export module M1;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M2", R"cpp(
++-export module M2;
++-namespace N {}
++-  )cpp");
++-  GenerateModuleInterface("M3", R"cpp(
++-export module M3;
++-namespace N {}
++-  )cpp");
++-  const char *test_file_contents = R"cpp(
++-import M1;
++-
++-namespace N {}
++-
++-import M2;
++-import M3;
++-  )cpp";
++-  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
++-  NamespaceLookupResult Result;
++-  EXPECT_TRUE(runToolOnCodeWithArgs(
++-      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
++-      {
++-          "-std=c++20",
++-          DepArg.c_str(),
++-          "-I",
++-          TestDir.c_str(),
++-      },
++-      "main.cpp"));
++-
++-  EXPECT_EQ(1, Result.NumLocalNamespaces);
++-  EXPECT_EQ(1, Result.NumExternalNamespaces);
++-}
++-
++-} // namespace
++diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/AliasAnalysis.cpp b/llvm/lib/Analysis/AliasAnalysis.cpp
++--- a/llvm/lib/Analysis/AliasAnalysis.cpp
+++++ b/llvm/lib/Analysis/AliasAnalysis.cpp
++@@ -433,7 +433,7 @@
++                                     const MemoryLocation &Loc,
++                                     AAQueryInfo &AAQI) {
++   // Be conservative in the face of atomic.
++-  if (isStrongerThanMonotonic(L->getOrdering()))
+++  if (isStrongerThan(L->getOrdering(), AtomicOrdering::Unordered))
++     return ModRefInfo::ModRef;
++ 
++   // If the load address doesn't alias the given address, it doesn't read
++@@ -443,13 +443,6 @@
++     if (AR == AliasResult::NoAlias)
++       return ModRefInfo::NoModRef;
++   }
++-
++-  assert(!isStrongerThanMonotonic(L->getOrdering()) &&
++-         "Stronger atomic orderings should have been handled above!");
++-
++-  if (isStrongerThanUnordered(L->getOrdering()))
++-    return ModRefInfo::ModRef;
++-
++   // Otherwise, a load just reads.
++   return ModRefInfo::Ref;
++ }
++@@ -458,7 +451,7 @@
++                                     const MemoryLocation &Loc,
++                                     AAQueryInfo &AAQI) {
++   // Be conservative in the face of atomic.
++-  if (isStrongerThanMonotonic(S->getOrdering()))
+++  if (isStrongerThan(S->getOrdering(), AtomicOrdering::Unordered))
++     return ModRefInfo::ModRef;
++ 
++   if (Loc.Ptr) {
++@@ -476,13 +469,7 @@
++       return ModRefInfo::NoModRef;
++   }
++ 
++-  assert(!isStrongerThanMonotonic(S->getOrdering()) &&
++-         "Stronger atomic orderings should have been handled above!");
++-
++-  if (isStrongerThanUnordered(S->getOrdering()))
++-    return ModRefInfo::ModRef;
++-
++-  // A store just writes.
+++  // Otherwise, a store just writes.
++   return ModRefInfo::Mod;
++ }
++ 
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic.ll b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
++--- a/llvm/test/Transforms/DeadStoreElimination/atomic.ll
+++++ b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
++@@ -37,21 +37,9 @@
++   ret void
++ }
++ 
++-; DSE doesn't remove monotonic store.
+++; DSE unordered store overwriting non-atomic store (allowed)
++ define void @test5() {
++ ; CHECK-LABEL: @test5(
++-; CHECK-NEXT:    store atomic i32 2, ptr @x monotonic, align 4
++-; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    ret void
++-;
++-  store atomic i32 2, ptr @x monotonic, align 4
++-  store i32 1, ptr @x
++-  ret void
++-}
++-
++-; DSE unordered store overwriting non-atomic store (allowed)
++-define void @test6() {
++-; CHECK-LABEL: @test6(
++ ; CHECK-NEXT:    store atomic i32 1, ptr @x unordered, align 4
++ ; CHECK-NEXT:    ret void
++ ;
++@@ -61,8 +49,8 @@
++ }
++ 
++ ; DSE no-op unordered atomic store (allowed)
++-define void @test7() {
++-; CHECK-LABEL: @test7(
+++define void @test6() {
+++; CHECK-LABEL: @test6(
++ ; CHECK-NEXT:    ret void
++ ;
++   %x = load atomic i32, ptr @x unordered, align 4
++@@ -72,8 +60,8 @@
++ 
++ ; DSE seq_cst store (be conservative; DSE doesn't have infrastructure
++ ; to reason about atomic operations).
++-define void @test8() {
++-; CHECK-LABEL: @test8(
+++define void @test7() {
+++; CHECK-LABEL: @test7(
++ ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
++ ; CHECK-NEXT:    store atomic i32 0, ptr [[A]] seq_cst, align 4
++ ; CHECK-NEXT:    ret void
++@@ -85,8 +73,8 @@
++ 
++ ; DSE and seq_cst load (be conservative; DSE doesn't have infrastructure
++ ; to reason about atomic operations).
++-define i32 @test9() {
++-; CHECK-LABEL: @test9(
+++define i32 @test8() {
+++; CHECK-LABEL: @test8(
++ ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
++ ; CHECK-NEXT:    call void @randomop(ptr [[A]])
++ ; CHECK-NEXT:    store i32 0, ptr [[A]], align 4
++@@ -100,40 +88,11 @@
++   ret i32 %x
++ }
++ 
++-; DSE across monotonic load (allowed if the monotonic load's address is NoAlias)
++-define i32 @test10() {
++-; CHECK-LABEL: @test10(
++-; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
++-; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    ret i32 [[X]]
++-;
++-  store i32 0, ptr @x
++-  %x = load atomic i32, ptr @y monotonic, align 4
++-  store i32 1, ptr @x
++-  ret i32 %x
++-}
++-
++-; DSE across monotonic load (blocked if the atomic load's address isn't NoAlias)
++-define i32 @test11(ptr %ptr) {
++-; CHECK-LABEL: @test11(
++-; CHECK-NEXT:    store i32 0, ptr @x, align 4
++-; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr [[PTR:%.*]] monotonic, align 4
++-; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    ret i32 [[X]]
++-;
++-  store i32 0, ptr @x
++-  %x = load atomic i32, ptr %ptr monotonic, align 4
++-  store i32 1, ptr @x
++-  ret i32 %x
++-}
++-
++ ; DSE across monotonic store (allowed as long as the eliminated store isUnordered)
++-define void @test12() {
++-; CHECK-LABEL: @test12(
++-; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
++-; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    ret void
++-;
+++define void @test10() {
+++; CHECK-LABEL: test10
+++; CHECK-NOT: store i32 0
+++; CHECK: store i32 1
++   store i32 0, ptr @x
++   store atomic i32 42, ptr @y monotonic, align 4
++   store i32 1, ptr @x
++@@ -141,8 +100,8 @@
++ }
++ 
++ ; DSE across monotonic load (forbidden since the eliminated store is atomic)
++-define i32 @test13() {
++-; CHECK-LABEL: @test13(
+++define i32 @test11() {
+++; CHECK-LABEL: @test11(
++ ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
++ ; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
++ ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
++@@ -155,8 +114,8 @@
++ }
++ 
++ ; DSE across monotonic store (forbidden since the eliminated store is atomic)
++-define void @test14() {
++-; CHECK-LABEL: @test14(
+++define void @test12() {
+++; CHECK-LABEL: @test12(
++ ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
++ ; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
++ ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
++@@ -191,7 +150,7 @@
++ define i64 @test_atomicrmw_0() {
++ ; CHECK-LABEL: @test_atomicrmw_0(
++ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++   store i64 1, ptr @z
++@@ -203,7 +162,7 @@
++ define i64 @test_atomicrmw_1() {
++ ; CHECK-LABEL: @test_atomicrmw_1(
++ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++   store i64 1, ptr @z
++@@ -214,7 +173,7 @@
++ ; Monotonic atomicrmw should not block eliminating no-aliasing stores.
++ define i64 @test_atomicrmw_2() {
++ ; CHECK-LABEL: @test_atomicrmw_2(
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic
++ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++@@ -228,7 +187,7 @@
++ define i64 @test_atomicrmw_3() {
++ ; CHECK-LABEL: @test_atomicrmw_3(
++ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release
++ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++@@ -242,7 +201,7 @@
++ define i64 @test_atomicrmw_4(ptr %ptr) {
++ ; CHECK-LABEL: @test_atomicrmw_4(
++ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic
++ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++@@ -256,7 +215,7 @@
++ define i64 @test_atomicrmw_5() {
++ ; CHECK-LABEL: @test_atomicrmw_5(
++ ; CHECK-NEXT:    store i64 1, ptr @z, align 8
++-; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
+++; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
++ ; CHECK-NEXT:    store i64 2, ptr @z, align 8
++ ; CHECK-NEXT:    ret i64 [[RES]]
++ ;
++@@ -270,7 +229,7 @@
++ define { i32, i1} @test_cmpxchg_1() {
++ ; CHECK-LABEL: @test_cmpxchg_1(
++ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic, align 4
+++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic
++ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
++ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
++ ;
++@@ -283,7 +242,7 @@
++ ; Monotonic cmpxchg should not block DSE for non-aliasing stores.
++ define { i32, i1} @test_cmpxchg_2() {
++ ; CHECK-LABEL: @test_cmpxchg_2(
++-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic, align 4
+++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic
++ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
++ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
++ ;
++@@ -297,7 +256,7 @@
++ define { i32, i1} @test_cmpxchg_3() {
++ ; CHECK-LABEL: @test_cmpxchg_3(
++ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst, align 4
+++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst
++ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
++ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
++ ;
++@@ -311,7 +270,7 @@
++ define { i32, i1} @test_cmpxchg_4(ptr %ptr) {
++ ; CHECK-LABEL: @test_cmpxchg_4(
++ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic, align 4
+++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic
++ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
++ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
++ ;
++@@ -325,7 +284,7 @@
++ define { i32, i1} @test_cmpxchg_5(ptr %ptr) {
++ ; CHECK-LABEL: @test_cmpxchg_5(
++ ; CHECK-NEXT:    store i32 1, ptr @x, align 4
++-; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic, align 4
+++; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic
++ ; CHECK-NEXT:    store i32 2, ptr @x, align 4
++ ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
++ ;
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
++--- a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
+++++ b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
++@@ -0,0 +1,23 @@
+++; XFAIL: *
+++; RUN: opt -passes=dse -S < %s | FileCheck %s
 ++
-+   // Write the line out to the pipe connected to editline's input.
-+-  ssize_t input_bytes_written =
-+-      ::write(_pty_primary_fd, line.c_str(),
-+-              line.length() * sizeof(std::string::value_type));
-+-
-+-  const char *eoln = "\n";
-+-  const size_t eoln_length = strlen(eoln);
-+-  input_bytes_written =
-+-      ::write(_pty_primary_fd, eoln, eoln_length * sizeof(char));
-+-
-+-  EXPECT_NE(-1, input_bytes_written) << strerror(errno);
-+-  EXPECT_EQ(eoln_length * sizeof(char), size_t(input_bytes_written));
-+-  return eoln_length * sizeof(char) == size_t(input_bytes_written);
-++  size_t num_bytes = out.length() * sizeof(std::string::value_type);
-++  EXPECT_THAT_ERROR(_el_primary_file->Write(out.c_str(), num_bytes).takeError(),
-++                    llvm::Succeeded());
-++  EXPECT_EQ(num_bytes, out.length() * sizeof(std::string::value_type));
-++  return true;
-+ }
-  
--+    included_srcs = []
--     if type(tbl_outs) == type({}):
--         tbl_outs = [(v, k) for k, v in tbl_outs.items()]
---    for (opts, out) in tbl_outs:
--+    for (opts, output_or_outputs) in tbl_outs:
--+        outs = output_or_outputs if type(output_or_outputs) == type([]) else [output_or_outputs]
--+        out = outs[0]
--+        if not any([skip_opt in opts for skip_opt in skip_opts]):
--+            included_srcs.extend(outs)
--         first_opt = opts[0] if opts else ""
--         rule_suffix = "_{}_{}".format(
--             first_opt.replace("-", "_").replace("=", "_"),
--@@ -343,6 +354,7 @@
--             deps = deps,
--             includes = includes,
--             out = out,
--+            additional_outputs = outs[1:],
--             **kwargs
--         )
-+ bool EditlineAdapter::SendLines(const std::vector<std::string> &lines) {
-+@@ -215,7 +185,7 @@
-+ }
-  
--@@ -364,7 +376,6 @@
--                 **kwargs
--             )
-+ void EditlineAdapter::ConsumeAllOutput() {
-+-  FilePointer output_file(fdopen(_pty_primary_fd, "r"));
-++  FILE *output_file = _el_primary_file->GetStream();
-  
---    included_srcs = [f for (opts, f) in tbl_outs if not any([skip_opt in opts for skip_opt in skip_opts])]
--     native.filegroup(
--         name = name,
--         srcs = included_srcs,
-+   int ch;
-+   while ((ch = fgetc(output_file)) != EOF) {
-+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/rewrite-vgpr-mfma-scale-to-agpr.mir b/llvm/test/CodeGen/AMDGPU/rewrite-vgpr-mfma-scale-to-agpr.mir
-+--- a/llvm/test/CodeGen/AMDGPU/rewrite-vgpr-mfma-scale-to-agpr.mir
-++++ b/llvm/test/CodeGen/AMDGPU/rewrite-vgpr-mfma-scale-to-agpr.mir
-+@@ -1,4 +1,4 @@
-+-# RUN: not llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx950 -run-pass=greedy,amdgpu-rewrite-agpr-copy-mfma -verify-machineinstrs -o - %s 2>&1 | FileCheck %s
-++# RUN: not --crash llc -mtriple=amdgcn-amd-amdhsa -mcpu=gfx950 -run-pass=greedy,amdgpu-rewrite-agpr-copy-mfma -verify-machineinstrs -o - %s 2>&1 | FileCheck %s
-+ # CHECK: Illegal virtual register for instruction
-+ # CHECK: Expected a VGPR_32 register, but got a AGPR_32 register
-+  
+++target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
+++target triple = "x86_64-apple-macosx10.7.0"
+++
+++; Basic correctness tests for atomic stores.
+++; Note that it turns out essentially every transformation DSE does is legal on
+++; atomic ops, just some transformations are not allowed across release-acquire pairs.
+++
+++@x = common global i32 0, align 4
+++@y = common global i32 0, align 4
+++
+++; DSE across monotonic load (allowed as long as the eliminated store isUnordered)
+++define i32 @test9() {
+++; CHECK-LABEL: test9
+++; CHECK-NOT: store i32 0
+++; CHECK: store i32 1
+++  store i32 0, ptr @x
+++  %x = load atomic i32, ptr @y monotonic, align 4
+++  store i32 1, ptr @x
+++  ret i32 %x
+++}
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -517,6 +517,7 @@
++         ":IRDLDialect",
++         ":InferTypeOpInterface",
++         ":Parser",
+++        ":TransformsPassIncGen",
++     ],
++ )
++ 
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a001d88..1157959 100644
+index 4957ce4..35c22ed 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "d65be16ab6adf00af21e75d29049ae5de0f3a38a"
--    LLVM_SHA256 = "8eaf93ab6428454242e5c0e8edfb875f70cd062d010d388eb9c2c4ba8c9cb4bd"
-+    LLVM_COMMIT = "f2cb5d7a05bacb3e39df8dd355b2fbd16f96c856"
-+    LLVM_SHA256 = "57cb1ed943a6b62a62a1a239db81bf4ae93ba252022aef2d0efb8f8d8a46f404"
+-    LLVM_COMMIT = "125948a058dcd89b7fe377872a5fc1a7f9d34e70"
+-    LLVM_SHA256 = "8f79c221169dec52116dea2202be64aa653584f98b03a715c30d74ea9141328b"
++    LLVM_COMMIT = "53f84636eb86e6c64c1ec405f70b3dd2b27f4ddc"
++    LLVM_SHA256 = "b487990b6006fe720c305782d142aa28612df42191bb756a1eb302ab2a0092b8"
  
      tf_http_archive(
          name = name,

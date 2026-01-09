@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -52,31 +53,40 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::Client>> CreateIfrtBackendClient(
   return xla::ifrt::PjRtClient::Create(std::move(pjrt_cpu_client));
 }
 
+class ClientAndServer {
+ public:
+  explicit ClientAndServer() {
+    std::string address =
+        absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
+    server_ = GrpcServer::CreateFromIfrtClientFactory(address,
+                                                      CreateIfrtBackendClient);
+    if (!server_.ok()) {
+      client_ = server_.status();
+      return;
+    }
+    client_ = CreateClient(absl::StrCat("grpc://", address));
+  }
+
+  absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> client() {
+    return client_;
+  }
+
+ private:
+  absl::StatusOr<std::unique_ptr<GrpcServer>> server_;
+  absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> client_;
+};
+
+// NOTE: A prior version of this file destructed the client and the server
+// at the end of each test case, but that triggered a non-rootcaused bug
+// (b/450109296). We work around the bug by keeping a singleton that is reused
+// across test cases and is not destroyed.
+absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> GetSingletonClient() {
+  static absl::NoDestructor<ClientAndServer> client_and_server;
+  return client_and_server->client();
+}
+
 const bool kUnused =
-    (xla::ifrt::test_util::RegisterClientFactory(
-         []() -> absl::StatusOr<std::shared_ptr<xla::ifrt::Client>> {
-           std::string address =
-               absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
-           TF_ASSIGN_OR_RETURN(auto server,
-                               GrpcServer::CreateFromIfrtClientFactory(
-                                   address, CreateIfrtBackendClient));
-
-           TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::ifrt::Client> client,
-                               CreateClient(absl::StrCat("grpc://", address)));
-
-           return std::shared_ptr<xla::ifrt::Client>(
-               client.release(), /*deleter=*/
-               [server = server.release()](xla::ifrt::Client* client) {
-                 // Client has to be destructed before the server since the
-                 // server's destructor (as of Jul 2023) waits for the client to
-                 // end its session.
-                 // TODO(b/282757875): Make the server cancel the client's
-                 // session if the server is getting destructed.
-                 delete client;
-                 delete server;
-               });
-         }),
-     true);
+    (xla::ifrt::test_util::RegisterClientFactory(GetSingletonClient), true);
 
 }  // namespace
 }  // namespace test_util

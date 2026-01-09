@@ -18,7 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
 
@@ -31,10 +31,10 @@ absl::StatusOr<GpuSemaphore> GpuSemaphore::Create(StreamExecutor* executor) {
   return GpuSemaphore{std::move(alloc)};
 }
 
-DeviceMemory<GpuSemaphoreState> GpuSemaphore::device() {
+DeviceAddress<GpuSemaphoreState> GpuSemaphore::device() {
   // This assumes unified addressing, as we do not explicitly translate the
   // host pointer into a device pointer.
-  return DeviceMemory<GpuSemaphoreState>::MakeFromByteSize(
-      ptr_->opaque(), sizeof(GpuSemaphoreState));
+  return DeviceAddress<GpuSemaphoreState>::MakeFromByteSize(
+      ptr_->address().opaque(), sizeof(GpuSemaphoreState));
 }
 }  // namespace stream_executor

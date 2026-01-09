@@ -19,8 +19,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -64,24 +64,6 @@ class NestGemmFusion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
-
-namespace detail {
-
-// Returns block level parameters based on tile sizes for the root of the
-// analysis that satisfy the requirements of the `dot`. That is, the tile sizes
-// need to satisfy the constraints of the analysis and map to the given `config`
-// of the dot.
-//
-// We expose this function because using `GpuDotFusionCostModel` is only
-// possible with `EstimateRunTimeForDotOpWithBlockParameters` method. This
-// function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
-// is implemented.
-absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* mlir_context,
-    const se::DeviceDescription& device_description);
-
-}  // namespace detail
 
 }  // namespace xla::gpu
 

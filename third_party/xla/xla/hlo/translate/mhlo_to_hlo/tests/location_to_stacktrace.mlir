@@ -1,4 +1,4 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s 
 
 // Checks no locations
 

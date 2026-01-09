@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-
 #include "nvidia/hopper/include/Transforms/Passes.h"
 #include "nvidia/include/NVGPUToLLVM/Passes.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
@@ -28,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/Passes.h"
+#include "triton/Dialect/Gluon/Transforms/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -61,17 +60,14 @@ static void MakeTTIR(mlir::OpPassManager* pm,
 // @triton//:third_party/nvidia/backend/compiler.py
 static void MakeTTGIR(mlir::OpPassManager* pm,
                       const stream_executor::CudaComputeCapability& cuda_cc,
-                      int num_warps, int num_ctas, int num_stages,
-                      mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+                      int num_warps, int num_ctas, int num_stages) {
   const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
   pm->addPass(mt::createConvertTritonToTritonGPU(
       {absl::StrFormat("cuda:%u", cuda_cc_as_int), num_warps,
        /*threads_per_warp=*/32, num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
-  if (cuda_cc.IsAtLeastAmpere()) {
-    pm->addPass(mt::gpu::createTritonGPUF32DotTC());
-  }
-  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass(&out_cluster_info));
+  pm->addPass(mt::gpu::createTritonGPUF32DotTC({cuda_cc.IsAtLeastAmpere()}));
+  pm->addPass(ttng::createTritonNvidiaGPUPlanCTAPass());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   pm->addPass(mt::gpu::createTritonGPUAccelerateMatmul());
@@ -143,10 +139,12 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
+  pm->addPass(mlir::triton::gluon::createGluonInline());
   pm->addPass(mt::createAllocateSharedMemoryNvPass(
       cuda_cc_as_int,
       mlir::triton::AllocateSharedMemoryNvOptions{}.ptxVersion));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
+  pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
   // We could add a flag to XLA to optionally enable the following pass:
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
@@ -158,7 +156,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mt::createConvertWarpSpecializeToLLVM());
-  pm->addPass(mlir::createArithToLLVMConversionPass());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
@@ -169,10 +166,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
 void CreateTritonCudaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::CudaComputeCapability& cuda_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+    int num_ctas, int num_stages) {
   MakeTTIR(pm, cuda_cc);
-  MakeTTGIR(pm, cuda_cc, num_warps, num_ctas, num_stages, out_cluster_info);
+  MakeTTGIR(pm, cuda_cc, num_warps, num_ctas, num_stages);
   MakeLLIR(pm, cuda_cc);
 }
 

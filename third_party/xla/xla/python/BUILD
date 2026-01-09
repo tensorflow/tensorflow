@@ -190,6 +190,7 @@ cc_library(
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ],
     # Always register 'InspectSharding' custom partitioning handler.
     alwayslink = 1,
@@ -613,6 +614,19 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
+        "@nanobind",
+    ],
+)
+
+cc_library(
+    name = "nb_status",
+    hdrs = ["nb_status.h"],
+    compatible_with = [],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@com_google_absl//absl/status",
         "@nanobind",
     ],
 )

@@ -118,7 +118,7 @@ absl::Status QueueRunner::StartAndCollectCostGraph(
 
 absl::Status QueueRunner::Start(Session* sess, int wait_for) {
   counter_ = std::make_unique<BlockingCounter>(runs_);
-  for (const string& enqueue_op : enqueue_op_names_) {
+  for (const std::string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
   }
@@ -182,7 +182,7 @@ void QueueRunner::UpdateStatus(const absl::Status& status) {
   }
 }
 
-void QueueRunner::Run(Session* sess, const string& enqueue_op) {
+void QueueRunner::Run(Session* sess, const std::string& enqueue_op) {
   bool first_iteration = true;
   absl::Status status;
   while (status.ok()) {
@@ -245,7 +245,7 @@ void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {
   run_options_ = run_options;
 }
 
-absl::Status QueueRunner::RealRun(Session* sess, const string& op,
+absl::Status QueueRunner::RealRun(Session* sess, const std::string& op,
                                   bool update_costs) {
   absl::Status s;
   if (update_costs && cg_mu_) {

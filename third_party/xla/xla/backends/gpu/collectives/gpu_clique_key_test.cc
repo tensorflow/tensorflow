@@ -27,7 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_map.h"
 #include "xla/core/collectives/clique_id.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -31,31 +32,77 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/resource_requests.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
+
+namespace xla::gpu {
+struct TestState {
+  std::string value;
+};
+
+struct NonSerializableTestState {
+  int value;
+};
+
+struct FailingSerializableTestState {
+  int value;
+};
+}  // namespace xla::gpu
+
+namespace xla::ffi {
+template <>
+struct TypeRegistry::SerDes<xla::gpu::TestState> : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(
+      const xla::gpu::TestState& value) {
+    return value.value;
+  }
+  static absl::StatusOr<std::unique_ptr<xla::gpu::TestState>> Deserialize(
+      absl::string_view data) {
+    return std::make_unique<xla::gpu::TestState>(
+        xla::gpu::TestState{std::string(data)});
+  }
+};
+
+template <>
+struct TypeRegistry::SerDes<xla::gpu::FailingSerializableTestState>
+    : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(
+      const xla::gpu::FailingSerializableTestState& value) {
+    return absl::InternalError("Serialization failed");
+  }
+  static absl::StatusOr<std::unique_ptr<xla::gpu::FailingSerializableTestState>>
+  Deserialize(absl::string_view data) {
+    return std::make_unique<xla::gpu::FailingSerializableTestState>(
+        xla::gpu::FailingSerializableTestState{0});
+  }
+};
+}  // namespace xla::ffi
 
 namespace xla::gpu {
 namespace {
@@ -87,7 +134,7 @@ TEST(CustomCallThunkTest, SimpleCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, CustomCallThunk::Create(Thunk::ThunkInfo(), "target_name",
                                           target, {}, {}, ""));
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr);
@@ -107,7 +154,7 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   // Setup the additional streams.
   Thunk::ExecutionStreamIdMap additional_compute_streams = {};
   additional_compute_streams[ExecutionStreamId(1)] = extra_stream.get();
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr, additional_compute_streams);
@@ -159,7 +206,7 @@ TEST(CustomCallThunkTest, ResolvesFFICustomCall) {
           /*called_computation=*/nullptr,
           /*platform_name=*/executor->GetPlatform()->Name()));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations empty_unused_allocations({}, 0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), empty_unused_allocations,
@@ -201,7 +248,7 @@ TEST(CustomCallThunkTest, ResolvesLegacyCustomCall) {
           CustomCallApiVersion::API_VERSION_STATUS_RETURNING,
           /*platform_name=*/executor->GetPlatform()->Name()));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations empty_unused_allocations({}, 0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), empty_unused_allocations,
@@ -241,10 +288,22 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
     ++execute_calls;
     return absl::OkStatus();
   });
-  se::StreamExecutorMemoryAllocator allocator(executor);
-  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
-  ResourceRequests resource_requests;
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &buffer_allocations};
+
   Thunk::InitializeParams initialize_params;
   initialize_params.stream = stream.get();
   initialize_params.buffer_allocations = &buffer_allocations;
@@ -264,7 +323,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   EXPECT_EQ(initialize_calls, 0);
   EXPECT_EQ(execute_calls, 0);
 
-  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_THAT(thunk->Prepare(prepare_params), IsOk());
   EXPECT_EQ(instantiate_calls, 1);
   EXPECT_EQ(prepare_calls, 1);
   EXPECT_EQ(initialize_calls, 0);
@@ -293,11 +352,23 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
     ++execute_calls;
     return absl::OkStatus();
   });
-  se::StreamExecutorMemoryAllocator allocator(executor);
-  Thunk::PrepareParams prepare_params = Thunk::PrepareParams{};
-  ResourceRequests resource_requests;
-  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations buffer_allocations({}, 0, &allocator);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor,
+                                      &buffer_allocations};
+
+  Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
       stream.get(), nullptr, nullptr);
@@ -310,7 +381,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
                               /*operands=*/{},
                               /*results=*/{}, /*attributes=*/{},
                               /*called_computation=*/nullptr));
-  EXPECT_THAT(thunk->Prepare(prepare_params, resource_requests), IsOk());
+  EXPECT_THAT(thunk->Prepare(prepare_params), IsOk());
   EXPECT_THAT(thunk->Initialize(initialize_params), IsOk());
   EXPECT_THAT(thunk->ExecuteOnStream(execute_params), IsOk());
   EXPECT_EQ(execute_calls, 1);
@@ -321,7 +392,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutExecute) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
                           executor->CreateStream());
   CustomCallThunk::OwnedHandlerBundle bundle;  // all handlers null
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
       stream.get(), stream.get(), nullptr, nullptr);
@@ -338,7 +409,8 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutExecute) {
 absl::Status VerifyCallbackArguments(int my_attribute,
                                      ffi::AnyBuffer my_operand,
                                      ffi::Result<ffi::AnyBuffer> my_result,
-                                     const HloComputation* called_computation) {
+                                     const HloComputation* called_computation,
+                                     xla::gpu::TestState* state) {
   EXPECT_EQ(my_attribute, 42);
   EXPECT_EQ(my_operand.element_type(), xla::PrimitiveType::U8);
   EXPECT_EQ(my_operand.device_memory().opaque(),
@@ -347,6 +419,7 @@ absl::Status VerifyCallbackArguments(int my_attribute,
   EXPECT_EQ(my_result->device_memory().opaque(),
             absl::bit_cast<void*>(static_cast<intptr_t>(0xABCDEF)));
   EXPECT_EQ(called_computation->name(), "test_computation");
+  EXPECT_EQ(state->value, "some state");
   return absl::OkStatus();
 }
 
@@ -355,7 +428,8 @@ XLA_FFI_DEFINE_HANDLER(kVerifyCallbackArguments, VerifyCallbackArguments,
                            .Attr<int>("my_attribute")
                            .Arg<ffi::AnyBuffer>()
                            .Ret<ffi::AnyBuffer>()
-                           .Ctx<ffi::CalledComputation>(),
+                           .Ctx<ffi::CalledComputation>()
+                           .Ctx<ffi::State<xla::gpu::TestState>>(),
                        {ffi::Traits::kCmdBufferCompatible});
 
 constexpr absl::string_view kVerifyCallbackArgumentsCustomCallName =
@@ -386,6 +460,11 @@ TEST(CustomCallThunkTest, ProtoConversion) {
   ShapedSlice result_slice{BufferAllocation::Slice{&alloc1, 0, 1024},
                            ShapeUtil::MakeShape(U16, {512})};
 
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
+  ASSERT_THAT(execution_state->Set(
+                  std::make_unique<TestState>(TestState{"some state"})),
+              IsOk());
+
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallThunk> original_thunk,
       CustomCallThunk::Create(
@@ -394,9 +473,10 @@ TEST(CustomCallThunkTest, ProtoConversion) {
           /*operands=*/{operand_slice},
           /*results=*/{result_slice}, /*attributes=*/{{"my_attribute", 42}},
           hlo_module.entry_computation(),
-          /*platform_name=*/kTestPlatformName));
+          /*platform_name=*/kTestPlatformName, std::move(execution_state)));
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, original_thunk->ToProto());
   ASSERT_TRUE(proto.has_custom_call_thunk());
+  ASSERT_TRUE(proto.custom_call_thunk().has_execution_state());
   original_thunk.reset();
 
   std::array allocations = {alloc0, alloc1};
@@ -406,11 +486,11 @@ TEST(CustomCallThunkTest, ProtoConversion) {
       CustomCallThunk::FromProto(Thunk::ThunkInfo(), proto.custom_call_thunk(),
                                  allocations, &hlo_module, kTestPlatformName));
 
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations device_allocations(
-      {stream_executor::DeviceMemoryBase(
+      {stream_executor::DeviceAddressBase(
            absl::bit_cast<void*>(static_cast<intptr_t>(0xDEADBEEF)), 1024),
-       stream_executor::DeviceMemoryBase(
+       stream_executor::DeviceAddressBase(
            absl::bit_cast<void*>(static_cast<intptr_t>(0xABCDEF)), 1024)},
       0, &allocator);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -443,6 +523,116 @@ TEST(CustomCallThunkTest, DeserializationFailsWithMissingHloModule) {
                                          /*buffer_allocations=*/{}, &hlo_module,
                                          /*platform_name=*/kTestPlatformName),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CustomCallThunkTest, RoundtripWithNonSerializableExecutionState) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+
+  HloModuleConfig config;
+  HloModule hlo_module("test_module", config);
+  HloComputation::Builder builder("test_computation");
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(U32, {42}), "parameter"));
+  hlo_module.AddEntryComputation(builder.Build());
+
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
+  ASSERT_THAT(execution_state->Set(std::make_unique<NonSerializableTestState>(
+                  NonSerializableTestState{42})),
+              IsOk());
+  EXPECT_FALSE(execution_state->IsSerializable());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> original_thunk,
+      CustomCallThunk::Create(
+          Thunk::ThunkInfo(),
+          /*target_name=*/std::string(kVerifyCallbackArgumentsCustomCallName),
+          /*operands=*/{},
+          /*results=*/{}, /*attributes=*/{}, hlo_module.entry_computation(),
+          /*platform_name=*/kTestPlatformName, std::move(execution_state)));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, original_thunk->ToProto());
+  ASSERT_TRUE(proto.has_custom_call_thunk());
+  EXPECT_FALSE(proto.custom_call_thunk().has_execution_state());
+
+  original_thunk.reset();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> new_thunk,
+      CustomCallThunk::FromProto(Thunk::ThunkInfo(), proto.custom_call_thunk(),
+                                 /*buffer_allocations=*/{}, &hlo_module,
+                                 kTestPlatformName));
+
+  EXPECT_NE(new_thunk->execution_state(), nullptr);
+  EXPECT_FALSE(new_thunk->execution_state()->IsSet());
+}
+
+TEST(CustomCallThunkTest, SerializationFails) {
+  HloModuleConfig config;
+  HloModule hlo_module("test_module", config);
+  HloComputation::Builder builder("test_computation");
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(U32, {42}), "parameter"));
+  hlo_module.AddEntryComputation(builder.Build());
+
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
+  ASSERT_OK(execution_state->Set(std::make_unique<FailingSerializableTestState>(
+      FailingSerializableTestState{42})));
+  EXPECT_TRUE(execution_state->IsSerializable());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> thunk,
+      CustomCallThunk::Create(
+          Thunk::ThunkInfo(),
+          /*target_name=*/std::string(kVerifyCallbackArgumentsCustomCallName),
+          /*operands=*/{},
+          /*results=*/{}, /*attributes=*/{}, hlo_module.entry_computation(),
+          /*platform_name=*/kTestPlatformName, std::move(execution_state)));
+
+  EXPECT_THAT(thunk->ToProto(), StatusIs(absl::StatusCode::kInternal,
+                                         HasSubstr("Serialization failed")));
+}
+
+TEST(CustomCallThunkTest, LegacyCustomCallRoundTrip) {
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, GpuExecutor());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executor->CreateStream());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> original_thunk,
+      CustomCallThunk::Create(
+          Thunk::ThunkInfo(),
+          /*target_name=*/"Callback_WithStatusFailed",
+          /*operands=*/{},
+          /*results=*/{}, /*opaque=*/"opaque",
+          CustomCallApiVersion::API_VERSION_STATUS_RETURNING,
+          /*platform_name=*/executor->GetPlatform()->Name()));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, original_thunk->ToProto());
+  original_thunk.reset();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> new_thunk,
+      CustomCallThunk::FromProto(Thunk::ThunkInfo(), proto.custom_call_thunk(),
+                                 /*buffer_allocations=*/{},
+                                 /*hlo_module=*/nullptr,
+                                 executor->GetPlatform()->Name()));
+
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations empty_unused_allocations({}, 0, &allocator);
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), empty_unused_allocations,
+      /*stream=*/stream.get(),
+      /*command_buffer_trace_stream=*/stream.get(),
+      /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr);
+
+  // We check that the new thunk behaves like the original one (returning
+  // internal error with specific message).
+  EXPECT_THAT(new_thunk->ExecuteOnStream(params),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Legacy Custom call was executed!")));
 }
 
 }  // namespace

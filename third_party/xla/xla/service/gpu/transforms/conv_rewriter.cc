@@ -18,12 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -46,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -629,7 +626,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
     reverse_filter = c->AddInstruction(
         HloInstruction::CreateReverse(reverse_filter->shape(), reverse_filter,
                                       dnums.kernel_spatial_dimensions()));
-    TF_CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
+    CHECK_OK(conv->ReplaceOperandWith(/*operand_num=*/1, reverse_filter));
   }
 
   // Calculate the 'rhs' that goes into the backward input convolution.
@@ -684,7 +681,7 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
   // in_depth/G, G, out_depth / G]
   std::vector<int64_t> transpose_dims(rhs->shape().dimensions().size());
-  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  absl::c_iota(transpose_dims, 0);
   transpose_dims.erase(transpose_dims.begin() + input_feature_dimension);
   transpose_dims.insert(transpose_dims.begin() + output_feature_dimension,
                         input_feature_dimension);
@@ -783,7 +780,7 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
   // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
   // W, G, C]
   std::vector<int64_t> transpose_dims(lhs->shape().dimensions().size());
-  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  absl::c_iota(transpose_dims, 0);
   transpose_dims.erase(transpose_dims.begin() + input_batch_dimension);
   transpose_dims.insert(transpose_dims.begin() + input_feature_dimension,
                         input_batch_dimension);

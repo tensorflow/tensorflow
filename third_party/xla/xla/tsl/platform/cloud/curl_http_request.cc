@@ -16,14 +16,27 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
 
-#include "xla/tsl/lib/gtl/map_util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -243,8 +256,8 @@ absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {
-    return errors::InvalidArgument("Couldn't open the specified file: " +
-                                   body_filepath);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't open the specified file: ", body_filepath));
   }
   fseek(put_body_, 0, SEEK_END);
   const auto size = ftell(put_body_) - offset;
@@ -493,20 +506,20 @@ absl::Status CurlHttpRequest::Send() {
     case 406:  // Not Acceptable
     case 411:  // Length Required
     case 414:  // URI Too Long
-      result = errors::InvalidArgument(get_error_message());
+      result = absl::InvalidArgumentError(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
     case 407:  // Proxy Authorization Required
-      result = errors::PermissionDenied(get_error_message());
+      result = absl::PermissionDeniedError(get_error_message());
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = errors::NotFound(get_error_message());
+      result = absl::NotFoundError(get_error_message());
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
@@ -518,7 +531,7 @@ absl::Status CurlHttpRequest::Send() {
     case 307:  // Temporary Redirect
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(get_error_message());
+      result = absl::FailedPreconditionError(get_error_message());
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
@@ -534,7 +547,7 @@ absl::Status CurlHttpRequest::Send() {
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(get_error_message());
+      result = absl::UnavailableError(get_error_message());
       break;
   }
   if (!result.ok()) {
@@ -651,19 +664,19 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     if (get_response_result == CURLE_OK && response_code == 416) {
       return absl::OkStatus();
     }
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, overflow_message));
   }
   // Domain resolution errors and certificate problems aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
   if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
-  return errors::Unavailable(
+  return absl::UnavailableError(
       absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 

@@ -34,6 +34,17 @@ build:asan --test_env=LSAN_OPTIONS=suppressions=build_tools/rocm/lsan_ignore_lis
 build:asan --//build_tools/rocm:sanitizer=asan
 build:asan --run_under=//build_tools/rocm:sanitizer_wrapper
 
+build:ci_single_gpu --run_under=//build_tools/rocm:parallel_gpu_execute
+build:ci_single_gpu --flaky_test_attempts=3
+
+build:ci_multi_gpu --action_env=XLA_FLAGS="--xla_gpu_force_compilation_parallelism=16 --xla_gpu_enable_llvm_module_compilation_parallelism=true"
+build:ci_multi_gpu --action_env=NCCL_MAX_NCHANNELS=1
+build:ci_multi_gpu --run_under=//build_tools/rocm:sanitizer_wrapper
+build:ci_multi_gpu --test_sharding_strategy=disabled
+build:ci_multi_gpu --flaky_test_attempts=3
+build:ci_multi_gpu --experimental_guard_against_concurrent_changes
+build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
+
 test:xla_sgpu -- \
 //xla/... \
 -//xla/backends/gpu/collectives:gpu_clique_key_test \

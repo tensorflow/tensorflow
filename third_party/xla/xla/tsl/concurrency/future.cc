@@ -18,12 +18,12 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
-#include <tuple>
 #include <utility>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -41,56 +41,62 @@ absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
         tsl::MakeAvailableAsyncValueRef<absl::Status>(ready_promise_storage));
 
 namespace {
-struct State {
-  explicit State(int32_t size) : pending_count(size) {
-    std::tie(promise, future) = Future<>::MakePromise();
+
+class State {
+ public:
+  State(int32_t size, Promise<> promise)
+      : pending_count_(size), promise_(std::move(promise)) {}
+
+  void Update(const absl::Status& status) {
+    if (ABSL_PREDICT_FALSE(!status.ok())) {
+      absl::MutexLock lock(mu_);
+      if (VLOG_IS_ON(2)) {
+        if (!status_.ok() && status.code() != status_.code()) {
+          VLOG(2) << "Ignoring status " << status << " because first error was "
+                  << status_;
+        }
+      }
+      status_.Update(status);
+    }
+
+    int32_t pending_count =
+        pending_count_.fetch_sub(1, std::memory_order_acq_rel);
+    CHECK_GE(pending_count, 1) << "Pending count can't drop below 0";
+
+    if (pending_count == 1) {
+      absl::MutexLock lock(mu_);
+      promise_.Set(std::move(status_));
+    }
   }
 
-  std::atomic<int32_t> pending_count;
-  Promise<> promise;
-  Future<> future;
+ private:
+  std::atomic<int32_t> pending_count_;
+  Promise<> promise_;
 
-  absl::Mutex mu;
-  absl::Status status ABSL_GUARDED_BY(&mu);
+  absl::Mutex mu_;
+  absl::Status status_ ABSL_GUARDED_BY(&mu_);
 };
+
 }  // namespace
 
 Future<> JoinFutures(absl::Span<const Future<>> futures) {
-  VLOG(2) << "xla::JoinFutures: " << futures.size() << " futures";
+  VLOG(2) << "tsl::JoinFutures: " << futures.size() << " futures";
+
   if (futures.empty()) {
-    return Future<>(absl::OkStatus());
+    return absl::OkStatus();
   }
   if (futures.size() == 1) {
     return futures.front();
   }
 
-  auto state = std::make_shared<State>(futures.size());
+  auto [promise, future] = MakePromise();
+  auto state = std::make_shared<State>(futures.size(), std::move(promise));
 
   for (const Future<>& future : futures) {
-    future.OnReady([state](absl::Status status) {
-      if (ABSL_PREDICT_FALSE(!status.ok())) {
-        absl::MutexLock lock(state->mu);
-        if (VLOG_IS_ON(2)) {
-          if (!state->status.ok() && status.code() != state->status.code()) {
-            VLOG(2) << "Ignoring status " << status
-                    << " because first error was " << state->status;
-          }
-        }
-        state->status.Update(status);
-      }
-
-      int32_t pending_count =
-          state->pending_count.fetch_sub(1, std::memory_order_acq_rel);
-      CHECK_GE(pending_count, 1) << "Pending count can't drop below 0";
-
-      if (pending_count == 1) {
-        absl::MutexLock lock(state->mu);
-        state->promise.Set(std::move(state->status));
-      }
-    });
+    future.OnReady(absl::bind_front(&State::Update, state));
   }
 
-  return std::move(state->future);
+  return std::move(future);
 }
 
 }  // namespace tsl

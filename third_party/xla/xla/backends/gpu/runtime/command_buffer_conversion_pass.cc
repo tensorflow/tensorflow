@@ -144,12 +144,10 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
     case Thunk::kAllToAllStart:
     case Thunk::kCollectiveBroadcastStart:
     case Thunk::kCollectivePermuteStart:
-    case Thunk::kRaggedAllToAllStart:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
     case Thunk::kCuDnn:
-    case Thunk::kConvolution:
       return DebugOptions::CUDNN;
     case Thunk::kCustomCall:
       return DebugOptions::CUSTOM_CALL;
@@ -354,6 +352,12 @@ ConvertThunksToCommandBuffer(
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
   }
+  VLOG(2) << "Creating command buffer thunk with the following thunks: "
+          << absl::StrJoin(
+                 thunks_to_convert, ", ",
+                 [](std::string* out, const std::unique_ptr<Thunk>& thunk) {
+                   absl::StrAppend(out, thunk->thunk_info().profile_annotation);
+                 });
   return std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),

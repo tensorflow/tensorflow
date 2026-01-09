@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,7 +54,8 @@ namespace xla {
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion() = default;
+  explicit MultiOutputFusion(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -106,7 +108,6 @@ class MultiOutputFusion : public HloModulePass {
   HloComputation* computation() const { return computation_; }
 
   // An internal data structure for each instruction in current computation.
-  // When an instruction is removed, member 'hlo' is set to nullptr.
   struct FusionCandidate {
     HloInstruction* hlo;
     std::list<std::pair<HloInstruction*, int64_t>> fusibles;
@@ -163,6 +164,8 @@ class MultiOutputFusion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  const AliasInfo* alias_info_;
+
  private:
   // The pair of candidates to be fused and the profit score.
   struct ToBeFused {
@@ -215,14 +218,15 @@ class MultiOutputFusion : public HloModulePass {
   }
 
   bool is_fused(HloInstruction* instr) {
-    return candidates_[get_candidate_id(instr)].hlo == nullptr;
+    return fused_instructions_.contains(instr);
   }
 
   void set_is_fused(HloInstruction* instr) {
-    candidates_[get_candidate_id(instr)].hlo = nullptr;
+    fused_instructions_.insert(instr);
   }
 
   std::vector<FusionCandidate> candidates_;
+  absl::flat_hash_set<const HloInstruction*> fused_instructions_;
   WorkList worklist_;
 
   // A map that maps an instruction to the index_.
@@ -237,7 +241,7 @@ class MultiOutputFusion : public HloModulePass {
       all_fusion_candidates_;
 
   // Computation for the pass.
-  HloComputation* computation_;
+  HloComputation* computation_ = nullptr;
 };
 
 }  // namespace xla

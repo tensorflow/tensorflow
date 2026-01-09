@@ -61,6 +61,12 @@ void FillKernelArgumentAttributes(
 
   for (int64_t i = 0; i < kernel_arguments.size(); ++i) {
     KernelArgument& kernel_argument = kernel_arguments[i];
+    if (kernel_argument.kind() == KernelArgument::Kind::kUnmanaged) {
+      if (kernel_argument.shape().dimensions().empty()) {
+        kernel_argument.set_alignment(0);  // scalars have no alignment
+      }
+      continue;
+    }
 
     auto& first_index = first_indices_for_slices[kernel_argument.slice()];
     if (first_index.has_value()) {
@@ -93,7 +99,8 @@ void FillKernelArgumentAttributes(
 
     kernel_argument.set_aliased(kernel_argument.written() && [&] {
       for (size_t j = 0; j < kernel_arguments.size(); ++j) {
-        if (i == j) {
+        if (i == j ||
+            kernel_arguments[j].kind() == KernelArgument::Kind::kUnmanaged) {
           continue;
         }
 
@@ -138,13 +145,11 @@ absl::StatusOr<OutputArguments> ExtractOutputArguments(
       }));
   return result;
 }
-
-}  // namespace
-
-absl::StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> CreateKernelArguments(
     const BufferAssignment& buffer_assignment,
-    const BufferAlignment& buffer_alignment,
-    const HloInstruction* hlo_instruction) {
+    const KernelArguments::BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction,
+    absl::Span<const Shape> unmanaged_arguments) {
   std::vector<KernelArgument> kernel_arguments;
   for (const HloInstruction* operand : hlo_instruction->operands()) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -158,10 +163,31 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
 
   absl::c_move(output_result.output_arguments,
                std::back_inserter(kernel_arguments));
+  for (const Shape& unmanaged_argument : unmanaged_arguments) {
+    kernel_arguments.emplace_back(unmanaged_argument);
+  }
   FillKernelArgumentAttributes(kernel_arguments, buffer_alignment,
                                output_result.buffers_written);
-
   return KernelArguments(std::move(kernel_arguments));
+}
+
+}  // namespace
+
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction) {
+  return CreateKernelArguments(buffer_assignment, buffer_alignment,
+                               hlo_instruction, {});
+}
+
+absl::StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction,
+    absl::Span<const Shape> unmanaged_arguments) {
+  return CreateKernelArguments(buffer_assignment, buffer_alignment,
+                               hlo_instruction, unmanaged_arguments);
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
@@ -171,8 +197,8 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const int32_t> interleaved_output_indices) {
   if (interleaved_output_indices.empty()) {
     // Fall back to regular Create method when no interleaving is requested
-    return KernelArguments::Create(buffer_assignment, buffer_alignment,
-                                   hlo_instruction);
+    return CreateKernelArguments(buffer_assignment, buffer_alignment,
+                                 hlo_instruction, {});
   }
 
   const auto& operands = hlo_instruction->operands();

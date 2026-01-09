@@ -18,9 +18,9 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER7(UnaryOp, CPU, "Square", functor::square, float, Eigen::half, double,
-          int32, int64_t, complex64, complex128);
-REGISTER7(UnaryOp, CPU, "Square", functor::square, bfloat16, int8, int16, uint8,
-          uint16, uint32, uint64);
+          int32_t, int64_t, complex64, complex128);
+REGISTER7(UnaryOp, CPU, "Square", functor::square, bfloat16, int8_t, int16_t,
+          uint8_t, uint16_t, uint32_t, uint64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
@@ -45,7 +45,7 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::square<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnaryOp<CPUDevice, functor::square<int32_t>>);
 
 }  // namespace tensorflow

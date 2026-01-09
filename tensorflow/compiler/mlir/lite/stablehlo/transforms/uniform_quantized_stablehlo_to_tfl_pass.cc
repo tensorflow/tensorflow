@@ -183,10 +183,9 @@ TFL::QConstOp CreateTransposedTflConstOpForFilter(
 
   auto new_filter_constant_value_attr =
       DenseIntElementsAttr::get(new_filter_value_attr_type, new_filter_values);
-  return rewriter.create<TFL::QConstOp>(
-      filter_constant_op.getLoc(),
-      /*output=*/TypeAttr::get(new_filter_result_type),
-      /*value=*/new_filter_constant_value_attr);
+  return TFL::QConstOp::create(rewriter, filter_constant_op.getLoc(),
+                               /*output=*/TypeAttr::get(new_filter_result_type),
+                               /*value=*/new_filter_constant_value_attr);
 }
 
 // Creates the `tfl.qconst` for filter. If `rhs_op` is a `stablehlo.constant`,
@@ -215,8 +214,8 @@ TFL::QConstOp CreateTflConstOpForFilter(Operation* rhs_op,
     auto constant_op =
         cast<stablehlo::ConstantOp>(transpose_op.getOperand().getDefiningOp());
 
-    return rewriter.create<TFL::QConstOp>(
-        constant_op.getLoc(),
+    return TFL::QConstOp::create(
+        rewriter, constant_op.getLoc(),
         /*output=*/TypeAttr::get(constant_op.getResult().getType()),
         /*value=*/constant_op.getValue());
   }
@@ -268,8 +267,8 @@ TFL::QConstOp CreateTflConstOpForDummyBias(
   auto bias_value = DenseIntElementsAttr::get(
       bias_value_type, APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
 
-  return rewriter.create<TFL::QConstOp>(
-      loc, /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
+  return TFL::QConstOp::create(
+      rewriter, loc, /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
 }
 
 // Casts the given op shapes from i64 to i32 to fit TFLite spec requirement.
@@ -281,7 +280,7 @@ arith::ConstantOp CreateI32ShapeConstantOp(const TensorType op_type,
   const TensorType shape_type = op_type.cloneWith(
       ArrayRef<int64_t>(shape_i32.size()), rewriter.getI32Type());
   const auto shape_attr = DenseIntElementsAttr::get(shape_type, shape_i32);
-  return rewriter.create<arith::ConstantOp>(loc, shape_attr);
+  return arith::ConstantOp::create(rewriter, loc, shape_attr);
 }
 
 // Returns the desired qi8 per-tensor quantized output type for a given gemm op.
@@ -845,8 +844,8 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
     }
 
     // Create BMM assuming rhs is activation.
-    auto tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
-        op.getLoc(), /*output=*/result.getType(),
+    auto tfl_batchmatmul_op = TFL::BatchMatMulOp::create(
+        rewriter, op.getLoc(), /*output=*/result.getType(),
         /*input=*/lhs_value,
         /*filter=*/rhs_value, adj_x, adj_y, asymmetric_quantize_inputs);
 
@@ -856,12 +855,12 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
           llvm::cast<ShapedType>(rhs_value.getType());
       const auto rhs_constant_value_attr =
           cast<DenseIntElementsAttr>(filter_constant_op.getValue());
-      auto rhs_constant_op = rewriter.create<TFL::QConstOp>(
-          rhs_op->getLoc(),
+      auto rhs_constant_op = TFL::QConstOp::create(
+          rewriter, rhs_op->getLoc(),
           /*output=*/TypeAttr::get(rhs_uniform_quantized_type),
           rhs_constant_value_attr);
-      tfl_batchmatmul_op = rewriter.create<TFL::BatchMatMulOp>(
-          op.getLoc(), /*output=*/result.getType(),
+      tfl_batchmatmul_op = TFL::BatchMatMulOp::create(
+          rewriter, op.getLoc(), /*output=*/result.getType(),
           /*input=*/lhs_value, /*filter=*/rhs_constant_op.getResult(), adj_x,
           adj_y, asymmetric_quantize_inputs);
     }
@@ -947,8 +946,8 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
           const auto bias_value = cast<DenseIntElementsAttr>(
               cast<stablehlo::ConstantOp>(bias_const_op).getValue());
 
-          *bias_tfl_op = rewriter.create<TFL::QConstOp>(
-              op->getLoc(),
+          *bias_tfl_op = TFL::QConstOp::create(
+              rewriter, op->getLoc(),
               /*output=*/TypeAttr::get(bias_type), /*value=*/bias_value);
         }
       } else {
@@ -1238,14 +1237,15 @@ class RewriteQuantizedConvolutionOp
         padded_output_tensor_shape, input_tensor_type.getElementType());
 
     // The pad values is provided as a const op.
-    auto pad_value_const_op = rewriter.create<TFL::ConstOp>(
-        loc, /*value=*/DenseIntElementsAttr::get(
+    auto pad_value_const_op = TFL::ConstOp::create(
+        rewriter, loc, /*value=*/
+        DenseIntElementsAttr::get(
             RankedTensorType::get({rank, 2}, rewriter.getIntegerType(32)),
             tfl_pad_values));
 
-    return rewriter.create<TFL::PadOp>(
-        loc, /*output=*/padded_output_tensor_type, input_value,
-        /*padding=*/pad_value_const_op.getResult());
+    return TFL::PadOp::create(rewriter, loc,
+                              /*output=*/padded_output_tensor_type, input_value,
+                              /*padding=*/pad_value_const_op.getResult());
   }
 
   // Infers the output tensor's shape after padding `tfl_pad_values` to the
@@ -1436,9 +1436,10 @@ class RewriteQuantizedConvolutionOp
         /*type=*/new_filter_quantized_type);
     const int64_t num_output_features =
         new_filter_result_type.getShape()[kernel_output_feature_dim];
-    new_filter_constant_op = rewriter.create<TFL::QConstOp>(
-        filter_op->getLoc(), /*output=*/TypeAttr::get(new_filter_result_type),
-        new_filter_value_attr);
+    new_filter_constant_op =
+        TFL::QConstOp::create(rewriter, filter_op->getLoc(),
+                              /*output=*/TypeAttr::get(new_filter_result_type),
+                              new_filter_value_attr);
     return GetBiasOp(op, rewriter, new_filter_result_type,
                      new_filter_quantized_type,
                      /*bias_shape=*/{num_output_features}, has_i32_output,
@@ -1469,9 +1470,9 @@ class RewriteQuantizedConvolutionOp
       Operation* bias_const_op = GetBiasConstOp(add_op);
       const ElementsAttr bias_constant_value =
           cast<stablehlo::ConstantOp>(bias_const_op).getValue();
-      bias = rewriter.create<TFL::QConstOp>(op.getLoc(),
-                                            /*output=*/TypeAttr::get(bias_type),
-                                            /*value=*/bias_constant_value);
+      bias = TFL::QConstOp::create(rewriter, op.getLoc(),
+                                   /*output=*/TypeAttr::get(bias_type),
+                                   /*value=*/bias_constant_value);
     } else {
       // Create a bias constant. It should have values of 0.
       const auto bias_value_type = RankedTensorType::getChecked(
@@ -1480,9 +1481,9 @@ class RewriteQuantizedConvolutionOp
       const auto bias_value = DenseIntElementsAttr::get(
           bias_value_type,
           APInt(/*numBits=*/32, /*value=*/0, /*isSigned=*/true));
-      bias = rewriter.create<TFL::QConstOp>(op.getLoc(),
-                                            /*output=*/TypeAttr::get(bias_type),
-                                            /*value=*/bias_value);
+      bias = TFL::QConstOp::create(rewriter, op.getLoc(),
+                                   /*output=*/TypeAttr::get(bias_type),
+                                   /*value=*/bias_value);
     }
     return bias;
   }
@@ -1511,7 +1512,7 @@ class RewriteQuantizedTransposeOp
     auto permutation_attr =
         DenseIntElementsAttr::get(permutation_type, permutation_i32);
     auto permutation =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), permutation_attr);
+        arith::ConstantOp::create(rewriter, op.getLoc(), permutation_attr);
     rewriter.replaceOpWithNewOp<TFL::TransposeOp>(op, op.getOperand(),
                                                   permutation);
     return success();
@@ -1639,7 +1640,7 @@ class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
     Value constant_values = op.getPaddingValue();
     auto padding_attr = DenseIntElementsAttr::get(padding_type, padding_value);
     auto padding =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), padding_attr);
+        arith::ConstantOp::create(rewriter, op.getLoc(), padding_attr);
     rewriter.replaceOpWithNewOp<TFL::PadV2Op>(op, output_type, input, padding,
                                               constant_values);
     return success();
@@ -1658,7 +1659,7 @@ class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
         CastI64ArrayToI32(interior_padding_i64).value();
     auto dilate_attr =
         DenseIntElementsAttr::get(dilate_type, interior_padding_i32);
-    auto dilate = rewriter.create<arith::ConstantOp>(op.getLoc(), dilate_attr);
+    auto dilate = arith::ConstantOp::create(rewriter, op.getLoc(), dilate_attr);
 
     // Shape after dilation.
     SmallVector<int64_t> dilated_shape(rank);
@@ -1671,8 +1672,8 @@ class RewriteQuantizedPadOp : public OpRewritePattern<stablehlo::PadOp> {
     Type dilated_output_type = output_type.clone(dilated_shape);
     Value constant_values = op.getPaddingValue();
 
-    return rewriter.create<TFL::DilateOp>(dilate.getLoc(), dilated_output_type,
-                                          input, dilate, constant_values);
+    return TFL::DilateOp::create(rewriter, dilate.getLoc(), dilated_output_type,
+                                 input, dilate, constant_values);
   }
 };
 
@@ -1701,7 +1702,7 @@ class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
         CastI64ArrayToI32(start_idx_i64).value();
     auto start_idx_attr = DenseIntElementsAttr::get(idx_type, start_idx_i32);
     auto start_idx =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), start_idx_attr);
+        arith::ConstantOp::create(rewriter, op.getLoc(), start_idx_attr);
 
     SmallVector<int32_t> slice_size_i32(rank);
     for (int i = 0; i < rank; ++i) {
@@ -1710,7 +1711,7 @@ class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
     }
     auto slice_size_attr = DenseIntElementsAttr::get(idx_type, slice_size_i32);
     auto slice_size =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), slice_size_attr);
+        arith::ConstantOp::create(rewriter, op.getLoc(), slice_size_attr);
 
     ArrayRef<int64_t> strides = op.getStrides();
     // If stride of every dimension is 1, create tfl.slice and return early.
@@ -1723,7 +1724,7 @@ class RewriteQuantizedSliceOp : public OpRewritePattern<stablehlo::SliceOp> {
 
     SmallVector<int32_t> stride_i32 = CastI64ArrayToI32(strides).value();
     auto stride_attr = DenseIntElementsAttr::get(idx_type, stride_i32);
-    auto stride = rewriter.create<arith::ConstantOp>(op.getLoc(), stride_attr);
+    auto stride = arith::ConstantOp::create(rewriter, op.getLoc(), stride_attr);
     rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
         op, output_type, op.getOperand(), start_idx, slice_size, stride,
         /*begin_mask=*/0, /*end_mask=*/0,
@@ -1770,7 +1771,7 @@ class RewriteQuantizedBroadcastInDimOp
     auto broadcast_shape_attr =
         DenseIntElementsAttr::get(broadcast_shape_type, broadcast_shape);
     auto shape =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), broadcast_shape_attr);
+        arith::ConstantOp::create(rewriter, op.getLoc(), broadcast_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::BroadcastToOp>(op, output_type, input,
                                                     shape);
@@ -1792,10 +1793,10 @@ class RewriteQuantizedBroadcastInDimOp
     TensorType perm_type = operand_type.cloneWith(
         {static_cast<int64_t>(permutation.size())}, rewriter.getI32Type());
     auto perm_attr = DenseIntElementsAttr::get(perm_type, permutation);
-    auto perm = rewriter.create<arith::ConstantOp>(op.getLoc(), perm_attr);
+    auto perm = arith::ConstantOp::create(rewriter, op.getLoc(), perm_attr);
     Value input = op.getOperand();
 
-    return rewriter.create<TFL::TransposeOp>(op.getLoc(), input, perm);
+    return TFL::TransposeOp::create(rewriter, op.getLoc(), input, perm);
   }
 
   Value InsertExpandDimsOp(stablehlo::BroadcastInDimOp op,
@@ -1819,12 +1820,12 @@ class RewriteQuantizedBroadcastInDimOp
                                                  rewriter.getI32Type());
       ArrayRef<int32_t> dims(dim_to_expand);
       auto dim_attr = DenseIntElementsAttr::get(dim_type, dims);
-      auto dim = rewriter.create<arith::ConstantOp>(op.getLoc(), dim_attr);
+      auto dim = arith::ConstantOp::create(rewriter, op.getLoc(), dim_attr);
 
       input_shape.insert(input_shape.begin() + dim_to_expand, 1);
       TensorType expanded_type = input_type.clone(input_shape);
-      input = rewriter.create<TFL::ExpandDimsOp>(op.getLoc(), expanded_type,
-                                                 input, dim);
+      input = TFL::ExpandDimsOp::create(rewriter, op.getLoc(), expanded_type,
+                                        input, dim);
 
       // Update expanded dimension in the input dimensions for the next
       // iteration.
@@ -2061,19 +2062,19 @@ class RewriteQuantizedDynamicSliceOp
     SmallVector<Value> start_indices(rank);
     for (auto [i, start_index] : llvm::enumerate(op.getStartIndices())) {
       // Start indices should be casted from tensor<i64> to tensor<1xi64>.
-      auto cast = rewriter.create<TFL::BitcastOp>(
-          op->getLoc(), single_element_type, start_index);
+      auto cast = TFL::BitcastOp::create(rewriter, op->getLoc(),
+                                         single_element_type, start_index);
       int64_t upper_limit_idx = operand_shape[i] - slice_sizes[i];
       auto upper_limit_attr =
           DenseIntElementsAttr::get(single_element_type, {upper_limit_idx});
       auto upper_limit_cst =
-          rewriter.create<arith::ConstantOp>(op->getLoc(), upper_limit_attr);
+          arith::ConstantOp::create(rewriter, op->getLoc(), upper_limit_attr);
       // Dynamic start indices should be clamped with upper limit of
       // `shape(operand) - slice_sizes)` as per semantics of
       // `stablehlo.dynamic_slice`.
       // (https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_slice)
       start_indices[i] =
-          rewriter.create<TFL::MinimumOp>(op->getLoc(), cast, upper_limit_cst);
+          TFL::MinimumOp::create(rewriter, op->getLoc(), cast, upper_limit_cst);
     }
 
     Value concatenated = start_indices[0];
@@ -2089,17 +2090,17 @@ class RewriteQuantizedDynamicSliceOp
     auto lower_limit_attr = DenseIntElementsAttr::get(
         single_element_type, {static_cast<int64_t>(0)});
     auto lower_limit_cst =
-        rewriter.create<arith::ConstantOp>(op->getLoc(), lower_limit_attr);
+        arith::ConstantOp::create(rewriter, op->getLoc(), lower_limit_attr);
     // Dynamic start indices should be clamped with lower limit of
     // 0 as per semantics of `stablehlo.dynamic_slice`.
     // (https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dynamic_slice)
-    auto begin = rewriter.create<TFL::MaximumOp>(op->getLoc(), concatenated,
-                                                 lower_limit_cst);
+    auto begin = TFL::MaximumOp::create(rewriter, op->getLoc(), concatenated,
+                                        lower_limit_cst);
 
     SmallVector<int64_t> size_len{rank};
     TensorType size_type = operand_type.cloneWith(size_len, i64_type);
     auto size_attr = DenseIntElementsAttr::get(size_type, slice_sizes);
-    auto size = rewriter.create<arith::ConstantOp>(op.getLoc(), size_attr);
+    auto size = arith::ConstantOp::create(rewriter, op.getLoc(), size_attr);
 
     rewriter.replaceOpWithNewOp<TFL::SliceOp>(op, output, input, begin, size);
     return success();
@@ -2126,8 +2127,8 @@ class RewriteQuantizedAddOp : public OpRewritePattern<stablehlo::AddOp> {
             broadcast_op.getOperand().getDefiningOp());
         auto const_uniform_quantized_type =
             llvm::cast<ShapedType>(stablehlo_const_op.getResult().getType());
-        return rewriter.create<TFL::QConstOp>(
-            op.getLoc(), TypeAttr::get(const_uniform_quantized_type),
+        return TFL::QConstOp::create(
+            rewriter, op.getLoc(), TypeAttr::get(const_uniform_quantized_type),
             cast<DenseIntElementsAttr>(stablehlo_const_op.getValue()));
       }
       return nullptr;
@@ -2185,9 +2186,9 @@ class RewriteHybridQuantizedDotGeneralOp
         llvm::cast<TensorType>(op.getLhs().getType()).getElementType();
     Type dequantized_rhs_type =
         quant::CloneTypeWithNewElementType(rhs.getType(), lhs_element_type);
-    auto dq = rewriter.create<TFL::DequantizeOp>(
-        op->getLoc(), /*output=*/dequantized_rhs_type,
-        /*input=*/rhs);
+    auto dq = TFL::DequantizeOp::create(rewriter, op->getLoc(),
+                                        /*output=*/dequantized_rhs_type,
+                                        /*input=*/rhs);
     rewriter.replaceAllUsesExcept(rhs, dq.getOutput(), dq);
     return success();
   }
@@ -2230,8 +2231,8 @@ class RewriteHybridQuantizedConvolutionOp
         /*context=*/op.getContext(), /*location=*/filter_op->getLoc(),
         /*new_shape=*/new_filter_value_attr.getShapedType().getShape(),
         /*filter_type=*/op.getRhs().getType(), is_depthwise);
-    auto new_filter = rewriter.create<TFL::QConstOp>(
-        filter_op->getLoc(),
+    auto new_filter = TFL::QConstOp::create(
+        rewriter, filter_op->getLoc(),
         /*output=*/TypeAttr::get(new_filter_type), new_filter_value_attr);
     stablehlo::ConvDimensionNumbersAttr new_dimension_numbers =
         GetTflDimensionNumbers(rewriter.getContext(), op.getDimensionNumbers(),
@@ -2242,9 +2243,9 @@ class RewriteHybridQuantizedConvolutionOp
         llvm::cast<TensorType>(op.getOperand(0).getType()).getElementType();
     Type dequantized_rhs_type = quant::CloneTypeWithNewElementType(
         new_filter.getType(), lhs_element_type);
-    auto dq = rewriter.create<TFL::DequantizeOp>(
-        op->getLoc(), /*output=*/dequantized_rhs_type,
-        /*input=*/new_filter);
+    auto dq = TFL::DequantizeOp::create(rewriter, op->getLoc(),
+                                        /*output=*/dequantized_rhs_type,
+                                        /*input=*/new_filter);
     rewriter.replaceAllUsesExcept(filter_op->getResult(0), dq.getOutput(), dq);
     return success();
   }

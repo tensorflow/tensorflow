@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package xla;
 
+import "google/protobuf/any.proto";
+
 // Mirror of xla::CompiledMemoryStats.
 message CompiledMemoryStatsProto {
   // Device default memory (e.g., HBM for GPU/TPU) usage stats.
@@ -22,4 +24,9 @@ message CompiledMemoryStatsProto {
   bytes serialized_buffer_assignment = 13;
 
   reserved 6, 12;
+}
+
+message PjRtExecutableMetadata {
+  optional CompiledMemoryStatsProto compiled_memory_stats = 1;
+  optional google.protobuf.Any platform_specific_metadata = 2;
 }

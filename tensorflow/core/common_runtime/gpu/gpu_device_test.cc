@@ -76,7 +76,7 @@ bool IsRocm() {
       .IsRocm();
 }
 
-void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
+void ExpectErrorMessageSubstr(const absl::Status& s, absl::string_view substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
@@ -92,12 +92,12 @@ class GPUDeviceTest : public ::testing::Test {
 
  protected:
   static SessionOptions MakeSessionOptions(
-      const string& visible_device_list = "",
+      const std::string& visible_device_list = "",
       double per_process_gpu_memory_fraction = 0, int gpu_device_count = 1,
       const std::vector<std::vector<float>>& memory_limit_mb = {},
-      const std::vector<std::vector<int32>>& priority = {},
-      const std::vector<std::vector<int32>>& device_ordinal = {},
-      const int32 num_virtual_devices = 0,
+      const std::vector<std::vector<int32_t>>& priority = {},
+      const std::vector<std::vector<int32_t>>& device_ordinal = {},
+      const int32_t num_virtual_devices = 0,
       const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
@@ -178,7 +178,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
-  Status status;
+  absl::Status status;
   int number_instantiated =
       se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   {  // The new scope is to trigger the destruction of the object.
@@ -209,7 +209,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
   std::vector<std::unique_ptr<Device>> devices;
-  Status status;
+  absl::Status status;
 
   int number_instantiated =
       se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
@@ -240,7 +240,7 @@ TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(status, "Could not parse entry");
@@ -249,7 +249,7 @@ TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
 TEST_F(GPUDeviceTest, InvalidGpuId) {
   SessionOptions opts = MakeSessionOptions("100");
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(status,
@@ -259,7 +259,7 @@ TEST_F(GPUDeviceTest, InvalidGpuId) {
 TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,0");
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(status,
@@ -269,7 +269,7 @@ TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithMemoryFractionSettings) {
   SessionOptions opts = MakeSessionOptions("0", 0.1, 1, {{}});
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(
@@ -281,7 +281,7 @@ TEST_F(GPUDeviceTest, GpuDeviceCountTooSmall) {
   // (empty) VirtualDevices messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 0, {{}});
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
   ExpectErrorMessageSubstr(status,
@@ -293,7 +293,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
   // messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 8, {{}, {}});
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
   ExpectErrorMessageSubstr(status,
@@ -307,7 +307,7 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   ExpectErrorMessageSubstr(
@@ -376,7 +376,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
         MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-9999, 0}});
 #endif
     std::vector<std::unique_ptr<Device>> devices;
-    Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+    absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
 #if TENSORFLOW_USE_ROCM
@@ -399,7 +399,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});
 #endif
     std::vector<std::unique_ptr<Device>> devices;
-    Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+    absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
 #if TENSORFLOW_USE_ROCM
@@ -457,7 +457,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
     // 0 is a valid priority value for both AMD and NVidia GPUs
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0}});
     std::vector<std::unique_ptr<Device>> devices;
-    Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+    absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
     ExpectErrorMessageSubstr(
@@ -546,7 +546,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
       ->mutable_experimental()
       ->set_use_unified_memory(true);
   std::vector<std::unique_ptr<Device>> devices;
-  Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
+  absl::Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INTERNAL);
   ExpectErrorMessageSubstr(status, "does not support oversubscription.");
@@ -611,7 +611,7 @@ TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
   CopyCPUToGPU(&cpu_tensor, &input_tensor, device, device_context);
   absl::Notification note;
   device->CopyTensorInSameDevice(&input_tensor, &output_tensor, device_context,
-                                 [&note](const Status& s) {
+                                 [&note](const absl::Status& s) {
                                    TF_ASSERT_OK(s);
                                    note.Notify();
                                  });
@@ -629,11 +629,11 @@ TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
 
 TEST_F(GPUDeviceTest, DeviceDetails) {
   DeviceFactory* factory = DeviceFactory::GetFactory("GPU");
-  std::vector<string> devices;
+  std::vector<std::string> devices;
   TF_ASSERT_OK(factory->ListPhysicalDevices(&devices));
   EXPECT_GE(devices.size(), 1);
   for (int i = 0; i < devices.size(); i++) {
-    std::unordered_map<string, string> details;
+    std::unordered_map<std::string, std::string> details;
     TF_ASSERT_OK(factory->GetDeviceDetails(i, &details));
     EXPECT_NE(details["device_name"], "");
 #if TENSORFLOW_USE_ROCM
@@ -669,7 +669,7 @@ class GPUKernelTrackerTest : public ::testing::Test {
                                                nullptr));
   }
 
-  void RecordQueued(uint64 v) {
+  void RecordQueued(uint64_t v) {
     mutex_lock l(kernel_tracker_->mu_);
     kernel_tracker_->RecordQueued(v, 1);
   }
@@ -686,7 +686,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
 
   std::deque<int64_t> queued_counts;
   for (int i = 0; i < 32; ++i) {
-    uint64 queued_count = timing_counter_->next();
+    uint64_t queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);
     RecordQueued(queued_count);
   }
@@ -708,7 +708,7 @@ TEST_F(GPUKernelTrackerTest, CappingOnly) {
   // to introduce gaps between last_completed_ and first_available_.
   int64_t lower_bound = timing_counter_->get();
   for (int i = 0; i < 1111; ++i) {
-    uint64 queued_count = timing_counter_->next();
+    uint64_t queued_count = timing_counter_->next();
     queued_counts.push_back(queued_count);
     RecordQueued(queued_count);
     int64_t upper_bound = timing_counter_->get();

@@ -119,7 +119,9 @@ CodegenDecision IsInstructionSupportsDataTypes(
     const auto operand_type = operand->shape().element_type();
     switch (instr.opcode()) {
       case HloOpcode::kConvert:
-        if (operand_type == S4) continue;
+        if (operand_type == S4) {
+          continue;
+        }
         [[fallthrough]];
       default:
         if (!IsTritonSupportedDataType(operand_type, gpu_version)) {
@@ -206,8 +208,9 @@ CodegenDecision CanTritonHandleElementwise(
   }
   if (instr.opcode() == HloOpcode::kConstant) {
     return CodegenDecision::Allow();
-  } else if (!IsTritonSupportedElementwiseUpToFloatNormalization(
-                 instr.opcode(), instr.operand(0)->shape().element_type())) {
+  }
+  if (!IsTritonSupportedElementwiseUpToFloatNormalization(
+          instr.opcode(), instr.operand(0)->shape().element_type())) {
     return CodegenDecision::Forbid("Unsupported elementwise operation.");
   }
   return CodegenDecision::Allow();
@@ -360,7 +363,8 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   for (int i = 0; i < input->shape().dimensions().size(); ++i) {
     if (i == majormost_dim_id) {
       continue;
-    } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+    }
+    if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
       return CodegenDecision::Forbid(
           "Unsupported dynamic slice on non-major-most dimension.");
     }

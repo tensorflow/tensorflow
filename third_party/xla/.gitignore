@@ -28,3 +28,8 @@ tools/python_bin_path.sh
 *.VC.opendb
 *.suo
 *.user
+
+# Ignore clangd files and directories: https://openxla.org/xla/lsp
+.cache
+compile_commands.json
+external

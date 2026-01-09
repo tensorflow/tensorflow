@@ -22,16 +22,20 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -42,22 +46,31 @@ namespace xla {
 namespace gpu {
 
 DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
-    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size)
+    ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+    const ShapedSlice& destination_buffer, int64_t mem_size)
     : Thunk(Kind::kCopy, std::move(thunk_info)),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
-      mem_size_(mem_size) {}
+      mem_size_(mem_size) {
+  // TODO(b/460846009): Determine size based on shape.
+  // Bounded dynamic shape contains extra header after data.
+  // Header size needs to be accounted for.
+  CHECK_EQ(ShapeUtil::ByteSizeOf(source_buffer_.shape),
+           ShapeUtil::ByteSizeOf(destination_buffer_.shape));
+
+  CHECK_GE(source_buffer_.slice.size(), mem_size);
+  CHECK_GE(destination_buffer_.slice.size(), mem_size);
+}
 
 absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
-      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
-  se::DeviceMemoryBase source_data =
-      params.buffer_allocations->GetDeviceAddress(source_buffer_);
-  VLOG(3) << "Memcpy D2D of size " << mem_size_ << " from "
+  se::DeviceAddressBase destination_data =
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_.slice);
+  se::DeviceAddressBase source_data =
+      params.buffer_allocations->GetDeviceAddress(source_buffer_.slice);
+  VLOG(3) << "Memcpy D2D of size " << size_bytes() << " from "
           << source_data.opaque() << " to " << destination_data.opaque();
-  return params.stream->Memcpy(&destination_data, source_data, mem_size_);
+  return params.stream->Memcpy(&destination_data, source_data, size_bytes());
 }
 
 absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
@@ -67,9 +80,9 @@ absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
       proto.mutable_device_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
-                      source().ToProto());
+                      source_buffer_.ToProto());
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
-                      destination().ToProto());
+                      destination_buffer_.ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
 }
@@ -79,13 +92,18 @@ DeviceToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice src_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+      ShapedSlice src_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().source_buffer(),
+                             buffer_allocations));
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice dst_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+      ShapedSlice dst_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
+                             buffer_allocations));
+  if (ShapeUtil::ByteSizeOfElements(src_slice.shape) !=
+      ShapeUtil::ByteSizeOfElements(dst_slice.shape)) {
+    return absl::FailedPreconditionError(
+        "DeviceToDeviceCopyThunkProto with incompatible shapes.");
+  }
   return std::make_unique<DeviceToDeviceCopyThunk>(
       std::move(thunk_info), src_slice, dst_slice,
       thunk_proto.copy_thunk().mem_size());
@@ -95,14 +113,18 @@ DeviceToDeviceCopyThunk::FromProto(
 // CopyThunk
 //===----------------------------------------------------------------------===//
 
-CopyThunk::CopyThunk(ThunkInfo thunk_info,
-                     const BufferAllocation::Slice& source_buffer,
-                     const BufferAllocation::Slice& destination_buffer,
-                     uint64_t mem_size)
+CopyThunk::CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+                     const ShapedSlice& destination_buffer, int64_t mem_size)
     : Thunk(Kind::kCopy, std::move(thunk_info)),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
-      mem_size_(mem_size) {}
+      mem_size_(mem_size) {
+  CHECK_EQ(ShapeUtil::ByteSizeOfElements(source_buffer_.shape),
+           ShapeUtil::ByteSizeOfElements(destination_buffer_.shape));
+
+  CHECK_GE(source_buffer_.slice.size(), mem_size);
+  CHECK_GE(destination_buffer_.slice.size(), mem_size);
+}
 
 absl::Status CopyThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
@@ -146,9 +168,9 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
 
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
-                      source().ToProto());
+                      source_buffer_.ToProto());
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
-                      destination().ToProto());
+                      destination_buffer_.ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
 }
@@ -156,13 +178,18 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::FromProto(
     ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
-                      BufferAllocation::Slice::FromProto(
-                          thunk_proto.source_buffer(), buffer_allocations));
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice dst_slice,
-      BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
-                                         buffer_allocations));
+      ShapedSlice src_slice,
+      ShapedSlice::FromProto(thunk_proto.source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice dst_slice,
+                      ShapedSlice::FromProto(thunk_proto.destination_buffer(),
+                                             buffer_allocations));
+  if (ShapeUtil::ByteSizeOfElements(src_slice.shape) !=
+      ShapeUtil::ByteSizeOfElements(dst_slice.shape)) {
+    return absl::FailedPreconditionError(
+        "DeviceToDeviceCopyThunkProto with incompatible shapes.");
+  }
+
   return std::make_unique<CopyThunk>(std::move(thunk_info), src_slice,
                                      dst_slice, thunk_proto.mem_size());
 }
@@ -171,8 +198,8 @@ absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::FromProto(
 // DeviceToHostCopyThunk
 //===----------------------------------------------------------------------===//
 DeviceToHostCopyThunk::DeviceToHostCopyThunk(
-    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
+    ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+    const ShapedSlice& destination_buffer, int64_t mem_size,
     std::shared_ptr<CopyThunk::AsyncEvents> async_events,
     const HloInstruction* instr)
     : CopyThunk(std::move(thunk_info), source_buffer, destination_buffer,
@@ -182,10 +209,10 @@ DeviceToHostCopyThunk::DeviceToHostCopyThunk(
 
 absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
-      params.buffer_allocations->GetDeviceAddress(destination());
-  se::DeviceMemoryBase source_data =
-      params.buffer_allocations->GetDeviceAddress(source());
+  se::DeviceAddressBase destination_data =
+      params.buffer_allocations->GetDeviceAddress(destination().slice);
+  se::DeviceAddressBase source_data =
+      params.buffer_allocations->GetDeviceAddress(source().slice);
   void* cpu_dst = destination_data.opaque();
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
@@ -225,13 +252,13 @@ DeviceToHostCopyThunk::FromProto(
     ThunkInfo thunk_info, const DeviceToHostCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice src_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+      ShapedSlice src_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().source_buffer(),
+                             buffer_allocations));
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice dst_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+      ShapedSlice dst_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
+                             buffer_allocations));
   return std::make_unique<DeviceToHostCopyThunk>(
       std::move(thunk_info), src_slice, dst_slice,
       thunk_proto.copy_thunk().mem_size(),
@@ -252,8 +279,8 @@ DeviceToHostCopyThunk::GetAsyncEventsUniqueId() const {
 // HostToDeviceCopyThunk
 //===----------------------------------------------------------------------===//
 HostToDeviceCopyThunk::HostToDeviceCopyThunk(
-    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
+    ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+    const ShapedSlice& destination_buffer, int64_t mem_size,
     std::shared_ptr<CopyThunk::AsyncEvents> async_events,
     const HloInstruction* instr)
     : CopyThunk(std::move(thunk_info), source_buffer, destination_buffer,
@@ -263,10 +290,10 @@ HostToDeviceCopyThunk::HostToDeviceCopyThunk(
 
 absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  se::DeviceMemoryBase destination_data =
-      params.buffer_allocations->GetDeviceAddress(destination());
-  se::DeviceMemoryBase source_data =
-      params.buffer_allocations->GetDeviceAddress(source());
+  se::DeviceAddressBase destination_data =
+      params.buffer_allocations->GetDeviceAddress(destination().slice);
+  se::DeviceAddressBase source_data =
+      params.buffer_allocations->GetDeviceAddress(source().slice);
   void* cpu_src = source_data.opaque();
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
@@ -306,13 +333,13 @@ HostToDeviceCopyThunk::FromProto(
     ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice src_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+      ShapedSlice src_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().source_buffer(),
+                             buffer_allocations));
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice dst_slice,
-      BufferAllocation::Slice::FromProto(
-          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+      ShapedSlice dst_slice,
+      ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
+                             buffer_allocations));
   return std::make_unique<HostToDeviceCopyThunk>(
       std::move(thunk_info), src_slice, dst_slice,
       thunk_proto.copy_thunk().mem_size(),
@@ -374,9 +401,9 @@ DynamicMemcpyThunk::DynamicMemcpyThunk(
       offsets_(std::move(offsets)) {}
 
 absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::DeviceMemoryBase src_data =
+  se::DeviceAddressBase src_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
-  se::DeviceMemoryBase dst_data =
+  se::DeviceAddressBase dst_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
 
   int64_t iteration_index = 0;
@@ -396,6 +423,59 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
       se::Stream * stream,
       GetStreamForExecution(Thunk::execution_stream_id(), params));
   return stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
+}
+
+DynamicMemcpyThunkProto::Offsets DynamicMemcpyThunk::Offsets::ToProto() const {
+  DynamicMemcpyThunkProto::Offsets proto;
+  proto.set_depends_on_loop(depends_on_loop);
+  proto.mutable_src_offsets()->Add(src_offsets.begin(), src_offsets.end());
+  proto.mutable_dst_offsets()->Add(dst_offsets.begin(), dst_offsets.end());
+  return proto;
+}
+
+absl::StatusOr<DynamicMemcpyThunk::Offsets>
+DynamicMemcpyThunk::Offsets::FromProto(
+    const DynamicMemcpyThunkProto::Offsets& proto) {
+  Offsets offsets;
+  offsets.depends_on_loop = proto.depends_on_loop();
+  offsets.src_offsets = {proto.src_offsets().begin(),
+                         proto.src_offsets().end()};
+  offsets.dst_offsets = {proto.dst_offsets().begin(),
+                         proto.dst_offsets().end()};
+  return offsets;
+}
+
+absl::StatusOr<ThunkProto> DynamicMemcpyThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  DynamicMemcpyThunkProto* dynamic_memcpy_thunk_proto =
+      proto.mutable_dynamic_memcpy_thunk();
+  TF_ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_source_buffer(),
+                      source_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*dynamic_memcpy_thunk_proto->mutable_destination_buffer(),
+                      destination_buffer_.ToProto());
+  dynamic_memcpy_thunk_proto->set_mem_size(mem_size_);
+  *dynamic_memcpy_thunk_proto->mutable_offsets() = offsets_.ToProto();
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>>
+DynamicMemcpyThunk::FromProto(
+    ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
+                                         buffer_allocations));
+  TF_ASSIGN_OR_RETURN(Offsets offsets,
+                      Offsets::FromProto(thunk_proto.offsets()));
+  return std::make_unique<DynamicMemcpyThunk>(std::move(thunk_info), src_slice,
+                                              dst_slice, thunk_proto.mem_size(),
+                                              std::move(offsets));
 }
 
 }  // namespace gpu

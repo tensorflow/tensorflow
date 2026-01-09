@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/builder/xla_builder.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -56,7 +55,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/shape_inference.h"
@@ -65,11 +63,11 @@ limitations under the License.
 #include "xla/sharding_op_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -4116,8 +4114,8 @@ XlaOp XlaBuilder::AllToAllArray(
 
     if (is_unbounded) {
       std::vector<bool> dynamic_dimensions;
-      std::transform(
-          sizes.begin(), sizes.end(), std::back_inserter(dynamic_dimensions),
+      absl::c_transform(
+          sizes, std::back_inserter(dynamic_dimensions),
           [](int64_t size) { return size == Shape::kUnboundedSize; });
       TF_ASSIGN_OR_RETURN(
           const Shape shape,

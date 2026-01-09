@@ -254,7 +254,7 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
   }
 
   // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
-  TF_CHECK_OK(
+  CHECK_OK(
       cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
   return cost_analysis_.flop_count(*instr) /
@@ -679,6 +679,11 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
         EstimateRunTimeData estimate_run_time_data,
         EstimateRunTimeForTiledHloComputation(
             fusion_adaptor, tiled_hlo_computation, launch_dimensions));
+
+    // Skip tilings with infinite runtime (e.g., due to register spilling).
+    if (estimate_run_time_data.exec_time == absl::InfiniteDuration()) {
+      continue;
+    }
 
     if (!best_tiled_run_time_data.has_value() ||
         estimate_run_time_data.exec_time <

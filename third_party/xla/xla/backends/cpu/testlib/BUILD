@@ -159,7 +159,6 @@ tsl_pybind_extension(
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
-        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
@@ -192,7 +191,6 @@ xla_cc_test(
         "//xla/codegen:llvm_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
@@ -200,7 +198,6 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 

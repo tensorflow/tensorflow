@@ -1129,6 +1129,15 @@ func.func @cast_f32_to_f64() -> tensor<4xf64> {
 
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf64>
 
+// CHECK-LABEL: @cast_f32_to_f16
+func.func @cast_f32_to_f16() -> tensor<4xf16> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 100.0]> : tensor<4xf32>
+  %0 = "tfl.cast"(%cst) : (tensor<4xf32>) -> tensor<4xf16>
+  func.return %0 : tensor<4xf16>
+}
+
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.500000e+00, 1.000000e+02]> : tensor<4xf16>
+
 // CHECK-LABEL: @ConstantFoldFullyConnectedSmall
 func.func @ConstantFoldFullyConnectedSmall() -> tensor<3xf32> {
   %cst_input = arith.constant dense<[2.0, 3.0]> : tensor<2xf32>

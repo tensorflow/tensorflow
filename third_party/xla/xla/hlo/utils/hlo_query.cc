@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -217,6 +219,15 @@ HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
   return it == instructions.end() ? nullptr : *it;
 }
 
+HloInstruction* GetFirstInstructionWithOpcode(
+    const HloComputation& computation, absl::Span<const HloOpcode> opcodes) {
+  auto instructions = computation.instructions();
+  auto it = absl::c_find_if(instructions, [&](HloInstruction* instr) {
+    return absl::c_linear_search(opcodes, instr->opcode());
+  });
+  return it == instructions.end() ? nullptr : *it;
+}
+
 bool ContainsInstrWithOpcode(const HloComputation* comp,
                              const absl::flat_hash_set<HloOpcode>& opcodes) {
   for (const auto* instr : comp->instructions()) {
@@ -336,6 +347,29 @@ HloInstruction* FindInstruction(const HloComputation* computation,
     if (instruction->opcode() == opcode) return instruction;
   }
   return nullptr;
+}
+
+bool IsChangeTilingCopyFusion(const HloInstruction* instr) {
+  if (!instr->parent()->IsFusionComputation() ||
+      instr->opcode() != HloOpcode::kFusion ||
+      instr->called_computations().size() != 1 || instr->operand_count() != 1) {
+    return false;
+  }
+  // These copy fusions should only change tiling (and sometimes memory space).
+  const HloInstruction* fusion_root = instr->fused_expression_root();
+  if (!fusion_root->operand(0)->shape().has_layout() ||
+      !fusion_root->shape().has_layout()) {
+    return false;
+  }
+
+  const Layout& operand_layout = fusion_root->operand(0)->shape().layout();
+  const Layout& output_layout = fusion_root->shape().layout();
+  absl::Span<const Tile> operand_tiles = operand_layout.tiles();
+  absl::Span<const Tile> output_tiles = output_layout.tiles();
+  return fusion_root->opcode() == HloOpcode::kCopy &&
+         Layout::Equal().IgnoreTiles().IgnoreMemorySpace()(operand_layout,
+                                                           output_layout) &&
+         operand_tiles != output_tiles;
 }
 
 }  // namespace hlo_query

@@ -106,6 +106,13 @@ class PjRtDeviceEventPromise : public PjRtDeviceEventOrPromise {
   virtual void SetReady() = 0;
 };
 
+// A collection of events. This is not an event itself because we may want to
+// add events in the future.
+class PjRtDeviceEventSet {
+ public:
+  virtual ~PjRtDeviceEventSet() = default;
+};
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_DEVICE_EVENT_H_

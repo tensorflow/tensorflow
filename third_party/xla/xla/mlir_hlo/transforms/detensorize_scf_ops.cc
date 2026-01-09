@@ -62,7 +62,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     b.setInsertionPoint(result);
     for (auto [index, operand] : unitTensors(result->getOperands())) {
-      result->setOperand(index, b.create<tensor::ExtractOp>(operand));
+      result->setOperand(index, tensor::ExtractOp::create(b, operand));
     }
 
     // Fix any block arguments in the op. We're detensorizing all arguments that
@@ -76,8 +76,8 @@ struct RegionOpPattern : public OpRewritePattern<T> {
           // Change the argument type to a scalar, but repack it into a tensor.
           arg.setType(
               mlir::cast<RankedTensorType>(arg.getType()).getElementType());
-          auto converted = b.create<tensor::FromElementsOp>(
-              RankedTensorType::get({}, arg.getType()), arg);
+          auto converted = tensor::FromElementsOp::create(
+              b, RankedTensorType::get({}, arg.getType()), arg);
           arg.replaceAllUsesExcept(converted, converted.getOperation());
         }
 
@@ -86,7 +86,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
              unitTensors(block.getTerminator()->getOperands())) {
           b.setInsertionPoint(block.getTerminator());
           block.getTerminator()->setOperand(
-              index, b.create<tensor::ExtractOp>(operand));
+              index, tensor::ExtractOp::create(b, operand));
         }
       }
     }
@@ -99,7 +99,7 @@ struct RegionOpPattern : public OpRewritePattern<T> {
       opResult.setType(oldType.getElementType());
 
       // Convert the scalar back to a tensor in the output.
-      results[index] = b.create<tensor::FromElementsOp>(oldType, opResult);
+      results[index] = tensor::FromElementsOp::create(b, oldType, opResult);
     }
     rewriter.replaceOp(op.getOperation(), results);
     return success();

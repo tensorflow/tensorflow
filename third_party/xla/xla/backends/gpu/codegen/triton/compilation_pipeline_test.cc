@@ -15,15 +15,16 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <algorithm>
 #include <iterator>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
@@ -48,12 +49,11 @@ TEST(CompilationPipelineTest, UnswitchLoopsAfterLICM) {
   }
   ASSERT_THAT(pass_names, Contains("LoopInvariantCodeMotion"));
   ASSERT_THAT(pass_names, Contains("TritonXLAUnswitchLoopsPass"));
-  int licm_index = std::distance(pass_names.begin(),
-                                 std::find(pass_names.begin(), pass_names.end(),
-                                           "LoopInvariantCodeMotion"));
-  int unswitch_index = std::distance(
-      pass_names.begin(), std::find(pass_names.begin(), pass_names.end(),
-                                    "TritonXLAUnswitchLoopsPass"));
+  int licm_index = std::distance(
+      pass_names.begin(), absl::c_find(pass_names, "LoopInvariantCodeMotion"));
+  int unswitch_index =
+      std::distance(pass_names.begin(),
+                    absl::c_find(pass_names, "TritonXLAUnswitchLoopsPass"));
   // There is no hard requirement to run LICM **immediately** before the loop
   // unswitcher but you should consider if the newly added pass might interact
   // with the loop unswitcher.

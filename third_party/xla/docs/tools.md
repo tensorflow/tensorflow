@@ -291,3 +291,17 @@ hlo-opt --emit-proto input.hlo
 ```
 hlo-opt input.pbtxt or input.pb
 ```
+
+## [`ptx-opt`] Compiler LLVM Module down to PTX
+
+The tool will run LLVMIR optimization pipeline and then call CompileToPtx.
+
+```
+bazel run //xla/hlo/tools/ptx-opt -- --arch=9.0 <filename>
+```
+
+The tool can also dump LLVMIR after every path.
+
+```
+bazel run //xla/hlo/tools/ptx-opt -- --arch=9.0 --xla_dump_to=<path> --xla_gpu_dump_llvmir <filename>
+```

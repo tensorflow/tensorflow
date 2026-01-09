@@ -300,9 +300,8 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
 };
 
 template <>
-struct LaunchFusedConv2DOp<CPUDevice, int8>
-    : LaunchFusedConv2DOpCpuInt8Helper<int8> {
-};
+struct LaunchFusedConv2DOp<CPUDevice, int8_t>
+    : LaunchFusedConv2DOpCpuInt8Helper<int8_t> {};
 
 template <>
 struct LaunchFusedConv2DOp<CPUDevice, qint8>
@@ -575,7 +574,7 @@ void operator()(
                                                  &autotune_entry)) {
     VLOG(2) << "Autotuning fused convolution: "
             << fused_conv_parameters.ToString();
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto dnn = stream->parent()->AsDnn();
