@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
+        "@com_google_absl//absl/status",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -88,11 +89,13 @@ tf_cc_test(
         ":buffer_map",
         ":buffer_map_util",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -230,6 +233,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
     ] + if_mobile([
@@ -250,9 +254,10 @@ tf_cc_test(
     srcs = ["delegate_data_test.cc"],
     deps = [
         ":delegate_data",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
@@ -260,7 +265,10 @@ tf_cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/testing:util",
+        "//third_party/protobuf",
+        "//third_party/protobuf/util:differencer",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -297,12 +305,16 @@ tf_cc_test(
         ":delegate",
         ":delegate_data",
         ":test_util",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -315,8 +327,13 @@ cc_library(
     visibility = internal_visibility_allowlist(),
     deps = [
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels:test_util",
+        "//testing/base/public:gunit_for_library_testonly",
+        "//third_party/protobuf",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -387,6 +404,7 @@ tf_cc_test(
     deps = [
         ":delegate",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -418,6 +436,7 @@ cc_library(
         ":buffer_map_util",
         ":subgraph_resource",
         ":util",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
@@ -427,6 +446,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
