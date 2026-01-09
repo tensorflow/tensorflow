@@ -1255,7 +1255,7 @@ class SparseApplyAdadeltaOp : public OpKernel {
     const Tensor& indices = ctx->input(7);
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
-
+    
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(absl::StrCat(
@@ -1923,7 +1923,10 @@ class SparseApplyAdagradOp : public OpKernel {
     const Tensor& indices = ctx->input(4);
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
-
+    
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                errors::InvalidArgument("grad must have the same number of "
+                                        "dimensions as var"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2058,6 +2061,9 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                errors::InvalidArgument("grad must have the same number of "
+                                        "dimensions as var"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
