@@ -432,7 +432,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
       executor,
       executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
 
-  if (state->output_offsets_device_buffer.memory().is_null()) {
+  if (state->output_offsets_device_buffer.address().is_null()) {
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
@@ -566,7 +566,7 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   RETURN_IF_ERROR(
       RunRaggedAllToAll(config_.num_row_elements, config_.num_total_updates,
                         device_buffers, stream, comm, ragged_metadata_allocs,
-                        state->output_offsets_device_buffer.memory(),
+                        state->output_offsets_device_buffer.address(),
                         config_.config.use_symmetric_buffer));
   return true;
 }
