@@ -23,6 +23,7 @@ def repo(name):
             "//third_party/llvm:toolchains.patch",
             "//third_party/llvm:zstd.patch",
             "//third_party/llvm:lit_test.patch",
+            "//third_party/llvm:msvc_variable_shadowing.patch",
         ],
         link_files = {"//third_party/llvm:run_lit.sh": "mlir/run_lit.sh"},
     )
