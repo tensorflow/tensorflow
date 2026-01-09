@@ -58,15 +58,15 @@ namespace {
 // - All other types must have zero point equal to 0
 // Ref:
 // https://github.com/arm/tosa-specification/blob/9fe5e964e2193f0e345670f7f4098beecd7fd6eb/tosa.xml#L2479
-bool isValidTOSAZeroPoint(int32_t zp, unsigned bitWidth, bool isUnsigned) {
-  if (bitWidth == 8) {
+bool isValidTOSAZeroPoint(int32_t zp, unsigned bit_width, bool is_unsigned) {
+  if (bit_width == 8) {
     // int8/uint8 can have any zero point in their valid range
-    if (isUnsigned) {
+    if (is_unsigned) {
       return zp >= 0 && zp <= 255;
     } else {
       return zp >= -128 && zp <= 127;
     }
-  } else if (bitWidth == 16 && isUnsigned) {
+  } else if (bit_width == 16 && is_unsigned) {
     // uint16 must have zp of 0 or 32768
     return (zp == 0 || zp == 32768);
   } else {
@@ -76,28 +76,28 @@ bool isValidTOSAZeroPoint(int32_t zp, unsigned bitWidth, bool isUnsigned) {
 }
 
 // Adjust zero points according to TOSA requirements
-int32_t adjustZeroPointForTOSA(int32_t zp, unsigned bitWidth, bool isUnsigned) {
-  if (bitWidth == 16 && isUnsigned) {
+int32_t adjustZeroPointForTOSA(int32_t zp, unsigned bit_width, bool is_unsigned) {
+  if (bit_width == 16 && is_unsigned) {
     // uint16 must have zp of 0 or 32768
     if (zp != 0 && zp != 32768) {
-      // This is an unsupported case - TOSA doesn't support other zero points
-      // for uint16. Instead of erroring out, round to nearest valid value
+      // TOSA doesn't support other zero points for uint16. Round to nearest
+      // valid value. This leads to precision loss in the rescaled type.
       return (zp < 16384) ? 0 : 32768;
     }
     return zp;
-  } else if (bitWidth == 8) {
+  } else if (bit_width == 8) {
     // int8/uint8 can have any zero point in their valid range
     return zp;
   } else {
-    // All other types must have zero point = 0
+    // All other types must have zero point = 0. This also leads to precision loss.
     return 0;
   }
 }
 
 // Only support 8, 16, and 32-bit integers as tosa.rescale op only supports
 // these bitWidths as both input and output types
-bool isUnsupportedBitWidth(unsigned bitWidth) {
-  return (bitWidth != 8 && bitWidth != 16 && bitWidth != 32);
+bool isUnsupportedBitWidth(unsigned bit_width) {
+  return (bit_width != 8 && bit_width != 16 && bit_width != 32);
 }
 
 // Create a signed quantized type from an unsigned one
@@ -105,30 +105,59 @@ bool isUnsupportedBitWidth(unsigned bitWidth) {
 std::pair<mlir::quant::UniformQuantizedType, int32_t>
 createSignedQuantizedTypeFromUnsigned(
     OpBuilder& builder, mlir::quant::UniformQuantizedType unsigned_quant_type) {
-  unsigned bitWidth = unsigned_quant_type.getStorageTypeIntegralWidth();
+  unsigned bit_width = unsigned_quant_type.getStorageTypeIntegralWidth();
 
-  // Calculate the zero-point offset for this bitwidth
   int32_t unsigned_zp = unsigned_quant_type.getZeroPoint();
-  int64_t zpOffset =
-      1LL << (bitWidth - 1);  // 128 for 8-bit, 32768 for 16-bit, etc.
-  int32_t signed_zp = adjustZeroPointForTOSA(unsigned_zp - zpOffset, bitWidth,
-                                             /*isUnsigned=*/false);
 
-  // Calculate storage bounds for the signed type
-  int64_t signedMin = -(1LL << (bitWidth - 1));     // e.g., -128 for 8-bit
-  int64_t signedMax = (1LL << (bitWidth - 1)) - 1;  // e.g., 127 for 8-bit
+  // Calculate real value range
+  double real_min = static_cast<double>(
+                        unsigned_quant_type.getStorageTypeMin() - unsigned_zp) *
+                    unsigned_quant_type.getScale();
+  double real_max = static_cast<double>(
+                        unsigned_quant_type.getStorageTypeMax() - unsigned_zp) *
+                    unsigned_quant_type.getScale();
 
-  bool narrow_range = unsigned_quant_type.getStorageTypeMin() == 1;
-  if (narrow_range) {
-    // For narrow range, we avoid the minimum value
-    // e.g., for int8: use [-127, 127] instead of [-128, 127]
-    signedMin = signedMin + 1;
+  // Determine signed storage range
+  int64_t signed_min = quant::AnyQuantizedType::getDefaultMinimumForInteger(
+      /* isSignedInteger = */ true, bit_width);
+  int64_t signed_max = quant::AnyQuantizedType::getDefaultMaximumForInteger(
+      /* isSignedInteger = */ true, bit_width);
+
+  // Adjust for narrow range
+  if (unsigned_quant_type.getStorageTypeMin() == 1) {
+    signed_min++;
   }
+
+  // Compute optimal scale and zero point
+  double real_range = real_max - real_min;
+  double storage_range = static_cast<double>(signed_max - signed_min);
+  double new_scale = real_range / storage_range;
+
+  // Compute zero point to align real_min with signed_min
+  int32_t signed_zp =
+      static_cast<int32_t>(std::round(signed_min - real_min / new_scale));
+
+  int32_t adjusted_zp =
+      adjustZeroPointForTOSA(signed_zp, bit_width, /*is_unsigned=*/false);
+
+  // If zero point was changed by TOSA constraints, recompute scale
+  if (adjusted_zp != signed_zp) {
+    // With the adjusted zp, recompute scale to ensure coverage of real range
+    // real_min = new_scale * (signed_min - adjusted_zp)
+    // real_max = new_scale * (signed_max - adjusted_zp)
+    double scale_for_min =
+        real_min / static_cast<double>(signed_min - adjusted_zp);
+    double scale_for_max =
+        real_max / static_cast<double>(signed_max - adjusted_zp);
+    new_scale = std::max(scale_for_min, scale_for_max);
+  }
+
+  signed_zp = adjusted_zp;
 
   auto signed_quant_type = quant::UniformQuantizedType::getChecked(
       builder.getUnknownLoc(), quant::QuantizationFlags::Signed,
-      builder.getIntegerType(bitWidth), unsigned_quant_type.getExpressedType(),
-      unsigned_quant_type.getScale(), signed_zp, signedMin, signedMax);
+      builder.getIntegerType(bit_width), unsigned_quant_type.getExpressedType(),
+      new_scale, signed_zp, signed_min, signed_max);
 
   return {signed_quant_type, signed_zp};
 }
@@ -161,39 +190,39 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
           op, "expected output type to be unsigned quantized type");
     }
 
-    // Get the bitwidth from the quantized type itself
-    unsigned bitWidth = output_element_type.getStorageTypeIntegralWidth();
+    // Get the bit_width from the quantized type itself
+    unsigned bit_width = output_element_type.getStorageTypeIntegralWidth();
 
-    if (isUnsupportedBitWidth(bitWidth)) {
+    if (isUnsupportedBitWidth(bit_width)) {
       return builder.notifyMatchFailure(
           op, "only 8, 16, and 32-bit integers are supported");
     }
 
     int32_t unsigned_zp = output_element_type.getZeroPoint();
-    if (!isValidTOSAZeroPoint(unsigned_zp, bitWidth, /*isUnsigned=*/true)) {
+    if (!isValidTOSAZeroPoint(unsigned_zp, bit_width, /*is_unsigned=*/true)) {
       return builder.notifyMatchFailure(op,
                                         "Zeropoint is not supported by TOSA.");
     }
 
-    // Calculate the zero-point offset for this bitwidth
+    // Calculate the zero-point offset for this bit_width
     auto [signed_quant_type, signed_zp] =
         createSignedQuantizedTypeFromUnsigned(builder, output_element_type);
 
     auto dst_qconst_type = TypeAttr::get(
         RankedTensorType::get(output_type.getShape(), signed_quant_type));
 
-    Type dst_dense_element_type = builder.getIntegerType(bitWidth);
+    Type dst_dense_element_type = builder.getIntegerType(bit_width);
 
     mlir::DenseElementsAttr src_dense_attr =
         mlir::cast<DenseElementsAttr>(tfl_qconst_op.getValue());
 
-    int64_t valueOffset = unsigned_zp - signed_zp;
+    int64_t value_offset = unsigned_zp - signed_zp;
     auto dst_dense_attr = src_dense_attr.mapValues(
         dst_dense_element_type,
-        [bitWidth, valueOffset](const APInt& in) -> APInt {
+        [bit_width, value_offset](const APInt& in) -> APInt {
           int64_t in_i64 = in.getLimitedValue();
-          int64_t out_i64 = in_i64 - valueOffset;
-          return APInt(bitWidth, out_i64, true);
+          int64_t out_i64 = in_i64 - value_offset;
+          return APInt(bit_width, out_i64, true);
         });
 
     builder.replaceOpWithNewOp<TFL::QConstOp>(op, dst_qconst_type,
@@ -204,11 +233,11 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
 };
 
 // returns true iff @a type is a shaped type with element type that is unsigned
-// integer. If it is, then return the rescaled type, input_zp, and output_zp to
+// integer. If it is, then update the rescaled type, input_zp, and output_zp to
 // use to rescale type to signed type with adjusted zero point.
-bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
+bool IsShapedUnsignedRescaledToSignedType(OpBuilder& builder, const Type type,
                           Type& rescaled_type, int32_t& unsigned_zp,
-                          int32_t& output_zp, unsigned& bitWidth) {
+                          int32_t& output_zp, unsigned& bit_width) {
   auto shaped_type = dyn_cast<mlir::ShapedType>(type);
   if (!shaped_type) return false;
 
@@ -218,8 +247,8 @@ bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
 
   // Check if it's unsigned quantized type
   if (unsigned_element_quant_type && !unsigned_element_quant_type.isSigned()) {
-    bitWidth = unsigned_element_quant_type.getStorageTypeIntegralWidth();
-    if (isUnsupportedBitWidth(bitWidth)) {
+    bit_width = unsigned_element_quant_type.getStorageTypeIntegralWidth();
+    if (isUnsupportedBitWidth(bit_width)) {
       return false;
     }
 
@@ -235,25 +264,28 @@ bool IsShapedUnsignedType(OpBuilder& builder, const Type type,
 
   // Check for plain unsigned integer types
   if (element_type.isUnsignedInteger()) {
-    bitWidth = element_type.getIntOrFloatBitWidth();
-    if (isUnsupportedBitWidth(bitWidth)) {
+    bit_width = element_type.getIntOrFloatBitWidth();
+    if (isUnsupportedBitWidth(bit_width)) {
       return false;
     }
 
-    int64_t zpOffset = 1LL << (bitWidth - 1);
+    int64_t zp_offset = 1LL << (bit_width - 1);
     unsigned_zp = 0;
-    output_zp = adjustZeroPointForTOSA(unsigned_zp - zpOffset, bitWidth,
-                                       /*isUnsigned=*/false);
-    int64_t signedMin = -(1LL << (bitWidth - 1));
-    int64_t signedMax = (1LL << (bitWidth - 1)) - 1;
+    output_zp = adjustZeroPointForTOSA(unsigned_zp - zp_offset, bit_width,
+                                       /*is_unsigned=*/false);
+    // Determine signed storage range
+    int64_t signed_min = quant::AnyQuantizedType::getDefaultMinimumForInteger(
+        /* isSignedInteger = */ true, bit_width);
+    int64_t signed_max = quant::AnyQuantizedType::getDefaultMaximumForInteger(
+        /* isSignedInteger = */ true, bit_width);
 
     rescaled_type = shaped_type.clone(quant::UniformQuantizedType::getChecked(
         builder.getUnknownLoc(), quant::QuantizationFlags::Signed,
-        builder.getIntegerType(bitWidth), builder.getF32Type(),
+        builder.getIntegerType(bit_width), builder.getF32Type(),
         /* scale = */ 1.0,
         /* zeroPoint = */ output_zp,
-        /* storageTypeMin = */ signedMin,
-        /* storageTypeMax = */ signedMax));
+        /* storageTypeMin = */ signed_min,
+        /* storageTypeMax = */ signed_max));
 
     return true;
   }
@@ -296,48 +328,48 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
 
       if (unsigned_element_quant_type &&
           !unsigned_element_quant_type.isSigned()) {
-        unsigned bitWidth =
+        unsigned bit_width =
             unsigned_element_quant_type.getStorageTypeIntegralWidth();
         int32_t unsigned_zp = unsigned_element_quant_type.getZeroPoint();
 
-        if (!isValidTOSAZeroPoint(unsigned_zp, bitWidth, /*isUnsigned=*/true)) {
+        if (!isValidTOSAZeroPoint(unsigned_zp, bit_width, /*is_unsigned=*/true)) {
           return function.emitError()
                  << "Input argument has unsigned quantized type with zero "
                     "point "
                  << unsigned_zp
-                 << " which is not supported by TOSA for bitwidth " << bitWidth
+                 << " which is not supported by TOSA for bitwidth " << bit_width
                  << ".";
         }
       }
 
       Type rescaled_type;
       int32_t rescale_input_zp_val, rescale_output_zp_val;
-      unsigned bitWidth;
+      unsigned bit_width;
 
-      if (!IsShapedUnsignedType(builder, arg.getType(), rescaled_type,
+      if (!IsShapedUnsignedRescaledToSignedType(builder, arg.getType(), rescaled_type,
                                 rescale_input_zp_val, rescale_output_zp_val,
-                                bitWidth))
+                                bit_width))
         continue;
 
       // Keep original input_val use with tmp_val.
       auto tmp_const_type =
-          RankedTensorType::get({1}, builder.getIntegerType(bitWidth));
+          RankedTensorType::get({1}, builder.getIntegerType(bit_width));
       auto tmp_const_attr =
-          DenseElementsAttr::get(tmp_const_type, {APInt(bitWidth, 0)});
+          DenseElementsAttr::get(tmp_const_type, {APInt(bit_width, 0)});
       Value tmp_val =
           builder.create<TFL::ConstOp>(loc, tmp_const_type, tmp_const_attr);
       arg.replaceAllUsesWith(tmp_val);
 
-      // Create zero point constants with appropriate bitwidth
-      // input_zp must match input bitwidth (unsigned), output_zp must match
-      // output bitwidth (signed)
-      auto rescale_input_zp = createZeroPointTensor(builder, loc, arg.getType(),
-                                                    rescale_input_zp_val);
+      // Create zero point constants with appropriate bit_width
+      // input_zp must match input bit_width, output_zp must match
+      // output bit_width
+      auto rescale_input_zp = createZeroPointTensor(
+          builder, loc, tmp_const_type, rescale_input_zp_val);
       auto rescale_output_zp = createZeroPointTensor(
-          builder, loc, rescaled_type, rescale_output_zp_val);
+          builder, loc, tmp_const_type, rescale_output_zp_val);
 
       if (!rescale_input_zp || !rescale_output_zp) {
-        (void)emitError(loc, "Failed to create input zero point tensors.");
+        return function.emitError("Failed to create input zero point tensors.");
       }
 
       const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
@@ -382,10 +414,10 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
         if (!shaped_type) continue;
         Type new_type;
         int32_t unused_input_zp, unused_output_zp;
-        unsigned bitWidth;
+        unsigned bit_width;
 
-        if (IsShapedUnsignedType(builder, output_val.getType(), new_type,
-                                 unused_input_zp, unused_output_zp, bitWidth)) {
+        if (IsShapedUnsignedRescaledToSignedType(builder, output_val.getType(), new_type,
+                                 unused_input_zp, unused_output_zp, bit_width)) {
           output_val.setType(new_type);
         }
       }
@@ -410,11 +442,11 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       // Check if graph output is unsigned type.
       Type rescaled_type;
       int32_t unsigned_zp_val, unused_output_zp_val;
-      unsigned bitWidth;
+      unsigned bit_width;
 
-      if (!IsShapedUnsignedType(builder, output_types[i], rescaled_type,
+      if (!IsShapedUnsignedRescaledToSignedType(builder, output_types[i], rescaled_type,
                                 unsigned_zp_val, unused_output_zp_val,
-                                bitWidth))
+                                bit_width))
         continue;
 
       // convert terminator operand type back to original output_type.
@@ -426,30 +458,30 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
           terminator_operand_type.getElementType());
       if (quantized_type) {
         operand_zp_val = adjustZeroPointForTOSA(quantized_type.getZeroPoint(),
-                                                bitWidth, /*isUnsigned=*/true);
+                                                bit_width, /*is_unsigned=*/true);
       }
 
       // Keep original input_val use with tmp_val.
       auto tmp_const_type =
-          RankedTensorType::get({1}, builder.getIntegerType(bitWidth));
+          RankedTensorType::get({1}, builder.getIntegerType(bit_width));
       auto tmp_const_attr =
-          DenseElementsAttr::get(tmp_const_type, {APInt(bitWidth, 0)});
+          DenseElementsAttr::get(tmp_const_type, {APInt(bit_width, 0)});
       Value tmp_val =
           builder.create<TFL::ConstOp>(loc, tmp_const_type, tmp_const_attr);
       input_val.replaceUsesWithIf(tmp_val, [&terminator](OpOperand& use) {
         return use.getOwner() == terminator;
       });
 
-      // Create zero point constants with appropriate bitwidth
-      // input_zp must match input bitwidth (signed), output_zp must match
-      // output bitwidth (unsigned)
+      // Create zero point constants with appropriate bit_width
+      // input_zp must match input bit_width (signed), output_zp must match
+      // output bit_width (unsigned)
       auto rescale_input_zp =
           createZeroPointTensor(builder, loc, tmp_const_type, operand_zp_val);
-      auto rescale_output_zp = createZeroPointTensor(
-          builder, loc, unsigned_output_type, unsigned_zp_val);
+      auto rescale_output_zp =
+          createZeroPointTensor(builder, loc, tmp_const_type, unsigned_zp_val);
 
       if (!rescale_input_zp || !rescale_output_zp) {
-        (void)emitError(loc, "Failed to create input zero point tensors.");
+        return function.emitError("Failed to create input zero point tensors.");
       }
 
       const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
