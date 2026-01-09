@@ -78,7 +78,15 @@ class SocketServer {
   // Connect to a remote server at an address.
   tsl::RCReference<Connection> Connect(const SocketAddress& other_addr);
 
+  void WaitForQuiesce();
+
  private:
+  struct ConnectionList {
+    absl::Mutex mu;
+    std::list<SocketNetworkState*> list;
+  };
+  std::shared_ptr<ConnectionList> connections_ =
+      std::make_shared<ConnectionList>();
   std::unique_ptr<SocketListener> listener_;
   std::shared_ptr<BulkTransportFactory> bulk_transport_factory_;
   std::shared_ptr<PullTable> pull_table_ = std::make_shared<PullTable>();

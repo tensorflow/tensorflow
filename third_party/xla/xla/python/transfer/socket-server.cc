@@ -49,11 +49,17 @@ namespace aux {
 
 class SocketServer::SocketNetworkState : public SocketFdPacketState {
  public:
-  explicit SocketNetworkState(std::shared_ptr<PullTable> table,
+  explicit SocketNetworkState(std::shared_ptr<ConnectionList> connections,
+                              std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
                               int fd)
-      : table_(std::move(table)), factory_(std::move(factory)) {
+      : table_(std::move(table)),
+        factory_(std::move(factory)),
+        connections_(std::move(connections)) {
     RegisterFd(fd, /*start_connected=*/true);
+    absl::MutexLock l(connections_->mu);
+    connections_->list.push_back(this);
+    connection_it_ = --connections_->list.end();
   }
   explicit SocketNetworkState(std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
@@ -63,7 +69,12 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
         remote_addr_(addr) {
   }
 
-  ~SocketNetworkState() override = default;
+  ~SocketNetworkState() override {
+    if (connections_) {
+      absl::MutexLock l(connections_->mu);
+      connections_->list.erase(connection_it_);
+    }
+  }
 
   void StartConnect() {
     int send_fd = socket(remote_addr_.address().sa_family,
@@ -432,10 +443,12 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     }
   }
 
-  static void Accept(std::shared_ptr<PullTable> table,
+  static void Accept(std::shared_ptr<ConnectionList> connections,
+                     std::shared_ptr<PullTable> table,
                      std::shared_ptr<BulkTransportFactory> factory,
                      int sockfd) {
-    new SocketNetworkState(table, factory, sockfd);
+    new SocketNetworkState(std::move(connections), std::move(table),
+                           std::move(factory), sockfd);
   }
 
   void ClearDestTable() {
@@ -484,6 +497,8 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
   absl::AnyInvocable<void(const SocketTransferEstablishBulkTransport&
                               remote_bulk_transport_info) &&>
       start_bulk_transport_ = nullptr;
+  std::shared_ptr<ConnectionList> connections_;
+  std::list<SocketNetworkState*>::iterator connection_it_;
 };
 
 SocketServer::Connection::~Connection() { local_->NoMorePulls(); }
@@ -509,14 +524,15 @@ absl::Status SocketServer::Start(
   bulk_transport_factory_ = bulk_transport_factory;
   auto v = SocketListener::Listen(
       addr,
-      [pull_table = pull_table_, factory = bulk_transport_factory_](
-          int sockfd, const SocketAddress& addr) {
+      [pull_table = pull_table_, connections = connections_,
+       factory = bulk_transport_factory_](int sockfd,
+                                          const SocketAddress& addr) {
         int value = 1;
         CHECK_GE(
             setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)),
             0)
             << strerror(errno) << " " << errno;
-        SocketNetworkState::Accept(pull_table, factory, sockfd);
+        SocketNetworkState::Accept(connections, pull_table, factory, sockfd);
       },
       SOCK_NONBLOCK);
   if (!v.ok()) {
@@ -535,6 +551,12 @@ tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
   local_->IncRef();
   local_->StartConnect();
   return tsl::MakeRef<Connection>(local_);
+}
+
+void SocketServer::WaitForQuiesce() {
+  absl::MutexLock l(connections_->mu);
+  auto cond = [&]() { return connections_->list.empty(); };
+  connections_->mu.Await(absl::Condition(&cond));
 }
 
 }  // namespace aux
