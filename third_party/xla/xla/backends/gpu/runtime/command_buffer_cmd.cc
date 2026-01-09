@@ -599,11 +599,10 @@ CommandBufferCmdExecutor::RecordCreate(
     }
 
     // Create new commands by recording them into the command buffer.
-    DCHECK(!state.GetOrNull<RecordState>(command, command_buffer,
-                                         record_params.unroll_iteration))
+    DCHECK(!state.GetOrNull<RecordState>(command, command_buffer))
         << "Record state must be null for " << command->ToString();
-    auto* record_state = state.GetOrCreate<RecordState>(
-        command, command_buffer, record_params.unroll_iteration);
+    auto* record_state =
+        state.GetOrCreate<RecordState>(command, command_buffer);
 
     std::vector<const se::CommandBuffer::Command*> command_dependencies =
         Dependencies(record_params, command_buffer, id);
@@ -719,8 +718,7 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
     }
 
     // Update existing commands in the command buffer.
-    auto* record_state = state.GetOrNull<RecordState>(
-        command, command_buffer, record_params.unroll_iteration);
+    auto* record_state = state.GetOrNull<RecordState>(command, command_buffer);
     DCHECK(record_state) << "Record state must be not null for "
                          << command->ToString();
 
@@ -784,8 +782,7 @@ CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
   std::vector<const se::CommandBuffer::Command*> dependencies;
   for (CommandId dependency_id : dependencies_ids) {
     auto* record_state = record_params.state.GetOrNull<RecordState>(
-        commands_[dependency_id].get(), command_buffer,
-        record_params.unroll_iteration);
+        commands_[dependency_id].get(), command_buffer);
     DCHECK(record_state) << "Record state must be not null for "
                          << commands_[dependency_id]->ToString();
 
@@ -934,13 +931,11 @@ TracedCommandBufferCmd::RecordTracedCommand(
     se::CommandBuffer* command_buffer,
     absl::FunctionRef<absl::Status(se::Stream*)> trace) {
   auto traced_cmd = record_params.state.GetOrCreate<TracedCommandBuffer>(
-      this, command_buffer,
-      [&] {
+      this, command_buffer, [&] {
         const auto& debug_options = xla::GetDebugOptionsFromFlags();
         return std::make_unique<TracedCommandBuffer>(
             this, buffers(), debug_options.xla_cmd_buffer_trace_cache_size());
-      },
-      record_params.unroll_iteration);
+      });
 
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
