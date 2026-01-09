@@ -280,8 +280,8 @@ cc_library(
     testonly = True,
     hdrs = ["hlo_pjrt_interpreter_reference_mixin.h"],
     deps = [
+        ":aot_utils",
         ":hlo_runner_agnostic_reference_mixin",
-        ":split_phase_utils",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/service:hlo_runner_pjrt",
     ],
@@ -293,9 +293,9 @@ cc_library(
     srcs = ["hlo_pjrt_test_base.cc"],
     hdrs = ["hlo_pjrt_test_base.h"],
     deps = [
+        ":aot_utils",
         ":hlo_runner_agnostic_test_base",
         ":pjrt_client_registry",
-        ":split_phase_utils",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
@@ -1077,11 +1077,11 @@ xla_test(
     name = "dot_operation_test",
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
+    aot_compile_test = False,
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
-    precompile_test = False,
     shard_count = 20,
     tags = [
         "optonly",
@@ -1142,13 +1142,13 @@ xla_test(
 xla_test(
     name = "dot_operation_autotune_disabled_test",
     srcs = ["dot_operation_test.cc"],
+    aot_compile_test = False,
     args = ["--xla_gpu_autotune_level=0"],
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
     backends = ["gpu"],
-    precompile_test = False,
     shard_count = 20,
     tags = [
         "optonly",
@@ -1199,6 +1199,7 @@ xla_test(
     name = "dot_operation_canonicalization_after_layout_test",
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
+    aot_compile_test = False,
     args = [
         "--xla_tpu_order_dot_after_layout=true",
     ],
@@ -1208,7 +1209,6 @@ xla_test(
         "gpu",
         "interpreter",
     ],
-    precompile_test = False,
     shard_count = 50,
     tags = [
         "nozapfhahn",
@@ -1368,6 +1368,7 @@ xla_test(
     name = "dot_operation_single_threaded_runtime_test",
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
+    aot_compile_test = False,
     backend_args = {
         "cpu": [
             "--xla_cpu_multi_thread_eigen=false",
@@ -1377,7 +1378,6 @@ xla_test(
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
     },
-    precompile_test = False,
     shard_count = 50,
     tags = [
         "optonly",
@@ -1981,7 +1981,7 @@ xla_test(
     name = "dynamic_ops_test",
     timeout = "moderate",
     srcs = ["dynamic_ops_test.cc"],
-    precompile_test = False,
+    aot_compile_test = False,
     shard_count = 4,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
@@ -4133,6 +4133,8 @@ bzl_library(
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl/platform:build_config_root_bzl",
         "//xla/tsl/platform/default:build_config_bzl",
+        "//xla/tsl/platform/default:cuda_build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
     ] + tests_build_defs_bzl_deps(),
 )
 
@@ -4191,10 +4193,10 @@ xla_test(
 )
 
 cc_library(
-    name = "split_phase_utils",
+    name = "aot_utils",
     testonly = True,
-    srcs = ["split_phase_utils.cc"],
-    hdrs = ["split_phase_utils.h"],
+    srcs = ["aot_utils.cc"],
+    hdrs = ["aot_utils.h"],
     deps = [
         "//xla/hlo/evaluator:caching_hlo_evaluator",
         "//xla/hlo/evaluator:hlo_evaluator_interface",

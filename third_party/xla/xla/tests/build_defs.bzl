@@ -328,8 +328,8 @@ def xla_test(
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
-    # precompile_test is not supported in OSS.
-    kwargs.pop("precompile_test", None)
+    # aot_compile_test is not supported in OSS.
+    kwargs.pop("aot_compile_test", None)
 
     # TODO: b/382779188 - Remove this once all legacy tests have had this kwarg added.
     kwargs.pop("use_legacy_runtime", None)

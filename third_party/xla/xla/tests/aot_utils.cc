@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/split_phase_utils.h"
+#include "xla/tests/aot_utils.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -35,50 +35,49 @@ limitations under the License.
 
 namespace xla {
 namespace {
-enum class SplitPhaseMode : uint8_t {
-  // Split-phase compilation and execution is disabled. Both are performed in
+enum class AotMode : uint8_t {
+  // AoT compilation and execution is disabled. Both are performed in
   // the same runner.
   kDisabled,
-  // Split-phase compilation is enabled. The runner will run in compile-only
-  // mode and persist the executable to disk.
+  // AoT compilation is enabled. The runner will run in compile-only mode and
+  // persist the executable to disk.
   kCompile,
-  // Split-phase execution is enabled. The runner will run in execute-only mode
-  // and load the executable from disk, falling back to performing compilation
+  // AoT execution is enabled. The runner will run in execute-only mode and load
+  // the executable from disk, falling back to performing compilation
   // if the executable is not found.
   kExecute
 };
 
-constexpr absl::string_view kModeEnvVar =
-    "XLA_TEST_HLO_RUNNER_SPLIT_PHASE_MODE";
-constexpr absl::string_view kDirEnvVar = "XLA_TEST_HLO_RUNNER_SPLIT_PHASE_DIR";
+constexpr absl::string_view kModeEnvVar = "XLA_TEST_HLO_RUNNER_AOT_MODE";
+constexpr absl::string_view kDirEnvVar = "XLA_TEST_HLO_RUNNER_AOT_DIR";
 
-SplitPhaseMode GetSplitPhaseMode() {
+AotMode GetAotMode() {
   // Mode is presumed to stay the same for the lifetime of the program.
-  static const SplitPhaseMode kMode = []() {
+  static const AotMode kMode = []() {
     const std::string name{kModeEnvVar};
     const char* val_buffer = std::getenv(name.c_str());
     if (val_buffer == nullptr) {
-      return SplitPhaseMode::kDisabled;
+      return AotMode::kDisabled;
     }
 
     const absl::string_view val(val_buffer);
     if (val == "disabled") {
-      return SplitPhaseMode::kDisabled;
+      return AotMode::kDisabled;
     }
     if (val == "compile") {
-      return SplitPhaseMode::kCompile;
+      return AotMode::kCompile;
     }
     if (val == "execute") {
-      return SplitPhaseMode::kExecute;
+      return AotMode::kExecute;
     }
     LOG(WARNING) << "Unknown value for " << kModeEnvVar << ": " << val
-                 << ". GetSplitPhaseMode() will return kDisabled.";
-    return SplitPhaseMode::kDisabled;
+                 << ". GetAotMode() will return kDisabled.";
+    return AotMode::kDisabled;
   }();
   return kMode;
 }
 
-std::optional<absl::string_view> GetSplitPhaseDir() {
+std::optional<absl::string_view> GetAotDir() {
   // Dir is presumed to stay the same for the lifetime of the program.
   static const absl::NoDestructor<std::optional<std::string>> kDir(
       []() -> std::optional<std::string> {
@@ -96,42 +95,42 @@ std::optional<absl::string_view> GetSplitPhaseDir() {
 }
 }  // namespace
 
-std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
+std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtAotAware(
     std::unique_ptr<PjRtClient> client) {
-  const SplitPhaseMode mode = GetSplitPhaseMode();
+  const AotMode mode = GetAotMode();
   absl::string_view artifact_dir;
-  if (mode != SplitPhaseMode::kDisabled) {
-    std::optional<absl::string_view> split_phase_dir = GetSplitPhaseDir();
-    if (!split_phase_dir.has_value()) {
+  if (mode != AotMode::kDisabled) {
+    std::optional<absl::string_view> aot_dir = GetAotDir();
+    if (!aot_dir.has_value()) {
       return nullptr;
     }
-    artifact_dir = *std::move(split_phase_dir);
+    artifact_dir = *std::move(aot_dir);
   }
 
   switch (mode) {
-    case SplitPhaseMode::kDisabled:
+    case AotMode::kDisabled:
       return std::make_unique<HloRunnerPjRt>(std::move(client));
-    case SplitPhaseMode::kCompile:
+    case AotMode::kCompile:
       return std::make_unique<CompilePhaseHloRunnerPjRt>(
           std::move(client), std::move(artifact_dir));
-    case SplitPhaseMode::kExecute:
+    case AotMode::kExecute:
       return std::make_unique<ExecutePhaseHloRunnerPjRt>(
           std::move(client), std::move(artifact_dir));
   }
   return nullptr;  // Should not reach here.
 }
 
-std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
+std::unique_ptr<InterpreterClient> MakeInterpreterClientAotAware(
     absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
         hlo_evaluator_factory) {
-  const SplitPhaseMode mode = GetSplitPhaseMode();
+  const AotMode mode = GetAotMode();
   absl::string_view artifact_dir;
-  if (mode != SplitPhaseMode::kDisabled) {
-    std::optional<absl::string_view> split_phase_dir = GetSplitPhaseDir();
-    if (!split_phase_dir.has_value()) {
+  if (mode != AotMode::kDisabled) {
+    std::optional<absl::string_view> aot_dir = GetAotDir();
+    if (!aot_dir.has_value()) {
       return nullptr;
     }
-    artifact_dir = *std::move(split_phase_dir);
+    artifact_dir = *std::move(aot_dir);
   }
 
   return std::make_unique<InterpreterClient>(
@@ -139,13 +138,13 @@ std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
        artifact_dir = std::string{artifact_dir},
        mode]() -> std::unique_ptr<HloEvaluatorInterface> {
         switch (mode) {
-          case SplitPhaseMode::kDisabled:
+          case AotMode::kDisabled:
             return factory();
-          case SplitPhaseMode::kCompile:
+          case AotMode::kCompile:
             return std::make_unique<CachingHloEvaluator>(
                 factory(), std::move(artifact_dir),
                 CachingHloEvaluator::kWrite);
-          case SplitPhaseMode::kExecute:
+          case AotMode::kExecute:
             return std::make_unique<CachingHloEvaluator>(
                 factory(), std::move(artifact_dir),
                 CachingHloEvaluator::kReadAndEvaluateIfCacheMiss);
@@ -154,10 +153,10 @@ std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
       });
 }
 
-// Execution errors are swallowed if and only if the split phase mode is set to
+// Execution errors are swallowed if and only if the AoT mode is set to
 // kCompile.
-bool HasPjRtSplitPhaseAwareSwallowExecutionErrors() {
-  return GetSplitPhaseMode() == SplitPhaseMode::kCompile;
+bool HasPjRtAotAwareSwallowExecutionErrors() {
+  return GetAotMode() == AotMode::kCompile;
 }
 
 }  // namespace xla

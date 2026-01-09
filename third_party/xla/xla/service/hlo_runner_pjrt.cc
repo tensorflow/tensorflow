@@ -982,7 +982,8 @@ absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
   return pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
-// Split-phase HloRunnerPjRt implementations:
+// HloRunnerPjRt implementations for AoT use cases (i.e., compilation being a
+// phase distinct from execution):
 
 namespace {
 
@@ -1019,7 +1020,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
   return absl::StrCat(absl::BytesToHexString(fingerprint_bytes_view), ".bin");
 }
 
-inline absl::StatusOr<DeviceAssignment> SplitPhaseDefaultDeviceAssignment(
+inline absl::StatusOr<DeviceAssignment> AotDefaultDeviceAssignment(
     int num_replicas, int num_partitions) {
   DeviceAssignment device_assignment(num_replicas, num_partitions);
   device_assignment.FillIota(0);
@@ -1050,7 +1051,7 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 absl::StatusOr<DeviceAssignment>
 CompilePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
+  return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
@@ -1088,8 +1089,8 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
           "indicates that their fingerprints are the same. If you wish to "
           "avoid this issue in a test, you can either force their fingerprints "
           "to be different through some superficial change in the module (e.g. "
-          "the module name), or by disabling split compilation by setting "
-          "precompile_test = False in the corresponding xla_test.",
+          "the module name), or by disabling ahead-of-time compilation by "
+          "setting aot_compile_test = False in the corresponding xla_test.",
           module->name(), filename));
     }
   }
@@ -1100,7 +1101,7 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 absl::StatusOr<DeviceAssignment>
 ExecutePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
+  return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 }  // namespace xla
