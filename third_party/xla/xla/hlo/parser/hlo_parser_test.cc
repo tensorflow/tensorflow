@@ -1662,8 +1662,8 @@ FileLocations
 3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
 
 StackFrames
-1 {file_location_id=1 parent_frame_id=0}
-2 {file_location_id=2 parent_frame_id=1}
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
 
 
 ENTRY %constant_pred () -> pred[] {
@@ -4276,8 +4276,8 @@ FileLocations
 3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
 
 StackFrames
-1 {file_location_id=1 parent_frame_id=0}
-2 {file_location_id=2 parent_frame_id=1}
+1 {file_location_id=1 parent_frame_id=1}
+2 {file_location_id=2 parent_frame_id=2}
 
 
 ENTRY %constant_pred () -> pred[] {

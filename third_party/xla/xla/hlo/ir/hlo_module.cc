@@ -510,7 +510,7 @@ void HloModule::PrintStackFrameIndex(Printer* printer,
        llvm::enumerate(stack_frame_index_->stack_frames())) {
     printer->Append(absl::StrFormat(
         "%d {file_location_id=%d parent_frame_id=%d}\n", index + 1,
-        frame.file_location_id(), frame.parent_frame_id()));
+        frame.file_location_id(), frame.parent_frame_id() + 1));
   }
 }
 

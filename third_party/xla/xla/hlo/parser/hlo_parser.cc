@@ -1281,7 +1281,7 @@ bool HloParserImpl::ParseStackFramesList(
     StackFrameIndexProto::StackFrame* stack_frame =
         stack_frame_index->add_stack_frames();
     stack_frame->set_file_location_id(*file_location_id);
-    stack_frame->set_parent_frame_id(*parent_frame_id);
+    stack_frame->set_parent_frame_id(*parent_frame_id - 1);
   }
   return true;
 }
