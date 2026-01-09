@@ -165,6 +165,21 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
     return test_runner_->CreateExecutable(std::move(module), run_hlo_passes);
   }
 
+  // Parse the given hlo_text and compile the resulting module to an executable.
+  // Returns the HloModule and the corresponding executable that owns it.
+  absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
+  GetOptimizedModuleForExecutable(absl::string_view hlo_text,
+                                  const HloModuleConfig& config) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                        ParseAndReturnVerifiedModule(hlo_text, config));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+    TF_ASSIGN_OR_RETURN(const HloModule* optimized_module,
+                        test_runner_->HloModuleFromWrapped(executable.get()));
+    return {{optimized_module, std::move(executable)}};
+  }
+
   // Executes the given module on multiple devices.
   //
   // use_threads indicates whether this replicated computation will be executed
