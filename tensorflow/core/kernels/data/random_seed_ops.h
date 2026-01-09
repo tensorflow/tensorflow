@@ -139,7 +139,7 @@ class AnonymousSeedGeneratorHandleOp
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  string name() override;
+  std::string name() override;
   absl::Status CreateResource(
       OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
       std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
