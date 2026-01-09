@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/statusor.h"

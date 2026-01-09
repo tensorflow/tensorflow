@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
