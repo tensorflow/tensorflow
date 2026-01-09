@@ -157,6 +157,9 @@ absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
     }
   }
 
+  if (!record_reader.Close()) {
+    return record_reader.status();
+  }
   return absl::OkStatus();
 }
 
