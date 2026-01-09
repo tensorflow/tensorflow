@@ -27,9 +27,8 @@ class CommandBuffer;
 
 namespace xla::gpu {
 
-// Forward declare and prepare to migration to `Command` type name.
-class CommandBufferCmd;
-using Command = CommandBufferCmd;
+// Forward declaration.
+class Command;
 
 // A base class for externally managed command state.
 //
