@@ -809,11 +809,17 @@ class WhileCmd : public CommandBufferCmd {
 
  private:
   BufferAllocation::Slice pred_;
+
   CommandBufferCmdExecutor cond_commands_;
   CommandBufferCmdExecutor body_commands_;
+
   std::optional<int64_t> trip_count_;
   bool enable_loop_unroll_ = false;
   bool is_unrolled_loop_ = false;
+
+  // If while loop unrolling is enabled, this will be a vector or executors
+  // for each iteration executoting `cond` -> `body` commands.
+  std::vector<CommandBufferCmdExecutor> unrolled_commands_;
 };
 
 //===----------------------------------------------------------------------===//
