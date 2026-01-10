@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "input"
     description: <<END
-A float32 or float64 tensor.
+A float32 tensor.
 END
   }
   in_arg {
@@ -22,13 +22,6 @@ A complex64 tensor of the same rank as `input`. The inner-most
 @compatibility(numpy)
 Equivalent to np.fft.rfft
 @end_compatibility
-END
-  }
-  attr {
-    name: "Tcomplex"
-    description: <<END
-Should be `tf.complex64` when the type of `input` is `float32`.
-Should be `tf.complex128` when the type of `input` is `float64`.
 END
   }
   summary: "Real-valued fast Fourier transform."
