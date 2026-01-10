@@ -758,6 +758,7 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScaledDot:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:
