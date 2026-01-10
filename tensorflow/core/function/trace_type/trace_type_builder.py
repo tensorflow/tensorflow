@@ -182,14 +182,12 @@ def from_value(value: Any,
             for a in value.__attrs_attrs__))
 
   if util.is_np_ndarray(value):
-    try:
-      ndarray = value.__array__()
-      return default_types.TENSOR(ndarray.shape, ndarray.dtype)
-    except NotImplementedError:
-      # Fix for #105728: Handle symbolic tensors where .numpy() is not available
-      if hasattr(value, "shape") and hasattr(value, "dtype"):
-        return default_types.TENSOR(value.shape, value.dtype)
-      raise
+    ndarray = value.__array__()
+    return default_types.TENSOR(ndarray.shape, ndarray.dtype)
+
+  # FIX: Explicitly handle Tensor-like objects that we excluded from is_np_ndarray
+  if hasattr(value, "__tf_tensor__") or hasattr(value, "graph"):
+    return default_types.TENSOR(value.shape, value.dtype)
 
   if isinstance(value, custom_nest_protocol.CustomNestProtocol):
     metadata, components = value.__tf_flatten__()

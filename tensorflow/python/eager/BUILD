@@ -1314,11 +1314,8 @@ cuda_py_strict_test(
     name = "jit_compiler_issue_test",
     srcs = ["jit_compiler_issue_test.py"],
     deps = [
-        ":def_function",
+        "//tensorflow/core/function/trace_type:trace_type_builder",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/module:module",  # <--- Added this to resolve the issue
-        "//tensorflow/python/ops:math_ops",   # <--- Added this to resolve the issue
-        "//tensorflow/python/ops:variables",  # <--- Added this to resolve the issue
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

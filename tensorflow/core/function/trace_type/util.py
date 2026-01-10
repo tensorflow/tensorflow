@@ -36,7 +36,9 @@ def is_np_ndarray(value):
       # For legacy reasons we do not automatically promote Numpy strings.
       isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type))
+      or isinstance(value, type)
+      # Tensors have __array__ but shouldn't be treated as numpy arrays during tracing
+      or hasattr(value, "graph"))
 
 
 def cast_and_return_whether_casted(
