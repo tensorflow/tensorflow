@@ -41,13 +41,13 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/compiler.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -107,6 +107,11 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "MakeTuple is not supported for the IFRT proxy client.");
   }
+
+  // TODO(b/474143687) add cancellation to proxy.
+  void CancelExecution(
+      xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) override {}
 
   absl::string_view runtime_type() const override { return runtime_type_; }
   absl::string_view platform_name() const override { return platform_name_; }
