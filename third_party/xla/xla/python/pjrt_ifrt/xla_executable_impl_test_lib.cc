@@ -70,7 +70,6 @@ using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::Optional;
 using ::testing::SizeIs;
@@ -442,6 +441,66 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST_P(LoadedExecutableImplTest, CancelExecution) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+  EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  LoadedExecutable::ExecuteResult result;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(100));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result,
+        loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                   /*devices=*/std::nullopt));
+
+    // Smoke test for execution cancellation. Whether cancellation
+    // succeeds/fails or is supported/unsupported, the API call should finish
+    // without an error.
+    client->CancelExecution(result.cancellation_handle,
+                            absl::CancelledError("test"));
+    // Execution cancellation is idempotent.
+    client->CancelExecution(result.cancellation_handle,
+                            absl::CancelledError("test"));
+  }
+
+  // After cancellation, the user code typically blocks on the execution result
+  // future to ensure that the execution has completed or fully cancelled.
+  std::vector<float> out_data(6);
+  auto future = result.outputs[0]->CopyToHostBuffer(
+      out_data.data(), /*byte_strides=*/std::nullopt,
+      ArrayCopySemantics::kAlwaysCopy);
+  future.Await().IgnoreError();
 }
 
 TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
