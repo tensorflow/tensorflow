@@ -984,7 +984,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   VLOG(0) << "Running with CUBLAS enabled: " << opts.xla_gpu_enable_cublaslt();
   config.set_debug_options(opts);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
   DeviceAssignment assn(/*replica_count=*/kNumReplicas,
                         /*computation_count=*/1);
@@ -997,16 +997,15 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   for (int i = 0; i < fake_arguments.size(); i++) {
     fake_ptrs[i] = &fake_arguments[i];
   }
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module), fake_ptrs));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module), fake_ptrs));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto ref_module, ParseAndReturnVerifiedModule(kModuleSingleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto ref_exec,
-      reference_hlo_runner_->CreateExecutable(std::move(ref_module), true));
+  ASSERT_OK_AND_ASSIGN(auto ref_module,
+                       ParseAndReturnVerifiedModule(kModuleSingleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto ref_exec, hlo_runner_->CreateExecutable(
+                                          std::move(ref_module), true));
 
   ErrorSpec error_spec{5e-3, 5e-3};
   fake_ptrs.push_back(nullptr);
@@ -1014,9 +1013,8 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
     auto replica_id =
         LiteralUtil::CreateFullWithDescendingLayout<uint32_t>({}, i);
     fake_ptrs.back() = &replica_id;
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto res, reference_hlo_runner_->ExecuteWithExecutable(ref_exec.get(),
-                                                               fake_ptrs));
+    ASSERT_OK_AND_ASSIGN(auto res, hlo_runner_->ExecuteWithExecutable(
+                                       ref_exec.get(), fake_ptrs));
     EXPECT_TRUE(LiteralTestUtil::Near(res, results[i], error_spec));
   }
 }

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 

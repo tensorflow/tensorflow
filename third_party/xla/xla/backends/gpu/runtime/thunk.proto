@@ -485,6 +485,13 @@ message CollectiveDoneThunkProto {
   optional uint64 async_events_unique_id = 3;
 }
 
+message CollectiveGroupThunkProto {
+  ThunkKindProto thunk_kind = 1;
+  repeated ThunkProto thunks = 2;
+  AsyncStreamKind async_stream_kind = 3;
+  optional uint64 async_events_unique_id = 4;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -532,7 +539,8 @@ message ThunkProto {
     SendThunkProto send_thunk = 43;
     RecvThunkProto recv_thunk = 44;
     CollectiveBroadcastStartThunkProto collective_broadcast_start_thunk = 45;
-    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 46;
+    CollectiveGroupThunkProto collective_group_thunk = 46;
+    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 47;
   }
 }
 

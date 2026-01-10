@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_lib.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
@@ -68,6 +70,15 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> TopKThunk::Execute(
                         static_cast<int32_t*>(indices.opaque()));
 
   return OkExecuteEvent();
+}
+
+Thunk::BufferUses TopKThunk::buffer_uses() const {
+  return {BufferUse::Read(values_buffer_, ShapeUtil::MakeShape(
+                                              F32, {input_size_, batch_size_})),
+          BufferUse::Write(output_buffer_,
+                           ShapeUtil::MakeShape(F32, {k_, batch_size_})),
+          BufferUse::Write(indices_buffer_,
+                           ShapeUtil::MakeShape(S32, {k_, batch_size_}))};
 }
 
 }  // namespace xla::cpu

@@ -214,6 +214,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleReduceWindow(HloInstructionPtr reduce_window) override {
     return DefaultAction(reduce_window);
   }
+  absl::Status HandleScan(HloInstructionPtr scan) override {
+    return DefaultAction(scan);
+  }
   absl::Status HandleSelectAndScatter(
       HloInstructionPtr select_and_scatter) override {
     return DefaultAction(select_and_scatter);

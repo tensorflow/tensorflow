@@ -1565,7 +1565,8 @@ Future<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
 Future<> CommonPjRtBufferImpl::ToLiteralImpl(
     MutableLiteralBase* literal,
     absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
-  tsl::profiler::TraceMe traceme("CommonPjRtBuffer::ToLiteral");
+  tsl::profiler::TraceMeProducer producer("CommonPjRtBuffer::ToLiteral",
+                                          tsl::profiler::ContextType::kPjRt);
   VLOG(1) << "CommonPjRtBuffer::ToLiteral";
   auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
   if (!common_client->allows_recursion() && ThisThreadIsInsideHostCallback()) {
@@ -1621,24 +1622,26 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
       src_definition_events_avs_copy = src_definition_events_avs;
   common_client->async_work_runner()->ScheduleWhenReady(
       src_definition_events_avs_copy,
-      [shape = *std::move(device_shape),
+      [common_client, shape = *std::move(device_shape),
        src_definition_events_avs = std::move(src_definition_events_avs),
        raw_buffer = std::move(raw_buffer),
        device_promise = std::move(device_promise), literal,
-       generator = std::move(generator),
-       promise = std::move(promise)]() mutable {
+       generator = std::move(generator), promise = std::move(promise),
+       context_id = producer.GetContextId()]() mutable {
         auto copy_literal_async =
             [shape = std::move(shape),
              src_definition_events_avs = std::move(src_definition_events_avs),
              raw_buffer = std::move(raw_buffer),
              device_promise = std::move(device_promise),
-             promise = std::move(promise)](
+             promise = std::move(promise), context_id = context_id](
                 const absl::StatusOr<MutableLiteralBase*>& value) mutable {
-              tsl::profiler::TraceMe traceme([&] {
-                return tsl::profiler::TraceMeEncode(
-                    "D2H Dispatch",
-                    {{"shape", shape.ToString(/*print_layout=*/true)}});
-              });
+              tsl::profiler::TraceMeConsumer traceme(
+                  [&] {
+                    return tsl::profiler::TraceMeEncode(
+                        "D2H Dispatch",
+                        {{"shape", shape.ToString(/*print_layout=*/true)}});
+                  },
+                  tsl::profiler::ContextType::kPjRt, context_id);
 
               // Notify all pending events with `status`.
               auto notify_all = [&](absl::Status status) {
@@ -1676,11 +1679,16 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
           copy_literal_async(literal);
         } else {
           Future<MutableLiteralBase*> generated = std::move(generator)();
-          generated.OnReady(
-              [copy_literal_async = std::move(copy_literal_async)](
-                  const absl::StatusOr<MutableLiteralBase*>& value) mutable {
-                copy_literal_async(value);
-              });
+          if (generated.IsKnownReady()) {
+            copy_literal_async(generated.Await());
+          } else {
+            generated.OnReady(
+                common_client->async_work_runner()->AsExecutor(),
+                [copy_literal_async = std::move(copy_literal_async)](
+                    const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+                  copy_literal_async(value);
+                });
+          }
         }
       });
   return result;

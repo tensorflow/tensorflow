@@ -69,10 +69,7 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
       bool run_hlo_passes = true);
 
   const se::GpuComputeCapability& Capability() {
-    return hlo_runner_->backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+    return gpu_compute_capability_;
   }
 
   bool IsHopperAndHigher() {
@@ -87,7 +84,7 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
 
  protected:
   std::unique_ptr<HloRunner> hlo_runner_;
-  std::unique_ptr<HloRunner> reference_hlo_runner_;
+  se::GpuComputeCapability gpu_compute_capability_;
 
  private:
   void SetupHloRunner(size_t memory_size, size_t collectives_memory_size);

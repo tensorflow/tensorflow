@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -504,8 +506,9 @@ TEST_F(HloShardingTest, Hash) {
 using ShardingWithMetadataParamType =
     std::tuple<std::vector<OpMetadata>, std::string>;
 
-TEST_F(HloShardingTest, ToStringReplicatedTest) {
-  HloSharding sharding = HloSharding::Replicate();
+TEST_P(HloShardingRepresentationTest, ToStringReplicatedTest) {
+  bool use_named_sharding = GetParam();
+  HloSharding sharding = HloSharding::Replicate({}, use_named_sharding);
   EXPECT_EQ(sharding.ToString(), "{replicated}");
 }
 
@@ -529,8 +532,9 @@ INSTANTIATE_TEST_SUITE_P(
             ListMetadata(),
             "{replicated metadata={{op_name=\"b\"}, {op_name=\"c\"}}}")));
 
-TEST_F(HloShardingTest, ToStringAssignDeviceTest) {
-  HloSharding sharding = HloSharding::AssignDevice(7);
+TEST_P(HloShardingRepresentationTest, ToStringAssignDeviceTest) {
+  bool use_named_sharding = GetParam();
+  HloSharding sharding = HloSharding::AssignDevice(7, {}, use_named_sharding);
   EXPECT_EQ(sharding.ToString(), "{maximal device=7}");
 }
 
@@ -613,6 +617,32 @@ TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
             "{{replicated metadata={op_name=\"d\"}}, {devices=[1,2]3,5}, "
             "{maximal device=3 metadata={op_name=\"e\"}}}");
+}
+
+TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
+  Mesh mesh({2, 4}, {"a", "b"});
+  NamedSharding::DimensionSharding ds_a({AxisRef(0)},
+                                        /*is_closed=*/true);
+  NamedSharding::DimensionSharding ds_b({AxisRef(1)},
+                                        /*is_closed=*/true);
+  HloSharding sharding(NamedSharding(mesh, {{ds_a}, {ds_b}}));
+  EXPECT_EQ(sharding.ToString(), "{@mesh<a=2,b=4>, [{a}, {b}]}");
+
+  HloSharding sharding_with_metadata(
+      NamedSharding(mesh, {{ds_a}, {ds_b}}, {}, {}, ListMetadata()));
+  EXPECT_EQ(sharding_with_metadata.ToString(/*include_metadata=*/true),
+            "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{op_name=\"c\"}}}");
+
+  HloSharding tuple_sharding(HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
+      {sharding, sharding, sharding_with_metadata}));
+  EXPECT_EQ(tuple_sharding.ToString(/*include_metadata=*/true),
+            "{{@mesh<a=2,b=4>, [{a}, {b}]}, {@mesh<a=2,b=4>, [{a}, {b}]}, "
+            "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{op_name=\"c\"}}}}");
 }
 
 TEST_F(HloShardingTest, OstreamTest) {

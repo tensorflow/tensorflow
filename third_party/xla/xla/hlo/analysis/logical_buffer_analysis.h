@@ -72,6 +72,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status HandleAsyncStart(HloInstruction* async_start) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

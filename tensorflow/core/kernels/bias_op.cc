@@ -477,7 +477,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     // Autotune two algorithm: customized
     BiasAddGradGPUConfig algo_config;
     if (!AutotuneBiasGrad::GetInstance()->Find(bias_parameters, &algo_config)) {
-      profiler::ScopedAnnotation trace("bias_grad_autotuning");
+      tsl::profiler::ScopedAnnotation trace("bias_grad_autotuning");
 
       BiasGradGPUProfileResult best_result;
 

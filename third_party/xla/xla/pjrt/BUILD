@@ -59,14 +59,16 @@ cc_library(
     srcs = ["event_pool.cc"],
     hdrs = ["event_pool.h"],
     deps = [
+        ":async_work_runner",
+        ":never_run_on_fiber",
         "//xla:types",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -219,6 +221,7 @@ cc_library(
         "local_device_state.h",
     ],
     deps = [
+        ":async_work_runner",
         ":event_pool",
         ":pjrt_common",
         ":semaphore",
@@ -648,6 +651,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_proto_cc",
@@ -676,6 +680,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tracked_device_buffer",
+        ":async_work_runner",
         ":common_pjrt_client",
         ":device_event",
         ":event_pool",
@@ -686,6 +691,7 @@ cc_library(
         ":local_device_state",
         ":metrics",
         ":mlir_to_hlo",
+        ":never_run_on_fiber",
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
@@ -974,7 +980,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -982,6 +987,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    shard_count = 10,
     deps = [
         ":transpose",
         "//xla:array",
@@ -997,11 +1003,13 @@ xla_cc_test(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:log_streamer",
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
@@ -1263,10 +1271,12 @@ cc_library(
 
 cc_library(
     name = "async_work_runner",
+    srcs = ["async_work_runner.cc"],
     hdrs = ["async_work_runner.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:executor",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
@@ -1284,6 +1294,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:unbounded_work_queue",
     ],
 )
 
@@ -1423,6 +1434,16 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "never_run_on_fiber",
+    hdrs = ["never_run_on_fiber.h"],
+    deps = [
+        ":async_work_runner",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

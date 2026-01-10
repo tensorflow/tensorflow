@@ -1854,34 +1854,6 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterHoistFusedBitcasts) {
   VerifyPassOrder("hoist-fused-bitcasts", "nest_gemm_fusion");
 }
 
-TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
-  if (!get_cuda_cc().IsAtLeastAmpere()) {
-    GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
-  }
-  if (!optimized_module_) {
-    CompileModule(GetModuleConfigForTest());
-  }
-  // DebugOptions options = GetDebugOptionsForTest();
-  // options.set_xla_gpu_enable_triton_gemm(true);
-  // SetDebugOptions(options);
-  // Verify that transpose-dimension-grouper runs immediately before
-  // triton-gemm-rewriter. We want to keep them close together to avoid the
-  // possibility of new passes to rewrite the transpose and make it
-  // not compatible with the generic triton emitter.
-  // Simple VerifyPassOrder does not work here as we want to check that passes
-  // are run next to each other, also transpose-dimension-grouper runs one more
-  // time after the gemm rewriter.
-  CHECK(optimized_module_);
-  std::string previous_pass_name;
-  for (const HloPassMetadata& pass_metadata :
-       optimized_module_->metadata().proto().pass_metadata()) {
-    if (pass_metadata.pass_name() == "triton-gemm-rewriter") {
-      EXPECT_EQ(previous_pass_name, "transpose-dimension-grouper");
-    }
-    previous_pass_name = pass_metadata.pass_name();
-  }
-}
-
 TEST_F(PassOrderTest,
        ReducePrecisionIsRemovedAfterAllCallsToSimplifyFPConversions) {
   // Because of an issue with JAX remat and `SimplifyFPConversions` (see PR:

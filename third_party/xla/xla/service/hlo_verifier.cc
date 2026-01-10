@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -1245,6 +1246,141 @@ absl::Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
                    *reduce, reduce->operand_count());
 }
 
+namespace {
+absl::Status CheckScanParameters(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  int64_t scan_dim = scan->scan_dimension();
+  const HloComputation* to_apply = scan->to_apply();
+
+  if (to_apply->num_parameters() != scan->operand_count()) {
+    return Internal(
+        "Expected computation %s called from %s to have %d parameters, has %d",
+        to_apply->name(), scan->name(), scan->operand_count(),
+        to_apply->num_parameters());
+  }
+
+  int64_t num_carries = scan->num_carries();
+  int64_t num_inputs = scan->operand_count() - num_carries;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    int64_t operand_idx = i;
+    int64_t param_idx = i;
+    const Shape& input_shape = scan->operand(operand_idx)->shape();
+    if (scan_dim < 0 || scan_dim >= input_shape.dimensions().size()) {
+      return Internal("Scan dimension %d out of bounds for operand %d in %s",
+                      scan_dim, operand_idx, scan->ToString());
+    }
+    Shape expected_input_element_shape = input_shape;
+    expected_input_element_shape.DeleteDimension(scan_dim);
+    if (!shapes_same(to_apply->parameter_instruction(param_idx)->shape(),
+                     expected_input_element_shape)) {
+      return Internal(
+          "Parameter %d of to_apply computation shape %s does not match input "
+          "element shape %s in %s",
+          param_idx,
+          to_apply->parameter_instruction(param_idx)->shape().ToString(),
+          expected_input_element_shape.ToString(), scan->ToString());
+    }
+  }
+
+  for (int64_t i = 0; i < num_carries; ++i) {
+    int64_t param_idx = num_inputs + i;
+    if (!shapes_same(to_apply->parameter_instruction(param_idx)->shape(),
+                     scan->operand(num_inputs + i)->shape())) {
+      return Internal(
+          "Parameter %d of to_apply computation shape %s does not match init "
+          "shape %s in %s",
+          param_idx,
+          to_apply->parameter_instruction(param_idx)->shape().ToString(),
+          scan->operand(num_inputs + i)->shape().ToString(), scan->ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckScanToApplyShape(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  const HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  int64_t num_carries = scan->num_carries();
+
+  if (!root_shape.IsTuple() ||
+      root_shape.tuple_shapes().size() != 2 * num_carries) {
+    return Internal("Computation %s result shape must be a tuple of size %d",
+                    to_apply->name(), 2 * num_carries);
+  }
+  int64_t num_inputs = scan->operand_count() - num_carries;
+  int64_t num_outputs = root_shape.tuple_shapes().size() - num_carries;
+
+  for (int64_t i = 0; i < num_carries; ++i) {
+    int64_t result_idx = num_outputs + i;
+    if (!shapes_same(root_shape.tuple_shapes(result_idx),
+                     scan->operand(num_inputs + i)->shape())) {
+      return Internal(
+          "Computation %s result element %d shape %s does not match init "
+          "shape %s in %s",
+          to_apply->name(), result_idx,
+          root_shape.tuple_shapes(result_idx).ToString(),
+          scan->operand(num_inputs + i)->shape().ToString(), scan->ToString());
+    }
+  }
+
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
+  auto scan_instr = Cast<HloScanInstruction>(scan);
+  auto shapes_same = [&](const Shape& a, const Shape& b) {
+    return ShapesSame(a, b);
+  };
+  TF_RETURN_IF_ERROR(CheckScanParameters(scan_instr, shapes_same));
+  TF_RETURN_IF_ERROR(CheckScanToApplyShape(scan_instr, shapes_same));
+
+  int64_t scan_dim = scan_instr->scan_dimension();
+  const Shape& first_input_shape = scan->operand(0)->shape();
+  int64_t scan_dim_size = first_input_shape.dimensions(scan_dim);
+  const Shape& to_apply_root =
+      scan_instr->to_apply()->root_instruction()->shape();
+
+  int64_t num_outputs =
+      to_apply_root.tuple_shapes().size() - scan_instr->num_carries();
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(to_apply_root.tuple_shapes().size());
+
+  for (int64_t i = 0; i < num_outputs; ++i) {
+    const Shape& output_element_shape = to_apply_root.tuple_shapes(i);
+    Shape output_array_shape = output_element_shape;
+    std::vector<int64_t> dimensions(output_array_shape.dimensions().begin(),
+                                    output_array_shape.dimensions().end());
+    dimensions.insert(dimensions.begin() + scan_dim, scan_dim_size);
+    output_array_shape =
+        ShapeUtil::MakeShape(output_element_shape.element_type(), dimensions);
+    if (output_element_shape.has_layout()) {
+      std::vector<int64_t> minor_to_major(
+          output_element_shape.layout().minor_to_major().begin(),
+          output_element_shape.layout().minor_to_major().end());
+      for (int64_t& d : minor_to_major) {
+        if (d >= scan_dim) {
+          ++d;
+        }
+      }
+      // We place the scan dimension as the most major dimension.
+      minor_to_major.push_back(scan_dim);
+      *output_array_shape.mutable_layout() =
+          LayoutUtil::MakeLayout(minor_to_major);
+    }
+    output_shapes.push_back(output_array_shape);
+  }
+
+  int64_t num_inputs = scan->operand_count() - scan_instr->num_carries();
+  for (int64_t i = 0; i < scan_instr->num_carries(); ++i) {
+    output_shapes.push_back(scan->operand(num_inputs + i)->shape());
+  }
+  return CheckShape(scan, ShapeUtil::MakeTupleShape(output_shapes));
+}
+
 absl::Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
   const Shape& output_shape = bitcast->shape();
   const Shape& operand_shape = bitcast->operand(0)->shape();
@@ -1745,6 +1881,35 @@ absl::Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
           HloOpcodeString(async_start->opcode()), i,
           async_start->operand(i)->shape().ToString(/*print_layout=*/true),
           param_shape.tuple_shapes(i).ToString(/*print_layout=*/true));
+    }
+  }
+
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < async_start->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        async_start->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(async_start->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(async_start->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        async_start->operand(pair.second.first)->shape(), pair.second.second);
+    if (opts_.layout_sensitive) {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreBuffer()(operand_subshape, output_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
+    } else {
+      TF_RET_CHECK(
+          Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBuffer()(
+              output_subshape, operand_subshape))
+          << absl::Substitute("Different aliasing shapes: $0 vs $1",
+                              operand_subshape.ToString(/*print_layout=*/true),
+                              output_subshape.ToString(/*print_layout=*/true));
     }
   }
   return absl::OkStatus();
@@ -3183,6 +3348,15 @@ bool IsCollectivesGroupComputation(HloComputation* computation) {
       .has_value();
 }
 
+bool IsAsyncBarrierComputation(HloComputation* computation) {
+  return absl::c_all_of(
+      computation->instructions(),
+      [root = computation->root_instruction()](const HloInstruction* instr) {
+        return root == instr || instr->opcode() == HloOpcode::kParameter ||
+               instr->opcode() == HloOpcode::kGetTupleElement;
+      });
+}
+
 int64_t CountWriters(const HloInstruction* inst,
                      absl::Span<const int64_t> shape_index);
 
@@ -3277,7 +3451,7 @@ absl::Status CheckBufferHasUniqueWriters(const HloInstruction* inst) {
 }
 
 absl::Status VerifyPin(const HloCustomCallInstruction* inst,
-                       bool layout_sentitive) {
+                       bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsArray() ||
       inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument(
@@ -3288,7 +3462,7 @@ absl::Status VerifyPin(const HloCustomCallInstruction* inst,
     return InvalidArgument("custom-call to Pin must have one buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape(), inst->shape().buffer_shape())) {
     return InvalidArgument(
         "custom-call to Pin must have the same shape as the operand");
@@ -3316,7 +3490,7 @@ absl::Status VerifyCreateBuffer(const HloInstruction* inst) {
 }
 
 absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
-                         bool layout_sentitive) {
+                         bool layout_sensitive) {
   if (inst->operand_count() != 1 || !inst->operand(0)->shape().IsBuffer()) {
     return InvalidArgument("custom-call to Unpin must have one buffer operand");
   }
@@ -3326,7 +3500,7 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst,
         "custom-call to Unpin must have one array non-buffer result");
   }
 
-  if (!xla::Shape::Equal().IgnoreLayout(!layout_sentitive)(
+  if (!xla::Shape::Equal().IgnoreLayout(!layout_sensitive)(
           inst->operand(0)->shape().buffer_shape(), inst->shape())) {
     return InvalidArgument(
         "custom-call to Unpin must have the same shape as the operand");
@@ -3451,15 +3625,15 @@ absl::Status VerifyBuffersInResults(
 // - An HLO buffer result can only be updated at most once.
 //
 absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst,
-                              bool layout_sentitive) {
+                              bool layout_sensitive) {
   if (inst->IsCustomCall(kPinCustomCallTarget)) {
-    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyPin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
   if (inst->IsCustomCall(kCreateBufferCustomCallTarget)) {
     return VerifyCreateBuffer(inst);
   }
   if (inst->IsCustomCall(kUnpinCustomCallTarget)) {
-    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sentitive);
+    return VerifyUnpin(Cast<HloCustomCallInstruction>(inst), layout_sensitive);
   }
 
   TF_RETURN_IF_ERROR(VerifyBuffersInOperands(inst));
@@ -3483,12 +3657,35 @@ absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyBuffers(const HloModule& module, bool layout_sentitive) {
+absl::Status VerifyBuffers(const HloModule& module, bool layout_sensitive) {
   for (auto* comp : module.computations()) {
+    if (comp->IsAsyncComputation()) {
+      // For asynchronous computations, we only need to check the root
+      // custom-call op. The root op can also be a call-op expanded from a
+      // stream-annotated-call-op, in which case, the correctness of the op
+      // is guaranteed by the rest of the checking and we skip the check to
+      // allow the op to use buffers.
+      HloInstruction* root = comp->root_instruction();
+      if (root->opcode() == HloOpcode::kCustomCall) {
+        TF_RETURN_IF_ERROR(VerifyCustomCall(
+            Cast<HloCustomCallInstruction>(root), layout_sensitive));
+      }
+      continue;
+    }
     for (auto* inst : comp->instructions()) {
+      if (inst->IsAsynchronous() || (inst->opcode() == HloOpcode::kCall &&
+                                     inst->frontend_attributes().map().contains(
+                                         kXlaStreamAnnotationAttr))) {
+        // No need for additional buffer verification as the correctness of
+        // buffer usage in AsyncStart/Update/Done is guaranteed through:
+        //   .Making sure these ops are consistent with the wrapped computation.
+        //   .Buffer verification for the custom-call op inside the wrapped
+        //    computation.
+        continue;
+      }
       if (inst->opcode() == HloOpcode::kCustomCall) {
         TF_RETURN_IF_ERROR(VerifyCustomCall(
-            Cast<HloCustomCallInstruction>(inst), layout_sentitive));
+            Cast<HloCustomCallInstruction>(inst), layout_sensitive));
       } else if (inst->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(CheckBufferHasUniqueWriters(inst));
       } else if (inst->opcode() == HloOpcode::kParameter) {
@@ -3867,7 +4064,8 @@ absl::StatusOr<bool> HloVerifier::RunImpl(
       // groups on GPU.
       if (computation->IsAsyncComputation() &&
           !computation->OnlyContainsSendRecv() &&
-          !IsCollectivesGroupComputation(computation)) {
+          !IsCollectivesGroupComputation(computation) &&
+          !IsAsyncBarrierComputation(computation)) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }

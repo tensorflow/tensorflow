@@ -89,7 +89,9 @@ DistributedRuntimeCoordinationServiceClient::
   // Convert options to coordination config.
   CoordinationServiceAgent::Config config;
   config.service_leader = "/job:jax_worker/task:0";
-  config.cluster_register_timeout = options.init_timeout;
+  if (options.init_timeout > absl::ZeroDuration()) {
+    config.cluster_register_timeout = options.init_timeout;
+  }
   config.heartbeat_timeout = options.heartbeat_timeout;
   config.shutdown_barrier_timeout = options.shutdown_timeout;
   config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;

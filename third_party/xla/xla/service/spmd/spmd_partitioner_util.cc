@@ -365,19 +365,8 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
     return ShapeUtil::MakeTupleShape({});
   }
 
-  auto partition_shape = shape;
-  std::vector<int64_t> tile_offset =
-      sharding.TileOffsetForDevice(shape, partition_id);
-  std::vector<int64_t> tile_limit =
-      sharding.TileLimitForDevice(shape, partition_id);
-  for (int64_t i = 0; i < tile_offset.size(); ++i) {
-    if (sharding.UsesDevice(partition_id)) {
-      partition_shape.set_dimensions(i, tile_limit[i] - tile_offset[i]);
-    } else {
-      partition_shape.set_dimensions(i, 0);
-    }
-  }
-  return partition_shape;
+  CHECK(sharding.UsesDevice(partition_id));
+  return sharding.TileShape(shape, partition_id);
 }
 
 std::vector<HloInstruction*> MakePartitionOffsets(

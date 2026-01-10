@@ -708,6 +708,8 @@ xla_test(
     srcs = ["matmul_perf_table_gen_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
@@ -867,6 +869,8 @@ xla_test(
     srcs = ["collective_perf_table_gen_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":collective_perf_table_gen",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
@@ -1003,6 +1007,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:export_hlo",
+        "//xla/service:gpu_topology",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:platform_util",
@@ -1060,6 +1065,8 @@ xla_test(
     data = [
         ":data/add.hlo",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":xla_compile_lib",
         "//xla:util",
@@ -1106,6 +1113,8 @@ xla_test(
         "//xla/backends/gpu/target_config:all_gpu_specs",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":xla_compile_lib",
         "//xla:util",

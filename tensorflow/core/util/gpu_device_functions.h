@@ -35,7 +35,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
+#include "rocm/include/hip/hip_bf16.h"
 #include "rocm/include/hip/hip_complex.h"
+#include "rocm/include/hip/hip_fp16.h"
 #endif
 
 #include "tensorflow/core/platform/types.h"
@@ -350,22 +352,12 @@ __device__ T GpuShuffleSync(unsigned mask, T value, int src_lane,
 // See b/69446944.
 __device__ inline double GpuShuffleSync(unsigned mask, double value,
                                         int src_lane, int width = warpSize) {
-#if GOOGLE_CUDA
   auto tmp = __double_as_longlong(value);
   auto lo = static_cast<unsigned>(tmp);
   auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleSync(mask, hi, src_lane, width);
   lo = GpuShuffleSync(mask, lo, src_lane, width);
   return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
-#elif TENSORFLOW_USE_ROCM
-  auto tmp = static_cast<uint64_t>(value);
-  auto lo = static_cast<unsigned>(tmp);
-  auto hi = static_cast<unsigned>(tmp >> 32);
-  hi = __shfl(static_cast<int>(hi), src_lane, width);
-  lo = __shfl(static_cast<int>(lo), src_lane, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
-                             static_cast<uint64_t>(lo));
-#endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleSync, CudaShuffleSync);
 
@@ -390,22 +382,12 @@ __device__ inline T GpuShuffleUpSync(unsigned mask, T value, unsigned delta,
 __device__ inline double GpuShuffleUpSync(unsigned mask, double value,
                                           unsigned delta,
                                           int width = warpSize) {
-#if GOOGLE_CUDA
   auto tmp = __double_as_longlong(value);
   auto lo = static_cast<unsigned>(tmp);
   auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleUpSync(mask, hi, delta, width);
   lo = GpuShuffleUpSync(mask, lo, delta, width);
   return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
-#elif TENSORFLOW_USE_ROCM
-  auto tmp = static_cast<uint64_t>(value);
-  auto lo = static_cast<unsigned>(tmp);
-  auto hi = static_cast<unsigned>(tmp >> 32);
-  hi = __shfl_up(static_cast<int>(hi), delta, width);
-  lo = __shfl_up(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
-                             static_cast<uint64_t>(lo));
-#endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleUpSync, CudaShuffleUpSync);
 
@@ -430,22 +412,12 @@ __device__ inline T GpuShuffleDownSync(unsigned mask, T value, unsigned delta,
 __device__ inline double GpuShuffleDownSync(unsigned mask, double value,
                                             unsigned delta,
                                             int width = warpSize) {
-#if GOOGLE_CUDA
   auto tmp = __double_as_longlong(value);
   auto lo = static_cast<unsigned>(tmp);
   auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleDownSync(mask, hi, delta, width);
   lo = GpuShuffleDownSync(mask, lo, delta, width);
   return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
-#elif TENSORFLOW_USE_ROCM
-  auto tmp = static_cast<uint64_t>(value);
-  auto lo = static_cast<unsigned>(tmp);
-  auto hi = static_cast<unsigned>(tmp >> 32);
-  hi = __shfl_down(static_cast<int>(hi), delta, width);
-  lo = __shfl_down(static_cast<int>(lo), delta, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
-                             static_cast<uint64_t>(lo));
-#endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleDownSync, CudaShuffleDownSync);
 
@@ -465,43 +437,18 @@ __device__ T GpuShuffleXorSync(unsigned mask, T value, int lane_mask,
 #endif
 }
 
-#if TENSORFLOW_USE_ROCM
-__device__ inline Eigen::half GpuShuffleXorSync(unsigned mask,
-                                                Eigen::half value,
-                                                int lane_mask,
-                                                int width = warpSize) {
-  assert(!(width & width - 1));
-  assert(detail::GpuValidateShuffleSyncMask(
-      mask, detail::GpuShuffleXorGetSrcLane(lane_mask, width)));
-  // TODO(rocm): This doesn't preserve NaN payload and flushes denorms to zero,
-  // maybe this should be implemented differently?
-  return static_cast<Eigen::half>(
-      __shfl_xor(static_cast<float>(value), lane_mask, width));
-}
-#endif
-
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
 __device__ inline double GpuShuffleXorSync(unsigned mask, double value,
                                            int lane_mask,
                                            int width = warpSize) {
-#if GOOGLE_CUDA
   auto tmp = __double_as_longlong(value);
   auto lo = static_cast<unsigned>(tmp);
   auto hi = static_cast<unsigned>(tmp >> 32);
   hi = GpuShuffleXorSync(mask, hi, lane_mask, width);
   lo = GpuShuffleXorSync(mask, lo, lane_mask, width);
   return __longlong_as_double(static_cast<uint64_t>(hi) << 32 | lo);
-#elif TENSORFLOW_USE_ROCM
-  auto tmp = static_cast<uint64_t>(value);
-  auto lo = static_cast<unsigned>(tmp);
-  auto hi = static_cast<unsigned>(tmp >> 32);
-  hi = __shfl_xor(static_cast<int>(hi), lane_mask, width);
-  lo = __shfl_xor(static_cast<int>(lo), lane_mask, width);
-  return static_cast<double>(static_cast<uint64_t>(hi) << 32 |
-                             static_cast<uint64_t>(lo));
-#endif
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuShuffleXorSync, CudaShuffleXorSync);
 
@@ -567,9 +514,22 @@ __global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
 }
 
 namespace detail {
+
+template <int N, typename T>
+__device__ T* AddressSpaceHint(T* ptr) {
+#if defined(TENSORFLOW_USE_ROCM)
+  using AS = __attribute__((address_space(N))) T*;
+  auto ptr_ = reinterpret_cast<AS>(reinterpret_cast<uintptr_t>(ptr));
+  return (T*)(ptr_);
+#else
+  return ptr;  // NOOP
+#endif
+}
+
 // Helper function for atomic accumulation implemented as CAS.
 template <typename T, typename F>
 __device__ T GpuAtomicCasHelper(T* ptr, F accumulate) {
+  ptr = detail::AddressSpaceHint<1>(ptr);
   T old = *ptr;
   T assumed;
   do {
@@ -591,24 +551,11 @@ __device__ float GpuAtomicCasHelper(float* ptr, F accumulate) {
 }
 template <typename F>
 __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
-#if TENSORFLOW_USE_ROCM
-  // FIXME: remove the workaround below once bug is fixed.
-  // HIP has a bug in the implementation of __longlong_as_double
-  // So workaround it by using reinterpret_cast<double*>.
-  uint64_t result =
-      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
-                         [accumulate](tensorflow::uint64 a) {
-                           return __double_as_longlong(
-                               accumulate(*(reinterpret_cast<double*>(&a))));
-                         });
-  return *(reinterpret_cast<double*>(&result));
-#else
   return __longlong_as_double(GpuAtomicCasHelper(
       reinterpret_cast<unsigned long long*>(ptr),
       [accumulate](tensorflow::uint64 a) {
         return __double_as_longlong(accumulate(__longlong_as_double(a)));
       }));
-#endif
 }
 
 // Overload of above function for half. Note that we don't have
@@ -628,31 +575,23 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
   static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
 #endif
-  intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
+  uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
+  uint32_t shift = (intptr & 0x2) * 8U;
+  uint32_t mask = 0xFFFF0000U >> shift;
+
   assert(!(intptr & 0x1));  // should be 2-aligned.
-  if (intptr & 0x2) {
-    // The half is in the second part of the uint32 (upper 16 bits).
-    uint32* address = reinterpret_cast<uint32*>(intptr - 2);
-    uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
-      unsigned short high = static_cast<unsigned short>(arg >> 16);
-      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
-      return (static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc)) << 16) |
-             (arg & 0xffff);
-    });
-    return Eigen::numext::bit_cast<Eigen::half>(
-        static_cast<uint16>(result >> 16));
-  } else {
-    // The half is in the first part of the uint32 (lower 16 bits).
-    uint32* address = reinterpret_cast<uint32*>(intptr);
-    uint32 result = GpuAtomicCasHelper(address, [accumulate](uint32 arg) {
-      unsigned short low = static_cast<unsigned short>(arg & 0xffff);
-      Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(low));
-      return (arg & 0xffff0000) |
-             static_cast<uint32>(Eigen::numext::bit_cast<uint16>(acc));
-    });
-    return Eigen::numext::bit_cast<Eigen::half>(
-        static_cast<uint16>(result & 0xffff));
-  }
+  uint32* address = reinterpret_cast<uint32*>(intptr & ~0x3);
+  uint32 result =
+      GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32 arg) {
+        uint16_t high = static_cast<uint16_t>(arg >> shift);
+        Eigen::half acc =
+            accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+        return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc))
+                << shift) |
+               (arg & mask);
+      });
+  return Eigen::numext::bit_cast<Eigen::half>(
+      static_cast<uint16_t>(result >> shift));
 }
 
 template <typename F>
@@ -720,7 +659,15 @@ __device__ CudaSupportedType<T>* ToCudaSupportedPtr(T* ptr) {
 
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
-  return atomicAdd(detail::ToCudaSupportedPtr(ptr), value);
+  return atomicAdd(detail::ToCudaSupportedPtr(detail::AddressSpaceHint<1>(ptr)),
+                   value);
+}
+
+#if GOOGLE_CUDA
+__device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a + value; });
 }
 
 __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
@@ -728,17 +675,66 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::half a) { return a + value; });
 }
-
-__device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
-                                               Eigen::bfloat16 value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](Eigen::bfloat16 a) { return a + value; });
-}
+#endif
 
 #if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                     [value](double a) { return a + value; });
+}
+#endif
+
+#if TENSORFLOW_USE_ROCM
+namespace detail {
+
+template <typename P, typename T, typename F>
+__device__ inline T GpuAtomicAddHalfHelper(T* ptr, T value, F add) {
+  typedef P __attribute__((ext_vector_type(2))) P2;
+  auto ptr2 = (__attribute__((address_space(1)))
+               P2*)(reinterpret_cast<uintptr_t>(ptr) & ~0x3);
+  uintptr_t shift = ((reinterpret_cast<uintptr_t>(ptr) & 0x2) * 8);
+  // Eigen::numext::bit_cast on ext_vector produces redudant inlined memcpy.
+  // Use union instead.
+  union {
+    P2 v2;
+    uint32_t i;
+  } u;
+
+  u.i = static_cast<uint32_t>(Eigen::numext::bit_cast<uint16_t>(value))
+        << shift;
+
+  // Performs + (T)0 on adjacent location, so this is not idempotent with
+  // regards to its bit pattern. Should be fine as long as that locations is
+  // used to hold T.
+  u.v2 = add(ptr2, u.v2);
+  return Eigen::numext::bit_cast<T>(static_cast<uint16_t>(u.i >> shift));
+}
+
+}  // namespace detail
+
+__device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
+                                               Eigen::bfloat16 value) {
+#if __has_builtin(__builtin_amdgcn_global_atomic_fadd_v2bf16)
+  return detail::GpuAtomicAddHalfHelper<short>(ptr, value, [](auto p, auto v) {
+    return __builtin_amdgcn_global_atomic_fadd_v2bf16(p, v);
+  });
+#else
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::bfloat16 a) { return a + value; });
+#endif
+}
+
+__device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
+                                           Eigen::half value) {
+#if __has_builtin(__builtin_amdgcn_global_atomic_fadd_v2f16)
+  return detail::GpuAtomicAddHalfHelper<_Float16>(
+      ptr, value, [](auto p, auto v) {
+        return __builtin_amdgcn_global_atomic_fadd_v2f16(p, v);
+      });
+#else
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return a + value; });
+#endif
 }
 #endif
 
@@ -769,7 +765,7 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicAdd, CudaAtomicAdd);
 // GpuAtomicSub
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicSub(T* ptr, U value) {
-  return atomicSub(ptr, value);
+  return atomicSub(detail::AddressSpaceHint<1>(ptr), value);
 }
 
 // Specializations of substraction which add the negative value.
@@ -792,14 +788,12 @@ __device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
 
 __device__ inline Eigen::half GpuAtomicSub(Eigen::half* ptr,
                                            Eigen::half value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](Eigen::half a) { return a - value; });
+  return GpuAtomicAdd(ptr, -value);
 }
 
 __device__ inline Eigen::bfloat16 GpuAtomicSub(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
-  return detail::GpuAtomicCasHelper(
-      ptr, [value](Eigen::bfloat16 a) { return a - value; });
+  return GpuAtomicAdd(ptr, -value);
 }
 
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
@@ -807,7 +801,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicSub, CudaAtomicSub);
 // GpuAtomicMax
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
-  return atomicMax(detail::ToCudaSupportedPtr(ptr), value);
+  return atomicMax(detail::ToCudaSupportedPtr(detail::AddressSpaceHint<1>(ptr)),
+                   value);
 }
 
 #if TENSORFLOW_USE_ROCM
@@ -880,7 +875,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
 // GpuAtomicMin
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMin(T* ptr, U value) {
-  return atomicMin(detail::ToCudaSupportedPtr(ptr), value);
+  return atomicMin(detail::ToCudaSupportedPtr(detail::AddressSpaceHint<1>(ptr)),
+                   value);
 }
 
 #if TENSORFLOW_USE_ROCM

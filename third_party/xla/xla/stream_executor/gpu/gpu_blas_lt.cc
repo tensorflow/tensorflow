@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
@@ -200,6 +202,15 @@ xla::GemmConfigProto::MatrixLayout MatrixLayout::ToProto() const {
   proto.set_transpose(blas::ToProto(transpose));
   proto.set_dtype(dtype);
   return proto;
+}
+
+xla::Shape MatrixLayout::ToShape() const {
+  switch (order) {
+    case Order::kRowMajor:
+      return xla::ShapeUtil::MakeShape(dtype, {num_cols, num_rows, batch_size});
+    case Order::kColumnMajor:
+      return xla::ShapeUtil::MakeShape(dtype, {num_rows, num_cols, batch_size});
+  }
 }
 
 absl::StatusOr<ComputationType> GetBlasComputationType(

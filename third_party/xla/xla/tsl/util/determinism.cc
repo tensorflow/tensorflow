@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/util/determinism.h"
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/util/env_var.h"
@@ -31,8 +32,8 @@ class DeterminismState {
 
     if (state_ == Value::NOT_SET) {
       bool env_var_set = false;
-      TF_CHECK_OK(tsl::ReadBoolFromEnvVar(env_var_,
-                                          /*default_val=*/false, &env_var_set));
+      CHECK_OK(tsl::ReadBoolFromEnvVar(env_var_,
+                                       /*default_val=*/false, &env_var_set));
       state_ = env_var_set ? Value::ENABLED : Value::DISABLED;
     }
 

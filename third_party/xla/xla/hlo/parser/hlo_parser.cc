@@ -184,6 +184,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kScan:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -2104,6 +2105,15 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<std::string> async_execution_thread;
       attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
                                          &async_execution_thread};
+
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      if (opcode == HloOpcode::kAsyncStart) {
+        attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                               AttrTy::kInstructionAliasing,
+                                               &output_to_operand_aliasing};
+      }
       if (async_wrapped_opcode) {
         // Only generate async-wrapper for async-start.
         if (opcode == HloOpcode::kAsyncStart) {
@@ -2178,14 +2188,21 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
+
       if (opcode == HloOpcode::kAsyncStart) {
         // async_execution_thread only needs to be populated for async-start,
         // as the rest of the async chain will reference the root op.
         if (!async_execution_thread) {
           async_execution_thread = HloInstruction::kMainExecutionThread;
         }
-        return builder->AddInstruction(HloInstruction::CreateAsyncStart(
+        auto instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
             *shape, operands, *async_computation, *async_execution_thread));
+
+        if (output_to_operand_aliasing.has_value()) {
+          Cast<HloAsyncStartInstruction>(instr)->set_output_to_operand_aliasing(
+              std::move(*output_to_operand_aliasing));
+        }
+        return instr;
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(
@@ -2693,6 +2710,62 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       return builder->AddInstruction(
           HloInstruction::CreateMap(*shape, operands, *to_apply));
+    }
+    case HloOpcode::kScan: {
+      optional<HloComputation*> to_apply;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      optional<bool> is_reverse = false;
+      attrs["is_reverse"] = {/*required=*/false, AttrTy::kBool, &is_reverse};
+      optional<bool> is_associative = false;
+      attrs["is_associative"] = {/*required=*/false, AttrTy::kBool,
+                                 &is_associative};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (operands.size() % 2 != 0 || operands.size() < 2) {
+        TokenError(StrCat("expects an even number of operands (>= 2), but has ",
+                          operands.size()));
+        return nullptr;
+      }
+      if (dimensions->size() != 1) {
+        TokenError(StrCat("expects 1 dimension, but has ", dimensions->size()));
+        return nullptr;
+      }
+
+      if (!maybe_infer_shape([&]() -> absl::StatusOr<Shape> {
+            if (operands.size() != 2) {
+              return InvalidArgument(
+                  "Shape inference for variadic Scan not implemented. Please "
+                  "specify the shape explicitly.");
+            }
+            const Shape& input_shape = operands[0]->shape();
+            const Shape& init_shape = operands[1]->shape();
+            const Shape& root_shape =
+                to_apply.value()->root_instruction()->shape();
+            if (!root_shape.IsTuple() ||
+                root_shape.tuple_shapes().size() != 2) {
+              return InvalidArgument(
+                  "Scan computation result must be a tuple of size 2");
+            }
+            PrimitiveType output_element_type =
+                root_shape.tuple_shapes(0).element_type();
+            Shape output_shape = ShapeUtil::MakeShape(output_element_type,
+                                                      input_shape.dimensions());
+            return ShapeUtil::MakeTupleShape({output_shape, init_shape});
+          })) {
+        return nullptr;
+      }
+      int64_t num_carries = operands.size() / 2;
+      return builder->AddInstruction(HloInstruction::CreateScan(
+          *shape, absl::MakeSpan(operands).subspan(0, num_carries),
+          absl::MakeSpan(operands).subspan(num_carries, num_carries), *to_apply,
+          dimensions->at(0), *is_reverse,
+          *is_associative ? TRI_STATE_TRUE : TRI_STATE_FALSE));
     }
     case HloOpcode::kReduce: {
       optional<HloComputation*> reduce_computation;

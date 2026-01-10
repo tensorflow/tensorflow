@@ -149,7 +149,11 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_custom_kernel",
@@ -414,7 +418,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",

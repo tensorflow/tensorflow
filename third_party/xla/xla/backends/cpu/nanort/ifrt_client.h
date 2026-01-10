@@ -37,13 +37,13 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -158,6 +158,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override;
 
+  void CancelExecution(
+      xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) override {}
+
   absl::string_view runtime_type() const override;
 
   absl::string_view platform_name() const override;
@@ -192,6 +196,15 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultPjRtLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override;
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<xla::ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return absl::UnimplementedError(
+        "SubscribeToAttributeChanges is not implemented in NanoIfrtClient.");
+  }
 
   static char ID;  // NOLINT
 

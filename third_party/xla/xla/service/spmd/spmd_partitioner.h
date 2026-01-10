@@ -263,6 +263,10 @@ struct SPMDCollectiveOpsCreator {
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas);
 
+// Create a default SPMDCollectiveOpsCreator for use in execution tests.
+SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(
+    bool use_global_device_ids_in_iota = false);
+
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
  public:
@@ -484,8 +488,7 @@ class PartitionedHlo {
     SpmdPartitioner* partitioner;
   };
   PartitionedHlo(HloInstruction* hlo, Shape base_shape, PartitioningState state)
-      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {
-  }
+      : hlo_(hlo), base_shape_(base_shape), state_(std::move(state)) {}
 
   PartitionedHlo(PartitionedHlo&& other) = default;
   PartitionedHlo(const PartitionedHlo& other) = default;

@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
@@ -152,11 +153,11 @@ limitations under the License.
 namespace xla {
 
 absl::Status RunCallbackOnStream(se::Stream* stream,
-                                 tsl::thread::ThreadPool* thread_pool,
+                                 AsyncWorkRunner* async_work_runner,
                                  absl::AnyInvocable<void() &&> callback) {
   return stream->DoHostCallbackWithStatus(
-      [cb = std::move(callback), thread_pool]() mutable {
-        thread_pool->Schedule(
+      [cb = std::move(callback), async_work_runner]() mutable {
+        async_work_runner->Schedule(
             [cb_ptr = new absl::AnyInvocable<void() &&>(std::move(cb))]() {
               std::move (*cb_ptr)();
               delete cb_ptr;
@@ -761,7 +762,7 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
     gpu::GpuCollectives* gpu_collectives =
         gpu::GpuCollectives::Default(stream->parent()->GetPlatform()->Name());
     usage_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-        BufferSequencingEvent::Create(this->thread_pool()));
+        BufferSequencingEvent::Create(this->async_work_runner()));
 
     gpu::AcquiredCliquesMap acquired_cliques_map;
     for (int i = 0; i < buffers.size(); ++i) {
@@ -853,7 +854,7 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
     Future<> all_sends_future = JoinFutures(group_futures);
 
     all_sends_future.OnReady(
-        *this->thread_pool()->AsExecutor(),
+        this->async_work_runner()->AsExecutor(),
         [this, local_device_state, stream, promises = std::move(promises),
          usage_event, grouped_sends = std::move(grouped_sends)](
             const absl::Status& status) mutable {
@@ -870,7 +871,7 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
           // Asynchronously fulfill promises via a host callback, failing them
           // early if there is an issue registering the callback.
           absl::Status callback_status = RunCallbackOnStream(
-              stream, this->thread_pool(), [promises]() mutable {
+              stream, this->async_work_runner(), [promises]() mutable {
                 FulfillPromises(promises, absl::OkStatus());
               });
 
@@ -911,7 +912,7 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
   se::Stream* stream = local_device->GetDeviceToDeviceStream();
 
   BufferSequencingEventRef definition_event =
-      BufferSequencingEvent::Create(this->thread_pool());
+      BufferSequencingEvent::Create(this->async_work_runner());
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       DefineBuffer(
@@ -981,7 +982,7 @@ StreamExecutorGpuClient::CrossHostReceiveBuffers(
     gpu::GpuCollectives* gpu_collectives =
         gpu::GpuCollectives::Default(stream->parent()->GetPlatform()->Name());
     definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-        BufferSequencingEvent::Create(this->thread_pool()));
+        BufferSequencingEvent::Create(this->async_work_runner()));
 
     gpu::AcquiredCliquesMap acquired_cliques_map;
     for (int i = 0; i < shapes.size(); ++i) {
@@ -1064,7 +1065,7 @@ StreamExecutorGpuClient::CrossHostReceiveBuffers(
         Future<> all_receives_future = JoinFutures(group_futures);
 
         all_receives_future.OnReady(
-            *this->thread_pool()->AsExecutor(),
+            this->async_work_runner()->AsExecutor(),
             [this, local_device_state, stream,
              grouped_receives = std::move(grouped_receives),
              definition_event = std::move(definition_event)](
@@ -1105,7 +1106,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
   }
 
   BufferSequencingEventRef usage_event =
-      BufferSequencingEvent::Create(this->thread_pool());
+      BufferSequencingEvent::Create(this->async_work_runner());
 
   // Keep memory alive until the event is done.
   usage_event.AndThen([raw_buffer]() {});
@@ -1259,7 +1260,7 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       SetEventAsError(definition_event, s);
     }
   };
-  thread_pool()->Schedule(recv);
+  async_work_runner()->Schedule(recv);
 
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.push_back(std::move(receive_prep_result.buffer));

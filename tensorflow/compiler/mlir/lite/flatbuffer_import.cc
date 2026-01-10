@@ -435,8 +435,8 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
     // TODO(fengliuai): this quantization dimension isn't correct.
     axis = b.getI64IntegerAttr(tensor.quantization->quantized_dimension);
   }
-  return b.create<mlir::quantfork::StatisticsOp>(b.getUnknownLoc(), res,
-                                                 layer_stats, axis_stats, axis);
+  return mlir::quantfork::StatisticsOp::create(b, b.getUnknownLoc(), res,
+                                               layer_stats, axis_stats, axis);
 }
 
 // Returns true if this is a basic LSTM op.
@@ -467,8 +467,8 @@ StatusOr<Operation*> BuildExternalConstOpWithBufferIndex(
   if (!shaped_type) {
     return errors::Internal("Constant doesn't have a shape");
   }
-  auto op = builder.create<tfl::ExternalConstOp>(
-      loc, shaped_type,
+  auto op = tfl::ExternalConstOp::create(
+      builder, loc, shaped_type,
       /*buffer_index=*/builder.getI32IntegerAttr(buffer_index),
       /*external_buffer=*/nullptr);
   return op.getOperation();
@@ -498,8 +498,8 @@ StatusOr<Operation*> BuildExternalConstOpWithExternalBuffer(
 
   std::string group_name =
       model.external_buffer_groups[external_buffer->group]->name;
-  auto op = builder.create<tfl::ExternalConstOp>(
-      loc, shaped_type, /*buffer_index=*/nullptr,
+  auto op = tfl::ExternalConstOp::create(
+      builder, loc, shaped_type, /*buffer_index=*/nullptr,
       /*external_buffer=*/
       tfl::ExternalBufferAttr::get(
           builder.getContext(),
@@ -529,11 +529,11 @@ StatusOr<Operation*> BuildVariableOp(const tflite::TensorT& tensor,
   mlir::ElementsAttr value =
       tfl::GetSplat(shaped_type, stateful_variable_idx++, builder);
   if (tfl::IsQuantized(tensor)) {
-    auto op = builder.create<tfl::QConstOp>(
-        loc, mlir::TypeAttr::get(shaped_type), value);
+    auto op = tfl::QConstOp::create(builder, loc,
+                                    mlir::TypeAttr::get(shaped_type), value);
     return op.getOperation();
   }
-  auto op = builder.create<tfl::ConstOp>(loc, value);
+  auto op = tfl::ConstOp::create(builder, loc, value);
   op->setAttr("tfl.is_variable", builder.getUnitAttr());
   if (tensor.quantization && !tensor.quantization->min.empty()) {
     if (auto stats_op =
@@ -634,13 +634,13 @@ static StatusOr<Operation*> BuildSparseConstOp(
                                                        dense_buffer);
 
   if (tfl::IsQuantized(tensor)) {
-    return builder
-        .create<tfl::SparseQConstOp>(loc, mlir::TypeAttr::get(shaped_type),
-                                     dummy_value, s_param, compressed_data)
+    return tfl::SparseQConstOp::create(builder, loc,
+                                       mlir::TypeAttr::get(shaped_type),
+                                       dummy_value, s_param, compressed_data)
         .getOperation();
   }
-  return builder
-      .create<tfl::SparseConstOp>(loc, dummy_value, s_param, compressed_data)
+  return tfl::SparseConstOp::create(builder, loc, dummy_value, s_param,
+                                    compressed_data)
       .getOperation();
 }
 
@@ -676,8 +676,8 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
         tfl::GetQuantizedType(tensor, builder, /*is_constant=*/true,
                               /*storage_type=*/value.getElementType()));
     shaped_type = shaped_type.clone(type);
-    auto op = builder.create<tfl::QConstOp>(
-        loc, mlir::TypeAttr::get(shaped_type), value);
+    auto op = tfl::QConstOp::create(builder, loc,
+                                    mlir::TypeAttr::get(shaped_type), value);
     return op.getOperation();
   }
 
@@ -715,10 +715,10 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
         builder.getContext(), vhlo_type_converter.convertType(shaped_type),
         val_ref);
     auto op =
-        builder.create<mlir::vhlo::ConstantOpV1>(loc, shaped_type, vhlo_val);
+        mlir::vhlo::ConstantOpV1::create(builder, loc, shaped_type, vhlo_val);
     return op.getOperation();
   }
-  auto op = builder.create<tfl::ConstOp>(loc, value);
+  auto op = tfl::ConstOp::create(builder, loc, value);
   return op.getOperation();
 }
 
@@ -946,7 +946,7 @@ StatusOr<Operation*> ConvertOp(
             builder.getI32IntegerAttr(mlir::TFL::ConvertToTfliteSize(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
-      auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
+      auto shape_op = tfl::ConstOp::create(builder, loc, output_shape);
       op_state.addOperands({shape_op});
     }
 
@@ -966,8 +966,8 @@ StatusOr<Operation*> ConvertOp(
     // with `none` value,
     llvm::SmallVector<Value, 4> none_operands(
         input_max_num - op_input_num,
-        builder.create<mlir::TFL::NoValueOp>(loc, builder.getNoneType(),
-                                             builder.getUnitAttr()));
+        mlir::TFL::NoValueOp::create(builder, loc, builder.getNoneType(),
+                                     builder.getUnitAttr()));
     op_state.addOperands(ArrayRef<Value>(none_operands));
   }
 
@@ -1007,7 +1007,7 @@ StatusOr<Operation*> ConvertOp(
         auto shape_type = tensorflow::GetTypeFromTFTensorShape(
             {static_cast<int32_t>(dim_size)}, builder.getIntegerType(32));
         auto output_shape = mlir::DenseElementsAttr::get(shape_type, shape);
-        auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
+        auto shape_op = tfl::ConstOp::create(builder, loc, output_shape);
         op_state.operands[1] = shape_op;
       }
     }
@@ -1221,9 +1221,9 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
             mlir::quant::UniformQuantizedType::castToExpressedType(
                 value.getType()));
         builder.setInsertionPointAfter(cst.getOperation());
-        auto new_op = builder.create<tfl::QConstOp>(
-            cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
-            cst.getValueAttr());
+        auto new_op = tfl::QConstOp::create(
+            builder, cst.getLoc(), new_output_type,
+            mlir::TypeAttr::get(new_output_type), cst.getValueAttr());
         full_range_const = new_op.getOutput();
       }
       use.set(full_range_const);
@@ -1344,7 +1344,7 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
   op_builder.setInsertionPointToEnd(&region.front());
   mlir::Operation* cloned_op = op_builder.clone(*op);
   // Add the yield operation.
-  op_builder.create<mlir::TFL::YieldOp>(op_loc, cloned_op->getResults());
+  mlir::TFL::YieldOp::create(op_builder, op_loc, cloned_op->getResults());
   // Now emit into the function body again.
   op_builder.restoreInsertionPoint(saved_pos);
 
@@ -1362,8 +1362,8 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
   }
 
   // Create the ControlNodeOp.
-  auto ctrl_op = op_builder.create<mlir::TFL::ControlNodeOp>(
-      op_loc, cloned_op->getResultTypes(),
+  auto ctrl_op = mlir::TFL::ControlNodeOp::create(
+      op_builder, op_loc, cloned_op->getResultTypes(),
       mlir::TFL::ControlType::get(op->getContext()), control_tokens);
   ctrl_op.getBody().takeBody(region);
 
@@ -1539,9 +1539,9 @@ StatusOr<FuncOp> ConvertSubgraph(
       if (input_num == -1) {
         if (maybe_optional_arg_marker == nullptr) {
           maybe_optional_arg_marker =
-              op_builder
-                  .create<mlir::TFL::NoValueOp>(base_loc, builder.getNoneType(),
-                                                builder.getUnitAttr())
+              mlir::TFL::NoValueOp::create(op_builder, base_loc,
+                                           builder.getNoneType(),
+                                           builder.getUnitAttr())
                   .getResult();
         }
       } else if (!vals_map.at(input_num)) {
@@ -1663,7 +1663,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     return_operands.push_back(vals_map[index]);
   }
 
-  op_builder.create<mlir::func::ReturnOp>(base_loc, return_operands);
+  mlir::func::ReturnOp::create(op_builder, base_loc, return_operands);
 
   return PostProcessFuncOp(func);
 }
@@ -1692,10 +1692,10 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   auto inputs = func.getFunctionType().getInputs();
   region.addArguments(inputs, mlir::SmallVector<Location>(inputs.size(), loc));
   op_builder.setInsertionPointToStart(&region.front());
-  auto call_op = op_builder.create<mlir::func::CallOp>(
-      loc, func.getFunctionType().getResults(), func.getSymName(),
+  auto call_op = mlir::func::CallOp::create(
+      op_builder, loc, func.getFunctionType().getResults(), func.getSymName(),
       region.getArguments());
-  op_builder.create<mlir::TFL::YieldOp>(loc, call_op.getResults());
+  mlir::TFL::YieldOp::create(op_builder, loc, call_op.getResults());
 }
 
 void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
@@ -1705,7 +1705,7 @@ void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   mlir::Operation& return_op = region.back().back();
   mlir::Location loc = return_op.getLoc();
   op_builder.setInsertionPointToEnd(&region.back());
-  op_builder.create<mlir::stablehlo::ReturnOp>(loc, return_op.getOperands());
+  mlir::stablehlo::ReturnOp::create(op_builder, loc, return_op.getOperands());
   return_op.erase();
 }
 
@@ -1716,7 +1716,7 @@ void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   mlir::Operation& return_op = region.back().back();
   mlir::Location loc = return_op.getLoc();
   op_builder.setInsertionPointToEnd(&region.back());
-  op_builder.create<mlir::vhlo::ReturnOpV1>(loc, return_op.getOperands());
+  mlir::vhlo::ReturnOpV1::create(op_builder, loc, return_op.getOperands());
   return_op.erase();
 }
 

@@ -58,7 +58,7 @@ struct AutotuneConfig {
   // space for temporary tensors. The best config will be the one with the
   // smallest scratch space among top minimum duration configs in
   // scratch_bytes_window_size_us window.
-  bool optimize_scratch_bytes = true;
+  bool optimize_scratch_bytes = false;
   // Window size in microseconds to consider for scratch bytes optimization.
   int scratch_bytes_window_size_us = 4;
   // If true, the autotuner will return an error if the best config for a

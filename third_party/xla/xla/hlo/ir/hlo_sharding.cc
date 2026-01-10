@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
-#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -408,6 +407,11 @@ void HloSharding::Print(Printer* printer, bool include_metadata) const {
     return;
   }
 
+  if (UseNamedShardingLeaf()) {
+    printer->Append(named_sharding_->ToString(include_metadata));
+    return;
+  }
+
   auto print_metadata = [&] {
     if (include_metadata && !metadata_.empty()) {
       printer->Append(" metadata={");
@@ -552,8 +556,8 @@ std::vector<int64_t> HloSharding::TileOffsetForDevice(const Shape& shape,
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
-    index[i] = std::min(
-        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    index[i] =
+        std::min(index[i] * CeilOfRatio(shape_dim, dimension(i)), shape_dim);
   }
   return index;
 }
@@ -573,9 +577,8 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
   std::vector<int64_t> index = TileIndexForDevice(device);
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
-    index[i] = std::min(
-        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
-        shape_dim);
+    index[i] = std::min((index[i] + 1) * CeilOfRatio(shape_dim, dimension(i)),
+                        shape_dim);
   }
   return index;
 }
@@ -1039,9 +1042,8 @@ OpSharding HloSharding::ToProto() const {
     for (auto type : subgroup_types_) {
       result.add_last_tile_dims(type);
     }
-    result.mutable_tile_assignment_dimensions()->Reserve(
-        tile_assignment_.num_dimensions());
-    absl::c_copy(tile_assignment_.dimensions(),
+    result.mutable_tile_assignment_dimensions()->Reserve(num_dimensions());
+    absl::c_copy(dimensions(),
                  tsl::protobuf::RepeatedFieldBackInserter(
                      result.mutable_tile_assignment_dimensions()));
   }
@@ -1065,7 +1067,7 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   Shape result_shape = shape;
   for (int64_t i = 0; i < TiledDataRank(); ++i) {
     result_shape.set_dimensions(
-        i, CeilOfRatio<int64_t>(shape.dimensions(i), tile_assignment_.dim(i)));
+        i, CeilOfRatio<int64_t>(shape.dimensions(i), dimension(i)));
   }
   return result_shape;
 }
@@ -1079,11 +1081,10 @@ Shape HloSharding::TileShape(const Shape& shape, int64_t device) const {
   Shape result_shape = shape;
   for (int64_t i = 0; i < index.size(); ++i) {
     const int64_t shape_dim = shape.dimensions(i);
-    int64_t offset = std::min(
-        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    int64_t offset =
+        std::min(index[i] * CeilOfRatio(shape_dim, dimension(i)), shape_dim);
     int64_t limit = std::min(
-        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
-        shape_dim);
+        (index[i] + 1) * CeilOfRatio(shape_dim, dimension(i)), shape_dim);
     result_shape.set_dimensions(i, limit - offset);
   }
   return result_shape;
@@ -1095,7 +1096,7 @@ int64_t HloSharding::TotalNumTiles() const {
   }
   CHECK(!IsManual());
   CHECK(!IsUnknown());
-  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions()));
+  return Product(dimensions());
 }
 
 int64_t HloSharding::NumTiles() const {
@@ -1103,8 +1104,7 @@ int64_t HloSharding::NumTiles() const {
     return 1;
   }
   CHECK(!IsManualLeaf() && !IsUnknownLeaf());
-  return Product(absl::Span<const int64_t>(tile_assignment_.dimensions())
-                     .subspan(0, TiledDataRank()));
+  return Product(dimensions().subspan(0, TiledDataRank()));
 }
 
 int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {

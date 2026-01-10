@@ -512,10 +512,6 @@ class HloComputation {
             HloInstructionConstIterator(&instructions_, end, end)};
   }
 
-  using ChannelDependencies =
-      absl::flat_hash_map<const HloInstruction*,
-                          absl::InlinedVector<HloInstruction*, 1>>;
-
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
@@ -523,8 +519,6 @@ class HloComputation {
   // computation, not just the root. Describes the corresponding subgraph.
   std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
       HloInstruction&) const;
-  std::vector<HloInstruction*> MakeInstructionPostOrder(
-      const ChannelDependencies& channel_dependencies) const;
   // Same as MakeInstructionPostOrder but with special tie-breaking behavior.
   // Specifically, when ties (in ordering) between instructions occur, Reshapes
   // will be sorted before other operations.
@@ -823,14 +817,6 @@ class HloComputation {
           computation_callers = std::nullopt,
       bool remove_dead_parameters_from_entry_computation = false) const;
 
-  // Returns a map from an instruction to the group of instructions associated
-  // with the same channel. These instructions will be considered as a single
-  // node for dependency purposes.
-  // RecvDone ops will map to the corresponding Send op.
-  // Cross-partition collectives will map to every other instruction with the
-  // same channel ID (it doesn't map to itself).
-  ChannelDependencies ComputeChannelDependencies() const;
-
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
   bool HasSideEffect() const;
@@ -1035,14 +1021,13 @@ class HloComputation {
 
   class VisitMap;
   void ComputeInstructionPostOrder(
-      HloInstruction* root, const ChannelDependencies& channel_dependencies,
-      VisitMap& visited, std::vector<HloInstruction*>& post_order,
+      HloInstruction* root, VisitMap& visited,
+      std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-      const ChannelDependencies& channel_dependencies, VisitMap& visited,
-      std::vector<HloInstruction*>* dfs_stack_scratch) const;
+      VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   absl::Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 

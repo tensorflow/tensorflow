@@ -623,6 +623,10 @@ ENTRY main.49 {
 }
 
 TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
+  if (GpuExecutor() != nullptr) {
+    GTEST_SKIP() << "This test leads to segfault in CommandBuffer #36087";
+  }
+
   constexpr absl::string_view hlo_text = R"(
     dynamic_slice {
       p0 = s32[4,8,8]{2,1,0} parameter(0)

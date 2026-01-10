@@ -947,6 +947,8 @@ xla_cc_test(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1091,6 +1093,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -1607,12 +1610,14 @@ cc_library(
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
+        "//third_party/pathways/configuration:__subpackages__",
     ]),
     deps = [
         ":buffer_value",
         ":compiled_module",
         ":computation_placer",
         ":executable",
+        ":gpu_topology",
         ":hlo_cost_analysis",
         ":hlo_module_config",
         ":metrics_hook_interface",
@@ -1620,7 +1625,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu:target_machine_options",
-        "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor:device_address_allocator",
@@ -2326,6 +2330,7 @@ xla_cc_test(
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
     shard_count = 12,
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":triangular_solve_expander",
         "//xla:array2d",
@@ -2785,6 +2790,7 @@ cc_library(
 xla_cc_test(
     name = "scan_loop_accumulator_input_unification_test",
     srcs = ["scan_loop_accumulator_input_unification_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":copy_insertion",
         ":scan_loop_accumulator_input_unification",
@@ -2844,6 +2850,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_unroller_test",
     srcs = ["while_loop_unroller_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":scheduling_annotations_util",
         ":while_loop_unroller",
@@ -3075,6 +3082,8 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":dynamic_dimension_inference",
         ":dynamic_padder",
@@ -3370,7 +3379,10 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_mac_arm64",
+        "pjrt_migration_candidate",
+    ],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3909,6 +3921,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":computation_layout",
         ":hlo_verifier",
@@ -3966,6 +3979,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":hlo_cse",
         ":pattern_matcher",
@@ -4207,7 +4221,9 @@ xla_test(
     ],
     tags = [
         "no_windows",  # TODO(b/152037541)
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":elemental_ir_emitter",
         ":hlo_module_config",
@@ -5073,6 +5089,7 @@ cc_library(
 xla_cc_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":map_inliner",
         "//xla:literal",
@@ -5354,6 +5371,7 @@ cc_library(
 xla_cc_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":pattern_matcher",
         ":topk_rewriter",
@@ -6276,6 +6294,8 @@ cc_library(
         "//learning/pathways/compilation_service:__subpackages__",
         "//tensorflow/core/common_runtime/eager:__subpackages__",
         ":__subpackages__",
+        "//xla/tools:__subpackages__",
+        "//xla/backends/gpu/autotuner:__subpackages__",
     ]),
     deps = [
         ":gpu_topology_proto_cc",

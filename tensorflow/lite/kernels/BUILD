@@ -142,6 +142,7 @@ cc_library(
         ":acceleration_test_util",
         ":kernel_util",
         ":test_delegate_providers_lib",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:simple_planner",

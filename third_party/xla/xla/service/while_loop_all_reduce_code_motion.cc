@@ -400,14 +400,15 @@ MovableAllReduceContext IsAllReduceMovable(
     return MovableAllReduceContext{};
   }
 
-  // TODO(b/433921585): Re-enable dynamic update slice context matching after
-  // the bug is fixed.
-  // // Try matching dynamic update slice context.
-  // if (auto update_slice_context = MatchDynamicUpdateSliceContext(
-  //         all_reduce, while_instructions, call_graph);
-  //     update_slice_context.has_value()) {
-  //   return std::move(*update_slice_context);
-  // }
+  // Try matching dynamic update slice context. Only applies to all-reduce,
+  // not reduce-scatter.
+  if (all_reduce->opcode() == HloOpcode::kAllReduce) {
+    if (auto update_slice_context = MatchDynamicUpdateSliceContext(
+            all_reduce, while_instructions, call_graph);
+        update_slice_context.has_value()) {
+      return std::move(*update_slice_context);
+    }
+  }
 
   // We only support numerical types for accumulation.
   const absl::InlinedVector<PrimitiveType, 12> kSupportedTypes{

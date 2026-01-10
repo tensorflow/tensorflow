@@ -26,6 +26,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
+        "//xla/service:gpu_topology",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
@@ -98,6 +99,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":block_level_emitter",
         "//xla:autotuning_proto_cc",
@@ -181,6 +183,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":cublas",
         "//xla:autotuning_proto_cc",
@@ -247,6 +250,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":cublaslt",
         "//xla:autotuning_proto_cc",
@@ -329,6 +333,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":cudnn",
         "//xla:autotuning_proto_cc",
@@ -392,6 +397,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":custom_kernel",
         "//xla:autotuning_proto_cc",
@@ -440,6 +446,7 @@ cc_library(
         "//xla/service/gpu:split_k_gemm_rewriter",
         "//xla/service/gpu/autotuning:dot_search_space",
         "//xla/service/gpu/autotuning:triton_configs",
+        "//xla/service/gpu/transforms:convert_triton_gemm_config",
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
@@ -448,6 +455,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -473,6 +481,7 @@ xla_test(
         "cuda-only",  # rocm support is not tested.
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":triton",
         "//xla:autotuning_proto_cc",
@@ -568,6 +577,7 @@ xla_test(
         "cuda-only",
         "no_mac",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":native_emitter",
         "//xla:xla_proto_cc",
@@ -658,6 +668,7 @@ xla_test(
     srcs = ["gpu_profiler_test.cc"],
     backends = ["gpu"],
     tags = ["cuda-only"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_profiler",
         "//xla:executable_run_options",
@@ -747,6 +758,7 @@ xla_test(
     srcs = ["fission_backend_test.cc"],
     backends = ["h100"],
     tags = ["cuda-only"],
+    use_legacy_runtime = True,
     deps = [
         ":cublas",
         ":custom_kernel",

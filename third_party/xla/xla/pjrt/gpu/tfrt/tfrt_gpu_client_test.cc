@@ -693,8 +693,7 @@ TEST_F(TfrtGpuClientTest, ToLiteralAsync) {
           {src_literal.shape()}, *device->default_memory_space()));
   std::unique_ptr<PjRtBuffer> buffer = transfer_manager->RetrieveBuffer(0);
 
-  absl::Mutex mu;
-  bool got_literal = false;
+  absl::Notification got_literal;
 
   TF_ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
@@ -704,22 +703,27 @@ TEST_F(TfrtGpuClientTest, ToLiteralAsync) {
   auto [literal_promise, literal_future] = MakePromise<MutableLiteralBase*>();
 
   // Literal is not ready.
-  buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
+  absl::Notification generator_called;
+  buffer
+      ->LazyToLiteral([f = std::move(literal_future), &generator_called]() {
+        generator_called.Notify();
+        return f;
+      })
       .OnReady([&](absl::Status s) {
-        absl::MutexLock l(mu);
         TF_ASSERT_OK(s);
-        got_literal = true;
+        got_literal.Notify();
       });
   buffer.reset();
+
+  // Wait for the generator to start before fulfilling the promise in order to
+  // trigger the async path.
+  generator_called.WaitForNotification();
 
   // Make the literal ready.
   auto literal = std::make_shared<Literal>(host_shape);
   literal_promise.Set(literal.get());
 
-  {
-    absl::MutexLock l(mu);
-    mu.Await(absl::Condition(&got_literal));
-  }
+  got_literal.WaitForNotification();
 
   EXPECT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   EXPECT_EQ(src_literal.data<float>(),

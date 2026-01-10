@@ -39,9 +39,9 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # build_cleaner: keep
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",

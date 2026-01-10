@@ -539,7 +539,6 @@ absl::StatusOr<ThunkProto> CollectiveDoneThunk::ToProto() const {
   if (async_events_id.has_value()) {
     thunk_proto->set_async_events_unique_id(async_events_id->value());
   }
-  thunk_proto->set_async_events_unique_id(async_events_id->value());
   thunk_proto->set_thunk_kind(Thunk::KindToProto(kind()));
   return proto;
 }

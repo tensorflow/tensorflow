@@ -119,8 +119,8 @@ TEST(SelectOpTest, SelectFloat16) {
                       TensorType_FLOAT16);
 
   model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
-  model.PopulateTensor<half>(model.input2(), {0.1, 0.2, 0.3, 0.4});
-  model.PopulateTensor<half>(model.input3(), {0.5, 0.6, 0.7, 0.8});
+  model.PopulateTensor<half>(model.input2(), {0.1f, 0.2f, 0.3f, 0.4f});
+  model.PopulateTensor<half>(model.input3(), {0.5f, 0.6f, 0.7f, 0.8f});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<half>(),

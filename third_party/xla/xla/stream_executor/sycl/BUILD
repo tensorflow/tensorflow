@@ -152,7 +152,9 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":sycl_event",
         ":sycl_platform_id",

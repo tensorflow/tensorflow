@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_address.h"
@@ -309,10 +310,12 @@ int LocalDeviceState::GetNewPrngSeed() {
 }
 
 absl::Status LocalDeviceState::AllocateAndRecordEvent(
-    BufferSequencingEventRef event, se::Stream* stream) {
+    AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
+    se::Stream* stream) {
   auto status = [&]() {
-    TF_ASSIGN_OR_RETURN(EventPool::Handle device_event,
-                        event_pool().AllocateEvent(stream->parent()));
+    TF_ASSIGN_OR_RETURN(
+        EventPool::Handle device_event,
+        event_pool().AllocateEvent(async_work_runner, stream->parent()));
     event_pool().ThenRecordEvent(stream, device_event);
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(stream, [event]() { event.SetStateConcrete(); });
@@ -325,7 +328,7 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
 
 absl::StatusOr<BufferSequencingEventRef>
 LocalDeviceState::GetEventForComputeStreamSyncPoint(
-    size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+    size_t sync_point, AsyncWorkRunner* async_work_runner,
     bool nullptr_if_past) {
   mu_.lock();
   size_t cur_sync_point = next_compute_stream_sync_point_.load();
@@ -343,8 +346,9 @@ LocalDeviceState::GetEventForComputeStreamSyncPoint(
     return event;
   }
   next_compute_stream_sync_point_.store(cur_sync_point + 1);
-  auto event = BufferSequencingEvent::Create(thread_pool);
-  auto status = AllocateAndRecordEvent(event, compute_stream());
+  auto event = BufferSequencingEvent::Create(async_work_runner);
+  auto status =
+      AllocateAndRecordEvent(async_work_runner, event, compute_stream());
   if (!status.ok()) {
     mu_.unlock();
     return status;

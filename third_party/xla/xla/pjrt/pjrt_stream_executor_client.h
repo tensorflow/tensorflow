@@ -345,16 +345,19 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   HostMemoryAllocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
   }
-  bool should_stage_host_to_device_transfers() const {
-    return should_stage_host_to_device_transfers_;
+
+  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) {
+    // Allocating multi-gigabyte pinned buffers can be very slow. In that case,
+    // using a staging buffer is probably worse than not using one.
+    // TODO(phawkins): add chunking for transfers.
+    return should_stage_host_to_device_transfers_ &&
+           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
   virtual gpu::GpuExecutableRunOptions* gpu_run_options(
       const ExecuteOptions& options) {
     return gpu_run_options_.get();
   }
-
-  tsl::thread::ThreadPool* thread_pool() { return &thread_pool_; }
 
   virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
@@ -513,7 +516,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
-  tsl::thread::ThreadPool thread_pool_;
+  tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
   absl::Mutex transpose_mu_;

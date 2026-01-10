@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
@@ -284,6 +283,10 @@ class CompileOnlyIfRtClient final
     return Unimplemented("MakeTuple not available with compile-only client.");
   }
 
+  void CancelExecution(
+      xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) override {}
+
   absl::string_view runtime_type() const override {
     return "compile_only_runtime";
   }
@@ -353,6 +356,16 @@ class CompileOnlyIfRtClient final
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
     return std::make_shared<PjRtLayout>(std::move(layout));
+  }
+
+  absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return Unimplemented(
+        "SubscribeToDeviceAttributeUpdates not available with compile-only "
+        "client.");
   }
 
  private:

@@ -21,6 +21,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"

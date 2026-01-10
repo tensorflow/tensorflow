@@ -449,17 +449,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
+  opts.set_xla_gpu_unsupported_disable_nested_gemm_fusions(false);
+  opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-  opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
   opts.set_xla_gpu_experimental_use_autotuner_pass(false);
   opts.set_xla_gpu_experimental_enable_fusion_autotuner(true);
   opts.set_xla_gpu_experimental_allow_unroll_factor_eight(true);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
-  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
+  // TODO(b/449025971): Set to true once the issue is fixed.
+  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_disable_automatic_host_compute_offload(false);
   opts.set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(
@@ -2554,6 +2556,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Internal: Enable the RaggedAllToAllMultiHostDecomposer, an experimental "
       "pass to decompose ragged-all-to-all operation in intra-host and "
       "inter-host parts."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_disable_nested_gemm_fusions",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_unsupported_disable_nested_gemm_fusions),
+      debug_options->xla_gpu_unsupported_disable_nested_gemm_fusions(),
+      "Enable the new pipeline that does not use nesting at HLO level"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_override_fast_interconnect_slice_size",
       int64_setter_for(

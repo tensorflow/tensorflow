@@ -30,7 +30,7 @@ jobs:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     steps:
     - name: Checkout code
-      uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
     - name: Update the RBE Configs
       run: |
         function map() {
@@ -130,7 +130,7 @@ jobs:
         map sigbuild-r2.17-clang-python3.11 2.17-python3.11
         map sigbuild-r2.17-clang-python3.12 2.17-python3.12
     - name: Create Pull Request with changes
-      uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412 # v7.0.9
+      uses: peter-evans/create-pull-request@98357b18bf14b5342f975ff684046ec3b2a07725 # v8.0.0
       with:
         title: Update the RBE images to the latest container versions
         committer: TensorFlow Release Automation <jenkins@tensorflow.org>

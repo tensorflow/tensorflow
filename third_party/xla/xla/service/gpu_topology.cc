@@ -88,4 +88,10 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
                      num_devices_per_host, std::move(gpu_target_config));
 }
 
+GpuTopology GetSingleDeviceGpuTopology(
+    absl::string_view platform_version,
+    const gpu::GpuTargetConfig& gpu_target_config) {
+  return GpuTopology(platform_version, 1, 1, 1, gpu_target_config);
+}
+
 }  // namespace xla

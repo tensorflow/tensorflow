@@ -1437,9 +1437,7 @@ class StubTfLiteContext : public TfLiteContext {
     for (auto& node : nodes_) {
       TfLiteIntArrayFree(node.inputs);
       TfLiteIntArrayFree(node.outputs);
-      if (node.builtin_data) {
-        free(node.builtin_data);
-      }
+      free(node.builtin_data);
     }
     for (auto& tensor : tensors_) {
       TfLiteIntArrayFree(tensor.dims);
@@ -3189,9 +3187,7 @@ TEST(OneHotOperationParserTest, TestIsSupported) {
   auto* params =
       reinterpret_cast<TfLiteOneHotParams*>(malloc(sizeof(TfLiteOneHotParams)));
   params->axis = -1;
-  if (context->node(1)->builtin_data) {
-    free(context->node(1)->builtin_data);
-  }
+  free(context->node(1)->builtin_data);
   context->node(1)->builtin_data = params;
   ASSERT_FALSE(
       parser

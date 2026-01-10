@@ -1767,6 +1767,9 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     if (!affine_op) {
       return failure();
     }
+    if (!affine_op->hasOneUse()) {
+      return failure();
+    }
     // This is the tensor feeding the affine op's rhs. This is not necessarily
     // the filter since it could be produced by a transpose or a Q-DQ).
     Value affine_rhs = affine_op.getFilter();
@@ -1884,7 +1887,9 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
     }
 
     // Remove the tailing mul op.
-    mul_op.replaceAllUsesWith(affine_op.getResult());
+    affine_op.setFusedActivationFunctionAttr(
+        mul_op.getFusedActivationFunctionAttr());
+    rewriter.replaceOp(mul_op, affine_op.getResult());
     return success();
   }
 };

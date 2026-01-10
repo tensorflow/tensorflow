@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -111,6 +112,72 @@ TEST(NamedShardingTest, Equality) {
   Mesh mesh_diff_shape({2, 4, 3, 9}, {"a", "b", "c", "d"});
   EXPECT_NE(base,
             NamedSharding(mesh_diff_shape, {ds_ab, ds_dc}, {axis_b}, {axis_c}));
+}
+
+TEST(NamedShardingTest, ToString) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1, {2, 2});
+  AxisRef axis_c(2);
+  AxisRef axis_d(3, {4, 2});
+
+  DimensionSharding ds_empty;
+  EXPECT_EQ(ds_empty.ToString(&mesh), "{}");
+
+  DimensionSharding ds_empty_open(/*axes=*/{}, /*is_closed=*/false);
+  EXPECT_EQ(ds_empty_open.ToString(&mesh), "{?}");
+
+  DimensionSharding ds_a({axis_a}, /*is_closed=*/true);
+  EXPECT_EQ(ds_a.ToString(&mesh), "{a}");
+
+  DimensionSharding ds_ab({axis_a, axis_b}, /*is_closed=*/true);
+  EXPECT_EQ(ds_ab.ToString(&mesh), "{a, b:(2)2}");
+
+  DimensionSharding ds_ab_open({axis_a, axis_b}, /*is_closed=*/false);
+  EXPECT_EQ(ds_ab_open.ToString(&mesh), "{a, b:(2)2, ?}");
+
+  DimensionSharding ds_c({axis_c}, /*is_closed=*/true);
+  NamedSharding sharding_dim(mesh, {ds_c, ds_ab_open});
+  EXPECT_EQ(sharding_dim.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [{c}, {a, b:(2)2, ?}]}");
+
+  NamedSharding sharding_fully_replicated(mesh);
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{replicated}");
+
+  NamedSharding sharding_replicated(mesh, {}, {axis_c});
+  EXPECT_EQ(sharding_replicated.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [], replicated={c}}");
+
+  NamedSharding sharding_unreduced(mesh, {}, {}, {axis_d});
+  EXPECT_EQ(sharding_unreduced.ToString(),
+            "{@mesh<a=2,b=4,c=3,d=8>, [], unreduced={d:(4)2}}");
+
+  Mesh maximal_mesh(5);
+  NamedSharding maximal_sharding(maximal_mesh);
+  EXPECT_EQ(maximal_sharding.ToString(), "{maximal device=5}");
+
+  Mesh non_iota_mesh(
+      TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
+                     /*transpose_perm=*/{2, 3, 0, 1}),
+      {"a", "b", "c", "d"});
+  NamedSharding sharding_non_iota(non_iota_mesh, {ds_a});
+  EXPECT_EQ(sharding_non_iota.ToString(),
+            "{@mesh<a=2,b=4,c=4,d=2>, device_ids=([4,16]T(1,0)), [{a}]}");
+
+  OpMetadata metadata1;
+  metadata1.set_op_name("foo");
+  OpMetadata metadata2;
+  metadata2.set_op_name("bar");
+  NamedSharding sharding_all(mesh, {ds_a}, {axis_c}, {axis_d},
+                             {metadata1, metadata2});
+  EXPECT_EQ(
+      sharding_all.ToString(),
+      "{@mesh<a=2,b=4,c=3,d=8>, [{a}], replicated={c}, unreduced={d:(4)2}}");
+  EXPECT_EQ(
+      sharding_all.ToString(/*include_metadata=*/true),
+      "{@mesh<a=2,b=4,c=3,d=8>, [{a}], replicated={c}, "
+      "unreduced={d:(4)2}, metadata={{op_name=\"foo\"}, {op_name=\"bar\"}}}");
 }
 
 TEST(NamedShardingTest, DimensionShardingAppend) {

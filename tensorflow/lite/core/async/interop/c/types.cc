@@ -27,9 +27,7 @@ extern "C" {
 TfLiteBackendBuffer* TfLiteBackendBufferCreate() {
   return new TfLiteBackendBuffer;
 }
-void TfLiteBackendBufferDelete(TfLiteBackendBuffer* buf) {
-  if (buf) delete buf;
-}
+void TfLiteBackendBufferDelete(TfLiteBackendBuffer* buf) { delete buf; }
 void TfLiteBackendBufferSetPtr(TfLiteBackendBuffer* buf, void* ptr) {
   buf->ptr = ptr;
 }
@@ -41,9 +39,7 @@ void* TfLiteBackendBufferGetPtr(const TfLiteBackendBuffer* buf) {
 TfLiteSynchronization* TfLiteSynchronizationCreate() {
   return new TfLiteSynchronization;
 }
-void TfLiteSynchronizationDelete(TfLiteSynchronization* sync) {
-  if (sync) delete sync;
-}
+void TfLiteSynchronizationDelete(TfLiteSynchronization* sync) { delete sync; }
 void TfLiteSynchronizationSetPtr(TfLiteSynchronization* sync, void* ptr) {
   sync->ptr = ptr;
 }

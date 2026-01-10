@@ -90,7 +90,7 @@ absl::StatusOr<std::optional<std::set<int>>> GetAllowedGpus(
   std::optional<std::set<int>> gpu_ids = std::nullopt;
 
   if (flr->config_proto()) {
-    string allowed_gpus =
+    std::string allowed_gpus =
         flr->config_proto()->gpu_options().visible_device_list();
     TF_ASSIGN_OR_RETURN(gpu_ids, ParseVisibleDeviceList(allowed_gpus));
   }
@@ -176,9 +176,9 @@ absl::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   if (visible_device_list.empty()) {
     return {{std::nullopt}};
   }
-  const std::vector<string> visible_devices =
+  const std::vector<std::string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
-  for (const string& platform_device_id_str : visible_devices) {
+  for (const std::string& platform_device_id_str : visible_devices) {
     int32_t platform_device_id;
     if (!absl::SimpleAtoi(platform_device_id_str, &platform_device_id)) {
       return errors::InvalidArgument(
@@ -255,9 +255,8 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     return platform.status();
   }
 
-  // TODO: b/465773559 - Use the GetForPlatform PlatformId overload instead.
   absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
-      xla::Compiler::GetForPlatform(platform.value());
+      xla::Compiler::GetForPlatform(platform.value()->id());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we
     // may end up transforming an XLA cluster with at least one GPU operation
@@ -370,7 +369,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
-  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  std::shared_ptr<stream_executor::DeviceAddressAllocator> custom_allocator;
 
   const std::string& device_type = device_base->device_type();
   if (device_type == DEVICE_CPU) {
@@ -405,7 +404,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
                          custom_allocator);
 }
 
-std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
+std::shared_ptr<stream_executor::DeviceAddressAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info) {
   if (platform_info.custom_allocator()) {

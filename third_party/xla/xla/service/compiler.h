@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "xla/backends/cpu/target_machine_options.h"
-#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
@@ -130,9 +130,9 @@ class Compiler {
         const HloModule& module)>
         layout_canonicalization_callback = {};
 
-    // AOT device description. If provided, used instead of querying the device
-    // on which compilation is performed.
-    std::optional<GpuTargetConfig> gpu_target_config;
+    // GPU topology. If provided, used instead of querying the device on which
+    // compilation is performed.
+    std::optional<GpuTopology> gpu_topology;
 
     // CPU specific target information.
     std::optional<CpuTargetConfig> cpu_target_config;
@@ -293,6 +293,10 @@ class Compiler {
     return GetForPlatform(platform->id());
   }
 
+  static bool ExistsForPlatform(const se::Platform* platform) {
+    return GetPlatformCompilerFactories()->contains(platform->id());
+  }
+
   // Returns a function that computes the size in bytes of the logical
   // buffer that contains a shape.
   virtual HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const = 0;
@@ -448,11 +452,11 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
-  const std::optional<gpu::GpuTargetConfig>& gpu_target_config() const {
-    return gpu_target_config_;
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
   }
-  void set_gpu_target_config(const gpu::GpuTargetConfig& gpu_target_config) {
-    gpu_target_config_ = gpu_target_config;
+  void set_gpu_topology(const GpuTopology& gpu_topology) {
+    gpu_topology_ = gpu_topology;
   }
 
   // Provides a way to end compilation early and get partial outputs.
@@ -485,7 +489,7 @@ class AotCompilationOptions {
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.
-  std::optional<gpu::GpuTargetConfig> gpu_target_config_;
+  std::optional<GpuTopology> gpu_topology_;
   EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
 };
 

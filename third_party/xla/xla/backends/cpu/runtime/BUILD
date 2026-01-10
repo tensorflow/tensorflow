@@ -275,6 +275,7 @@ xla_cc_test(
         ":thunk_testlib",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
@@ -929,7 +930,6 @@ xla_cc_test(
         "//xla/service:buffer_assignment",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1199,6 +1199,7 @@ cc_library(
     deps = [
         ":thunk",
         ":topk_lib",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",

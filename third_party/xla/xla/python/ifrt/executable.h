@@ -259,6 +259,22 @@ class LoadedExecutable
 
   using ExecuteOptions = ::xla::ifrt::ExecuteOptions;
 
+  // Handle that can be passed to `CancelExecution` to perform best-effort
+  // cancellation of the enqueued execution.
+  class CancellationHandleObject {
+   public:
+    explicit CancellationHandleObject() = default;
+    virtual ~CancellationHandleObject() = default;
+
+    // Not copyable or movable.
+    CancellationHandleObject(const CancellationHandleObject&) = delete;
+    CancellationHandleObject(CancellationHandleObject&&) = delete;
+    CancellationHandleObject& operator=(const CancellationHandleObject&) =
+        delete;
+    CancellationHandleObject& operator=(CancellationHandleObject&&) = delete;
+  };
+  using CancellationHandle = std::shared_ptr<CancellationHandleObject>;
+
   // Result from an execution.
   struct ExecuteResult {
     // Resulting status of the execution. Filled only if
@@ -266,6 +282,10 @@ class LoadedExecutable
     tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
+    // Handle that can be passed to `CancelExecution` to perform best-effort
+    // cancellation of the enqueued execution. May be `nullptr` in which case
+    // cancellation will be ignored.
+    CancellationHandle cancellation_handle;
   };
 
   // Executes the executable on devices.

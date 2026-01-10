@@ -87,8 +87,6 @@ Type CheckStatus(absl::StatusOr<Type> result) {
 void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
                                               size_t collectives_memory_size) {
   se::Platform* platform = CheckStatus(PlatformUtil::GetPlatform("GPU"));
-  se::Platform* reference_platform =
-      CheckStatus(PlatformUtil::GetPlatform("GPU"));
 
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   for (int64_t i = 0; i < platform->VisibleDeviceCount(); ++i) {
@@ -105,12 +103,14 @@ void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
                             platform);
   }
 
+  gpu_compute_capability_ = CheckStatus(platform->ExecutorForDevice(0))
+                                ->GetDeviceDescription()
+                                .gpu_compute_capability();
+
   hlo_runner_ =
       std::make_unique<HloRunner>(platform, /*intra_op_parallelism_threads=*/0,
                                   std::make_unique<se::MultiDeviceAdapter>(
                                       platform, std::move(allocators)));
-  reference_hlo_runner_ = std::make_unique<HloRunner>(
-      reference_platform, /*intra_op_parallelism_threads=*/0);
 }
 
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>

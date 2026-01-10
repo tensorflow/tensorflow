@@ -2886,36 +2886,6 @@ bool PjRtCApiLoadedExecutable::IsDeleted() const {
   return args.is_deleted;
 }
 
-absl::StatusOr<std::string> PjRtCApiLoadedExecutable::FingerprintExecutable()
-    const {
-  absl::StatusOr<std::string> fingerprint =
-      executable_->FingerprintExecutable();
-  if (fingerprint.ok()) {
-    return *fingerprint;
-  }
-  if (fingerprint.status().code() != absl::StatusCode::kUnimplemented) {
-    return fingerprint.status();
-  }
-
-  // Fallback and call PJRT_LoadedEecutable_Fingerprint until the plugins
-  // implement new PJRT_Executable_Fingerprint API within the compatibility
-  // window.
-  // TODO(yeounoh): To be removed after 01/20/2024.
-  PJRT_LoadedExecutable_Fingerprint_Args args;
-  args.struct_size = PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.executable = c_loaded_executable();
-  const PJRT_Api* c_api = pjrt_c_api();
-  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
-      c_api->PJRT_LoadedExecutable_Fingerprint(&args),
-      pjrt::MakeErrorDeleter(c_api));
-  if (error) {
-    return ::pjrt::PjrtErrorToStatus(error.get(), c_api);
-  }
-  return std::string(args.executable_fingerprint,
-                     args.executable_fingerprint_size);
-}
-
 // ---------------------------------- Buffers ----------------------------------
 
 PjRtCApiBuffer::PjRtCApiBuffer(PjRtCApiClient* client, PJRT_Buffer* buffer)

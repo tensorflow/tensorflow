@@ -350,7 +350,8 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
                    usage_event = std::move(usage_event),
                    promise = std::move(promise), client = client_,
                    on_device_shape = on_device_shape_, unpack_subbyte_types,
-                   literal, generator = std::move(generator)]() mutable {
+                   literal, generator = std::move(generator),
+                   thread_pool = client_->blocking_thread_pool()]() mutable {
     tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
     if (device_buffer->definition_event().IsError()) {
       usage_event.SetStateConcrete();
@@ -498,21 +499,25 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
       }
       return absl::OkStatus();
     };
+    auto copy_to_literal_and_set_event =
+        [copy_to_literal = std::move(copy_to_literal),
+         usage_event = std::move(usage_event), promise = std::move(promise)](
+            const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+          absl::Status status = copy_to_literal(value);
+          usage_event.SetStateConcrete();
+          promise.Set(status);
+        };
 
     if (literal != nullptr) {
-      absl::Status status = copy_to_literal(literal);
-      usage_event.SetStateConcrete();
-      promise.Set(status);
+      copy_to_literal_and_set_event(literal);
     } else {
       Future<MutableLiteralBase*> generated = std::move(generator)();
-      generated.OnReady(
-          [copy_to_literal = std::move(copy_to_literal),
-           usage_event = std::move(usage_event), promise = std::move(promise)](
-              const absl::StatusOr<MutableLiteralBase*>& value) mutable {
-            absl::Status status = copy_to_literal(value);
-            usage_event.SetStateConcrete();
-            promise.Set(status);
-          });
+      if (generated.IsKnownReady()) {
+        copy_to_literal_and_set_event(generated.Await());
+      } else {
+        generated.OnReady(client->blocking_thread_pool()->AsExecutor(),
+                          std::move(copy_to_literal_and_set_event));
+      }
     }
   };
   client_->blocking_thread_pool()->ScheduleWhenReady(

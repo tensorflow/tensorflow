@@ -1242,9 +1242,7 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
   // Offline compatibility assumes enhanced broadcast is enabled.
   auto status = CheckGpuDelegateCompatibility(
       op_sig, GpuCompatibilityFlags::kEnhancedBroadcast);
-  if (op_sig.builtin_data) {
-    free(op_sig.builtin_data);
-  }
+  free(op_sig.builtin_data);
   return status;
 }
 

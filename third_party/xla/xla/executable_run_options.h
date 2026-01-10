@@ -74,7 +74,8 @@ class ExecutionContext;
 class RunId {
  public:
   // Creates a new, unique RunId.
-  RunId();
+  static RunId CreateUniqueId();
+
   explicit RunId(int64_t value) : data_(value) {}
 
   RunId(const RunId&) = default;
@@ -276,7 +277,7 @@ class ExecutableRunOptions {
   ThenExecuteFunction* then_execute_function_ = nullptr;
   SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;
   RecvDeviceMemoryFunction* recv_device_memory_function_ = nullptr;
-  RunId run_id_;
+  RunId run_id_{0};
   const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
   const ffi::ExecutionContext* ffi_execution_context_ = nullptr;

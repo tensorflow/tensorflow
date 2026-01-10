@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -144,6 +145,48 @@ TensorValue Iota(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
   return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
 }
 
+absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
+                                   const HloInstruction* hlo_reduction,
+                                   const HloComputation* reduction_computation,
+                                   mlir::Operation* reduction) {
+  TF_ASSIGN_OR_RETURN(
+      Type result_ty,
+      PrimitiveTypeToMlirType(b, hlo_reduction->shape().element_type()));
+  result_ty = mlir::RankedTensorType::get({}, result_ty);
+
+  mlir::Location loc = b.getLoc();
+  mlir::Block* reducer = b.createBlock(&reduction->getRegion(0), {},
+                                       {result_ty, result_ty}, {loc, loc});
+  b.setInsertionPointToStart(reducer);
+
+  std::vector<const HloInstruction*> to_emit;
+  absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
+  for (const HloInstruction* instr :
+       reduction_computation->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kParameter) {
+      int parameter_number = instr->parameter_number();
+      TF_RET_CHECK(parameter_number < 2);
+      auto argument = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+          reducer->getArgument(parameter_number));
+
+      if (!argument) {
+        return Internal("Expected reducer argument to be a tensor.");
+      }
+
+      TF_RET_CHECK(region_values.insert({instr, argument}).second);
+    } else {
+      to_emit.push_back(instr);
+    }
+  }
+
+  TF_RET_CHECK(!to_emit.empty());
+
+  TF_ASSIGN_OR_RETURN(TensorValue result, EmitScope(b, to_emit, region_values));
+  stablehlo::ReturnOp::create(b, SmallVector<Value>({result}));
+  b.setInsertionPointAfter(reduction);
+  return absl::OkStatus();
+}
+
 absl::StatusOr<TensorValue> EmitReduce(
     mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_hlo_reduce,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
@@ -185,46 +228,8 @@ absl::StatusOr<TensorValue> EmitReduce(
 
   stablehlo::ReduceOp reduction = stablehlo::ReduceOp::create(
       b, input, init_value, hlo_reduce.dimensions());
-  {
-    TF_ASSIGN_OR_RETURN(
-        Type result_ty,
-        PrimitiveTypeToMlirType(b, hlo_reduce.shape().element_type()));
-    result_ty = mlir::RankedTensorType::get({}, result_ty);
-
-    mlir::Location loc = b.getLoc();
-    mlir::Block* reducer = b.createBlock(&reduction->getRegion(0), {},
-                                         {result_ty, result_ty}, {loc, loc});
-    b.setInsertionPointToStart(reducer);
-
-    HloComputation* reduction_computation = hlo_reduce.to_apply();
-
-    std::vector<const HloInstruction*> to_emit;
-    absl::flat_hash_map<const HloInstruction*, TensorValue> region_values;
-    for (const HloInstruction* instr :
-         reduction_computation->MakeInstructionPostOrder()) {
-      if (instr->opcode() == HloOpcode::kParameter) {
-        int parameter_number = instr->parameter_number();
-        TF_RET_CHECK(parameter_number < 2);
-        auto argument = mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
-            reducer->getArgument(parameter_number));
-
-        if (!argument) {
-          return Internal("Expected reducer argument to be a tensor.");
-        }
-
-        TF_RET_CHECK(region_values.insert({instr, argument}).second);
-      } else {
-        to_emit.push_back(instr);
-      }
-    }
-
-    TF_RET_CHECK(!to_emit.empty());
-
-    TF_ASSIGN_OR_RETURN(TensorValue result,
-                        EmitScope(b, to_emit, region_values));
-    stablehlo::ReturnOp::create(b, SmallVector<Value>({result}));
-    b.setInsertionPointAfter(reduction);
-  }
+  TF_RETURN_IF_ERROR(
+      EmitReduceComputation(b, &hlo_reduce, hlo_reduce.to_apply(), reduction));
 
   return mlir::cast<TensorValue>(reduction.getResult(0));
 }
@@ -1080,7 +1085,7 @@ absl::StatusOr<TensorValue> EmitPad(
     TensorValue threshold_splat = xtile::Splat(b, threshold, padded_tile_sizes);
     Value cmp = arith::CmpIOp::create(b, arith::CmpIPredicate::slt, bcast,
                                       threshold_splat);
-    mask = mask ? arith::AndIOp::create(b, mask, cmp) : cmp;
+    mask = mask ? stablehlo::AndOp::create(b, mask, cmp) : cmp;
   }
   if (!mask) {
     return values[tiled_operand];
@@ -1092,6 +1097,65 @@ absl::StatusOr<TensorValue> EmitPad(
   return mlir::cast<TensorValue>(
       arith::SelectOp::create(b, mask, values[tiled_operand], pad_value_splat)
           .getResult());
+}
+
+absl::StatusOr<TensorValue> EmitAllReduce(
+    mlir::ImplicitLocOpBuilder& b, const HloComputation* computation,
+    const HloAllReduceInstruction& all_reduce,
+    const TiledHloInstruction& tiled_hlo_reduce,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  llvm::SmallVector<mlir::Value> operands;
+  operands.reserve(tiled_hlo_reduce.operands().size());
+
+  for (const auto operand : tiled_hlo_reduce.operands()) {
+    if (!values.contains(operand)) {
+      return Internal("Operand %s not found in the values map.",
+                      operand->ToString());
+    }
+    operands.push_back(values[operand]);
+  }
+
+  if (all_reduce.device_list().replica_groups().empty()) {
+    return Internal(
+        "Triton emitting AllReduce without replica groups is not supported.");
+  }
+
+  llvm::SmallVector<int64_t> flattened_replica_group_ids;
+  for (const auto& replica_group : all_reduce.replica_groups()) {
+    for (const auto& replica_id : replica_group.replica_ids()) {
+      flattened_replica_group_ids.push_back(replica_id);
+    }
+  }
+
+  std::optional<int64_t> channel_handle = all_reduce.channel_id();
+  bool use_global_device_ids = all_reduce.use_global_device_ids();
+
+  TF_ASSIGN_OR_RETURN(
+      auto output_element_type,
+      xtile::PrimitiveTypeToMlirType(b, all_reduce.shape().element_type()));
+  auto output_type = mlir::RankedTensorType::get(tiled_hlo_reduce.tile_sizes(),
+                                                 output_element_type);
+
+  auto replica_groups_type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(all_reduce.replica_groups().size()),
+       static_cast<int64_t>(all_reduce.replica_groups()[0].replica_ids_size())},
+      b.getI64Type());
+  auto replica_groups_attr = mlir::DenseIntElementsAttr::get(
+      replica_groups_type, flattened_replica_group_ids);
+  auto channel_handle_attr =
+      channel_handle ? mlir::stablehlo::ChannelHandleAttr::get(b.getContext(),
+                                                               *channel_handle,
+                                                               /*type=*/0)
+                     : nullptr;
+
+  auto all_reduce_op = mlir::stablehlo::AllReduceOp::create(
+      b, b.getLoc(), output_type, mlir::ValueRange(operands),
+      replica_groups_attr, channel_handle_attr, use_global_device_ids);
+
+  TF_RETURN_IF_ERROR(EmitReduceComputation(
+      b, &all_reduce, all_reduce.to_apply(), all_reduce_op));
+
+  return mlir::cast<TensorValue>(all_reduce_op.getResult(0));
 }
 
 absl::StatusOr<TensorValue> EmitTiledHloInstruction(
@@ -1187,8 +1251,15 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kAllReduceStart) {
-    return EmitCollective(b, fusion, tiled_hlo, block_level_parameters, fn, pid,
-                          values);
+    const HloComputation* computation =
+        fusion->fused_instructions_computation();
+    const HloInstruction* root_instruction = computation->root_instruction();
+    if (root_instruction->opcode() == HloOpcode::kAllReduceDone) {
+      root_instruction = root_instruction->operand(0);
+    }
+    return EmitAllReduce(b, computation,
+                         *xla::Cast<HloAllReduceInstruction>(root_instruction),
+                         tiled_hlo, values);
   }
 
   if (hlo->opcode() == HloOpcode::kAllReduceDone) {
@@ -1498,9 +1569,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
       mlir::StringAttr::get(&mlir_context, hlo_computation->name()));
   mlir::ImplicitLocOpBuilder b(loc, &mlir_context);
 
-  mlir::OwningOpRef<mlir::ModuleOp> triton_module =
+  mlir::OwningOpRef<mlir::ModuleOp> xtile_module =
       llvm_ir::CreateMlirModuleOp(loc);
-  b.setInsertionPointToEnd(triton_module->getBody());
+  b.setInsertionPointToEnd(xtile_module->getBody());
 
   // Build Triton kernel.
   SmallVector<Type> fn_arg_types;
@@ -1545,7 +1616,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
                                  &mlir_context));
 
   b.create<xtile::EntryFuncReturnOp>();
-  return triton_module;
+
+  {
+    // Verify that the emitted module contains only ops from dialects that can
+    // be shared between backends.
+    mlir::PassManager pm(&mlir_context);
+    pm.addPass(xtile::createVerifyLegalXTileOpsPass());
+    if (mlir::failed(pm.run(*xtile_module))) {
+      return Internal("Failed to verify XTile module.");
+    }
+  }
+
+  return xtile_module;
 }
 
 }  // namespace gpu

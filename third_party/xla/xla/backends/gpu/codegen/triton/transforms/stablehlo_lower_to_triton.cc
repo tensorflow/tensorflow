@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -48,9 +50,10 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -787,14 +790,103 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
   }
 };
 
+class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::AllReduceOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteAllReduce(op, rewriter);
+  }
+};
+
+Value UnsignedIntegerToSignlessInteger(mlir::PatternRewriter& rewriter,
+                                       Value value) {
+  CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
+      << "Expected unsigned integer element type, got: "
+      << ::xla::xtile::MlirToString(value.getType());
+  Type signless_integer_type_type = IntegerType::get(
+      rewriter.getContext(),
+      getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
+      IntegerType::SignednessSemantics::Signless);
+  if (auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType())) {
+    signless_integer_type_type =
+        shaped_type.clone(shaped_type.getShape(), signless_integer_type_type);
+  }
+  return UnrealizedConversionCastOp::create(rewriter, value.getLoc(),
+                                            signless_integer_type_type, value)
+      .getResult(0);
+}
+
+template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
+          typename UnsignedIntArithOp = IntArithOp>
+class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
+ public:
+  using OpRewritePattern<StableHloOp>::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
+    if (result_type.isFloat()) {
+      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+    } else {
+      Operation* new_op = nullptr;
+      bool should_guard_ub = mlir::isa<stablehlo::DivOp, stablehlo::RemOp>(op);
+
+      if (result_type.isUnsignedInteger()) {
+        llvm::SmallVector<Value> signless_operands;
+        signless_operands.reserve(op.getOperands().size());
+        Type operand_type = op.getOperands().front().getType();
+        for (Value operand : op.getOperands()) {
+          signless_operands.push_back(
+              UnsignedIntegerToSignlessInteger(rewriter, operand));
+        }
+        new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
+                                            signless_operands.front().getType(),
+                                            signless_operands);
+
+        rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+            op, op.getResult().getType(), new_op->getResult(0));
+      } else {
+        new_op = rewriter.replaceOpWithNewOp<IntArithOp>(op, op.getOperands());
+      }
+
+      // Special case for division with zero.
+      if (should_guard_ub) {
+        new_op->setAttr("xla.guard_ub", rewriter.getUnitAttr());
+      }
+    }
+    return mlir::success();
+  }
+};
+
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce, LowerReshape, LowerDotGeneral>(mlir_context);
+    patterns.add<
+        LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
+        LowerReshape, LowerDotGeneral, LowerAllReduce,
+        LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
+        LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
+                                arith::SubIOp>,
+        LowerStableHloOpToArith<stablehlo::MulOp, arith::MulFOp, arith::MulIOp>,
+        LowerStableHloOpToArith<stablehlo::AndOp, arith::AndIOp, arith::AndIOp>,
+        LowerStableHloOpToArith<stablehlo::OrOp, arith::OrIOp, arith::OrIOp>,
+        LowerStableHloOpToArith<stablehlo::XorOp, arith::XOrIOp, arith::XOrIOp>,
+        LowerStableHloOpToArith<stablehlo::DivOp, arith::DivFOp, arith::DivSIOp,
+                                arith::DivUIOp>,
+        LowerStableHloOpToArith<stablehlo::RemOp, arith::RemFOp, arith::RemSIOp,
+                                arith::RemUIOp>,
+        LowerStableHloOpToArith<stablehlo::MaxOp, arith::MaximumFOp,
+                                arith::MaxSIOp, arith::MaxUIOp>,
+        LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
+                                arith::MinSIOp, arith::MinUIOp>>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

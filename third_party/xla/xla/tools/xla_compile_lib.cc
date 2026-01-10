@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/export_hlo.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
@@ -95,7 +96,9 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   if (aot) {
     AotCompilationOptions aot_options(platform->id());
-    aot_options.set_gpu_target_config(*target_config);
+    GpuTopology topology =
+        GetSingleDeviceGpuTopology(/*platform_version=*/"", *target_config);
+    aot_options.set_gpu_topology(topology);
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
 
