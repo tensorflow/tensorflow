@@ -2111,6 +2111,7 @@ PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
   args->host_alias_size_in_bytes = memory_stats.host_alias_size_in_bytes;
   args->host_temp_size_in_bytes = memory_stats.host_temp_size_in_bytes;
   args->peak_memory_in_bytes = memory_stats.peak_memory_in_bytes;
+  args->total_size_in_bytes = memory_stats.total_size_in_bytes;
   return nullptr;
 }
 

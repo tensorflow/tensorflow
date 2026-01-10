@@ -313,6 +313,7 @@ struct CompiledMemoryStats {
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
+  int64_t total_size_in_bytes = 0;
 
   // Host memory usage stats.
   int64_t host_generated_code_size_in_bytes = 0;
