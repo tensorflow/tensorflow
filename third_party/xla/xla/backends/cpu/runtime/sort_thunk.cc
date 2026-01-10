@@ -265,7 +265,7 @@ SortThunk::BufferUses SortThunk::buffer_uses() const {
   BufferUses buffer_uses;
   buffer_uses.reserve(inputs_.size());
   for (const Input& input : inputs_) {
-    buffer_uses.emplace_back(BufferUse::Write(input.slice));
+    buffer_uses.emplace_back(BufferUse::Write(input.slice, input.shape));
   }
   return buffer_uses;
 }
