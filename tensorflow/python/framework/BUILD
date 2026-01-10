@@ -1489,6 +1489,7 @@ py_strict_library(
     deps = [
         ":errors",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_determinism",
         "//tensorflow/python/util:_pywrap_tensor_float_32_execution",
         "//tensorflow/python/util:deprecation",
