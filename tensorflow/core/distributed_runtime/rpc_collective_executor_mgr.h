@@ -41,7 +41,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
       std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
       WorkerCacheInterface* worker_cache, const std::string& task_name);
 
-  virtual ~RpcCollectiveExecutorMgr();
+  ~RpcCollectiveExecutorMgr() override;
 
   // This function should only be called at the group_leader, by an RPC.
   // Other needs for StepIds should be satisfied by NextStepId.
@@ -57,7 +57,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   void RetireStepId(int64_t graph_key, int64_t step_id) override;
 
  protected:
-  virtual CollectiveExecutor* Create(int64_t step_id) override;
+  CollectiveExecutor* Create(int64_t step_id) override;
 
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   const std::string task_name_;

@@ -32,7 +32,7 @@ class SlackAnalysis {
  public:
   SlackAnalysis(const Graph* g, const CostModel* cost_model);
 
-  ~SlackAnalysis() {}
+  ~SlackAnalysis() = default;
 
   // Compute the earliest possible start time for each node, based on
   // a given cost model. 'asap_time' is indexed by node id.
@@ -97,7 +97,7 @@ class PriorityScheduler {
   PriorityScheduler(const DeviceSet* devices, const CostModel* cost_model,
                     const Graph* g);
 
-  ~PriorityScheduler() {}
+  ~PriorityScheduler() = default;
 
   // Computes a schedule of the ideal start time for each node.
   // Returns the makespan (the total running time).

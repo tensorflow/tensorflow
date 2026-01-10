@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -49,16 +50,17 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    std::unique_ptr<DeviceResolverDistributed> dr(
-        new DeviceResolverDistributed(device_mgr_.get()));
-    std::unique_ptr<CollectiveParamResolverDistributed> cpr(
-        new CollectiveParamResolverDistributed(
+    std::unique_ptr<DeviceResolverDistributed> dr =
+        std::make_unique<DeviceResolverDistributed>(device_mgr_.get());
+    std::unique_ptr<CollectiveParamResolverDistributed> cpr =
+        std::make_unique<CollectiveParamResolverDistributed>(
+
             options.config, device_mgr_.get(), dr.get(),
-            /*nccl_communicator*/ nullptr, worker_cache, task_name));
+            /*nccl_communicator*/ nullptr, worker_cache, task_name);
     // This CME is the group leader.
-    cme_.reset(new RpcCollectiveExecutorMgr(
+    cme_ = std::make_unique<RpcCollectiveExecutorMgr>(
         options.config, device_mgr_.get(), std::move(dr), std::move(cpr),
-        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name));
+        MaybeCreateNcclCommunicator(options.config), worker_cache, task_name);
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;
