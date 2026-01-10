@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdarg>
 #include <cstdio>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
@@ -23,12 +24,41 @@ limitations under the License.
 namespace mlir::TFL {
 
 int AbslErrorReporter::Report(const char* format, va_list args) {
-  char buffer[1024];
+  // Use bounded formatting to avoid stack overflows. Cap output size to avoid
+  // unbounded allocations on attacker-controlled inputs.
+  constexpr size_t kInitialBufferSize = 1024;
+  constexpr size_t kMaxBufferSize = 64 * 1024;
+
+  std::vector<char> buffer(kInitialBufferSize);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-  vsprintf(buffer, format, args);
+  va_list args_copy;
+  va_copy(args_copy, args);
+  int needed = vsnprintf(buffer.data(), buffer.size(), format, args_copy);
+  va_end(args_copy);
+
+  if (needed < 0) {
+    LOG(ERROR) << "Failed to format error message.";
+    return needed;
+  }
+
+  // If truncated, grow (up to a cap) and reformat with a fresh va_list copy.
+  if (static_cast<size_t>(needed) >= buffer.size()) {
+    const size_t required_size = static_cast<size_t>(needed) + 1;  // incl. NUL
+    const bool will_truncate = required_size > kMaxBufferSize;
+    buffer.resize(will_truncate ? kMaxBufferSize : required_size);
+
+    va_copy(args_copy, args);
+    (void)vsnprintf(buffer.data(), buffer.size(), format, args_copy);
+    va_end(args_copy);
+
+    if (will_truncate) {
+      LOG(ERROR) << buffer.data() << " [truncated]";
+      return 0;
+    }
+  }
 #pragma clang diagnostic pop
-  LOG(ERROR) << buffer;
+  LOG(ERROR) << buffer.data();
   return 0;
 }
 
