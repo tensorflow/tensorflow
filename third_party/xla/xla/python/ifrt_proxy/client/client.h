@@ -156,6 +156,16 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       xla::ifrt::Device* device,
       xla::ifrt::MemoryKind memory_kind) const override;
 
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<xla::ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return absl::UnimplementedError(
+        "SubscribeToAttributeChanges is not supported for the IFRT proxy "
+        "client.");
+  }
+
   // For llvm::RTTIExtends.
   static char ID;  // NOLINT
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -253,6 +254,14 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();
   });
+  ON_CALL(*this, SubscribeToAttributeChanges)
+      .WillByDefault(
+          [this](absl::Span<xla::ifrt::Device* const> devices,
+                 std::optional<absl::Span<const std::string>> attribute_names,
+                 xla::ifrt::OnDeviceAttributeChangeCallback callback) {
+            return delegated_->SubscribeToAttributeChanges(
+                devices, attribute_names, std::move(callback));
+          });
 }
 // LINT.ThenChange()
 

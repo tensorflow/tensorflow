@@ -197,6 +197,15 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override;
 
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<xla::ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return absl::UnimplementedError(
+        "SubscribeToAttributeChanges is not implemented in NanoIfrtClient.");
+  }
+
   static char ID;  // NOLINT
 
  private:

@@ -358,6 +358,16 @@ class CompileOnlyIfRtClient final
     return std::make_shared<PjRtLayout>(std::move(layout));
   }
 
+  absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return Unimplemented(
+        "SubscribeToDeviceAttributeUpdates not available with compile-only "
+        "client.");
+  }
+
  private:
   CompileOnlyIfrtCompiler default_compiler_;
   std::shared_ptr<ifrt::PjRtTopology> topology_;

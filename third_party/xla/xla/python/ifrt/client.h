@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -355,6 +356,28 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const;
+
+  // Subscribe to attribute changes to selected devices.
+  //
+  // The callback is called when attributes are updated.
+  // The updates are provided to the callback a map of device->AttributeMap.
+  // Related attributes that are updated together might be returned together as
+  // a set.
+  //
+  // This AttributeMap will contain only the requested attributes if
+  // 'attribute_names' is std::nullopt. Otherwise, it contains all updated
+  // attributes.
+  //
+  // If the callback returns an error, the subscription will be aborted and no
+  // more callbacks will be issued.
+  //
+  // The returned RAII object controls the lifetime of the subscription. Once
+  // destroyed, no more callbacks will be issued for attribute changes.
+  virtual absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      OnDeviceAttributeChangeCallback callback) = 0;
 
   static char ID;  // NOLINT
 };

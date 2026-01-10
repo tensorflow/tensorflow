@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -350,6 +351,15 @@ class PjRtClient final
 
   // Returns the latest set of incarnation ids for every task.
   absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> Incarnations() const;
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<xla::ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return absl::UnimplementedError(
+        "SubscribeToAttributeChanges is not implemented in PjRtClient.");
+  }
 
   static char ID;  // NOLINT
 

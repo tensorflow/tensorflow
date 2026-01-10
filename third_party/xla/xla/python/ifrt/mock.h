@@ -196,6 +196,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
               (DType dtype, const Shape& shape, const ShardingRef& sharding),
               (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>,
+      SubscribeToAttributeChanges,
+      (absl::Span<xla::ifrt::Device* const> devices,
+       std::optional<absl::Span<const std::string>> attribute_names,
+       xla::ifrt::OnDeviceAttributeChangeCallback callback),
+      (final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }
