@@ -232,6 +232,8 @@ cc_library(
         ":pjrt_layout",
         ":xla_executable_version",
         ":xla_ifrt",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:delimited_message_util",
         "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
