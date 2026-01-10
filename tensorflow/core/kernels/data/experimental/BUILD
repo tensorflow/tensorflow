@@ -551,7 +551,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:lookup_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_cat",
         "@eigen_archive//:eigen3",
     ],
 )
