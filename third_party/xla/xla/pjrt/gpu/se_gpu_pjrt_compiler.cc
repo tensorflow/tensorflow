@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu_topology.h"
@@ -135,6 +137,16 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   TF_ASSIGN_OR_RETURN(Compiler * gpu_compiler, GetOrCreateCompiler());
 
   CompileOptions input_options = options;
+  if (xla::IsEarlyExitCompilation(options)) {
+    auto* se_gpu_topology =
+        tsl::down_cast<const xla::StreamExecutorGpuTopologyDescription*>(
+            &topology);
+    const xla::GpuTopology& gpu_topology = se_gpu_topology->gpu_topology();
+    TF_RET_CHECK(gpu_topology.has_gpu_target_config())
+        << "GPU cross-compile is not yet implemented for topology "
+        << se_gpu_topology->ToProto()->ShortDebugString();
+    options.gpu_target_config = gpu_topology.gpu_target_config();
+  }
   if (!options.gpu_target_config) {
     if (client != nullptr) {
       TF_RET_CHECK(IsGpuClient(*client))
@@ -185,7 +197,11 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());
-
+  if (IsEarlyExitCompilation(options)) {
+    aot_options.set_early_exit_point(
+        AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment);
+    aot_options.set_executor(nullptr);
+  }
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
