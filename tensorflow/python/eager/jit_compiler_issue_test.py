@@ -15,6 +15,10 @@
 
 import tensorflow as tf
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.module import module
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 class JitCompileIntegrationTest(test.TestCase):
@@ -26,31 +30,31 @@ class JitCompileIntegrationTest(test.TestCase):
     inside a @tf.function(jit_compile=True) block without crashing.
     """
     
-    # We use tf.Module instead of tf.keras.layers.Layer to avoid 
-    # circular dependencies in the BUILD system.
-    class AttentionModule(tf.Module):
+    # Use module.Module instead of tf.Module to avoid Bazel namespace issues
+    class AttentionModule(module.Module):
       def __init__(self):
         super(AttentionModule, self).__init__()
-        self.w = tf.Variable(tf.random.normal((10, 10)))
-        self.b = tf.Variable(tf.zeros([10]))
+        # Use variables.Variable instead of tf.Variable
+        self.w = variables.Variable(tf.random.normal((8, 10)))
+        self.b = variables.Variable(tf.zeros([10]))
 
-      @tf.function
+      @def_function.function
       def internal_fn(self, inputs):
         # This function caused the crash because trace_type_builder
         # attempted to convert the symbolic input to a numpy array.
-        return tf.matmul(inputs, inputs, transpose_b=True)
+        return math_ops.matmul(inputs, inputs, transpose_b=True)
 
       def __call__(self, inputs):
         # Call the internal tf.function
         processed = self.internal_fn(inputs)
-        return tf.matmul(processed, self.w) + self.b
+        return math_ops.matmul(processed, self.w) + self.b
 
     # Setup model and inputs
     model = AttentionModule()
     inputs = tf.random.normal((8, 10))
 
     # Define the XLA-compiled forward pass
-    @tf.function(jit_compile=True)
+    @def_function.function(jit_compile=True)
     def compiled_forward(x):
       return model(x)
 

@@ -1316,7 +1316,9 @@ cuda_py_strict_test(
     deps = [
         ":def_function",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/module",
+        "//tensorflow/python/module:module",  # <--- Added this to resolve the issue
+        "//tensorflow/python/ops:math_ops",   # <--- Added this to resolve the issue
+        "//tensorflow/python/ops:variables",  # <--- Added this to resolve the issue
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
