@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -171,6 +172,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });
+  ON_CALL(*this, CancelExecution)
+      .WillByDefault([this](ExecutionCancellationHandle handle,
+                            const absl::Status& status) {
+        return delegated_->CancelExecution(handle, status);
+      });
 
   ON_CALL(*this, runtime_type).WillByDefault([this]() {
     return delegated_->runtime_type();

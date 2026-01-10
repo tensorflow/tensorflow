@@ -22,7 +22,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -53,13 +51,13 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/python/pjrt_ifrt/transfer_server_interface.h"
@@ -252,6 +250,9 @@ class PjRtClient final
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;
+
+  void CancelExecution(ExecutionCancellationHandle handle,
+                       const absl::Status& status) override;
 
   absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 

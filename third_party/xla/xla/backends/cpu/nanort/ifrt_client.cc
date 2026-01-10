@@ -1461,6 +1461,12 @@ absl::StatusOr<tsl::RCReference<ifrt::Tuple>> NanoIfrtClient::MakeTuple(
   return tsl::MakeRef<NanoTuple>(this, std::move(values));
 }
 
+void NanoIfrtClient::CancelExecution(ifrt::ExecutionCancellationHandle handle,
+                                     const absl::Status& status) {
+  CHECK(!status.ok());
+  // Execution cancellation is not supported.
+}
+
 absl::string_view NanoIfrtClient::runtime_type() const { return "nano"; }
 
 absl::string_view NanoIfrtClient::platform_name() const { return CpuName(); }

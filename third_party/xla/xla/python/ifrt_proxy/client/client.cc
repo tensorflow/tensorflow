@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -111,9 +112,9 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-      TF_ASSIGN_OR_RETURN(auto attributes,
-                          AttributeMap::FromProto(d.attributes()));
-      pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
+    TF_ASSIGN_OR_RETURN(auto attributes,
+                        AttributeMap::FromProto(d.attributes()));
+    pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
 
     DeviceDescription desc(d.id(), init_response.process_index(),
                            d.device_kind(), d.debug_string(), d.to_string(),
@@ -398,6 +399,12 @@ tsl::Future<> Client::GetReadyFuture(
   futures.push_back(std::move(future));
 
   return JoinFutures(futures);
+}
+
+void Client::CancelExecution(ExecutionCancellationHandle handle,
+                             const absl::Status& status) {
+  CHECK(!status.ok());
+  // Execution cancellation is not supported.
 }
 
 absl::Span<xla::ifrt::Device* const> Client::GetAllDevices() const {
