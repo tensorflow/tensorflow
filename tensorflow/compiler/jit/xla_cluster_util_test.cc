@@ -135,7 +135,7 @@ TEST(IsSingleGpuGraph, ReturnsFalseForMultiGpuGraph) {
   EXPECT_FALSE(IsSingleGpuGraph(*root.graph()));
 }
 
-absl::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
+absl::StatusOr<std::vector<std::string>> GetNodesRelatedToRefVarsSorted(
     const Scope& scope, FunctionLibraryDefinition* flib_def = nullptr) {
   FunctionDefLibrary flib;
   FunctionLibraryDefinition flib_def_local(OpRegistry::Global(), flib);
@@ -157,7 +157,7 @@ absl::StatusOr<std::vector<string>> GetNodesRelatedToRefVarsSorted(
   TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> nodes_related_to_ref_vars,
                       GetNodesRelatedToRefVariables(*graph, lib_runtime));
 
-  std::vector<string> names;
+  std::vector<std::string> names;
   absl::c_transform(nodes_related_to_ref_vars, std::back_inserter(names),
                     [](Node* n) { return n->name(); });
   absl::c_sort(names);
@@ -239,10 +239,10 @@ TEST(NodesRelatedToRefVariables, Basic) {
 
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<string> names,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::string> names,
                           GetNodesRelatedToRefVarsSorted(root, &flib_def));
 
-  std::vector<string> expected({
+  std::vector<std::string> expected({
       "RefFloat",
       "add_ref",
       "constant_ref",
@@ -276,11 +276,11 @@ TEST(NodesRelatedToRefVariables, Cycles) {
       root, ops::Const(root.WithOpName("constant"), Input::Initializer(0.0)),
       "normal_loop"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<string> names,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::string> names,
                           GetNodesRelatedToRefVarsSorted(root));
-  std::vector<string> expected({"read_ref_var", "ref_loop/init_value",
-                                "ref_loop/merge", "ref_loop/next_itr",
-                                "variable"});
+  std::vector<std::string> expected({"read_ref_var", "ref_loop/init_value",
+                                     "ref_loop/merge", "ref_loop/next_itr",
+                                     "variable"});
 
   EXPECT_EQ(names, expected);
 }

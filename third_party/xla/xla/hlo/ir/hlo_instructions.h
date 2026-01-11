@@ -1143,6 +1143,61 @@ class HloReduceInstruction : public HloDimensionsInstruction {
       HloCloneContext* context) const override;
 };
 
+class HloScanInstruction : public HloDimensionsInstruction {
+ public:
+  explicit HloScanInstruction(const Shape& shape,
+                              absl::Span<HloInstruction* const> inputs,
+                              absl::Span<HloInstruction* const> inits,
+                              HloComputation* to_apply, int64_t scan_dimension,
+                              bool is_reverse, TriState is_associative);
+
+  // Returns the dimension along which to scan.
+  int64_t scan_dimension() const { return HloInstruction::dimensions(0); }
+
+  // Returns whether the scan is in reverse order.
+  bool is_reverse() const { return is_reverse_; }
+
+  // Returns whether the scan is associative.
+  TriState is_associative() const { return is_associative_; }
+
+  // Returns the number of initial values (and, consequentially, the number of
+  // input arrays) this scan has.
+  int64_t num_carries() const { return num_carries_; }
+
+  absl::Span<HloInstruction* const> inputs() const {
+    return absl::MakeSpan(operands())
+        .subspan(0, operand_count() - num_carries());
+  }
+
+  absl::Span<HloInstruction* const> inits() const {
+    return absl::MakeSpan(operands())
+        .subspan(operand_count() - num_carries(), num_carries());
+  }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kScan;
+  }
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool is_reverse_;
+  TriState is_associative_;
+  int64_t num_carries_;
+};
+
 class HloSortInstruction : public HloDimensionsInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64_t dimension,

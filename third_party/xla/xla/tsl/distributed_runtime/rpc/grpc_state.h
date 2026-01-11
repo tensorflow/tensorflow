@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/strcat.h"
@@ -70,8 +70,8 @@ class RPCState : public GrpcClientCQTag {
             // in cluster initialization and collective param resolution.
             [fail_fast, &done]() -> bool {
               std::string fail_fast_env;
-              TF_CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "use_caller",
-                                               &fail_fast_env));
+              CHECK_OK(ReadStringFromEnvVar("GRPC_FAIL_FAST", "use_caller",
+                                            &fail_fast_env));
               std::string fail_fast_env_lower =
                   absl::AsciiStrToLower(fail_fast_env);
               if (fail_fast_env_lower == "true") {

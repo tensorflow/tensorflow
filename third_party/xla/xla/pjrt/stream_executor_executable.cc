@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
@@ -42,6 +43,12 @@ namespace xla {
 
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
+  if (IsEarlyExitCompilation(compile_options_)) {
+    ExecutableAndOptionsProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                        compile_options_.ToProto());
+    return proto.SerializeAsString();
+  }
   std::string serialized;
   if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
           executables_)) {

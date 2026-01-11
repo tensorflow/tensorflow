@@ -9,6 +9,8 @@ This page is a list of all error codes emitted by the XLA compiler.
 -   [E1000](./errors/error_1000.md)
 -   [E1001](./errors/error_1001.md)
 -   [E1200](./errors/error_1200.md)
+-   [E2001](./errors/error_2001.md)
+-   [E2002](./errors/error_2002.md)
 -   [E2003](./errors/error_2003.md)
 -   [E3000](./errors/error_3000.md)
 -   [E3001](./errors/error_3001.md)

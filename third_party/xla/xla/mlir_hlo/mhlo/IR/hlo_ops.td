@@ -1887,6 +1887,38 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_ScanOp: MHLO_ShapedInterfaceOp<"scan", [
+      RecursiveMemoryEffects,
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferTensorType,
+      AttrSizedOperandSegments
+    ]> {
+  let summary = "Scan operation";
+  let description = [{
+    Applies a reduction function `body` to `inputs` and `inits` along the
+    `dimension` and produces `results` (comprising `outputs` and `carries`).
+
+    If `is_reverse` is true, the scan is performed in reverse order.
+    `is_associative` indicates whether the reduction function is associative.
+
+    See:
+    https://www.tensorflow.org/xla/operation_semantics#scan
+  }];
+  let arguments = (ins
+    Variadic<MHLO_Tensor>:$inputs,
+    Variadic<MHLO_Tensor>:$inits,
+    ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
+    DefaultValuedOptionalAttr<MHLO_AssociativityAttr, "::mlir::mhlo::Associativity::MAYBE">:$is_associative
+  );
+
+  let results = (outs Variadic<MHLO_Tensor>:$results);
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//

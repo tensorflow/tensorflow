@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -171,6 +173,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });
+  ON_CALL(*this, CancelExecution)
+      .WillByDefault([this](xla::ifrt::LoadedExecutable::CancellationHandle
+                                cancellation_handle,
+                            absl::Status error) {
+        delegated_->CancelExecution(cancellation_handle, std::move(error));
+      });
 
   ON_CALL(*this, runtime_type).WillByDefault([this]() {
     return delegated_->runtime_type();
@@ -246,6 +254,14 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();
   });
+  ON_CALL(*this, SubscribeToAttributeChanges)
+      .WillByDefault(
+          [this](absl::Span<xla::ifrt::Device* const> devices,
+                 std::optional<absl::Span<const std::string>> attribute_names,
+                 xla::ifrt::OnDeviceAttributeChangeCallback callback) {
+            return delegated_->SubscribeToAttributeChanges(
+                devices, attribute_names, std::move(callback));
+          });
 }
 // LINT.ThenChange()
 

@@ -4391,6 +4391,105 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// ScanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScanOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ScanOp::Adaptor adaptor(operands, attributes, properties, regions);
+  if (regions.empty() || regions.front()->empty()) {
+    return emitOptionalError(location, "ScanOp region is empty");
+  }
+  auto* terminator = regions.front()->front().getTerminator();
+  size_t k = adaptor.getInits().size();
+  if (terminator->getNumOperands() < k) {
+    return emitOptionalError(location, "ScanOp body must return at least ", k,
+                             " values (carries)");
+  }
+  size_t n = terminator->getNumOperands() - k;
+
+  if (n > 0 && adaptor.getInputs().empty()) {
+    return emitOptionalError(
+        location, "ScanOp must have at least one input if it produces outputs");
+  }
+
+  int64_t dim = adaptor.getDimension();
+  int64_t dimSize = ShapedType::kDynamic;
+  if (!adaptor.getInputs().empty()) {
+    auto input0Type = cast<ShapedType>(adaptor.getInputs()[0].getType());
+    if (input0Type.hasRank()) {
+      if (dim >= input0Type.getRank())
+        return emitOptionalError(location, "Scan dimension out of bounds");
+      dimSize = input0Type.getDimSize(dim);
+    }
+  }
+
+  for (size_t i = 0; i < n; ++i) {
+    Type outputElemType = terminator->getOperand(i).getType();
+    auto outputElemShapedType = dyn_cast<ShapedType>(outputElemType);
+    if (outputElemShapedType && outputElemShapedType.hasRank()) {
+      SmallVector<int64_t> shape(outputElemShapedType.getShape().begin(),
+                                 outputElemShapedType.getShape().end());
+      if (dim > static_cast<int64_t>(shape.size())) {
+        return emitOptionalError(location,
+                                 "Scan dimension out of bounds for output");
+      }
+      shape.insert(std::next(shape.begin(), dim), dimSize);
+      inferredReturnShapes.emplace_back(shape,
+                                        outputElemShapedType.getElementType());
+    } else {
+      if (!outputElemShapedType) {
+        inferredReturnShapes.emplace_back(getElementTypeOrSelf(outputElemType));
+      } else {
+        inferredReturnShapes.emplace_back(
+            ArrayRef<int64_t>{dimSize}, outputElemShapedType.getElementType());
+      }
+    }
+  }
+
+  for (auto init : adaptor.getInits()) {
+    auto initType = cast<ShapedType>(init.getType());
+    if (initType.hasRank()) {
+      inferredReturnShapes.emplace_back(initType.getShape(),
+                                        initType.getElementType());
+    } else {
+      inferredReturnShapes.emplace_back(initType.getElementType());
+    }
+  }
+  return success();
+}
+
+LogicalResult ScanOp::reifyReturnTypeShapes(
+    OpBuilder& builder, ValueRange operands,
+    SmallVectorImpl<Value>& reifiedReturnShapes) {
+  ScanOp::Adaptor adaptor(operands, getOperation()->getAttrDictionary(),
+                          getOperation()->getPropertiesStorage());
+  auto inputs = adaptor.getInputs();
+  size_t k = adaptor.getInits().size();
+  size_t numResults = getOperation()->getNumResults();
+  size_t numOutputs = numResults - k;
+
+  for (size_t i = 0; i < numOutputs; ++i) {
+    size_t inputIdx = i;
+    Value inputVal = (inputIdx < inputs.size()) ? inputs[inputIdx] : inputs[0];
+    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), inputVal,
+                                           &reifiedReturnShapes))) {
+      return failure();
+    }
+  }
+
+  for (auto init : adaptor.getInits()) {
+    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), init,
+                                           &reifiedReturnShapes))) {
+      return failure();
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
 

@@ -254,6 +254,7 @@ defvar CustomHloConverterOps = [
   MHLO_ReturnOp,
   MHLO_RngBitGeneratorOp,
   MHLO_RngOp,
+  MHLO_ScanOp,
   MHLO_ScatterOp,
   MHLO_SelectAndScatterOp,
   MHLO_SendOp,

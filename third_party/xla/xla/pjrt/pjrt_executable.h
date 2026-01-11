@@ -146,6 +146,9 @@ struct CompileOptions {
       const CompileOptionsProto& proto);
 };
 
+// Returns true if the compilation is an early exit compilation.
+bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options);
+
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
   std::optional<xla::PjRtDeviceDimensions> computation_origin;

@@ -148,6 +148,18 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
   return output;
 }
 
+bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options) {
+  for (int i = compile_options.env_option_overrides.size() - 1; i >= 0; --i) {
+    const auto& [k, v] = compile_options.env_option_overrides[i];
+    if (k == "xla_early_exit_with_layouts") {
+      return std::get<bool>(v);
+    }
+  }
+  return compile_options.executable_build_options.has_debug_options() &&
+         compile_options.executable_build_options.debug_options()
+             .xla_early_exit_with_layouts();
+}
+
 MultiSliceConfig::~MultiSliceConfig() = default;
 
 absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {

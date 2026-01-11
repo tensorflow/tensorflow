@@ -83,29 +83,38 @@ class CommandState {
 // the command buffer itself and they are destroyed together, which ties state
 // lifetime to the command buffer.
 //
-// Note that the same command can be recorded as a part of multiple iterations
-// of unrolled loop, and for this reason the state can be attached to a
-// concreate iteration index. Also for unrolled loops the same command can be
-// recorded into multiple command buffers (for cond and body computations), and
-// for this reason state is attached to a triple: (command, command_buffer,
-// unroll_iteration).
+// Note that the same command executor can be recorded into multiple nested
+// command buffers that belong to the same top-level executable command buffer,
+// i.e. this can happed with nested control flow. For this reason the key
+// for the state is a pair or `Command` and `se::CommandBuffer` which fully
+// identify where exactly command is being recorded.
+//
+// IMPORTANT: Command can be recorded into the command buffer only once before
+// it can be updated, and the command life cycle should be:
+//
+// (1) Command::Prepare() - prepare state for execution
+// (2) Command::Initialize() - initialize resources for execution (or state)
+// (3) Command::Record(create) - record commands into the command buffer
+// (4) Command::Record(update) - update previousy recorded command
+//
+// Step (4) can be called multiple times: every time the buffers used by
+// commands change, and underlying command buffer attributes must be updated.
+//
+// Steps (1) though (4) repeated for every new constructed command buffer.
 class CommandStateManager {
  public:
   template <typename State>
   State* absl_nullable GetOrNull(
-      const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-      int64_t unroll_iteration = 0);
+      const Command* cmd, const stream_executor::CommandBuffer* command_buffer);
 
   template <typename State>
   State* absl_nonnull GetOrCreate(
       const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-      absl::FunctionRef<std::unique_ptr<State>()> create,
-      int64_t unroll_iteration = 0);
+      absl::FunctionRef<std::unique_ptr<State>()> create);
 
   template <typename State>
   State* absl_nonnull GetOrCreate(
-      const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-      int64_t unroll_iteration = 0);
+      const Command* cmd, const stream_executor::CommandBuffer* command_buffer);
 
  private:
   // We use strongly typed TypeId to distinguish between different state types.
@@ -121,15 +130,15 @@ class CommandStateManager {
 
   CommandState* absl_nullable GetOrNull(
       const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-      TypeId type_id, int64_t unroll_iteration);
+      TypeId type_id);
 
   CommandState* absl_nonnull GetOrCreate(
       const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-      TypeId type_id, int64_t unroll_iteration,
+      TypeId type_id,
       absl::FunctionRef<std::unique_ptr<CommandState>()> create);
 
-  using Key = std::tuple<const Command*, const stream_executor::CommandBuffer*,
-                         TypeId, int64_t>;
+  using Key =
+      std::tuple<const Command*, const stream_executor::CommandBuffer*, TypeId>;
   absl::flat_hash_map<Key, std::unique_ptr<CommandState>> state_;
 };
 
@@ -139,31 +148,26 @@ class CommandStateManager {
 
 template <typename State>
 State* CommandStateManager::GetOrNull(
-    const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-    int64_t unroll_iteration) {
+    const Command* cmd, const stream_executor::CommandBuffer* command_buffer) {
   static_assert(std::is_base_of_v<CommandState, State>);
   return static_cast<State*>(
-      GetOrNull(cmd, command_buffer, GetTypeId<State>(), unroll_iteration));
+      GetOrNull(cmd, command_buffer, GetTypeId<State>()));
 }
 
 template <typename State>
 State* CommandStateManager::GetOrCreate(
     const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-    absl::FunctionRef<std::unique_ptr<State>()> create,
-    int64_t unroll_iteration) {
+    absl::FunctionRef<std::unique_ptr<State>()> create) {
   static_assert(std::is_base_of_v<CommandState, State>);
-  return static_cast<State*>(GetOrCreate(cmd, command_buffer,
-                                         GetTypeId<State>(), unroll_iteration,
-                                         [&] { return create(); }));
+  return static_cast<State*>(GetOrCreate(
+      cmd, command_buffer, GetTypeId<State>(), [&] { return create(); }));
 }
 
 template <typename State>
 State* CommandStateManager::GetOrCreate(
-    const Command* cmd, const stream_executor::CommandBuffer* command_buffer,
-    int64_t unroll_iteration) {
-  return GetOrCreate<State>(
-      cmd, command_buffer, [] { return std::make_unique<State>(); },
-      unroll_iteration);
+    const Command* cmd, const stream_executor::CommandBuffer* command_buffer) {
+  return GetOrCreate<State>(cmd, command_buffer,
+                            [] { return std::make_unique<State>(); });
 }
 
 }  // namespace xla::gpu

@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -134,7 +133,7 @@ ClientLibrary::~ClientLibrary() = default;
 
 /* static */ LocalClient* ClientLibrary::LocalClientOrDie() {
   auto client_status = GetOrCreateLocalClient();
-  TF_CHECK_OK(client_status.status());
+  CHECK_OK(client_status.status());
   return client_status.value();
 }
 

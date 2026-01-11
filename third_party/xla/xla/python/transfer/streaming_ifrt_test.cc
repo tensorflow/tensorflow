@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
@@ -178,7 +177,7 @@ TEST(PremappedCopierState, FreeCycle) {
         [&buffers_to_return](PremappedCopierState* state,
                              absl::StatusOr<void*> buf,
                              const DmaCopyChunk& chunk) {
-          TF_CHECK_OK(buf.status());
+          CHECK_OK(buf.status());
           buffers_to_return.push_back(buf.value());
         });
   }
@@ -206,7 +205,7 @@ TEST(PremappedCopierState, FreeCycle) {
            [b = buffers_to_return[1], cstate]() { cstate->ReturnBuffer(b); })](
           PremappedCopierState* state, absl::StatusOr<void*> buf,
           const DmaCopyChunk& chunk) {
-        TF_CHECK_OK(buf.status());
+        CHECK_OK(buf.status());
         state->ReturnBuffer(buf.value());
       });
 }

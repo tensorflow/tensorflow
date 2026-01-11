@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -496,7 +495,7 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ void ShapeUtil::AppendShapeToTuple(const Shape& shape,
                                                 Shape* tuple_shape) {
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
+  DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   *tuple_shape->add_tuple_shapes() = shape;
 }
 
@@ -526,7 +525,7 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     shape->mutable_layout()->add_minor_to_major(shape->dimensions().size());
   }
   shape->add_dimensions(bound);
-  TF_DCHECK_OK(ValidateShape(*shape));
+  DCHECK_OK(ValidateShape(*shape));
 }
 
 // Prepend new major-most dimension sized `bound` to the shape.
@@ -561,7 +560,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     shape->mutable_layout()->set_minor_to_major(0,
                                                 shape->dimensions().size() - 1);
   }
-  TF_DCHECK_OK(ValidateShape(*shape));
+  DCHECK_OK(ValidateShape(*shape));
 }
 
 /* static */ Shape ShapeUtil::InsertDimensionAtIndex(Shape shape,
@@ -607,7 +606,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     }
   }
 
-  TF_DCHECK_OK(ValidateShape(new_shape));
+  DCHECK_OK(ValidateShape(new_shape));
   return new_shape;
 }
 
@@ -617,7 +616,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   for (int64_t i = 0; i < from.dimensions().size(); ++i) {
     to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
   }
-  TF_DCHECK_OK(ValidateShape(*to));
+  DCHECK_OK(ValidateShape(*to));
 }
 
 /* static */ bool ShapeUtil::IsEffectivelyMostMajorDimension(
@@ -684,7 +683,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 /* static */ const Shape& ShapeUtil::GetTupleElementShape(const Shape& shape,
                                                           int64_t index) {
   CHECK_GT(TupleElementCount(shape), index);
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
+  DCHECK_OK(ValidateShapeWithOptionalLayout(shape.tuple_shapes(index)));
   return shape.tuple_shapes(index);
 }
 
@@ -696,7 +695,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64_t start,
                                          int64_t limit) {
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
+  DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
   CHECK(tuple.IsTuple());
   CHECK_LE(start, tuple.tuple_shapes().size());
   CHECK_LE(limit, tuple.tuple_shapes().size());
@@ -961,7 +960,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,
                                            int64_t pointer_size) {
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
+  DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
   }
@@ -984,14 +983,14 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOfTupleIndexTable(
     const Shape& shape, int64_t pointer_size) {
-  TF_DCHECK_OK(ValidateShape(shape));
+  DCHECK_OK(ValidateShape(shape));
   CHECK_EQ(TUPLE, shape.element_type());
   CHECK_GT(pointer_size, 0);
   return pointer_size * shape.tuple_shapes().size();
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
-  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
+  DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   int64_t allocated_element_count;
 
   CHECK(shape.IsArray()) << shape.ToString();
@@ -1968,8 +1967,8 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
     absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
     const ForEachParallelVisitorFunction& visitor_function) {
   // The parallel version of ForEachIndexInternal can never fail.
-  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, base, count, incr,
-                                             visitor_function));
+  CHECK_OK(ForEachIndexParallelWithStatus(shape, base, count, incr,
+                                          visitor_function));
 }
 
 /* static */ absl::Status ShapeUtil::ForEachIndexParallelWithStatus(
@@ -1984,7 +1983,7 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 /* static */ void ShapeUtil::ForEachIndexParallel(
     const Shape& shape,
     const ForEachParallelVisitorFunction& visitor_function) {
-  TF_CHECK_OK(ForEachIndexParallelWithStatus(shape, visitor_function));
+  CHECK_OK(ForEachIndexParallelWithStatus(shape, visitor_function));
 }
 
 /* static */ absl::Status ShapeUtil::ForEachIndexParallelWithStatus(

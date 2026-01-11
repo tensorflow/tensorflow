@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -1243,6 +1244,141 @@ absl::Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
              ? absl::OkStatus()
              : SameElementTypesForOperandsAndToApplyParameters(
                    *reduce, reduce->operand_count());
+}
+
+namespace {
+absl::Status CheckScanParameters(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  int64_t scan_dim = scan->scan_dimension();
+  const HloComputation* to_apply = scan->to_apply();
+
+  if (to_apply->num_parameters() != scan->operand_count()) {
+    return Internal(
+        "Expected computation %s called from %s to have %d parameters, has %d",
+        to_apply->name(), scan->name(), scan->operand_count(),
+        to_apply->num_parameters());
+  }
+
+  int64_t num_carries = scan->num_carries();
+  int64_t num_inputs = scan->operand_count() - num_carries;
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    int64_t operand_idx = i;
+    int64_t param_idx = i;
+    const Shape& input_shape = scan->operand(operand_idx)->shape();
+    if (scan_dim < 0 || scan_dim >= input_shape.dimensions().size()) {
+      return Internal("Scan dimension %d out of bounds for operand %d in %s",
+                      scan_dim, operand_idx, scan->ToString());
+    }
+    Shape expected_input_element_shape = input_shape;
+    expected_input_element_shape.DeleteDimension(scan_dim);
+    if (!shapes_same(to_apply->parameter_instruction(param_idx)->shape(),
+                     expected_input_element_shape)) {
+      return Internal(
+          "Parameter %d of to_apply computation shape %s does not match input "
+          "element shape %s in %s",
+          param_idx,
+          to_apply->parameter_instruction(param_idx)->shape().ToString(),
+          expected_input_element_shape.ToString(), scan->ToString());
+    }
+  }
+
+  for (int64_t i = 0; i < num_carries; ++i) {
+    int64_t param_idx = num_inputs + i;
+    if (!shapes_same(to_apply->parameter_instruction(param_idx)->shape(),
+                     scan->operand(num_inputs + i)->shape())) {
+      return Internal(
+          "Parameter %d of to_apply computation shape %s does not match init "
+          "shape %s in %s",
+          param_idx,
+          to_apply->parameter_instruction(param_idx)->shape().ToString(),
+          scan->operand(num_inputs + i)->shape().ToString(), scan->ToString());
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckScanToApplyShape(
+    const HloScanInstruction* scan,
+    const std::function<bool(const Shape&, const Shape&)>& shapes_same) {
+  const HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  int64_t num_carries = scan->num_carries();
+
+  if (!root_shape.IsTuple() ||
+      root_shape.tuple_shapes().size() != 2 * num_carries) {
+    return Internal("Computation %s result shape must be a tuple of size %d",
+                    to_apply->name(), 2 * num_carries);
+  }
+  int64_t num_inputs = scan->operand_count() - num_carries;
+  int64_t num_outputs = root_shape.tuple_shapes().size() - num_carries;
+
+  for (int64_t i = 0; i < num_carries; ++i) {
+    int64_t result_idx = num_outputs + i;
+    if (!shapes_same(root_shape.tuple_shapes(result_idx),
+                     scan->operand(num_inputs + i)->shape())) {
+      return Internal(
+          "Computation %s result element %d shape %s does not match init "
+          "shape %s in %s",
+          to_apply->name(), result_idx,
+          root_shape.tuple_shapes(result_idx).ToString(),
+          scan->operand(num_inputs + i)->shape().ToString(), scan->ToString());
+    }
+  }
+
+  return absl::OkStatus();
+}
+}  // namespace
+
+absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
+  auto scan_instr = Cast<HloScanInstruction>(scan);
+  auto shapes_same = [&](const Shape& a, const Shape& b) {
+    return ShapesSame(a, b);
+  };
+  TF_RETURN_IF_ERROR(CheckScanParameters(scan_instr, shapes_same));
+  TF_RETURN_IF_ERROR(CheckScanToApplyShape(scan_instr, shapes_same));
+
+  int64_t scan_dim = scan_instr->scan_dimension();
+  const Shape& first_input_shape = scan->operand(0)->shape();
+  int64_t scan_dim_size = first_input_shape.dimensions(scan_dim);
+  const Shape& to_apply_root =
+      scan_instr->to_apply()->root_instruction()->shape();
+
+  int64_t num_outputs =
+      to_apply_root.tuple_shapes().size() - scan_instr->num_carries();
+  std::vector<Shape> output_shapes;
+  output_shapes.reserve(to_apply_root.tuple_shapes().size());
+
+  for (int64_t i = 0; i < num_outputs; ++i) {
+    const Shape& output_element_shape = to_apply_root.tuple_shapes(i);
+    Shape output_array_shape = output_element_shape;
+    std::vector<int64_t> dimensions(output_array_shape.dimensions().begin(),
+                                    output_array_shape.dimensions().end());
+    dimensions.insert(dimensions.begin() + scan_dim, scan_dim_size);
+    output_array_shape =
+        ShapeUtil::MakeShape(output_element_shape.element_type(), dimensions);
+    if (output_element_shape.has_layout()) {
+      std::vector<int64_t> minor_to_major(
+          output_element_shape.layout().minor_to_major().begin(),
+          output_element_shape.layout().minor_to_major().end());
+      for (int64_t& d : minor_to_major) {
+        if (d >= scan_dim) {
+          ++d;
+        }
+      }
+      // We place the scan dimension as the most major dimension.
+      minor_to_major.push_back(scan_dim);
+      *output_array_shape.mutable_layout() =
+          LayoutUtil::MakeLayout(minor_to_major);
+    }
+    output_shapes.push_back(output_array_shape);
+  }
+
+  int64_t num_inputs = scan->operand_count() - scan_instr->num_carries();
+  for (int64_t i = 0; i < scan_instr->num_carries(); ++i) {
+    output_shapes.push_back(scan->operand(num_inputs + i)->shape());
+  }
+  return CheckShape(scan, ShapeUtil::MakeTupleShape(output_shapes));
 }
 
 absl::Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {

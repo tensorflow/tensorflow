@@ -2007,7 +2007,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   const DebugOptions debug_opts = module->config().debug_options();
   RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
-  bool is_deviceless = options.gpu_topology.has_value() ||
+  bool is_deviceless = options.early_exit_with_layouts ||
+                       options.gpu_topology.has_value() ||
                        !debug_opts.xla_gpu_target_config_filename().empty();
 
   ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
