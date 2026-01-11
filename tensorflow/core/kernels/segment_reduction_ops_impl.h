@@ -1422,8 +1422,6 @@ class SparseSegmentGradV2OpCommon {
           done);
     }
 
-
-
     functor::SparseSegmentGradV2Functor<Device, T, Index, SegmentId>()(
         context, operation, input_flat, indices_vec, segment_vec,
         dense_output_shape, done);
