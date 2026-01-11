@@ -1044,7 +1044,7 @@ def graph_v1(param, step=None, name=None):
     TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
   if step is not None:
-      _choose_step(step)
+    _choose_step(step)
 
   if not context.executing_eagerly() and not isinstance(
       param, tensor_lib.Tensor
