@@ -551,6 +551,7 @@ class MklConvCustomBackpropInputOp
   }
 
  private:
+
   const int kInputIdx = 0, kFilterIdx = 1, kOutbpropIdx = 2;
   const int kDilationH = 0, kDilationW = 1;
 
@@ -567,6 +568,23 @@ class MklConvCustomBackpropInputOp
         << "ConvBackpropInput: input should not be in MKL Layout";
   }
 
+  // Handle dynamic shape of input tensor.
+  template <typename T>
+  bool HandleDynamicShape(const Tensor& input_tensor, OpKernelContext* context,
+                          std::vector<int64_t>* explicit_shape) {
+    auto shape_vec = input_tensor.flat<T>();
+    if (shape_vec(0) == -1) {
+      const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
+      int64 batch_size = diff_dst_tensor.dim_size(0);
+      for (int i = 0; i < input_tensor.NumElements(); i++) {
+        T val = shape_vec(i);
+        explicit_shape->push_back(val == -1 ? batch_size : val);
+      }
+      return true;
+    }
+    return false;
+  }
+
   // Get TensorFlow shape of input tensor.
   TensorShape MakeInputTfShape(OpKernelContext* context,
                                const Tensor& input_tensor) {
@@ -577,31 +595,10 @@ class MklConvCustomBackpropInputOp
       bool is_dynamic = false;
       std::vector<int64_t> explicit_shape;
 
-      auto get_batch_size = [&]() -> int64 {
-        const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
-        return diff_dst_tensor.dim_size(0);
-      };
-
       if (input_tensor.dtype() == DT_INT32) {
-        auto shape_vec = input_tensor.flat<int32>();
-        if (shape_vec(0) == -1) {
-          is_dynamic = true;
-          int64 batch_size = get_batch_size();
-          for (int i = 0; i < input_tensor.NumElements(); i++) {
-            int32 val = shape_vec(i);
-            explicit_shape.push_back(val == -1 ? batch_size : val);
-          }
-        }
+        is_dynamic = HandleDynamicShape<int32>(input_tensor, context, &explicit_shape);
       } else if (input_tensor.dtype() == DT_INT64) {
-        auto shape_vec = input_tensor.flat<int64>();
-        if (shape_vec(0) == -1) {
-          is_dynamic = true;
-          int64 batch_size = get_batch_size();
-          for (int i = 0; i < input_tensor.NumElements(); i++) {
-            int64 val = shape_vec(i);
-            explicit_shape.push_back(val == -1 ? batch_size : val);
-          }
-        }
+        is_dynamic = HandleDynamicShape<int64>(input_tensor, context, &explicit_shape);
       }
 
       if (is_dynamic) {
