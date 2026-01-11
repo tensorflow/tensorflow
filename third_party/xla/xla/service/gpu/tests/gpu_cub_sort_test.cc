@@ -51,14 +51,11 @@ class CubSortTestBase
   }
 
   absl::StatusOr<bool> IsRewrittenToUseCubSort(absl::string_view hlo_text) {
-    HloModuleConfig config = GetModuleConfigForTest();
-    const HloModule* optimized_module;
-    std::unique_ptr<OpaqueExecutable> executable;
-    ASSIGN_OR_RETURN(std::tie(optimized_module, executable),
-                     GetOptimizedModuleForExecutable(hlo_text, config));
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     GetOptimizedModule(hlo_text));
 
     for (const auto& pass_metadata :
-         optimized_module->metadata().proto().pass_metadata()) {
+         optimized_module->metadata()->proto().pass_metadata()) {
       if (pass_metadata.pass_name() == "sort-rewriter") {
         return pass_metadata.module_changed();
       }

@@ -73,6 +73,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -231,7 +234,10 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ] + if_static([
         ":graph_constructor",
@@ -622,6 +628,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -1059,6 +1068,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
@@ -2096,7 +2106,10 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ] + if_macos(
         [],
         [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
@@ -2110,7 +2123,10 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
@@ -2121,7 +2137,10 @@ tf_cuda_library(
     deps = [
         ":core_cpu_base_no_ops",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ] + tf_protos_all() + tf_protos_grappler(),
 )
 
@@ -2147,8 +2166,11 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ] + tf_additional_core_deps() + if_static([
         ":core_cpu_impl",
