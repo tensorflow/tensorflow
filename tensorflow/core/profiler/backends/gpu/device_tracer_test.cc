@@ -58,7 +58,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace xla {
 namespace profiler {
-extern std::unique_ptr<tensorflow::profiler::ProfilerInterface> CreateGpuTracer(
+extern std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
     const tensorflow::ProfileOptions& options);
 }  // namespace profiler
 }  // namespace xla
@@ -67,7 +67,7 @@ namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = ProfilerSession::DefaultOptions();
   return xla::profiler::CreateGpuTracer(options);
 }
