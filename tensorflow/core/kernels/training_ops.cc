@@ -1329,15 +1329,15 @@ namespace functor {
       typename TTypes<T>::ConstMatrix grad,                                    \
       typename TTypes<Tindex>::ConstFlat indices);                             \
   extern template struct SparseApplyAdadelta<GPUDevice, T, Tindex>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
-DECLARE_GPU_SPEC(complex64, int32);
+DECLARE_GPU_SPEC(complex64, int32_t);
 DECLARE_GPU_SPEC(complex64, int64_t);
-DECLARE_GPU_SPEC(complex128, int32);
+DECLARE_GPU_SPEC(complex128, int32_t);
 DECLARE_GPU_SPEC(complex128, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
@@ -1993,20 +1993,20 @@ namespace functor {
       bool update_slots);                                                      \
   extern template struct SparseApplyAdagrad<GPUDevice, T, Tindex,              \
                                             /*has_epsilon=*/false>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int32_t);
 REGISTER_KERNELS(GPU, Eigen::half, int64_t);
-REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int32_t);
 REGISTER_KERNELS(GPU, float, int64_t);
-REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int32_t);
 REGISTER_KERNELS(GPU, double, int64_t);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
@@ -2126,20 +2126,20 @@ namespace functor {
       bool update_slots);                                                     \
   extern template struct SparseApplyAdagrad<GPUDevice, T, Tindex,             \
                                             /*has_epsilon=*/true>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int32_t);
 REGISTER_KERNELS(GPU, Eigen::half, int64_t);
-REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int32_t);
 REGISTER_KERNELS(GPU, float, int64_t);
-REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int32_t);
 REGISTER_KERNELS(GPU, double, int64_t);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
@@ -2269,20 +2269,20 @@ namespace functor {
       typename TTypes<T>::ConstMatrix grad,                                   \
       typename TTypes<Tindex>::ConstVec indices, int64_t inner_dim);          \
   extern template struct SparseApplyProximalAdagrad<GPUDevice, T, Tindex>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int32_t);
 REGISTER_KERNELS(GPU, Eigen::half, int64_t);
-REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int32_t);
 REGISTER_KERNELS(GPU, float, int64_t);
-REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int32_t);
 REGISTER_KERNELS(GPU, double, int64_t);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
@@ -2983,20 +2983,20 @@ namespace functor {
       bool multiply_linear_by_lr);                                            \
   extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
                                          /*has_l2_shrinkage=*/false>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int32_t);
 REGISTER_KERNELS(GPU, Eigen::half, int64_t);
-REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int32_t);
 REGISTER_KERNELS(GPU, float, int64_t);
-REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int32_t);
 REGISTER_KERNELS(GPU, double, int64_t);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
@@ -3043,20 +3043,20 @@ namespace functor {
       bool multiply_linear_by_lr);                                            \
   extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
                                          /*has_l2_shrinkage=*/true>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int32_t);
 REGISTER_KERNELS(GPU, Eigen::half, int64_t);
-REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int32_t);
 REGISTER_KERNELS(GPU, float, int64_t);
-REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int32_t);
 REGISTER_KERNELS(GPU, double, int64_t);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
@@ -3491,15 +3491,15 @@ namespace functor {
       typename TTypes<Tindex>::ConstFlat indices,                           \
       typename TTypes<T>::ConstScalar momentum, bool use_nesterov);         \
   extern template struct SparseApplyKerasMomentum<GPUDevice, T, Tindex>;
-DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int32_t);
 DECLARE_GPU_SPEC(Eigen::half, int64_t);
-DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int32_t);
 DECLARE_GPU_SPEC(float, int64_t);
-DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int32_t);
 DECLARE_GPU_SPEC(double, int64_t);
-DECLARE_GPU_SPEC(complex64, int32);
+DECLARE_GPU_SPEC(complex64, int32_t);
 DECLARE_GPU_SPEC(complex64, int64_t);
-DECLARE_GPU_SPEC(complex128, int32);
+DECLARE_GPU_SPEC(complex128, int32_t);
 DECLARE_GPU_SPEC(complex128, int64_t);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
