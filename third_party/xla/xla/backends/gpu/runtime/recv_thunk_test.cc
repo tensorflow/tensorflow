@@ -42,7 +42,6 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
         recv_thunk {
           async_events_unique_id: 3
           collective_config {}
-          async_stream_kind: ASYNC_STREAM_KIND_COLLECTIVE
           source_target_pairs: { source: 1 target: 2 }
         }
       )pb");

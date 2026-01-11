@@ -87,8 +87,6 @@ class AllToAllStartThunk : public CollectiveThunk {
                                      se::Stream& stream,
                                      Communicator& comm) override;
 
-  AsyncStreamKind GetAsyncStreamKind() const override;
-
   bool is_local() const;
 
  private:
