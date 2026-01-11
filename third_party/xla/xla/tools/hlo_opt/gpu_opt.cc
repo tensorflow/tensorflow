@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
 #include "xla/service/gpu/transforms/topk_splitter.h"
-#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
@@ -175,7 +174,6 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
     RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
-    RegisterPass<gpu::TransposeDimensionGrouper>();
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
     if (debug_config.xla_gpu_experimental_collective_cse_distance_threshold() >
