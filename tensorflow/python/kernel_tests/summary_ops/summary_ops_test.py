@@ -1627,5 +1627,54 @@ def to_numpy(summary_value):
   return tensor_util.MakeNdarray(summary_value.tensor)
 
 
+class StepValidationTest(test_util.TensorFlowTestCase):
+  """Tests for step parameter validation in summary operations."""
+
+  @test_util.run_v2_only
+  def testWrite_emptyTupleStep_raisesValueError(self):
+    """Test that passing an empty tuple as step raises ValueError."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with self.assertRaisesRegex(
+            ValueError,
+            r'step must be a scalar value.*exactly one element.*0 elements'):
+          summary_ops.write('tag', 42, step=())
+
+  @test_util.run_v2_only
+  def testWrite_multiElementListStep_raisesValueError(self):
+    """Test that passing a multi-element list as step raises ValueError."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with self.assertRaisesRegex(
+            ValueError,
+            r'step must be a scalar value.*exactly one element.*3 elements'):
+          summary_ops.write('tag', 42, step=[1, 2, 3])
+
+  @test_util.run_v2_only
+  def testScalar_emptyTupleStep_raisesValueError(self):
+    """Test that passing an empty tuple as step to scalar raises ValueError."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        with self.assertRaisesRegex(
+            ValueError,
+            r'step must be a scalar value.*exactly one element.*0 elements'):
+          summary_ops.scalar('loss', 0.5, step=())
+
+  @test_util.run_v2_only
+  def testWrite_singleElementList_works(self):
+    """Test that passing a single-element list as step works correctly."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        output = summary_ops.write('tag', 42, step=[10])
+        self.assertTrue(output.numpy())
+    events = events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(10, events[1].step)
+
+
 if __name__ == '__main__':
   test.main()

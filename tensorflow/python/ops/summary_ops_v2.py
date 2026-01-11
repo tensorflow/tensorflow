@@ -1217,7 +1217,24 @@ def _choose_step(step):
   if step is None:
     return training_util.get_or_create_global_step()
   if not isinstance(step, tensor_lib.Tensor):
-    return ops.convert_to_tensor(step, dtypes.int64)
+    step_tensor = ops.convert_to_tensor(step, dtypes.int64)
+    # Validate that the step tensor has exactly one element
+    step_shape = step_tensor.shape
+    if step_shape.rank is not None and step_shape.rank != 0:
+      raise ValueError(
+          f"step must be a scalar value, but got a tensor with shape "
+          f"{step_shape}. If you passed an empty tuple or a non-scalar "
+          f"value, please provide a valid scalar integer step value."
+      )
+    # For dynamic shapes, check the number of elements
+    num_elements = tensor_util.constant_value(array_ops.size(step_tensor))
+    if num_elements is not None and num_elements != 1:
+      raise ValueError(
+          f"step must be a scalar value with exactly one element, but got "
+          f"{num_elements} elements. If you passed an empty tuple or a "
+          f"non-scalar value, please provide a valid scalar integer step value."
+      )
+    return step_tensor
   return step
 
 

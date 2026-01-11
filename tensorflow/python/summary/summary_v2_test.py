@@ -231,6 +231,26 @@ class SummaryV2Test(test.TestCase):
         name='text', data=i, step=22, description=test.mock.ANY
     )
 
+  @test_util.run_v2_only
+  def test_scalar_summary_v2__empty_tuple_step_raises_error(self):
+    """Tests that passing an empty tuple as step raises ValueError."""
+    with summary_ops_v2.create_summary_file_writer(
+        self.get_temp_dir()).as_default():
+      with self.assertRaisesRegex(
+          ValueError,
+          r'step must be a scalar value.*exactly one element.*0 elements'):
+        summary_lib.scalar('loss', constant_op.constant(0.5), step=())
+
+  @test_util.run_v2_only
+  def test_scalar_summary_v2__multi_element_list_step_raises_error(self):
+    """Tests that passing a multi-element list as step raises ValueError."""
+    with summary_ops_v2.create_summary_file_writer(
+        self.get_temp_dir()).as_default():
+      with self.assertRaisesRegex(
+          ValueError,
+          r'step must be a scalar value.*exactly one element.*3 elements'):
+        summary_lib.scalar('loss', constant_op.constant(0.5), step=[1, 2, 3])
+
 
 if __name__ == '__main__':
   test.main()
