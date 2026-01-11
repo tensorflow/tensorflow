@@ -83,6 +83,8 @@ namespace xla::error {
   X("E0101", RuntimeProgramAllocationFailure,                                 \
     absl::StatusCode::kResourceExhausted)                                     \
   X("E0102", RuntimeProgramInputMismatch, absl::StatusCode::kInvalidArgument) \
+  X("E0103", RuntimeUnexpectedCoreHalt, absl::StatusCode::kInternal)          \
+                                                                              \
   /* go/keep-sorted end */
 
 // Enum that enumerates all XLA error codes.
