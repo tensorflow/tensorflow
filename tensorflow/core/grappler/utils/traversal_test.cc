@@ -90,7 +90,7 @@ TEST(TraversalTest, InputsDfsNoLoop) {
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
   const std::vector<string> expected_pre = {"1", "4", "3", "2", "5", "0"};
-  const std::vector<string> expected_post = {"4", "5", "2", "3", "1", "0"};
+  const std::vector<std::string> expected_post = {"4", "5", "2", "3", "1", "0"};
 
   EXPECT_EQ(pre_order, expected_pre);
   EXPECT_EQ(post_order, expected_post);
