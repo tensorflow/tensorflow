@@ -132,7 +132,7 @@ class Buffer : public ResourceBase {
     notify_inserters_if_bounded(&lock);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     std::unique_lock<std::mutex> lock(mu_);
     return absl::StrCat("Staging size: ", buf_.size());
   }
@@ -296,7 +296,7 @@ class StageSizeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &size));
 
     // Set it to the actual size
-    size->scalar<int32>().setConstant(buf->Size());
+    size->scalar<int32_t>().setConstant(buf->Size());
   }
 };
 
