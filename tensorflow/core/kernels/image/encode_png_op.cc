@@ -15,8 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
-#include <memory>
+#include <limits>
 #include <vector>
+
+#include "tensorflow/core/framework/types.pb.h"
 
 #define EIGEN_USE_THREADS
 
