@@ -41,7 +41,7 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
+                            .TypeConstraint<int32_t>("T"),
                         BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
 #endif
 REGISTER_KERNEL_BUILDER(Name("FloorDiv")

@@ -347,6 +347,6 @@ REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp<int64>);
+                        ConcatOffsetOp<int64_t>);
 
 }  // namespace tensorflow
