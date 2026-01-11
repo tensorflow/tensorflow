@@ -17,6 +17,7 @@
 import os
 import unittest
 
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import step_stats_pb2
