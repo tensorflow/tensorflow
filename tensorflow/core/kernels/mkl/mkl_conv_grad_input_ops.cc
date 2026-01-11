@@ -567,54 +567,48 @@ class MklConvCustomBackpropInputOp
         << "ConvBackpropInput: input should not be in MKL Layout";
   }
 
-// Get TensorFlow shape of input tensor.
+  // Get TensorFlow shape of input tensor.
   TensorShape MakeInputTfShape(OpKernelContext* context,
                                const Tensor& input_tensor) {
     TensorShape input_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
 
-    // FIX START: Handle dynamic batch size (-1) supporting both int32 and int64
     if (input_tensor.NumElements() > 0) {
-        bool is_dynamic = false;
-        std::vector<int64_t> explicit_shape;
-        
-        // Helper to get the batch size from the gradient tensor only if needed
-        auto get_batch_size = [&]() -> int64 {
-             const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
-             return diff_dst_tensor.dim_size(0);
-        };
+      bool is_dynamic = false;
+      std::vector<int64_t> explicit_shape;
 
-        if (input_tensor.dtype() == DT_INT32) {
-            auto shape_vec = input_tensor.flat<int32>();
-            // Check if the first dimension is -1 (dynamic batch)
-            if (shape_vec(0) == -1) {
-                is_dynamic = true;
-                int64 batch_size = get_batch_size();
-                for (int i = 0; i < input_tensor.NumElements(); i++) {
-                    int32 val = shape_vec(i);
-                    explicit_shape.push_back(val == -1 ? batch_size : val);
-                }
-            }
-        } else if (input_tensor.dtype() == DT_INT64) {
-            auto shape_vec = input_tensor.flat<int64>();
-            // Check if the first dimension is -1 (dynamic batch)
-            if (shape_vec(0) == -1) {
-                is_dynamic = true;
-                int64 batch_size = get_batch_size();
-                for (int i = 0; i < input_tensor.NumElements(); i++) {
-                    int64 val = shape_vec(i);
-                    explicit_shape.push_back(val == -1 ? batch_size : val);
-                }
-            }
-        }
+      auto get_batch_size = [&]() -> int64 {
+        const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
+        return diff_dst_tensor.dim_size(0);
+      };
 
-        if (is_dynamic) {
-            return TensorShape(explicit_shape);
+      if (input_tensor.dtype() == DT_INT32) {
+        auto shape_vec = input_tensor.flat<int32>();
+        if (shape_vec(0) == -1) {
+          is_dynamic = true;
+          int64 batch_size = get_batch_size();
+          for (int i = 0; i < input_tensor.NumElements(); i++) {
+            int32 val = shape_vec(i);
+            explicit_shape.push_back(val == -1 ? batch_size : val);
+          }
         }
+      } else if (input_tensor.dtype() == DT_INT64) {
+        auto shape_vec = input_tensor.flat<int64>();
+        if (shape_vec(0) == -1) {
+          is_dynamic = true;
+          int64 batch_size = get_batch_size();
+          for (int i = 0; i < input_tensor.NumElements(); i++) {
+            int64 val = shape_vec(i);
+            explicit_shape.push_back(val == -1 ? batch_size : val);
+          }
+        }
+      }
+
+      if (is_dynamic) {
+        return TensorShape(explicit_shape);
+      }
     }
-    // FIX END
 
-    // Fallback to original strict check if no -1 is found or tensor is empty
     TF_CHECK_OK(tensor::MakeShape(input_tensor, &input_tf_shape));
     return input_tf_shape;
   }
