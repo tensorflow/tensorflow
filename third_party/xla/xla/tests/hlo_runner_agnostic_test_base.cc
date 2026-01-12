@@ -466,6 +466,49 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
                                  arguments, error, run_hlo_passes);
 }
 
+::testing::AssertionResult
+HloRunnerAgnosticTestBase::RunAndCompareTwoExecutables(
+    OpaqueExecutable* executable_0, OpaqueExecutable* executable_1,
+    const std::optional<ErrorSpec>& error) {
+  absl::StatusOr<const HloModule*> module_0 =
+      test_runner_->HloModuleFromWrapped(executable_0);
+  if (!module_0.ok()) {
+    return ::testing::AssertionFailure() << module_0.status();
+  }
+  absl::StatusOr<const HloModule*> module_1 =
+      test_runner_->HloModuleFromWrapped(executable_1);
+  if (!module_1.ok()) {
+    return ::testing::AssertionFailure() << module_1.status();
+  }
+  if (const std::vector<int> mismatches =
+          CompareInputs(*module_0.value(), *module_1.value());
+      !mismatches.empty()) {
+    return ::testing::AssertionFailure()
+           << "Error : mismatching parameter shapes for parameters "
+           << absl::StrJoin(mismatches, ", ");
+  }
+  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
+      /*module=*/module_0.value(), /*pseudo_random=*/true,
+      /*use_large_range=*/false,
+      /*treat_gte_as_data_formatting=*/false,
+      /*max_bits_of_precision=*/std::nullopt);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure() << fake_arguments.status();
+  }
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments.value(), std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+  absl::StatusOr<::testing::AssertionResult> result =
+      RunAndCompareTwoExecutablesInternal(executable_0, executable_1,
+                                          fake_argument_ptrs, error);
+  if (!result.ok()) {
+    return ::testing::AssertionFailure() << result.status();
+  }
+  return *result;
+}
+
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     const absl::string_view hlo_string, const bool run_hlo_passes,
     const tsl::protobuf::Message* backend_config, const bool use_random_data,
@@ -668,7 +711,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternalReplicated(
 absl::StatusOr<::testing::AssertionResult>
 HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-    const absl::Span<const Literal* const> arguments,
+    absl::Span<const Literal* const> arguments,
     const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_0.get()));
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module_1.get()));
@@ -684,14 +727,23 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesInternal(
       const std::unique_ptr<OpaqueExecutable> executable_1,
       test_runner_->CreateExecutable(std::move(module_1), run_hlo_passes));
 
+  return RunAndCompareTwoExecutablesInternal(
+      executable_0.get(), executable_1.get(), arguments, error);
+}
+
+absl::StatusOr<::testing::AssertionResult>
+HloRunnerAgnosticTestBase::RunAndCompareTwoExecutablesInternal(
+    OpaqueExecutable* executable_0, OpaqueExecutable* executable_1,
+    const absl::Span<const Literal* const> arguments,
+    const std::optional<ErrorSpec>& error) {
   const absl::StatusOr<Literal> test_0 =
-      test_runner_->ExecuteWithExecutable(executable_0.get(), arguments);
+      test_runner_->ExecuteWithExecutable(executable_0, arguments);
   if (!swallow_execution_errors_ && !test_0.ok()) {
     // Exit early if we aren't swallowing errors.
     return test_0.status();
   }
   const absl::StatusOr<Literal> test_1 =
-      test_runner_->ExecuteWithExecutable(executable_1.get(), arguments);
+      test_runner_->ExecuteWithExecutable(executable_1, arguments);
   if (swallow_execution_errors_ && !test_0.ok()) {
     return ::testing::AssertionSuccess();
   }

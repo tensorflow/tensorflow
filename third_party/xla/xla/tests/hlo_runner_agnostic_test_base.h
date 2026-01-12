@@ -289,6 +289,12 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
+  // Executes the two executables using fake arguments and compares the results.
+  // Returns whether the results are near or equal.
+  ::testing::AssertionResult RunAndCompareTwoExecutables(
+      OpaqueExecutable* executable_0, OpaqueExecutable* executable_1,
+      const std::optional<ErrorSpec>& error);
+
   // Executes an hlo module with fake inputs on multiple devices.
   ::testing::AssertionResult RunReplicated(
       absl::string_view hlo_string, bool run_hlo_passes = true,
@@ -317,7 +323,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   bool swallow_execution_errors() const { return swallow_execution_errors_; }
 
  private:
-  // Runs the two module with or without running hlo oasses and compares
+  // Runs the two module with or without running hlo passes and compares
   // the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult>
@@ -333,6 +339,15 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
       absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
+
+  // Executes the two executables and compares the results. Returns whether the
+  // results are near or equal. If any error happens before the results are
+  // computed, returns the error status.
+  absl::StatusOr<::testing::AssertionResult>
+  RunAndCompareTwoExecutablesInternal(
+      OpaqueExecutable* executable_0, OpaqueExecutable* executable_1,
+      absl::Span<const Literal* const> arguments,
+      const std::optional<ErrorSpec>& error);
 
   std::unique_ptr<HloRunnerInterface> test_runner_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
