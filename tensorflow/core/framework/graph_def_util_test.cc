@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_def_util.h"
 
+#include <set>
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
