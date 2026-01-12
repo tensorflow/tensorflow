@@ -280,7 +280,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   CommandStateManager state;
@@ -352,7 +352,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -424,7 +424,7 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -481,7 +481,7 @@ TEST(CommandBufferCmdTest, DynamicSliceCopyFusionCmd) {
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
   CommandStateManager state;
@@ -525,7 +525,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
     se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));
 
-    se::StreamExecutorMemoryAllocator allocator(executor);
+    stream_executor::StreamExecutorAddressAllocator allocator(executor);
     BufferAllocations allocations({mem0, mem1}, 0, &allocator);
 
     se::DeviceAddress<int32_t> mem = executor->AllocateArray<int32_t>(16, 0);
@@ -670,7 +670,7 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams exec_params = Thunk::ExecuteParams::Create(
@@ -773,7 +773,7 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   // nested buffer.
   CommandStateManager state;
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
   TF_ASSERT_OK(outer_executor.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()},
@@ -864,7 +864,7 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
 
   se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
 
   std::array<BufferAllocations, 4> allocations = {
       BufferAllocations({mem0, mem1}, 0, &allocator),
