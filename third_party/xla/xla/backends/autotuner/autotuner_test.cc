@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -43,9 +45,11 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -746,6 +750,90 @@ TEST_F(AutotunerTest, SelectFirstConfig) {
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
 
+std::unique_ptr<Executable> RegisterSpillingExecutable() {
+  gpu::GpuExecutable::Params params;
+  params.executable = std::make_unique<gpu::SequentialThunk>(
+      gpu::Thunk::ThunkInfo{}, gpu::ThunkSequence{});
+  KernelStats kernel_stats;
+  kernel_stats.store_bytes_spilled = 8;
+  kernel_stats.load_bytes_spilled = 8;
+  params.module_stats = {{"test_config_2", kernel_stats}};
+  return gpu::GpuExecutable::Create(std::move(params)).value();
+}
+
+TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
+  config_.allow_reg_spills = true;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
+      .WillOnce(Return(RegisterSpillingExecutable()));
+  EXPECT_CALL(*backend, ApplyConfig(_, _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  // Expect both configs to be profiled, as we allow register spilling.
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto autotuner, Autotuner::Create(std::move(backends),
+                                        std::move(profiler), config_, nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
+TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
+  config_.allow_reg_spills = false;
+
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+  configs.push_back(GetTestConfig("test_config_3"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs(_))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
+      .WillOnce(Return(RegisterSpillingExecutable()));
+  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_3")))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  EXPECT_CALL(*backend, ApplyConfig(_, _))
+      .WillRepeatedly(Return(absl::OkStatus()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  // Out of 3 configs, expect only 2 to be profiled as one spilled registers.
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
+      .WillOnce(Return(ProfileResult({absl::Seconds(1)})));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto autotuner, Autotuner::Create(std::move(backends),
+                                        std::move(profiler), config_, nullptr));
+  auto module = ParseAndReturnVerifiedModule(kHlo).value();
+  auto dummy_instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
+}
+
 TEST_F(AutotunerTest, SelectFirstConfigStopsAfterFirstSuccess) {
   config_.select_first_config = true;
 
@@ -999,6 +1087,7 @@ TEST(AutotuneConfigTest, ToString) {
   config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
+  config.allow_reg_spills = false;
 
   std::string expected =
       "{\n"
@@ -1012,7 +1101,8 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"exclude_cublas_config\": true,\n"
       "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
-      "  \"dump_hlos\": false\n"
+      "  \"dump_hlos\": false,\n"
+      "  \"allow_reg_spills\": false\n"
       "}";
   EXPECT_EQ(config.ToString(), expected);
 }

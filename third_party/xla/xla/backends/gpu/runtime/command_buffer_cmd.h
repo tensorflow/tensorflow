@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -84,6 +85,7 @@ namespace xla::gpu {
   V(kCustomKernelLaunchCmd, "CustomKernelLaunchCmd")             \
   V(kCublasLtCmd, "CublasLtCmd")                                 \
   V(kCuDnnCmd, "CuDnnCmd")                                       \
+  V(kConvolutionCmd, "ConvolutionCmd")                           \
   V(kGemmCmd, "GemmCmd")                                         \
   V(kMemcpyDeviceToDeviceCmd, "MemcpyDeviceToDeviceCmd")         \
   V(kMemzeroCmd, "MemzeroCmd")                                   \
@@ -905,6 +907,39 @@ class CuDnnCmd : public TracedCommandBufferCmd {
  private:
   std::vector<BufferAllocation::Slice> args_;
   const std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
+};
+
+//===----------------------------------------------------------------------===//
+// ConvolutionCmd
+//===----------------------------------------------------------------------===//
+
+class ConvolutionCmd : public TracedCommandBufferCmd {
+ public:
+  ConvolutionCmd(GpuConvConfig config, std::vector<ShapedSlice> operand_slices,
+                 std::vector<ShapedSlice> result_slices,
+                 BufferAllocation::Slice scratch_slice);
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  BufferUseVector buffers() const override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream);
+
+  GpuConvConfig config_;
+  std::vector<ShapedSlice> operand_slices_;
+  std::vector<ShapedSlice> result_slices_;
+  BufferAllocation::Slice scratch_slice_;
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<const stream_executor::Stream*,
+                      std::unique_ptr<GenericConvRunner>>
+      runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
 //===----------------------------------------------------------------------===//
