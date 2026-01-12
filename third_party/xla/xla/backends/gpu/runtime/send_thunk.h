@@ -43,8 +43,7 @@ class SendThunk : public CollectiveThunk {
             int64_t replica_count, int64_t partition_count,
             const Buffer& buffer);
   SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
-            std::shared_ptr<AsyncEvents> async_events,
-            AsyncStreamKind stream_kind, const Buffer& buffer,
+            std::shared_ptr<AsyncEvents> async_events, const Buffer& buffer,
             absl::string_view instr_name);
 
   absl::Status Initialize(const InitializeParams& params) override;
