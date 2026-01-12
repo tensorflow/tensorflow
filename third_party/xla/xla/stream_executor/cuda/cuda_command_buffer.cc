@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -275,12 +276,13 @@ CudaCommandBuffer::CreateConditionalNode(
   VLOG(2) << "Created conditional CUDA graph "
           << cu_params.conditional.phGraph_out[0];
 
-  return GraphConditionalNodeHandle{
-      FromCudaGraphHandle(node_handle),
-      std::unique_ptr<CudaCommandBuffer>(
-          new CudaCommandBuffer(Mode::kNested, stream_exec_, cuda_context_,
-                                cu_params.conditional.phGraph_out[0],
-                                /*is_owned_graph=*/false))};
+  auto nested_cmd_buffer = absl::WrapUnique(new CudaCommandBuffer(
+      Mode::kNested, stream_exec_, cuda_context_,
+      cu_params.conditional.phGraph_out[0], /*is_owned_graph=*/false));
+  nested_cmd_buffer->parent_ = this;
+
+  return GraphConditionalNodeHandle{FromCudaGraphHandle(node_handle),
+                                    std::move(nested_cmd_buffer)};
 #else
   return absl::UnimplementedError("unsupported node type");
 #endif  // CUDA_VERSION >= 12030

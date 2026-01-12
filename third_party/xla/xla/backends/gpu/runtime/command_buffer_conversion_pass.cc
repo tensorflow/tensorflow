@@ -341,10 +341,12 @@ ConvertThunksToCommandBuffer(
     std::vector<std::unique_ptr<Thunk>> thunks_to_convert,
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
+  bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,
-      ConvertToCommands(thunks_to_convert,
-                        ConvertToCommandsOptions{synchronization_mode}));
+      ConvertToCommands(
+          thunks_to_convert,
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "command_buffer";

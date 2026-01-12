@@ -1519,7 +1519,11 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
       cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt) {
     is_unrolled_loop_ = true;
   }
-  VLOG(3) << "while command trip_count: " << trip_count_.value_or(-1);
+  VLOG(3) << "WhileCmd::Initialize: enable_loop_unroll_=" << enable_loop_unroll_
+          << ", body_support=" << body_commands_.support_loop_unroll()
+          << ", cond_support=" << cond_commands_.support_loop_unroll()
+          << ", trip_count=" << trip_count_.value_or(-1)
+          << ", is_unrolled_loop_=" << is_unrolled_loop_;
   return absl::OkStatus();
 }
 
