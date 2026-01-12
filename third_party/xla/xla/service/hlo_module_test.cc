@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -147,7 +148,7 @@ TEST_F(HloModuleTest, CloneTest) {
   // Add a compilation environment to module
   auto env = std::make_unique<test::TestCompilationEnvironment1>();
   env->set_some_flag(10);
-  TF_ASSERT_OK(module->comp_envs().AddEnv(std::move(env)));
+  ASSERT_OK(module->comp_envs().AddEnv(std::move(env)));
 
   auto post_order = module->MakeComputationPostOrder();
   auto cloned_module = module->Clone("copy");
@@ -412,7 +413,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
       auto module_copy,
       HloModule::CreateFromProto(module->ToProto(), module->config()));
   ASSERT_TRUE(module_copy->has_schedule());
-  TF_ASSERT_OK(module_copy->schedule().Verify());
+  ASSERT_OK(module_copy->schedule().Verify());
   EXPECT_EQ(module_copy->schedule().sequences().size(), 1);
   ASSERT_TRUE(module_copy->schedule().is_computation_scheduled(
       module_copy->entry_computation()));
@@ -458,7 +459,7 @@ ENTRY ReduceR3ToR2.v3 {
   HloComputation* reduction_clone =
       module->AddEmbeddedComputation(reduction->Clone());
   root->set_to_apply(reduction_clone);
-  TF_ASSERT_OK(module->RemoveEmbeddedComputation(reduction));
+  ASSERT_OK(module->RemoveEmbeddedComputation(reduction));
   HloInstruction* negate = entry->AddInstruction(
       HloInstruction::CreateUnary(root->shape(), HloOpcode::kNegate, root));
   entry->set_root_instruction(negate);
@@ -470,7 +471,7 @@ ENTRY ReduceR3ToR2.v3 {
   };
   AliasInfo alias_info;
   HloMemoryScheduler scheduler(&alias_info, size_fn);
-  TF_ASSERT_OK(scheduler.Run(module.get()).status());
+  ASSERT_OK(scheduler.Run(module.get()).status());
   ASSERT_TRUE(module->has_schedule());
 
   // Serialize and deserialize and verify that the instruction and computations

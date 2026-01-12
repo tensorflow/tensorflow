@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -53,7 +54,7 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
   {
     mlir::BaseScopedDiagnosticHandler handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
-    TF_ASSERT_OK(handler.ConsumeStatus());
+    ASSERT_OK(handler.ConsumeStatus());
   }
 
   ASSERT_THAT(ConvertMlirHloToHloModule(*module),
@@ -77,10 +78,10 @@ func.func @main(%arg0: tensor<5x10xbf16>, %arg1: tensor<10x5xbf16>) -> tensor<5x
   {
     mlir::BaseScopedDiagnosticHandler handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
-    TF_ASSERT_OK(handler.ConsumeStatus());
+    ASSERT_OK(handler.ConsumeStatus());
   }
 
-  TF_ASSERT_OK(ConvertMlirHloToHloModule(*module));
+  ASSERT_OK(ConvertMlirHloToHloModule(*module));
 }
 TEST(ConvertMlirHloToHloModuleTest, ConvertsConvolutionPrecisionConfig) {
   const std::string mlir_source = R"mlir(
@@ -97,10 +98,10 @@ func.func @main(%arg0: tensor<3x3x3x3xf32>, %arg1: tensor<3x3x3x3xf32>) -> tenso
   {
     mlir::BaseScopedDiagnosticHandler handler(&context);
     module = mlir::parseSourceString<mlir::ModuleOp>(mlir_source, &context);
-    TF_ASSERT_OK(handler.ConsumeStatus());
+    ASSERT_OK(handler.ConsumeStatus());
   }
 
-  TF_ASSERT_OK(ConvertMlirHloToHloModule(*module));
+  ASSERT_OK(ConvertMlirHloToHloModule(*module));
 }
 }  // namespace
 }  // namespace mlir

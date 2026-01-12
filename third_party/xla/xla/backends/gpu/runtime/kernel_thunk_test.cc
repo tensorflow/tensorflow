@@ -487,14 +487,14 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     auto cmd_buffer_thunk = std::make_unique<CommandBufferThunk>(
         std::move(cmds), Thunk::ThunkInfo(), std::move(sequential_thunk), true);
 
-    TF_ASSERT_OK(cmd_buffer_thunk->Initialize(initialize_params));
-    TF_ASSERT_OK(cmd_buffer_thunk->ExecuteOnStream(execute_params));
+    ASSERT_OK(cmd_buffer_thunk->Initialize(initialize_params));
+    ASSERT_OK(cmd_buffer_thunk->ExecuteOnStream(execute_params));
   } else {
-    TF_ASSERT_OK(kernel_thunk->Initialize(initialize_params));
-    TF_ASSERT_OK(kernel_thunk->ExecuteOnStream(execute_params));
+    ASSERT_OK(kernel_thunk->Initialize(initialize_params));
+    ASSERT_OK(kernel_thunk->ExecuteOnStream(execute_params));
   }
 
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 INSTANTIATE_TEST_SUITE_P(KernelThunkTmaPTXTestSuite, KernelThunkTmaPTXTest,

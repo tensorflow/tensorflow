@@ -67,13 +67,13 @@ ENTRY entry {
   // Set up the initial state: flattened params, aliased output
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{}, /*param_number=*/0, /*param_index=*/{},
       HloInputOutputAliasConfig::kMustAlias));
   module->set_input_output_alias_config(alias_config);
 
-  TF_EXPECT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
-                                                alias_config));
+  EXPECT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
+                                             alias_config));
 
   // Verify no changes
   EXPECT_EQ(module->entry_computation()->num_parameters(), 1);
@@ -105,16 +105,16 @@ ENTRY entry {
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias output leaves to corresponding input leaves
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
       HloInputOutputAliasConfig::kMustAlias));
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
       HloInputOutputAliasConfig::kMustAlias));
   module->set_input_output_alias_config(alias_config);
 
-  TF_ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
-                                                alias_config));
+  ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
+                                             alias_config));
 
   // Verify parameters flattened
   HloComputation* entry = module->entry_computation();
@@ -164,13 +164,13 @@ ENTRY entry {
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias only the first output leaf
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{},
       HloInputOutputAliasConfig::kMustAlias));
   module->set_input_output_alias_config(alias_config);
 
-  TF_ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
-                                                alias_config));
+  ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
+                                             alias_config));
 
   // Verify destination parameter added
   HloComputation* entry = module->entry_computation();
@@ -219,19 +219,19 @@ ENTRY entry {
   ProgramShape program_shape = GetProgramShape(*module);
   HloInputOutputAliasConfig alias_config = GetAliasConfig(*module);
   // Alias all outputs to corresponding inputs/input elements
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{},
       HloInputOutputAliasConfig::kMustAlias));
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/1, /*param_index=*/{0},
       HloInputOutputAliasConfig::kMustAlias));
-  TF_ASSERT_OK(alias_config.SetUpAlias(
+  ASSERT_OK(alias_config.SetUpAlias(
       /*output_index=*/{2}, /*param_number=*/1, /*param_index=*/{1},
       HloInputOutputAliasConfig::kMustAlias));
   module->set_input_output_alias_config(alias_config);
 
-  TF_ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
-                                                alias_config));
+  ASSERT_OK(RewriteToDestinationPassingStyle(module.get(), program_shape,
+                                             alias_config));
 
   // Verify parameters flattened/reordered
   HloComputation* entry = module->entry_computation();

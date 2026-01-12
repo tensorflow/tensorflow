@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -489,13 +490,13 @@ TEST_F(OpCostTest, OpCostManagerWithAnalysisLogging) {
 
 TEST_F(OpCostTest, HloCostAnalysisWithAcceptState) {
   auto hlo_cost_analysis_for_wrapper = std::make_unique<HloCostAnalysis>();
-  TF_EXPECT_OK(module_->entry_computation()->Accept(
+  EXPECT_OK(module_->entry_computation()->Accept(
       hlo_cost_analysis_for_wrapper.get()));
   HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(
       std::move(hlo_cost_analysis_for_wrapper));
 
   HloCostAnalysis hlo_cost_analysis;
-  TF_EXPECT_OK(module_->entry_computation()->Accept(&hlo_cost_analysis));
+  EXPECT_OK(module_->entry_computation()->Accept(&hlo_cost_analysis));
 
   // It should be ok to keep getting cost analysis results, without crashing for
   // calling Accept() multiple times.
@@ -514,7 +515,7 @@ TEST_F(OpCostTest, CreateHloCostAnalysisCalculator) {
       CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper);
 
   HloCostAnalysis hlo_cost_analysis;
-  TF_EXPECT_OK(module_->entry_computation()->Accept(&hlo_cost_analysis));
+  EXPECT_OK(module_->entry_computation()->Accept(&hlo_cost_analysis));
 
   EXPECT_EQ(op_cost_calculator->CreateMetricCalculator(*add0_)->Calculate(
                 CostMetricId::LatencySeconds(*add0_)),

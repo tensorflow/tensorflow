@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -102,7 +103,7 @@ TEST_P(ParameterizedSchedulingAnnotationsUtilTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  TF_ASSERT_OK(SetSchedulingAnnotation(p1, GetParam().annotation));
+  ASSERT_OK(SetSchedulingAnnotation(p1, GetParam().annotation));
   TF_ASSERT_OK_AND_ASSIGN(std::optional<Annotation> annotation,
                           GetSchedulingAnnotation(p1));
   EXPECT_TRUE(annotation.has_value());
@@ -124,7 +125,7 @@ TEST_P(ParameterizedSchedulingAnnotationsUtilTest,
                               hlo_string, {{"<scheduling_annotation>",
                                             GetParam().annotation_str}})));
   HloInstruction* p1 = FindInstruction(module.get(), "p1");
-  TF_ASSERT_OK(SetSchedulingAnnotation(p1, "987"));
+  ASSERT_OK(SetSchedulingAnnotation(p1, "987"));
   TF_ASSERT_OK_AND_ASSIGN(std::optional<Annotation> annotation,
                           GetSchedulingAnnotation(p1));
   EXPECT_TRUE(annotation.has_value());

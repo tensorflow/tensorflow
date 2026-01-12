@@ -121,8 +121,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 2, 1, 2);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, AvoidSplitKWithSlicedContractingDimension) {
@@ -177,8 +177,8 @@ kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
 
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(
@@ -210,8 +210,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(32, 64, 64, 8, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
             HloOpcode::kReduce);
 }
@@ -240,8 +240,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK4) {
@@ -265,8 +265,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleWithCustomLayout) {
@@ -291,14 +291,14 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(kHloText));
 
   constexpr TritonGemmConfig kConfig(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), kConfig));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               kConfig));
 
-  TF_EXPECT_OK(HloVerifier(/*layout_sensitive=*/true,
-                           /*allow_mixed_precision=*/true,
-                           LayoutAssignment::InstructionCanChangeLayout)
-                   .Run(module.get())
-                   .status());
+  EXPECT_OK(HloVerifier(/*layout_sensitive=*/true,
+                        /*allow_mixed_precision=*/true,
+                        LayoutAssignment::InstructionCanChangeLayout)
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleSimpleSplitK16) {
@@ -322,8 +322,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleWithTranspose) {
@@ -348,8 +348,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SupportIndivisibleWithBroadcast) {
@@ -374,8 +374,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SupportsIndivisibleWithBitcast) {
@@ -400,8 +400,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 16, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 }
 
 TEST_F(SplitKTest, SkipSmallK) {
@@ -468,8 +468,8 @@ ENTRY e {
 
   // 8 fits the constraints.
   config.split_k = 8;
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   HloInstruction* dot_fusion;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(
@@ -540,8 +540,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   TritonGemmConfig config(16, 16, 16, 2, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   HloInstruction* dot_fusion;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(
@@ -579,8 +579,8 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   HloInstruction* reduce;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -614,8 +614,8 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reduce()
@@ -651,8 +651,8 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(kHloText));
 
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reduce().WithElementType(BF16).WithOperand(
@@ -685,8 +685,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   HloInstruction* dot_fusion;
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -727,7 +727,7 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
+  EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction()->mutable_operand(0),
       config));
 
@@ -757,8 +757,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 128, 32, 8, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   HloInstruction* dot_fusion;
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(
@@ -787,8 +787,8 @@ ENTRY %entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 128, 64, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reduce(m::Fusion(), m::Constant())));
 }
@@ -842,8 +842,8 @@ ENTRY %entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   HloInstruction* dot_fusion;
   EXPECT_THAT(
@@ -879,8 +879,8 @@ ENTRY %entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   HloInstruction* dot_fusion;
   EXPECT_THAT(
@@ -917,8 +917,8 @@ ENTRY %entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   HloInstruction* dot_fusion;
   EXPECT_THAT(
@@ -954,8 +954,8 @@ ENTRY %entry_computation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
   TritonGemmConfig config(16, 16, 16, /*split_k=*/3, 1, 1);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
+  EXPECT_OK(MakeDotSplitKBatch(module->entry_computation()->root_instruction(),
+                               config));
 
   HloInstruction* dot_fusion;
   EXPECT_THAT(

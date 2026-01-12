@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
@@ -119,7 +120,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
                         {cond_param, cond_iter, cond_data, cond_lt});
   schedule.set_sequence(body_computation, {body_param});
   schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
       HloAliasAnalysis::Run(module.get(), &alias_info_).value();

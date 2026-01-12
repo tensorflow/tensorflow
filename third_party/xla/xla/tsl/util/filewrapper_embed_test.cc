@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -34,7 +35,7 @@ TEST(FilewrapperTest, CompareData) {
   EXPECT_EQ(nullptr, file_toc[1].name);
 
   std::string true_contents;
-  TF_ASSERT_OK(tsl::ReadFileToString(
+  ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tsl", filename),
       &true_contents));
@@ -46,7 +47,7 @@ TEST(FilewrapperTest, CompareData) {
 
 TEST(FilewrapperTest, CheckSourceContents) {
   std::string cc_contents;
-  TF_ASSERT_OK(tsl::ReadFileToString(
+  ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tsl", "util",
                         "filewrapper_testdata.cc"),
@@ -58,7 +59,7 @@ TEST(FilewrapperTest, CheckSourceContents) {
   EXPECT_EQ(std::string::npos, cc_contents.find('\0'));
 
   std::string header_contents;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(),
                             tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tsl",
                                               "util", "filewrapper_testdata.h"),

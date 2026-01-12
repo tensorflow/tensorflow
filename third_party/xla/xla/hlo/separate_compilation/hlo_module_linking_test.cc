@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -154,7 +155,7 @@ TEST_F(LinkingTest, SingleCallLinking) {
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
                           LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
 
@@ -162,13 +163,13 @@ TEST_F(LinkingTest, SingleCallLinking) {
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   VLOG(6) << linked_module->ToString();
-  TF_ASSERT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 TEST_F(LinkingTest, ChainGraphLinking) {
@@ -216,7 +217,7 @@ TEST_F(LinkingTest, ChainGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
                           LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
@@ -224,12 +225,12 @@ TEST_F(LinkingTest, ChainGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
   VLOG(6) << linked_module->ToString();
-  TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 TEST_F(LinkingTest, DiamondGraphLinking) {
@@ -289,7 +290,7 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
                           LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
-  TF_ASSERT_OK(verifier.Run(linked_module.get()));
+  ASSERT_OK(verifier.Run(linked_module.get()));
 
   EXPECT_TRUE(AreHloModulesEquivalent(*original_module, *linked_module));
 
@@ -297,13 +298,13 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
-  TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   VLOG(6) << linked_module->ToString();
-  TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
-                                      /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
+                                   /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
 }
 
 }  // namespace

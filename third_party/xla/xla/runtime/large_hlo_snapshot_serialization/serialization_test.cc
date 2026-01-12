@@ -99,7 +99,7 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeBrokenSnapshot) {
 
   std::string serialized_snapshot;
   tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
-  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+  ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   serialized_snapshot[0] = '~';
 
@@ -115,7 +115,7 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeBrokenLiteral) {
 
   std::string serialized_snapshot;
   tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
-  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+  ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   serialized_snapshot.resize(serialized_snapshot.size() - 3);
   HloUnoptimizedSnapshot deserialized_snapshot;
@@ -133,7 +133,7 @@ TEST(LargeHloSnapshotSerializationTest,
 
   std::string serialized_snapshot;
   tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
-  TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
+  ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   HloUnoptimizedSnapshot deserialized_snapshot;
   tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),

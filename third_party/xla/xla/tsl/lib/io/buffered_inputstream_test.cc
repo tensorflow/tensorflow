@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/buffered_inputstream.h"
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -68,9 +69,9 @@ TEST(BufferedInputStream, ReadLine_Empty) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, ""));
+  ASSERT_OK(WriteStringToFile(env, fname, ""));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
@@ -85,21 +86,20 @@ TEST(BufferedInputStream, ReadLine1) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(
-      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
+  ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -111,20 +111,20 @@ TEST(BufferedInputStream, ReadLine_NoTrailingNewLine) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
+  ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -136,25 +136,25 @@ TEST(BufferedInputStream, ReadLine_EmptyLines) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -166,25 +166,25 @@ TEST(BufferedInputStream, ReadLine_CRLF) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname,
-                                 "line one\r\n\r\n\r\nline two\r\nline three"));
+  ASSERT_OK(WriteStringToFile(env, fname,
+                              "line one\r\n\r\n\r\nline two\r\nline three"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -196,20 +196,19 @@ TEST(BufferedInputStream, SkipLine1) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(
-      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
+  ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.SkipLine());
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.SkipLine());
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipLine()));
     // A second call should also return end of file
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipLine()));
@@ -220,19 +219,19 @@ TEST(BufferedInputStream, SkipLine_NoTrailingNewLine) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
+  ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.SkipLine());
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.SkipLine());
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipLine()));
     // A second call should also return end of file
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipLine()));
@@ -243,20 +242,20 @@ TEST(BufferedInputStream, SkipLine_EmptyLines) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\n\n\nline two"));
+  ASSERT_OK(WriteStringToFile(env, fname, "line one\n\n\nline two"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file.get()));
     BufferedInputStream in(input_stream.get(), buf_size);
     std::string line;
-    TF_ASSERT_OK(in.SkipLine());
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_ASSERT_OK(in.SkipLine());
-    TF_ASSERT_OK(in.ReadLine(&line));
+    ASSERT_OK(in.SkipLine());
+    ASSERT_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
   }
 }
@@ -265,9 +264,9 @@ TEST(BufferedInputStream, ReadNBytes) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
@@ -275,16 +274,16 @@ TEST(BufferedInputStream, ReadNBytes) {
     tstring read;
     BufferedInputStream in(input_stream.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(3, &read));
+    ASSERT_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    ASSERT_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
     EXPECT_EQ(7, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(7, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
@@ -293,7 +292,7 @@ TEST(BufferedInputStream, ReadNBytes) {
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
   }
@@ -308,10 +307,10 @@ TEST(BufferedInputStream, OutOfRangeCache) {
     tstring read;
     BufferedInputStream in(&input_stream, buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(3, &read));
+    ASSERT_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK((in.ReadNBytes(7, &read)));
+    ASSERT_OK((in.ReadNBytes(7, &read)));
     EXPECT_EQ(read, "3456789");
     EXPECT_EQ(10, in.Tell());
     absl::Status s = in.ReadNBytes(5, &read);
@@ -320,7 +319,7 @@ TEST(BufferedInputStream, OutOfRangeCache) {
     EXPECT_EQ(error::OUT_OF_RANGE, s.code()) << s;
     EXPECT_EQ(read, "");
     // Empty read shouldn't cause an error even at the end of the file.
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
   }
 }
@@ -329,9 +328,9 @@ TEST(BufferedInputStream, SkipNBytes) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
@@ -339,18 +338,18 @@ TEST(BufferedInputStream, SkipNBytes) {
     tstring read;
     BufferedInputStream in(input_stream.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(3));
+    ASSERT_OK(in.SkipNBytes(3));
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(0));
+    ASSERT_OK(in.SkipNBytes(0));
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(2, &read));
+    ASSERT_OK(in.ReadNBytes(2, &read));
     EXPECT_EQ(read, "34");
     EXPECT_EQ(5, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(0));
+    ASSERT_OK(in.SkipNBytes(0));
     EXPECT_EQ(5, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(2));
+    ASSERT_OK(in.SkipNBytes(2));
     EXPECT_EQ(7, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(1, &read));
+    ASSERT_OK(in.ReadNBytes(1, &read));
     EXPECT_EQ(read, "7");
     EXPECT_EQ(8, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipNBytes(5)));
@@ -367,24 +366,24 @@ TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     tstring read;
     BufferedInputStream in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(3, &read));
+    ASSERT_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    ASSERT_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
     EXPECT_EQ(7, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(7, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
@@ -393,7 +392,7 @@ TEST(BufferedInputStream, ReadNBytesRandomAccessFile) {
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(0, &read));
+    ASSERT_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
   }
@@ -403,26 +402,26 @@ TEST(BufferedInputStream, SkipNBytesRandomAccessFile) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     tstring read;
     BufferedInputStream in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(3));
+    ASSERT_OK(in.SkipNBytes(3));
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(0));
+    ASSERT_OK(in.SkipNBytes(0));
     EXPECT_EQ(3, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(2, &read));
+    ASSERT_OK(in.ReadNBytes(2, &read));
     EXPECT_EQ(read, "34");
     EXPECT_EQ(5, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(0));
+    ASSERT_OK(in.SkipNBytes(0));
     EXPECT_EQ(5, in.Tell());
-    TF_ASSERT_OK(in.SkipNBytes(2));
+    ASSERT_OK(in.SkipNBytes(2));
     EXPECT_EQ(7, in.Tell());
-    TF_ASSERT_OK(in.ReadNBytes(1, &read));
+    ASSERT_OK(in.ReadNBytes(1, &read));
     EXPECT_EQ(read, "7");
     EXPECT_EQ(8, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipNBytes(5)));
@@ -439,9 +438,9 @@ TEST(BufferedInputStream, Seek) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessInputStream> input_stream(
@@ -450,17 +449,17 @@ TEST(BufferedInputStream, Seek) {
     BufferedInputStream in(input_stream.get(), buf_size);
 
     // Seek forward
-    TF_ASSERT_OK(in.Seek(3));
+    ASSERT_OK(in.Seek(3));
     EXPECT_EQ(3, in.Tell());
 
     // Read 4 bytes
-    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    ASSERT_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
     EXPECT_EQ(7, in.Tell());
 
     // Seek backwards
-    TF_ASSERT_OK(in.Seek(1));
-    TF_ASSERT_OK(in.ReadNBytes(4, &read));
+    ASSERT_OK(in.Seek(1));
+    ASSERT_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "1234");
     EXPECT_EQ(5, in.Tell());
   }
@@ -472,20 +471,20 @@ TEST(BufferedInputStream, Seek_NotReset) {
   Env* env = Env::Default();
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+  ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   std::unique_ptr<RandomAccessInputStream> input_stream(
       new RandomAccessInputStream(file.get()));
   tstring read;
   BufferedInputStream in(input_stream.get(), 3);
 
-  TF_ASSERT_OK(in.ReadNBytes(4, &read));
+  ASSERT_OK(in.ReadNBytes(4, &read));
   int before_tell = input_stream->Tell();
   EXPECT_EQ(before_tell, 6);
   // Seek backwards
-  TF_ASSERT_OK(in.Seek(3));
+  ASSERT_OK(in.Seek(3));
   int after_tell = input_stream->Tell();
   EXPECT_EQ(before_tell, after_tell);
 }
@@ -495,15 +494,15 @@ TEST(BufferedInputStream, ReadAll_Empty) {
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   const std::string expected = "";
-  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  ASSERT_OK(WriteStringToFile(env, fname, expected));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     RandomAccessInputStream input_stream(file.get());
     BufferedInputStream in(&input_stream, buf_size);
     std::string contents;
-    TF_ASSERT_OK(in.ReadAll(&contents));
+    ASSERT_OK(in.ReadAll(&contents));
     EXPECT_EQ(expected, contents);
   }
 }
@@ -513,15 +512,15 @@ TEST(BufferedInputStream, ReadAll_Text) {
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   const std::string expected = "line one\nline two\nline three";
-  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  ASSERT_OK(WriteStringToFile(env, fname, expected));
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   for (auto buf_size : BufferSizes()) {
     RandomAccessInputStream input_stream(file.get());
     BufferedInputStream in(&input_stream, buf_size);
     std::string contents;
-    TF_ASSERT_OK(in.ReadAll(&contents));
+    ASSERT_OK(in.ReadAll(&contents));
     EXPECT_EQ(expected, contents);
   }
 }
@@ -535,14 +534,14 @@ void BM_BufferedReaderSmallReads(::testing::benchmark::State& state) {
 
   const std::string file_elem = "0123456789";
   std::unique_ptr<WritableFile> write_file;
-  TF_ASSERT_OK(env->NewWritableFile(fname, &write_file));
+  ASSERT_OK(env->NewWritableFile(fname, &write_file));
   for (int i = 0; i < file_size; ++i) {
-    TF_ASSERT_OK(write_file->Append(file_elem));
+    ASSERT_OK(write_file->Append(file_elem));
   }
-  TF_ASSERT_OK(write_file->Close());
+  ASSERT_OK(write_file->Close());
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file));
 
   tstring result;
 
@@ -550,7 +549,7 @@ void BM_BufferedReaderSmallReads(::testing::benchmark::State& state) {
   for (auto s : state) {
     BufferedInputStream in(file.get(), buff_size);
     for (int64_t i = 0; i < 10 * file_size; ++i) {
-      TF_ASSERT_OK(in.ReadNBytes(1, &result))
+      ASSERT_OK(in.ReadNBytes(1, &result))
           << "i: " << i << " itr: " << itr << " buff_size: " << buff_size
           << " file size: " << file_size;
     }

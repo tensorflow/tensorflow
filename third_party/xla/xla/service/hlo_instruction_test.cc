@@ -903,9 +903,9 @@ TEST_F(HloInstructionTest, AsyncOpWithDeps) {
       r0f32_, HloOpcode::kAdd, constant1, constant2));
 
   // control chain is add1 <- add <- add2
-  TF_ASSERT_OK(add1->AddControlDependencyTo(add));
+  ASSERT_OK(add1->AddControlDependencyTo(add));
 
-  TF_ASSERT_OK(add->AddControlDependencyTo(add2));
+  ASSERT_OK(add->AddControlDependencyTo(add2));
 
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
@@ -2555,7 +2555,7 @@ TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
       *gpu_config.mutable_gemm_backend_config();
   orig_config.set_alpha_real(std::numeric_limits<double>::infinity());
   orig_config.set_alpha_imag(std::numeric_limits<double>::quiet_NaN());
-  TF_ASSERT_OK(dot->set_backend_config(gpu_config));
+  ASSERT_OK(dot->set_backend_config(gpu_config));
 
   TF_ASSERT_OK_AND_ASSIGN(auto new_gpu_config,
                           dot->backend_config<gpu::GpuBackendConfig>());
@@ -2868,7 +2868,7 @@ TEST_F(HloInstructionTest, BackendConfigCopiedToDerived) {
 
   gpu::GpuBackendConfig gpu_config;
   gpu_config.set_operation_queue_id(2);
-  TF_ASSERT_OK(add->set_backend_config(gpu_config));
+  ASSERT_OK(add->set_backend_config(gpu_config));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
   add->SetupDerivedInstruction(add2);
@@ -2887,7 +2887,7 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithDiffOpcode) {
 
   gpu::GpuBackendConfig gpu_config;
   gpu_config.set_operation_queue_id(2);
-  TF_ASSERT_OK(or1->set_backend_config(gpu_config));
+  ASSERT_OK(or1->set_backend_config(gpu_config));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p1));
   or1->SetupDerivedInstruction(add2);
@@ -2907,10 +2907,10 @@ TEST_F(HloInstructionTest, BackendConfigNotCopiedToDerivedWithConfig) {
   gpu_config0.set_operation_queue_id(2);
   gpu_config1.set_operation_queue_id(3);
 
-  TF_ASSERT_OK(add->set_backend_config(gpu_config0));
+  ASSERT_OK(add->set_backend_config(gpu_config0));
   auto add2 = b.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0, p0));
-  TF_ASSERT_OK(add2->set_backend_config(gpu_config1));
+  ASSERT_OK(add2->set_backend_config(gpu_config1));
 
   add->SetupDerivedInstruction(add2);
   auto backend_config = add2->backend_config<gpu::GpuBackendConfig>();

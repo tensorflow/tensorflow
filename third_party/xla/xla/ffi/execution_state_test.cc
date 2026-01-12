@@ -51,7 +51,7 @@ TEST(ExecutionStateTest, SetAndGetForInternalType) {
   }
 
   // Once set, state can be retrieved.
-  TF_ASSERT_OK(state.Set(std::make_unique<int32_t>(42)));
+  ASSERT_OK(state.Set(std::make_unique<int32_t>(42)));
   EXPECT_TRUE(state.IsSet());
 
   TF_ASSERT_OK_AND_ASSIGN(int32_t* data, state.Get<int32_t>());
@@ -81,7 +81,7 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
   int32_t* value = new int32_t(42);
 
   // Once set, state can be retrieved.
-  TF_ASSERT_OK(state.Set(type_id, value));
+  ASSERT_OK(state.Set(type_id, value));
   EXPECT_TRUE(state.IsSet());
 
   TF_ASSERT_OK_AND_ASSIGN(void* data, state.Get(type_id));
@@ -113,7 +113,7 @@ TEST(ExecutionStateTest, Serialization) {
       TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
 
   ExecutionState state;
-  TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
+  ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));
 
   TF_ASSERT_OK_AND_ASSIGN(ExecutionStateProto proto, state.ToProto());
 
@@ -132,13 +132,12 @@ TEST(ExecutionStateTest, IsSerializable) {
   struct NoSerializer {
     int x;
   };
-  TF_ASSERT_OK(state.Set(std::make_unique<NoSerializer>(NoSerializer{42})));
+  ASSERT_OK(state.Set(std::make_unique<NoSerializer>(NoSerializer{42})));
   EXPECT_FALSE(state.IsSerializable());
 
   // State with serializer.
   ExecutionState serializable_state;
-  TF_ASSERT_OK(
-      serializable_state.Set(std::make_unique<MyState>(MyState{"foo"})));
+  ASSERT_OK(serializable_state.Set(std::make_unique<MyState>(MyState{"foo"})));
   EXPECT_TRUE(serializable_state.IsSerializable());
 }
 

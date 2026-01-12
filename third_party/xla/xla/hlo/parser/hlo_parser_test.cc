@@ -3052,7 +3052,7 @@ ENTRY %SelectScalarS32True.v4 () -> s32[] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   // Constant instructions have no name. The string will be parsed successfully
   // but the constant names will not be exactly the same.
 }
@@ -3290,7 +3290,7 @@ ENTRY %ConstantWithExp.v4 () -> f32[] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   // The string will be parsed successfully but the output strings are not
   // exactly the same, because "3e2" is parsed into value 300 and will be
   // printed as "300".
@@ -3306,7 +3306,7 @@ ENTRY %ShortConstant.v4 () -> f32[67,89] {
 
 )";
   auto result = ParseAndReturnVerifiedModule(original);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->ToString(HloPrintOptions()), original);
 }
 
@@ -3388,7 +3388,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,4
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, InvalidDimLabels) {
@@ -3466,7 +3466,7 @@ ENTRY %slice.v2 (p0: f32[3,3,4,4]) -> f32[3,3,2,4] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, PaddingConfigIsNotWindowPad) {
@@ -3492,7 +3492,7 @@ ENTRY %test_comma.v4 () -> f32[] {
 }
 
 )";
-  TF_EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
+  EXPECT_OK(ParseAndReturnVerifiedModule(original).status());
 }
 
 TEST_F(HloParserTest, ComputationShapeDoesNotMatchRootShape) {
@@ -5089,7 +5089,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_TRUE(result.value()->config().alias_passthrough_params());
 }
 
@@ -5104,7 +5104,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->config().replica_count(), 5);
 }
 
@@ -5119,7 +5119,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->config().num_partitions(), 3);
   EXPECT_TRUE(result.value()->config().use_spmd_partitioning());
 }
@@ -5135,7 +5135,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(result.value()->frontend_attributes().map().size(), 1);
   EXPECT_EQ(result.value()->frontend_attributes().map().begin()->first,
             "attr_name");
@@ -5154,7 +5154,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ((*result)
                 ->config()
                 .allow_spmd_sharding_propagation_to_parameters()
@@ -5175,7 +5175,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ((*result)
                 ->config()
                 .allow_spmd_sharding_propagation_to_parameters()
@@ -5198,7 +5198,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(
       (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
       1);
@@ -5217,7 +5217,7 @@ ENTRY TestComputation {
 }
 )";
   auto result = ParseAndReturnVerifiedModule(hlo_string);
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
   EXPECT_EQ(
       (*result)->config().allow_spmd_sharding_propagation_to_output().size(),
       2);

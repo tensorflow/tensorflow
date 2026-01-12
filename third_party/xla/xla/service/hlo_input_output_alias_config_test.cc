@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -85,7 +86,7 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/1,
       /*param_index=*/{}));
 
@@ -116,11 +117,11 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
       /*param_index=*/{0}));
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
       /*param_index=*/{1}));
 
@@ -153,11 +154,11 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
       /*param_index=*/{}));
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
       /*param_index=*/{}));
 
@@ -182,7 +183,7 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{1}, /*param_number=*/0,
       /*param_index=*/{}));
 
@@ -207,7 +208,7 @@ ENTRY main {
   HloInputOutputAliasConfig config(
       module->entry_computation()->root_instruction()->shape());
 
-  TF_ASSERT_OK(config.SetUpAlias(
+  ASSERT_OK(config.SetUpAlias(
       /*output_index=*/{0}, /*param_number=*/0,
       /*param_index=*/{}));
 
@@ -233,20 +234,20 @@ ENTRY main {
 
   HloBufferDonorConfig config;
 
-  TF_ASSERT_OK(config.AddBufferDonor(0, {}));
+  ASSERT_OK(config.AddBufferDonor(0, {}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(0, {}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
 
-  TF_ASSERT_OK(config.AddBufferDonor(1, {}));
+  ASSERT_OK(config.AddBufferDonor(1, {}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(0, {}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(1, {}));
 
-  TF_ASSERT_OK(config.RemoveBufferDonor(0, {}));
+  ASSERT_OK(config.RemoveBufferDonor(0, {}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(1, {}));
 
-  TF_ASSERT_OK(config.Verify(*module));
-  TF_ASSERT_OK(config.AddBufferDonor(2, {}));
+  ASSERT_OK(config.Verify(*module));
+  ASSERT_OK(config.AddBufferDonor(2, {}));
   ASSERT_IS_NOT_OK(config.Verify(*module));
 }
 
@@ -266,20 +267,20 @@ ENTRY main {
 
   HloBufferDonorConfig config;
 
-  TF_ASSERT_OK(config.AddBufferDonor(0, {0}));
+  ASSERT_OK(config.AddBufferDonor(0, {0}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(0, {0}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(0, {1}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
 
-  TF_ASSERT_OK(config.AddBufferDonor(0, {1}));
+  ASSERT_OK(config.AddBufferDonor(0, {1}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(0, {0}));
   EXPECT_TRUE(config.ParameterIsBufferDonor(0, {1}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(0, {}));
   EXPECT_FALSE(config.ParameterIsBufferDonor(1, {}));
 
-  TF_ASSERT_OK(config.Verify(*module));
-  TF_ASSERT_OK(config.AddBufferDonor(0, {2}));
+  ASSERT_OK(config.Verify(*module));
+  ASSERT_OK(config.AddBufferDonor(0, {2}));
   ASSERT_IS_NOT_OK(config.Verify(*module));
 }
 
@@ -299,10 +300,10 @@ ENTRY main {
 
   HloBufferDonorConfig config;
 
-  TF_ASSERT_OK(config.AddBufferDonor(0, {0}));
-  TF_ASSERT_OK(config.Verify(*module));
+  ASSERT_OK(config.AddBufferDonor(0, {0}));
+  ASSERT_OK(config.Verify(*module));
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
   ASSERT_IS_NOT_OK(config.Verify(*module));
 }
 

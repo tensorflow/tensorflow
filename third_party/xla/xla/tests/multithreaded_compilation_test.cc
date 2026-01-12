@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/hlo/testlib/test.h"
@@ -85,7 +86,7 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "threads-",
                                         num_threads);
     for (int i = 0; i < num_threads; i++) {
-      thread_pool.Schedule([&, i]() { TF_EXPECT_OK(do_compilation(i)); });
+      thread_pool.Schedule([&, i]() { EXPECT_OK(do_compilation(i)); });
     }
   }
 

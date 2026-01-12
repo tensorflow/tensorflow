@@ -121,7 +121,7 @@ ENTRY e {
         ParseTemplateAndGetInstruction(hlo_test, /*data_type=*/{}, opcode));
     if (legacy_triton::IsTritonSupportedInstruction(ti.Instruction(),
                                                     GetComputeCapability())) {
-      TF_EXPECT_OK(
+      EXPECT_OK(
           ApplyFloatNormalization(ti.Module().get(), GetComputeCapability()));
       EXPECT_TRUE(RunAndCompareNoHloPasses(
           std::move(ti.Module()),
@@ -285,7 +285,7 @@ ENTRY e {
   if (is_supported_instruction) {
     // TODO(goncharov): Change to `EXPECT_FALSE(is_supported_instruction)`.
     GTEST_SKIP() << "The generic emitter does not support dynamic slice yet.";
-    TF_EXPECT_OK(
+    EXPECT_OK(
         ApplyFloatNormalization(dot.Module().get(), GetComputeCapability()));
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         std::move(dot.Module()), ErrorSpec{/*aabs=*/2e-4, /*arel=*/2e-4}));
@@ -468,10 +468,9 @@ ENTRY e {
               .backend_config<GpuBackendConfig>()
               ->fusion_backend_config()
               .block_level_fusion_config());
-  TF_EXPECT_OK(TritonWrapper("test_fn", &ti.TritonFusion(),
-                             GetComputeCapability(), dev_info,
-                             block_level_parameters, target_triple_,
-                             data_layout_, llvm_ctx_, mlir_context_));
+  EXPECT_OK(TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
+                          dev_info, block_level_parameters, target_triple_,
+                          data_layout_, llvm_ctx_, mlir_context_));
 }
 
 TEST_F(TritonSupportTestBase,

@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/meta/type_traits.h"
@@ -675,8 +676,8 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
       dump_filename = tsl::io::JoinPath(outdir, dump_filename);
     }
 
-    TF_EXPECT_OK(env->NewWritableFile(dump_filename, &dump_file));
-    TF_EXPECT_OK(
+    EXPECT_OK(env->NewWritableFile(dump_filename, &dump_file));
+    EXPECT_OK(
         dump_file->Append("input values -> actual output {expected output}\n"
                           "-----------------------------------------------\n"));
   }
@@ -717,7 +718,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
                       StringifyNum<NativeT, ComponentIntegralNativeT>(expected),
                       "}");
       absl::StrAppend(&result_string, "\n");
-      TF_EXPECT_OK(dump_file->Append(result_string));
+      EXPECT_OK(dump_file->Append(result_string));
     }
 
     ErrorSpec error_spec = CallErrorSpecGen<Traits>(error_spec_gen, inputs);
@@ -829,7 +830,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
   EXPECT_EQ(mismatches, 0);
 
   if (should_dump_values_) {
-    TF_EXPECT_OK(dump_file->Close());
+    EXPECT_OK(dump_file->Close());
   }
 }
 

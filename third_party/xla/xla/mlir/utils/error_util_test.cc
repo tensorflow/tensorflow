@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/mlir/utils/error_util.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -40,8 +41,7 @@ class ErrorUtilTest : public ::testing::Test {
 using BaseScopedDiagnosticHandlerTest = ErrorUtilTest;
 
 TEST_F(BaseScopedDiagnosticHandlerTest, OkWithoutDiagnosticGetsPassedThrough) {
-  TF_EXPECT_OK(
-      BaseScopedDiagnosticHandler(&context_).Combine(absl::OkStatus()));
+  EXPECT_OK(BaseScopedDiagnosticHandler(&context_).Combine(absl::OkStatus()));
 }
 
 TEST_F(BaseScopedDiagnosticHandlerTest,

@@ -56,7 +56,7 @@ namespace {
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunHostOffloader(HloModule* module) const {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
@@ -458,7 +458,7 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/true);
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
   VLOG(1) << "module after: " << module->ToString();
 }
 
@@ -505,7 +505,7 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/true);
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
   VLOG(1) << "module after: " << module->ToString();
 }
 
@@ -568,7 +568,7 @@ ENTRY e {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/true);
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HostOffloaderTest, OutputStreamingInScanLoop) {
@@ -636,7 +636,7 @@ ENTRY e {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
                        /*allow_mixed_precision=*/true);
-  TF_EXPECT_OK(verifier.Run(module.get()).status());
+  EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HostOffloaderTest, BasicNoCopy) {
@@ -3834,7 +3834,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK(RunHostOffloader(module.get()));
+  ASSERT_OK(RunHostOffloader(module.get()));
 
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
   ASSERT_NE(async_start, nullptr);

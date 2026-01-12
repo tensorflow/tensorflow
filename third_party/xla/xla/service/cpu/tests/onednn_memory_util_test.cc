@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -97,7 +98,7 @@ TEST_P(MemoryUtilTest, VerifyMemRefTest) {
 
   absl::StatusOr<bool> match =
       RunFileCheck(filecheck_input, GetMemRefTestPattern(shape));
-  TF_ASSERT_OK(match.status());
+  ASSERT_OK(match.status());
   EXPECT_TRUE(match.value());
 }
 

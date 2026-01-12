@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/literal_comparison.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -39,9 +40,9 @@ TYPED_TEST_SUITE(LiteralComparisonTest, TestedTypes);
 TYPED_TEST(LiteralComparisonTest, CompareNear_Equal) {
   auto actual = LiteralUtil::CreateR0<TypeParam>(TypeParam(1.0));
   auto expected = LiteralUtil::CreateR0<TypeParam>(TypeParam(1.0));
-  TF_EXPECT_OK(literal_comparison::Near(expected, actual, ErrorSpec(0.0, 0.0),
-                                        /*detailed_message=*/false,
-                                        /*miscompare_callback=*/nullptr));
+  EXPECT_OK(literal_comparison::Near(expected, actual, ErrorSpec(0.0, 0.0),
+                                     /*detailed_message=*/false,
+                                     /*miscompare_callback=*/nullptr));
 }
 
 TYPED_TEST(LiteralComparisonTest, CompareNear_NotEqual_1ulp) {

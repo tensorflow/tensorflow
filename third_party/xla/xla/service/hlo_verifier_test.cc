@@ -143,8 +143,8 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   module->AddEmbeddedComputation(emb_builder.Build());
 
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
-  TF_ASSERT_OK(negate->ReplaceOperandWith(0, emb_param));
+  ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(negate->ReplaceOperandWith(0, emb_param));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -261,7 +261,7 @@ TEST_F(HloVerifierTest, CheckCustomCallOperandOutputAliasing) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_EXPECT_OK(verifier().Run(module.get()).status());
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, CompositeCall) {
@@ -558,7 +558,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, RngOpnd0NotScalar) {
@@ -1251,11 +1251,11 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
   // so we need to invalidate it in the C++ representation.
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-  TF_ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
+  ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
   HloComputation* computation =
       FindComputation(module.get(), "AsyncDoneNoAsyncStart");
-  TF_ASSERT_OK(computation->RemoveInstruction(async_start));
+  ASSERT_OK(computation->RemoveInstruction(async_start));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1284,13 +1284,13 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
   // so we need to invalidate it in the C++ representation.
   HloInstruction* tuple = FindInstruction(module.get(), "tuple");
   HloInstruction* async_update = FindInstruction(module.get(), "async-update");
-  TF_ASSERT_OK(async_update->ReplaceOperandWith(0, tuple));
+  ASSERT_OK(async_update->ReplaceOperandWith(0, tuple));
   HloInstruction* async_done = FindInstruction(module.get(), "async-done");
-  TF_ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
+  ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
   HloInstruction* async_start = FindInstruction(module.get(), "async-start");
   HloComputation* computation =
       FindComputation(module.get(), "AsyncUpdateAndAsyncDoneNoAsyncStart");
-  TF_ASSERT_OK(computation->RemoveInstruction(async_start));
+  ASSERT_OK(computation->RemoveInstruction(async_start));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1687,13 +1687,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> MakeAllReduceComputation(
 
 TEST_F(HloVerifierTest, AllReduce_NoReplicaGroupsOK) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllReduceComputation({}));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_DifferentGroupSizesOk) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           MakeAllReduceComputation({{0}, {1, 3}, {2}}));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_EmptyReplicaGroup) {
@@ -1746,7 +1746,7 @@ TEST_F(HloVerifierTest, AllReduce_CrossReplicaAndPartition_Valid) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 4, 1, "channel_id=1"));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduce_FlattenedID_Invalid) {
@@ -1764,7 +1764,7 @@ TEST_F(HloVerifierTest, AllReduce_FlattenedID_Valid) {
       auto module,
       MakeAllReduceComputation({{0, 1}, {2, 3}}, 2, 2,
                                "channel_id=1, use_global_device_ids=true"));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllReduceStartAndDone) {
@@ -1876,7 +1876,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
 
 TEST_F(HloVerifierTest, AllToAll_NoReplicaGroupsOK) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, MakeAllToAllComputation({}, 2));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllToAll_EmptyReplicaGroup) {
@@ -1919,7 +1919,7 @@ TEST_F(HloVerifierTest, AllToAll_CrossPartition_Valid) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module,
       MakeAllToAllComputation({{0, 1}, {2, 3}}, 1, 4, "channel_id=1"));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, AllToAll_LayoutConstrained) {
@@ -2004,7 +2004,7 @@ TEST_F(HloVerifierTest, CollectivePermuteMultipeOperands) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_EXPECT_OK(verifier().Run(module.get()).status());
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteSameSourceTooManyTimes) {
@@ -2417,7 +2417,7 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncRecv) {
@@ -2455,7 +2455,7 @@ TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncRecv) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncSend) {
@@ -2494,7 +2494,7 @@ TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncSend) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
@@ -2511,7 +2511,7 @@ TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, SingleUserExceptionForWrappedSendRecv) {
@@ -2539,7 +2539,7 @@ TEST_F(HloVerifierTest, SingleUserExceptionForWrappedSendRecv) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
@@ -2556,7 +2556,7 @@ TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, ChannelVerifierMultipleSendUsers) {
@@ -2618,7 +2618,7 @@ TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, CollectivePermuteStartAndDone) {
@@ -2963,9 +2963,9 @@ ENTRY computation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyBroadcastDimensionsOrder()}
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(HloVerifierTest, VerifyInstructionNameChanged) {
@@ -3000,9 +3000,9 @@ ENTRY computation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(HloVerifierTest, VerifyInstructionNameSchedulingNameNotPresent) {
@@ -3017,9 +3017,9 @@ ENTRY computation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(HloVerifierTest, VerifyInstructionNameChangedOkWithRematAndClones) {
@@ -3038,9 +3038,9 @@ ENTRY computation {
   auto status = HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
                     .Run(module.get())
                     .status();
-  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(HloVerifierTest, ReshapeIsNotBitcast) {
@@ -3075,10 +3075,10 @@ ENTRY main {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK(HloVerifier{
+  ASSERT_OK(HloVerifier{
       HloVerifierOpts{}.MakeLayoutSensitive().VerifyReshapeIsBitcast()}
-                   .Run(module.get())
-                   .status());
+                .Run(module.get())
+                .status());
 }
 
 TEST_F(HloVerifierTest, VerifyCustomCallThread) {
@@ -3347,7 +3347,7 @@ TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
   {
     MetadataTracker tracker("TEST PREFIX");
     for (const auto* c : module->computations()) {
-      TF_ASSERT_OK(c->Accept(&tracker));
+      ASSERT_OK(c->Accept(&tracker));
     }
   }
 }
@@ -3384,7 +3384,7 @@ ENTRY entry {
                           ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, InputLayoutMismatchReported) {
@@ -3421,7 +3421,7 @@ ENTRY entry {
                           ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, OutputLayoutMismatchReported) {
@@ -3479,7 +3479,7 @@ TEST_F(HloVerifierTestLayoutSensitive,
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_EXPECT_OK(verifier().Run(module.get()).status());
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 TEST_F(HloVerifierTestLayoutSensitive, LayoutOK) {
@@ -3497,7 +3497,7 @@ ENTRY entry {
                           ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST_F(HloVerifierTest, MixedTypeForAllGatherAllowed) {
@@ -3514,7 +3514,7 @@ ENTRY entry {
                           ParseAndReturnUnverifiedModule(kHlo));
   absl::Status status = verifier().Run(module.get()).status();
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST_F(HloVerifierTest, UnboundedDynamism) {
@@ -3707,7 +3707,7 @@ TEST_F(HloVerifierTestLayoutSensitive, Int4CompareSelect) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
+  ASSERT_OK(verifier().Run(module.get()));
 }
 
 TEST_F(HloVerifierTest, RaggedDotNonContracting) {

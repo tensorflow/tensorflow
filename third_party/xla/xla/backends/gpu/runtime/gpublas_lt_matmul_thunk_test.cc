@@ -247,7 +247,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
     }
   }
   for (const auto& [_, res] : threads) {
-    TF_ASSERT_OK(res);
+    ASSERT_OK(res);
   }
 }
 
@@ -369,7 +369,7 @@ TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
     }  // for j
   }  // end block
   for (auto& res : results) {
-    TF_ASSERT_OK(res);
+    ASSERT_OK(res);
   }
 
   // We assert that we have the same number of cache entries for each executor

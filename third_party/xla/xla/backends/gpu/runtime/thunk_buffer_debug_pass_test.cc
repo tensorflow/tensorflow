@@ -595,7 +595,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
         xla_gpu_experimental_enable_buffer_saver_on_thunks: true
       )pb");
 
-  TF_EXPECT_OK(RunDebugSaverInserter(*root_thunk, debug_options, hlo_module));
+  EXPECT_OK(RunDebugSaverInserter(*root_thunk, debug_options, hlo_module));
 
   // Expected thunk structure after the pass:
   // 1. SequentialThunk

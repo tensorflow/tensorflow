@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -43,9 +44,9 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
-  TF_EXPECT_OK(test_runner()
-                   .CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
-                   .status());
+  EXPECT_OK(test_runner()
+                .CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
+                .status());
 }
 
 }  // namespace

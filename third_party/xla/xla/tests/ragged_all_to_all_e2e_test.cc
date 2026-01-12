@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -345,9 +346,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                     /*replica_1=*/{3, 1}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -432,9 +433,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_S4) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                     /*replica_1=*/{3, 1}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
 
   // `CreateRandomTestData` calculates sizes and offsets metadata, but fill
   // input and expected output literals with random floats. We need to manually
@@ -492,9 +493,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{8, 5},
-                                                     /*replica_1=*/{4, 3}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{8, 5},
+                                                  /*replica_1=*/{4, 3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -529,9 +530,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 12},
-                                                     /*replica_1=*/{5, 11}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{4, 12},
+                                                  /*replica_1=*/{5, 11}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -568,7 +569,7 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
-  TF_ASSERT_OK(CreateRandomTestData(
+  ASSERT_OK(CreateRandomTestData(
       module.get(), /*input_sizes=*/{/*replica_0=*/{{1, 2}, {2, 1}},
                                      /*replica_1=*/{{3, 1}, {1, 1}}}));
 
@@ -606,9 +607,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                                     /*replica_1=*/{2, 5}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                                  /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -644,9 +645,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1},
-                                                     /*replica_1=*/{3}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1},
+                                                  /*replica_1=*/{3}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -686,9 +687,9 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
       FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
   EXPECT_THAT(ragged_all_to_all, NotNull());
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                                     /*replica_1=*/{2, 5}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{4, 7},
+                                                  /*replica_1=*/{2, 5}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -725,9 +726,9 @@ TEST_P(RaggedAllToAllTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleReplicatedStr, kNumReplicas));
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                     /*replica_1=*/{3, 1}}));
+  ASSERT_OK(CreateRandomTestData(module.get(),
+                                 /*input_sizes=*/{/*replica_0=*/{1, 1},
+                                                  /*replica_1=*/{3, 1}}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -769,7 +770,7 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -817,7 +818,7 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -865,7 +866,7 @@ TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -964,7 +965,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_2GPUs_SliceSize1) {
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -1017,7 +1018,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -1069,7 +1070,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest, RaggedAllToAll_8GPUs_SliceSize4) {
       {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 16);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -1123,7 +1124,7 @@ TEST_P(RaggedAllToAllMultiHostDecomposerTest,
       {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
   input_sizes.FillRandomUniform(0, 10);
 
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
+  ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,

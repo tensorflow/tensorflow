@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
@@ -66,20 +67,20 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   uint32_t pattern;
   std::memcpy(&pattern, &value, sizeof(pattern));
 
-  TF_ASSERT_OK(stream->Memset32(&a, pattern, byte_length));
-  TF_ASSERT_OK(stream->Memset32(&b, pattern, byte_length));
-  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+  ASSERT_OK(stream->Memset32(&a, pattern, byte_length));
+  ASSERT_OK(stream->Memset32(&b, pattern, byte_length));
+  ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch gemm kernel with device memory arguments.
   stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
-  TF_ASSERT_OK(gemm->Launch(custom_kernel.thread_dims(),
-                            custom_kernel.block_dims(), stream.get(), arr));
+  ASSERT_OK(gemm->Launch(custom_kernel.thread_dims(),
+                         custom_kernel.block_dims(), stream.get(), arr));
 
   // Copy `c` data back to host.
   std::vector<float> dst(length, -1.0f);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
   std::vector<float> expected(length, 16.0);
   ASSERT_EQ(dst, expected);

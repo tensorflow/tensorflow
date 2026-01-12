@@ -85,7 +85,7 @@ TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 TEST_F(CpuGpuShapeVerifierTest, Int4ShardingCustomCall) {
@@ -101,7 +101,7 @@ TEST_F(CpuGpuShapeVerifierTest, Int4ShardingCustomCall) {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 }  // namespace

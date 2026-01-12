@@ -992,7 +992,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   HloComputation* comp0 = FindComputation(module.get(), "comp.0");
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.0");
-  TF_ASSERT_OK(comp0->CreateAsyncInstructions(
+  ASSERT_OK(comp0->CreateAsyncInstructions(
       custom_call, /*context_shapes=*/{ShapeUtil::MakeScalarShape(U32)},
       /*async_execution_thread=*/HloInstruction::kMainExecutionThread,
       /*replace=*/true,
@@ -1068,7 +1068,7 @@ ENTRY main {
   HloComputation* computation = call0->to_apply();
   ASSERT_TRUE(!computation->parameter_instruction(0)->has_backend_config());
   // Parameter 0 is dead and safe to remove.
-  TF_ASSERT_OK(computation->RemoveParameter(0));
+  ASSERT_OK(computation->RemoveParameter(0));
   // Parameter 1 shifted to parameter 0 and should preserve its backend config.
   EXPECT_TRUE(computation->parameter_instruction(0)->has_backend_config());
 }

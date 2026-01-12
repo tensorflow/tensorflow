@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,11 +39,11 @@ class TreeReductionRewriterTest : public CpuCodegenTest {
                             ParseAndReturnVerifiedModule(hlo));
 
     TreeReductionRewriter tree_reduction_rewriter;
-    TF_ASSERT_OK(tree_reduction_rewriter.Run(optimized_module.get()));
+    ASSERT_OK(tree_reduction_rewriter.Run(optimized_module.get()));
 
     absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_module->ToString(), pattern);
-    TF_ASSERT_OK(filecheck_result.status());
+    ASSERT_OK(filecheck_result.status());
     EXPECT_TRUE(filecheck_result.value());
   }
 };

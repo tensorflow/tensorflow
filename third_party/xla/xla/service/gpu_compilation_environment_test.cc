@@ -83,7 +83,7 @@ TEST(InitializeMissingFieldsFromXLAFlagsTest, BothProtoAndEnvVarUnset) {
   set_xla_flags_env_var("");
   GpuCompilationEnvironment env;
 
-  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
+  ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
   EXPECT_EQ(env.dummy_flag(), 1);
 }
 
@@ -92,7 +92,7 @@ TEST(InitializeMissingFieldsFromXLAFlagsTest, ProtoSetButEnvVarUnset) {
   GpuCompilationEnvironment env;
   env.set_dummy_flag(2);
 
-  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
+  ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
 
   EXPECT_EQ(env.dummy_flag(), 2);
 }
@@ -101,7 +101,7 @@ TEST(InitializeMissingFieldsFromXLAFlagsTest, ProtoUnsetButEnvVarSet) {
   set_xla_flags_env_var("--dummy_flag=4");
 
   GpuCompilationEnvironment env;
-  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
+  ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
 
   EXPECT_EQ(env.dummy_flag(), 4);
 }
@@ -111,7 +111,7 @@ TEST(InitializeMissingFieldsFromXLAFlagsTest,
   set_xla_flags_env_var("--dummy_flag=4");
   CompilationEnvironments envs;
   GpuCompilationEnvironment env;
-  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
+  ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
   EXPECT_EQ(env.dummy_flag(), 4);
 }
 

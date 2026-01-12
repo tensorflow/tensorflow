@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -147,12 +148,12 @@ constexpr absl::string_view kModuleWithCompEnvSerializedName =
 class ArtifactDirTest : public ::testing::Test {
  public:
   void SetUp() override {
-    TF_ASSERT_OK(tsl::Env::Default()->CreateDir(artifact_dir_));
+    ASSERT_OK(tsl::Env::Default()->CreateDir(artifact_dir_));
   }
   void TearDown() override {
     int64_t num_files_deleted = 0;
     int64_t num_dirs_deleted = 0;
-    TF_ASSERT_OK(tsl::Env::Default()->DeleteRecursively(
+    ASSERT_OK(tsl::Env::Default()->DeleteRecursively(
         artifact_dir_, &num_files_deleted, &num_dirs_deleted));
   }
 
@@ -167,11 +168,11 @@ TEST_F(CompilePhaseHloRunnerPjRtTest, CreateExecutablePlacesFileCorrectly) {
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
-  TF_ASSERT_OK(
+  ASSERT_OK(
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false).status());
 
   std::vector<std::string> children;
-  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
   ASSERT_EQ(children.size(), 1);
   ASSERT_EQ(children[0], kModuleSerializedName);
 }
@@ -183,10 +184,10 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
   CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
-  TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/true));
+  ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/true));
 
   std::vector<std::string> children;
-  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
   ASSERT_EQ(children.size(), 1);
   ASSERT_EQ(children[0], kModuleWithRunHloPassesSerializedName);
 }
@@ -210,11 +211,11 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
         env->set_some_flag(42);
         return env;
       });
-  TF_ASSERT_OK(m->comp_envs().InitializeAllKnownEnvs());
-  TF_ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
+  ASSERT_OK(m->comp_envs().InitializeAllKnownEnvs());
+  ASSERT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
 
   std::vector<std::string> children;
-  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
   ASSERT_EQ(children.size(), 1);
   ASSERT_EQ(children[0], kModuleWithCompEnvSerializedName);
 }
@@ -224,7 +225,7 @@ using ExecutePhaseHloRunnerPjRtTest = ArtifactDirTest;
 // Tests that a call to CreateExecutable reads the file from the correct path
 // and deserializes the right contents.
 TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
+  ASSERT_OK(tsl::WriteStringToFile(
       tsl::Env::Default(),
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   absl::Notification notification;
@@ -249,13 +250,13 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
 
 TEST_F(ExecutePhaseHloRunnerPjRtTest,
        CreateExecutableFailsOnDuplicateLoadIfFeatureEnabled) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
+  ASSERT_OK(tsl::WriteStringToFile(
       tsl::Env::Default(),
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   ExecutePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
-  TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
+  ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
   EXPECT_THAT(
       runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false),
       StatusIs(
@@ -267,15 +268,15 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest,
 
 TEST_F(ExecutePhaseHloRunnerPjRtTest,
        CreateExecutableSucceedsOnDuplicateLoadIfFeatureDisabled) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
+  ASSERT_OK(tsl::WriteStringToFile(
       tsl::Env::Default(),
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   ExecutePhaseHloRunnerPjRt runner(
       std::make_unique<FakeClient>(), artifact_dir_,
       /*compile_if_not_found=*/false, /*fail_duplicate_loads=*/false);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m, CreateFakeModule());
-  TF_ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
-  TF_EXPECT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
+  ASSERT_OK(runner.CreateExecutable(m->Clone(""), /*run_hlo_passes=*/false));
+  EXPECT_OK(runner.CreateExecutable(std::move(m), /*run_hlo_passes=*/false));
 }
 
 }  // namespace

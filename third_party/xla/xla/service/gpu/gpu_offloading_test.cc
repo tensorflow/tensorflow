@@ -60,12 +60,12 @@ class GpuOffloadingTest
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
                                                int64_t min_remat_size = 0) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ::xla::ShapeUtil::ByteSizeOf(buffer.shape());
       });
-      TF_EXPECT_OK(scheduler.Run(module).status());
+      EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any
     // number of number of copies.

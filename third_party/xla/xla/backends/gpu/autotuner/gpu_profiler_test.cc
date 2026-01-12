@@ -219,7 +219,7 @@ TEST_P(GpuProfilerTestWithRedzonePadding, CheckInputBuffers) {
   auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(&mock_executable));
-  TF_EXPECT_OK(profiler->CheckInputBuffers(*buffers));
+  EXPECT_OK(profiler->CheckInputBuffers(*buffers));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuProfilerTestWithRedzonePadding,

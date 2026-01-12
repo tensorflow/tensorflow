@@ -62,7 +62,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllReduce) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_reduce = HloPredicateTrue;
   config.all_reduce_min_threshold_in_bytes = 4096;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -87,7 +87,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllGather) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -115,7 +115,7 @@ TEST_F(AsyncCollectiveCreatorTest, CombinedCollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 }
 
 TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermute) {
@@ -131,7 +131,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermute) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -161,7 +161,7 @@ ENTRY %module_spmd () -> f32[4,4,128] {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -189,7 +189,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectivePermuteScheduled) {
 
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -217,7 +217,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleCollectiveBroadcast) {
 
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_broadcast = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());
@@ -244,7 +244,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleAllToAll) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -277,7 +277,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsSingleReduceScatter) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_reduce_scatter = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -312,7 +312,7 @@ ENTRY RA2A {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_ragged_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
   XLA_VLOG_LINES(0, hlo_module->ToString());
 
   HloComputation* computation = hlo_module->entry_computation();
@@ -343,7 +343,7 @@ TEST_F(AsyncCollectiveCreatorTest, ControlPredecessor) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
   config.all_gather_min_threshold_in_bytes = 4096;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
   SCOPED_TRACE(hlo_module->ToString());
 
@@ -378,7 +378,7 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllGather) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -411,7 +411,7 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllReduce) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_reduce = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -440,7 +440,7 @@ TEST_F(AsyncCollectiveCreatorTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_collective_permute = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -468,7 +468,7 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_to_all = HloPredicateTrue;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
 
   HloInstruction* done = hlo_module->entry_computation()->root_instruction();
@@ -496,7 +496,7 @@ TEST_F(AsyncCollectiveCreatorTest, SplitsMultiOperandAllGather) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
-  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+  ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
 
   HloComputation* computation = hlo_module->entry_computation();
   ASSERT_THAT(computation, NotNull());

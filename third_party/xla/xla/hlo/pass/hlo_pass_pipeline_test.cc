@@ -329,7 +329,7 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
-  TF_ASSERT_OK(pipeline.Run(module.get()).status());
+  ASSERT_OK(pipeline.Run(module.get()).status());
 
   std::vector<std::string> pass_names = {"pipeline-start", "baz2qux",
                                          "foo2bar"};
@@ -381,7 +381,7 @@ ENTRY main {
   pipeline.AddPass<NoOpModulePass>();
 
   absl::Status status = pipeline.Run(module.get()).status();
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
 }
 
 // TODO: Add test.

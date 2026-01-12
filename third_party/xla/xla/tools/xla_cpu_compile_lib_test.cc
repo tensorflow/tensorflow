@@ -53,7 +53,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                                                    "tools", "data", "add.hlo");
     std::string hlo;
-    TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
     TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
   }
 
@@ -99,11 +99,11 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
   *result.mutable_perf_stats()->mutable_compilation_duration() = duration;
   *result.mutable_perf_stats()->mutable_total_duration() = duration;
 
-  TF_ASSERT_OK(WriteResultFile(result_output_file, stats, result));
+  ASSERT_OK(WriteResultFile(result_output_file, stats, result));
 
   CompilationResult got_result;
-  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_output_file,
-                                    &got_result));
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_output_file,
+                                 &got_result));
   // Sadly EqualsProto isn't OSS, so we inspect a few fields manually.
   // See googletest#1761 and b/229726259.
   EXPECT_EQ(5, got_result.perf_stats().compilation_duration().seconds());
@@ -128,8 +128,8 @@ TEST_F(XlaCompileLibTest, ErrorsOnMissingOutputPaths) {
 TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
   const std::string module_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
-  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
-                                      module_->ToString()));
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                   module_->ToString()));
 
   EXPECT_THAT(LoadModule(module_file),
               absl_testing::IsOkAndHolds(Not(IsNull())));
@@ -138,8 +138,8 @@ TEST_F(XlaCompileLibTest, LoadModuleLoadsTextFormat) {
 TEST_F(XlaCompileLibTest, MainForCpu) {
   const std::string module_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
-  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
-                                      module_->ToString()));
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                   module_->ToString()));
 
   const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "cpu_output");
@@ -151,10 +151,10 @@ TEST_F(XlaCompileLibTest, MainForCpu) {
   options.output_file = output_file;
   options.platform = "cpu";
   options.result_output_file = result_file;
-  TF_EXPECT_OK(XlaCompileMain(options));
+  EXPECT_OK(XlaCompileMain(options));
 
   CompilationResult result;
-  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }

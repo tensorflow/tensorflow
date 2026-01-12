@@ -178,7 +178,7 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
-  TF_ASSERT_OK(config);
+  ASSERT_OK(config);
   CudnnBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
   EXPECT_EQ(algorithm_config.algo_id(), -1);
@@ -193,7 +193,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
       hlo_module->entry_computation()->root_instruction();
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, any));
+  ASSERT_OK(backend_.ApplyConfig(*fusion_instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion_instr->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
@@ -209,7 +209,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  ASSERT_OK(backend_.ApplyConfig(*instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
@@ -226,7 +226,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCallWithWorkspace) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  ASSERT_OK(backend_.ApplyConfig(*instr, any));
 
   auto* replaced_instr =
       hlo_module->entry_computation()->GetInstructionWithName("cudnn-conv");

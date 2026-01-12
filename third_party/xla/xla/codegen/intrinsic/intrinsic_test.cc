@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include <optional>
 
 #include <gmock/gmock.h>
@@ -48,8 +47,8 @@ TEST(IntrinsicTest, TypeVectorWidth) {
 }
 
 TEST(IntrinsicTest, VerifySameWidth) {
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
+  EXPECT_OK(Type::VerifySameWidth(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(Type::VerifySameWidth(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_THAT(
       Type::VerifySameWidth(Type::S(F32), Type::V(F32, 4)),
       absl_testing::StatusIs(_, HasSubstr("Expected types of the same kind")));
@@ -58,8 +57,8 @@ TEST(IntrinsicTest, VerifySameWidth) {
 }
 
 TEST(IntrinsicTest, VerifySameWidthAndElementType) {
-  TF_EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
-  TF_EXPECT_OK(
+  EXPECT_OK(Type::VerifySameWidthAndElementType(Type::S(F32), Type::S(F32)));
+  EXPECT_OK(
       Type::VerifySameWidthAndElementType(Type::V(F32, 4), Type::V(F32, 4)));
   EXPECT_THAT(
       Type::VerifySameWidthAndElementType(Type::S(F32), Type::V(F32, 4)),

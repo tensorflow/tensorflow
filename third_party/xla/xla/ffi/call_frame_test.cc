@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/c_api.h"
@@ -89,7 +90,7 @@ TEST(CallFrameTest, UpdateCallFrame) {
     EXPECT_EQ(ffi_call_frame.attrs.size, 2);
   }
 
-  TF_ASSERT_OK(updated_call_frame.UpdateWithBuffers({mem0}, {mem1}));
+  ASSERT_OK(updated_call_frame.UpdateWithBuffers({mem0}, {mem1}));
 
   {  // Construct XLA_FFI_CallFrame from the call frame updated in place.
     XLA_FFI_CallFrame ffi_call_frame = updated_call_frame.Build(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -90,8 +91,7 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
     ASSERT_TRUE(!output_buffers[i].address().is_null());
-    TF_ASSERT_OK(
-        stream->MemZero(output_buffers[i].address_ptr(), n * sizeof(T)));
+    ASSERT_OK(stream->MemZero(output_buffers[i].address_ptr(), n * sizeof(T)));
   }
 
   stream_executor::DeviceAddressHandle input_offsets_buffer(
@@ -110,29 +110,28 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
 
   std::vector<T> input_data(n);
   absl::c_iota(input_data, 0);
-  TF_ASSERT_OK(stream->Memcpy(input_buffer.address_ptr(), input_data.data(),
-                              n * sizeof(T)));
+  ASSERT_OK(stream->Memcpy(input_buffer.address_ptr(), input_data.data(),
+                           n * sizeof(T)));
 
   std::vector<int64_t> input_offsets = {1, 4, 0, 3};
   std::vector<int64_t> send_sizes = {2, 3, 1, 2};
   std::vector<int64_t> output_offsets = {0, 4, 1, 5};
 
-  TF_ASSERT_OK(stream->Memcpy(input_offsets_buffer.address_ptr(),
-                              input_offsets.data(),
-                              input_offsets.size() * sizeof(int64_t)));
-  TF_ASSERT_OK(stream->Memcpy(send_sizes_buffer.address_ptr(),
-                              send_sizes.data(),
-                              send_sizes.size() * sizeof(int64_t)));
-  TF_ASSERT_OK(stream->Memcpy(output_offsets_buffer.address_ptr(),
-                              output_offsets.data(),
-                              output_offsets.size() * sizeof(int64_t)));
+  ASSERT_OK(stream->Memcpy(input_offsets_buffer.address_ptr(),
+                           input_offsets.data(),
+                           input_offsets.size() * sizeof(int64_t)));
+  ASSERT_OK(stream->Memcpy(send_sizes_buffer.address_ptr(), send_sizes.data(),
+                           send_sizes.size() * sizeof(int64_t)));
+  ASSERT_OK(stream->Memcpy(output_offsets_buffer.address_ptr(),
+                           output_offsets.data(),
+                           output_offsets.size() * sizeof(int64_t)));
 
   std::vector<se::DeviceAddressBase> output_buffers_span;
   for (auto& output_buffer : output_buffers) {
     output_buffers_span.push_back(output_buffer.address());
   }
 
-  TF_ASSERT_OK(RunRaggedAllToAllKernel(
+  ASSERT_OK(RunRaggedAllToAllKernel(
       stream.get(), primitive_util::NativeToPrimitiveType<T>(),
       input_buffer.address(), output_buffers_span,
       input_offsets_buffer.address(), send_sizes_buffer.address(),
@@ -143,8 +142,8 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
 
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_results[i].resize(n);
-    TF_ASSERT_OK(stream->Memcpy(output_results[i].data(),
-                                output_buffers[i].address(), n * sizeof(T)));
+    ASSERT_OK(stream->Memcpy(output_results[i].data(),
+                             output_buffers[i].address(), n * sizeof(T)));
   }
 
   std::vector<std::vector<T>> expected_output_results =

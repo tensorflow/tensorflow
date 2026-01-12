@@ -1361,7 +1361,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
   TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
                           RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
-  TF_ASSERT_OK(VerifyMsaEquivalence(module.get()));
+  ASSERT_OK(VerifyMsaEquivalence(module.get()));
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndUnsupportedAllocation) {
@@ -1388,8 +1388,8 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndUnsupportedAllocation) {
   TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
                           RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
-  TF_ASSERT_OK(VerifyMsaEquivalence(module.get(),
-                                    /*expect_unsupported_allocations=*/true));
+  ASSERT_OK(VerifyMsaEquivalence(module.get(),
+                                 /*expect_unsupported_allocations=*/true));
 
   const HloInstruction* op2 = FindInstruction(module.get(), "op2");
   EXPECT_EQ(op2->shape().layout().memory_space(), kAlternateMemorySpace);

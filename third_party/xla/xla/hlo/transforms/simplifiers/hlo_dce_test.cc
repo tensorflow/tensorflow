@@ -296,7 +296,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Add a control dependency between two instructions.
-  TF_ASSERT_OK(dead_negate_with_control_dep->AddControlDependencyTo(
+  ASSERT_OK(dead_negate_with_control_dep->AddControlDependencyTo(
       dead_add_with_control_dep));
 
   EXPECT_EQ(7, computation->instruction_count());

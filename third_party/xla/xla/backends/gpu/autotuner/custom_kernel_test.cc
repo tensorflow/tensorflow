@@ -175,7 +175,7 @@ TEST_F(CustomKernelBackendTest, ApplyConfig) {
   config.set_kernel_index(2);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_EXPECT_OK(backend_.ApplyConfig(
+  EXPECT_OK(backend_.ApplyConfig(
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":2"),
               absl_testing::IsOkAndHolds(true));

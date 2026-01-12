@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
@@ -84,8 +85,8 @@ class CollectivePerfTableStatsCollectionTest
         profiles_path_(tsl::io::JoinPath(tsl::testing::TmpDir(), kFile)) {}
 
   void SetUp() override {
-    TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), profiles_path_,
-                                     TestProfiles(device_info_)));
+    ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), profiles_path_,
+                                  TestProfiles(device_info_)));
   }
 
  protected:

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -106,18 +107,18 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[6];
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
@@ -153,18 +154,18 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[6];
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
@@ -201,11 +202,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Errors) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[6];
@@ -248,18 +249,18 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[10];
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 
   // Read the second chunk.
@@ -289,11 +290,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[5];
@@ -301,10 +302,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
 
   // Read the first chunk. Even though the backend response is out-of-range,
   // we should get a OK status since we're just reading the first 5 bytes.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 
-  TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("45678", result);
 
   // Return the cached error once the user starts reading out of range.
@@ -341,19 +342,19 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedNotSequential) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[5];
   absl::string_view result;
 
-  TF_EXPECT_OK(file->Read(1, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(1, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("12345", result);
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 }
 
@@ -383,11 +384,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[10];
@@ -400,7 +401,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
       file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("012345678", result);
 
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 }
 
@@ -431,11 +432,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadBackwards) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   absl::string_view filename;
-  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_OK(file->Name(&filename));
   EXPECT_EQ(filename, "gs://bucket/random_access.txt");
 
   char scratch[10];
@@ -447,7 +448,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadBackwards) {
   EXPECT_EQ("56789", result);
 
   // Go back and read from the beginning of the file.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 }
 
@@ -474,7 +475,7 @@ TEST(GcsFileSystemTest,
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 }
 
@@ -521,18 +522,18 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
   string bucket = "gs://bucket/random_access.txt";
   string another_bucket = "gs://anotherbucket/random_access.txt";
   // Multiple calls should only cause one request to the location API.
-  TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
-  TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
 
   // A new bucket should have one cache miss
-  TF_EXPECT_OK(fs.NewRandomAccessFile(another_bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(another_bucket, nullptr, &file));
   // And then future calls to both should be cached
-  TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
-  TF_EXPECT_OK(fs.NewRandomAccessFile(another_bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(another_bucket, nullptr, &file));
 
   // Trigger a flush, should then require one more call
   fs.FlushCaches(nullptr);
-  TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
+  EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
 }
 
 TEST(GcsFileSystemTest,
@@ -591,15 +592,15 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache_DifferentN) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   char small_scratch[3];
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(
-      0, result, absl::MakeSpan(small_scratch, sizeof(small_scratch))));
+  EXPECT_OK(file->Read(0, result,
+                       absl::MakeSpan(small_scratch, sizeof(small_scratch))));
   EXPECT_EQ("012", result);
 
   // Read the second chunk that is larger. Requires allocation of new buffer.
@@ -657,24 +658,24 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
     // We are instantiating this in an enclosed scope to make sure after the
     // unique ptr goes out of scope, we can still access result.
     std::unique_ptr<RandomAccessFile> file;
-    TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt",
-                                        nullptr, &file));
+    EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr,
+                                     &file));
 
     // Read the first chunk. The cache will be populated with the first block of
     // 9 bytes.
     scratch[5] = 'x';
-    TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
+    EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
     EXPECT_EQ("0123", result);
     EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
 
     // The second chunk will be fully loaded from the cache, no requests are
     // made.
-    TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
+    EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
     EXPECT_EQ("4567", result);
 
     // The chunk is only partially cached -- the request will be made to fetch
     // the next block. 9 bytes will be requested, starting at offset 9.
-    TF_EXPECT_OK(file->Read(6, result, absl::MakeSpan(scratch, 5)));
+    EXPECT_OK(file->Read(6, result, absl::MakeSpan(scratch, 5)));
     EXPECT_EQ("6789a", result);
 
     // The range can only be partially satisfied, as the second block contains
@@ -693,7 +694,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
 
     // The beginning of the file should still be in the LRU cache. There should
     // not be another request. The buffer size is still 15.
-    TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
+    EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
   }
 
   EXPECT_EQ("0123", result);
@@ -743,18 +744,18 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_Flush) {
   char scratch[100];
   absl::string_view result;
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
   // Read the first chunk. The cache will be populated with the first block of
   // 9 bytes.
   scratch[5] = 'x';
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
   // Flush caches and read the second chunk. This will be a cache miss, and
   // the same block will be fetched again.
   fs.FlushCaches(nullptr);
-  TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("4567", result);
 }
 
@@ -800,23 +801,23 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
     // staleness of the filesystem is > 0, they will share the same blocks.
     std::unique_ptr<RandomAccessFile> file1;
     std::unique_ptr<RandomAccessFile> file2;
-    TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file1));
-    TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file2));
+    EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file1));
+    EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file2));
     // Reading the first block from file1 should load it once.
-    TF_EXPECT_OK(file1->Read(0, result, absl::MakeSpan(scratch, 8)));
+    EXPECT_OK(file1->Read(0, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("01234567", result);
     // Reading the first block from file2 should not trigger a request to load
     // the first block again, because the FileBlockCache shared by file1 and
     // file2 already has the first block.
-    TF_EXPECT_OK(file2->Read(0, result, absl::MakeSpan(scratch, 8)));
+    EXPECT_OK(file2->Read(0, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("01234567", result);
     // Reading the second block from file2 should load it once.
-    TF_EXPECT_OK(file2->Read(8, result, absl::MakeSpan(scratch, 8)));
+    EXPECT_OK(file2->Read(8, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("89abcdef", result);
     // Reading the second block from file1 should not trigger a request to load
     // the second block again, because the FileBlockCache shared by file1 and
     // file2 already has the second block.
-    TF_EXPECT_OK(file1->Read(8, result, absl::MakeSpan(scratch, 8)));
+    EXPECT_OK(file1->Read(8, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("89abcdef", result);
   }
 }
@@ -862,18 +863,18 @@ TEST(GcsFileSystemTest,
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   char scratch[5];
   absl::string_view result;
 
   // First read.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 
   // Second read. File signatures are different.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("43210", result);
 }
 
@@ -926,10 +927,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
 
   // Stat the file first so that the file stats are cached.
   FileStatistics stat;
-  TF_ASSERT_OK(fs.Stat("gs://bucket/random_access.txt", nullptr, &stat));
+  ASSERT_OK(fs.Stat("gs://bucket/random_access.txt", nullptr, &stat));
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   char scratch[6];
@@ -994,30 +995,29 @@ TEST(GcsFileSystemTest, NewWritableFile) {
 
   // Read from the file first, to fill the block cache.
   std::unique_ptr<RandomAccessFile> rfile;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/writeable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // Open the writable file.
   std::unique_ptr<WritableFile> wfile;
-  TF_EXPECT_OK(
-      fs.NewWritableFile("gs://bucket/path/writeable", nullptr, &wfile));
-  TF_EXPECT_OK(wfile->Append("content1,"));
+  EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable", nullptr, &wfile));
+  EXPECT_OK(wfile->Append("content1,"));
   int64_t pos;
-  TF_EXPECT_OK(wfile->Tell(&pos));
+  EXPECT_OK(wfile->Tell(&pos));
   EXPECT_EQ(9, pos);
-  TF_EXPECT_OK(wfile->Append("content2"));
-  TF_EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Append("content2"));
+  EXPECT_OK(wfile->Flush());
   // Re-reading the file should trigger another HTTP request to GCS.
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // The calls to flush, sync, and close below should not cause uploads because
   // the file is not dirty.
-  TF_EXPECT_OK(wfile->Flush());
-  TF_EXPECT_OK(wfile->Sync());
-  TF_EXPECT_OK(wfile->Close());
+  EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Sync());
+  EXPECT_OK(wfile->Close());
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
@@ -1087,12 +1087,12 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceeds) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewWritableFile("gs://bucket/path/writeable.txt", nullptr, &file));
 
-  TF_EXPECT_OK(file->Append("content1,"));
-  TF_EXPECT_OK(file->Append("content2"));
-  TF_EXPECT_OK(file->Close());
+  EXPECT_OK(file->Append("content1,"));
+  EXPECT_OK(file->Append("content2"));
+  EXPECT_OK(file->Close());
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
@@ -1160,28 +1160,27 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
   // Pull the file's first block into the cache. This will trigger the first
   // HTTP request to GCS.
   std::unique_ptr<RandomAccessFile> rfile;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/writeable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // Now write to the same file. Once the write succeeds, the cached block will
   // be flushed.
   std::unique_ptr<WritableFile> wfile;
-  TF_EXPECT_OK(
-      fs.NewWritableFile("gs://bucket/path/writeable", nullptr, &wfile));
-  TF_EXPECT_OK(wfile->Append("content1,"));
-  TF_EXPECT_OK(wfile->Append("content2"));
+  EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable", nullptr, &wfile));
+  EXPECT_OK(wfile->Append("content1,"));
+  EXPECT_OK(wfile->Append("content2"));
   // Appending doesn't invalidate the read cache - only flushing does. This read
   // will not trigger an HTTP request to GCS.
-  TF_EXPECT_OK(rfile->Read(4, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(rfile->Read(4, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("4567", result);
   // Closing the file triggers HTTP requests to GCS and invalidates the read
   // cache for the file.
-  TF_EXPECT_OK(wfile->Close());
+  EXPECT_OK(wfile->Close());
   // Reading the first block of the file goes to GCS again.
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
 }
 
@@ -1248,11 +1247,11 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
       false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewWritableFile("gs://bucket/path/writeable.txt", nullptr, &file));
 
-  TF_EXPECT_OK(file->Append("content1,"));
-  TF_EXPECT_OK(file->Append("content2"));
+  EXPECT_OK(file->Append("content1,"));
+  EXPECT_OK(file->Append("content2"));
   const auto& status = file->Close();
   EXPECT_TRUE(absl::IsAborted(status));
   EXPECT_TRUE(
@@ -1264,7 +1263,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
 
 TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   std::vector<string> results;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
   const int64_t tmp_files_before = results.size();
 
@@ -1313,11 +1312,11 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
 
   {
     std::unique_ptr<WritableFile> file;
-    TF_EXPECT_OK(
+    EXPECT_OK(
         fs.NewWritableFile("gs://bucket/path/writeable.txt", nullptr, &file));
 
-    TF_EXPECT_OK(file->Append("content1,"));
-    TF_EXPECT_OK(file->Append("content2"));
+    EXPECT_OK(file->Append("content1,"));
+    EXPECT_OK(file->Append("content2"));
     const auto& status = file->Close();
     EXPECT_TRUE(absl::IsUnavailable(status));
     EXPECT_TRUE(
@@ -1333,7 +1332,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
   // Check that no new tempfiles were left over after failure and destruction
   // of the file.
   results.clear();
-  TF_EXPECT_OK(
+  EXPECT_OK(
       Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
   EXPECT_EQ(tmp_files_before, results.size());
 }
@@ -1418,24 +1417,24 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
   // Create an appendable file. This should read the file from GCS, and pull its
   // contents into the block cache.
   std::unique_ptr<WritableFile> wfile;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewAppendableFile("gs://bucket/path/appendable", nullptr, &wfile));
-  TF_EXPECT_OK(wfile->Append("content2"));
+  EXPECT_OK(wfile->Append("content2"));
   // Verify that the file contents are in the block cache. This read should not
   // trigger an HTTP request to GCS.
   std::unique_ptr<RandomAccessFile> rfile;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/appendable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("content1", result);
   // Closing the appendable file will flush its contents to GCS, triggering HTTP
   // requests.
-  TF_EXPECT_OK(wfile->Close());
+  EXPECT_OK(wfile->Close());
   // Redo the read. The block should be reloaded from GCS, causing one more HTTP
   // request to load it.
-  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
+  EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
 }
 
@@ -1485,7 +1484,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_ObjectDoesNotExist) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/filename", nullptr, &file));
+  EXPECT_OK(fs.NewAppendableFile("gs://bucket/filename", nullptr, &file));
 }
 
 TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
@@ -1518,7 +1517,7 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
-  TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
+  EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile(
       "gs://bucket/path/random_access.txt", nullptr, &region));
 
   EXPECT_EQ(content,
@@ -1563,7 +1562,7 @@ TEST(GcsFileSystemTest, FileExists_YesAsObject) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.FileExists("gs://bucket/path/file1.txt", nullptr));
+  EXPECT_OK(fs.FileExists("gs://bucket/path/file1.txt", nullptr));
 }
 
 TEST(GcsFileSystemTest, FileExists_YesAsFolder) {
@@ -1593,7 +1592,7 @@ TEST(GcsFileSystemTest, FileExists_YesAsFolder) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder", nullptr));
+  EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder", nullptr));
 }
 
 TEST(GcsFileSystemTest, FileExists_YesAsBucket) {
@@ -1619,8 +1618,8 @@ TEST(GcsFileSystemTest, FileExists_YesAsBucket) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.FileExists("gs://bucket1", nullptr));
-  TF_EXPECT_OK(fs.FileExists("gs://bucket1/", nullptr));
+  EXPECT_OK(fs.FileExists("gs://bucket1", nullptr));
+  EXPECT_OK(fs.FileExists("gs://bucket1/", nullptr));
 }
 
 TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
@@ -1716,8 +1715,8 @@ TEST(GcsFileSystemTest, FileExists_StatCache) {
   // The stat cache will ensure that repeated lookups don't trigger additional
   // HTTP requests.
   for (int i = 0; i < 10; i++) {
-    TF_EXPECT_OK(fs.FileExists("gs://bucket/path/file1.txt", nullptr));
-    TF_EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder/", nullptr));
+    EXPECT_OK(fs.FileExists("gs://bucket/path/file1.txt", nullptr));
+    EXPECT_OK(fs.FileExists("gs://bucket/path/subfolder/", nullptr));
   }
 }
 
@@ -1740,8 +1739,8 @@ TEST(GcsFileSystemTest, FileExists_DirectoryMark) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.FileExists("gs://bucket/dir/", nullptr));
-  TF_EXPECT_OK(fs.IsDirectory("gs://bucket/dir/", nullptr));
+  EXPECT_OK(fs.FileExists("gs://bucket/dir/", nullptr));
+  EXPECT_OK(fs.IsDirectory("gs://bucket/dir/", nullptr));
 }
 
 TEST(GcsFileSystemTest, GetChildren_NoItems) {
@@ -1764,7 +1763,7 @@ TEST(GcsFileSystemTest, GetChildren_NoItems) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
   EXPECT_EQ(std::vector<string>({"subpath/"}), children);
 }
@@ -1792,7 +1791,7 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
   EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/"}),
             children);
@@ -1821,7 +1820,7 @@ TEST(GcsFileSystemTest, GetChildren_SelfDirectoryMarker) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
   EXPECT_EQ(std::vector<string>({"file3.txt", "subpath/"}), children);
 }
@@ -1849,7 +1848,7 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
 
   EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/"}),
             children);
@@ -1874,7 +1873,7 @@ TEST(GcsFileSystemTest, GetChildren_Root) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket-a-b-c", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket-a-b-c", nullptr, &children));
 
   EXPECT_EQ(0, children.size());
 }
@@ -1899,7 +1898,7 @@ TEST(GcsFileSystemTest, GetChildren_Empty) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
   EXPECT_EQ(0, children.size());
 }
@@ -1940,7 +1939,7 @@ TEST(GcsFileSystemTest, GetChildren_Pagination) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
+  EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
 
   EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/",
                                  "file4.txt", "file5.txt"}),
@@ -1967,8 +1966,8 @@ TEST(GcsFileSystemTest, GetMatchingPaths_NoWildcard) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
-                                   nullptr, &result));
+  EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", nullptr,
+                                &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
             result);
 }
@@ -1995,7 +1994,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_BucketAndWildcard) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
+  EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/file1.txt",
                                  "gs://bucket/path/file3.txt",
                                  "gs://bucket/path/subpath"}),
@@ -2024,7 +2023,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_Matches) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.GetMatchingPaths("gs://bucket/path/*/file2.txt", nullptr, &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
             result);
@@ -2051,7 +2050,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SelfDirectoryMarker) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
+  EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path/file3.txt"}), result);
 }
 
@@ -2076,7 +2075,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
+  EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
   EXPECT_EQ(std::vector<string>(), result);
 }
 
@@ -2101,7 +2100,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectNameEscaped) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/\\/*", nullptr, &result));
+  EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/\\/*", nullptr, &result));
   EXPECT_EQ(std::vector<string>({"gs://bucket/path//foo.txt"}), result);
 }
 
@@ -2127,7 +2126,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.GetMatchingPaths("gs://bucket/path/*/file3.txt", nullptr, &result));
   EXPECT_EQ(std::vector<string>(), result);
 }
@@ -2183,11 +2182,11 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache) {
   // any additional HTTP requests to GCS.
   for (int i = 0; i < 10; i++) {
     std::vector<string> result;
-    TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
-                                     nullptr, &result));
+    EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", nullptr,
+                                  &result));
     EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
-    TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
+    EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
     EXPECT_EQ(std::vector<string>({"gs://bucket/path/file1.txt",
                                    "gs://bucket/path/file3.txt",
                                    "gs://bucket/path/subpath"}),
@@ -2225,8 +2224,8 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache_Flush) {
   // This loop should trigger the first HTTP request to GCS.
   for (int i = 0; i < 10; i++) {
     std::vector<string> result;
-    TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
-                                     nullptr, &result));
+    EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", nullptr,
+                                  &result));
     EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
   }
@@ -2234,8 +2233,8 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache_Flush) {
   fs.FlushCaches(nullptr);
   for (int i = 0; i < 10; i++) {
     std::vector<string> result;
-    TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
-                                     nullptr, &result));
+    EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", nullptr,
+                                  &result));
     EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
   }
@@ -2290,15 +2289,15 @@ TEST(GcsFileSystemTest, DeleteFile) {
   char scratch[100];
   absl::string_view result;
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/file1.txt", nullptr, &file));
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
   // Deleting the file triggers the next HTTP request to GCS.
-  TF_EXPECT_OK(fs.DeleteFile("gs://bucket/path/file1.txt", nullptr));
+  EXPECT_OK(fs.DeleteFile("gs://bucket/path/file1.txt", nullptr));
   // Re-reading the file causes its contents to be reloaded from GCS and not
   // from the block cache.
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("76543210", result);
 }
 
@@ -2359,10 +2358,10 @@ TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
 
   // Stats the file first so the stat is cached.
   FileStatistics stat_before_deletion;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat_before_deletion));
+  EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat_before_deletion));
   EXPECT_EQ(1010, stat_before_deletion.length);
 
-  TF_EXPECT_OK(fs.DeleteFile("gs://bucket/file.txt", nullptr));
+  EXPECT_OK(fs.DeleteFile("gs://bucket/file.txt", nullptr));
 
   FileStatistics stat_after_deletion;
   EXPECT_EQ(
@@ -2388,7 +2387,7 @@ TEST(GcsFileSystemTest, DeleteDir_Empty) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.DeleteDir("gs://bucket/path/", nullptr));
+  EXPECT_OK(fs.DeleteDir("gs://bucket/path/", nullptr));
 }
 
 TEST(GcsFileSystemTest, DeleteDir_OnlyDirMarkerLeft) {
@@ -2417,7 +2416,7 @@ TEST(GcsFileSystemTest, DeleteDir_OnlyDirMarkerLeft) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.DeleteDir("gs://bucket/path/", nullptr));
+  EXPECT_OK(fs.DeleteDir("gs://bucket/path/", nullptr));
 }
 
 TEST(GcsFileSystemTest, DeleteDir_BucketOnly) {
@@ -2437,7 +2436,7 @@ TEST(GcsFileSystemTest, DeleteDir_BucketOnly) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.DeleteDir("gs://bucket", nullptr));
+  EXPECT_OK(fs.DeleteDir("gs://bucket", nullptr));
 }
 
 TEST(GcsFileSystemTest, DeleteDir_NonEmpty) {
@@ -2483,7 +2482,7 @@ TEST(GcsFileSystemTest, GetFileSize) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   uint64 size;
-  TF_EXPECT_OK(fs.GetFileSize("gs://bucket/file.txt", nullptr, &size));
+  EXPECT_OK(fs.GetFileSize("gs://bucket/file.txt", nullptr, &size));
   EXPECT_EQ(1010, size);
 }
 
@@ -2591,8 +2590,7 @@ TEST(GcsFileSystemTest, RenameFile_Folder) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(
-      fs.RenameFile("gs://bucket/path1", "gs://bucket/path2/", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path1", "gs://bucket/path2/", nullptr));
 }
 
 TEST(GcsFileSystemTest, RenameFile_HnsFolder) {
@@ -2637,8 +2635,7 @@ TEST(GcsFileSystemTest, RenameFile_HnsFolder) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault, nullptr,
                    false);
 
-  TF_EXPECT_OK(
-      fs.RenameFile("gs://bucket/path1/", "gs://bucket/path2/", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path1/", "gs://bucket/path2/", nullptr));
 }
 
 TEST(GcsFileSystemTest, RenameFile_NonHnsBucket_Fallback) {
@@ -2690,7 +2687,7 @@ TEST(GcsFileSystemTest, RenameFile_NonHnsBucket_Fallback) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault, nullptr,
                    false);
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.RenameFile("gs://bucket/folder/", "gs://bucket/new_folder/", nullptr));
 }
 
@@ -2730,8 +2727,8 @@ TEST(GcsFileSystemTest, RenameFile_HnsFolder_Success) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault, nullptr,
                    false);
 
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/source-folder/",
-                             "gs://bucket/path/dest-folder/", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path/source-folder/",
+                          "gs://bucket/path/dest-folder/", nullptr));
 }
 
 TEST(GcsFileSystemTest, RenameFile_HnsFolder_SucceedsOnSecondPoll) {
@@ -2777,8 +2774,8 @@ TEST(GcsFileSystemTest, RenameFile_HnsFolder_SucceedsOnSecondPoll) {
                    kTestTimeoutConfig, *kAllowedLocationsDefault, nullptr,
                    false);
 
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/source/",
-                             "gs://bucket/path/dest/", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path/source/", "gs://bucket/path/dest/",
+                          nullptr));
 }
 
 TEST(GcsFileSystemTest, RenameFile_HnsFolder_FailsDuringPolling) {
@@ -2920,21 +2917,19 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
   absl::string_view result;
   std::unique_ptr<RandomAccessFile> src;
   std::unique_ptr<RandomAccessFile> dst;
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("gs://bucket/path/src.txt", nullptr, &src));
-  TF_EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/src.txt", nullptr, &src));
+  EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
-  TF_EXPECT_OK(
-      fs.NewRandomAccessFile("gs://bucket/path/dst.txt", nullptr, &dst));
-  TF_EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/path/dst.txt", nullptr, &dst));
+  EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("76543210", result);
   // Now rename src to dst. This should flush the block cache for both files.
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
-                             "gs://bucket/path/dst.txt", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
+                          "gs://bucket/path/dst.txt", nullptr));
   // Re-read both files. This should reload their contents from GCS.
-  TF_EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("89abcdef", result);
-  TF_EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
+  EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("fedcba98", result);
 }
 
@@ -3000,16 +2995,15 @@ TEST(GcsFileSystemTest, RenameFile_Object_FlushTargetStatCache) {
   // Do an initial stat of the destination file to load their contents into the
   // stat cache.
   FileStatistics stat_before_renaming;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.Stat("gs://bucket/path/dst.txt", nullptr, &stat_before_renaming));
   EXPECT_EQ(1000, stat_before_renaming.length);
 
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
-                             "gs://bucket/path/dst.txt", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
+                          "gs://bucket/path/dst.txt", nullptr));
 
   FileStatistics stat_after_renaming;
-  TF_EXPECT_OK(
-      fs.Stat("gs://bucket/path/dst.txt", nullptr, &stat_after_renaming));
+  EXPECT_OK(fs.Stat("gs://bucket/path/dst.txt", nullptr, &stat_after_renaming));
   EXPECT_EQ(1010, stat_after_renaming.length);
 }
 
@@ -3067,8 +3061,8 @@ TEST(GcsFileSystemTest, RenameFile_Object_DeletionRetried) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
-                             "gs://bucket/path/dst.txt", nullptr));
+  EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
+                          "gs://bucket/path/dst.txt", nullptr));
 }
 
 /// Tests the case when rewrite couldn't complete in one RPC.
@@ -3131,7 +3125,7 @@ TEST(GcsFileSystemTest, IsBucketHnsEnabled_ReturnsTrueForHnsEnabledBucket) {
   absl::Status status = fs.IsBucketHnsEnabled("hns-bucket", &is_hns);
 
   // ASSERT: The call should succeed and return true.
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
   EXPECT_TRUE(is_hns);
 }
 
@@ -3154,7 +3148,7 @@ TEST(GcsFileSystemTest, IsBucketHnsEnabled_ReturnsFalseForFlatBucket) {
   absl::Status status = fs.IsBucketHnsEnabled("flat-bucket", &is_hns);
 
   // ASSERT: The call should succeed and return false.
-  TF_EXPECT_OK(status);
+  EXPECT_OK(status);
   EXPECT_FALSE(is_hns);
 }
 
@@ -3178,14 +3172,14 @@ TEST(GcsFileSystemTest, IsBucketHnsEnabled_UsesCacheOnSecondCall) {
   // Call the method twice.
   // The first call should make a network request and populate the cache.
   bool is_hns_first_call = false;
-  TF_EXPECT_OK(fs.IsBucketHnsEnabled("cached-bucket", &is_hns_first_call));
+  EXPECT_OK(fs.IsBucketHnsEnabled("cached-bucket", &is_hns_first_call));
   EXPECT_TRUE(is_hns_first_call);
 
   // The second call should hit the cache and not make a network request.
   // The FakeHttpRequestFactory will fail the test if it receives an unexpected
   // call.
   bool is_hns_second_call = false;
-  TF_EXPECT_OK(fs.IsBucketHnsEnabled("cached-bucket", &is_hns_second_call));
+  EXPECT_OK(fs.IsBucketHnsEnabled("cached-bucket", &is_hns_second_call));
   EXPECT_TRUE(is_hns_second_call);
 }
 
@@ -3209,7 +3203,7 @@ TEST(GcsFileSystemTest, Stat_Object) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
+  EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
   EXPECT_EQ(1010, stat.length);
   EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
   EXPECT_FALSE(stat.is_directory);
@@ -3243,7 +3237,7 @@ TEST(GcsFileSystemTest, Stat_Folder) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder", nullptr, &stat));
+  EXPECT_OK(fs.Stat("gs://bucket/subfolder", nullptr, &stat));
   EXPECT_EQ(0, stat.length);
   EXPECT_EQ(0, stat.mtime_nsec);
   EXPECT_TRUE(stat.is_directory);
@@ -3298,7 +3292,7 @@ TEST(GcsFileSystemTest, Stat_Bucket) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/", nullptr, &stat));
+  EXPECT_OK(fs.Stat("gs://bucket/", nullptr, &stat));
   EXPECT_EQ(0, stat.length);
   EXPECT_EQ(0, stat.mtime_nsec);
   EXPECT_TRUE(stat.is_directory);
@@ -3364,11 +3358,11 @@ TEST(GcsFileSystemTest, Stat_Cache) {
   // HTTP requests to GCS.
   for (int i = 0; i < 10; i++) {
     FileStatistics stat;
-    TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
+    EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
     EXPECT_EQ(1010, stat.length);
     EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
-    TF_EXPECT_OK(fs.Stat("gs://bucket/subfolder/", nullptr, &stat));
+    EXPECT_OK(fs.Stat("gs://bucket/subfolder/", nullptr, &stat));
     EXPECT_EQ(0, stat.length);
     EXPECT_EQ(0, stat.mtime_nsec);
     EXPECT_TRUE(stat.is_directory);
@@ -3404,7 +3398,7 @@ TEST(GcsFileSystemTest, Stat_Cache_Flush) {
   // There should be a single HTTP request to GCS for fs.Stat in this loop.
   for (int i = 0; i < 10; i++) {
     FileStatistics stat;
-    TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
+    EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
     EXPECT_EQ(1010, stat.length);
     EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
@@ -3413,7 +3407,7 @@ TEST(GcsFileSystemTest, Stat_Cache_Flush) {
   fs.FlushCaches(nullptr);
   for (int i = 0; i < 10; i++) {
     FileStatistics stat;
-    TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
+    EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
     EXPECT_EQ(1010, stat.length);
     EXPECT_NEAR(1461971724896, stat.mtime_nsec / 1000 / 1000, 1);
     EXPECT_FALSE(stat.is_directory);
@@ -3440,7 +3434,7 @@ TEST(GcsFileSystemTest, Stat_FilenameEndingWithSlash) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/dir/", nullptr, &stat));
+  EXPECT_OK(fs.Stat("gs://bucket/dir/", nullptr, &stat));
   EXPECT_EQ(5, stat.length);
   EXPECT_TRUE(stat.is_directory);
 }
@@ -3533,8 +3527,8 @@ TEST(GcsFileSystemTest, IsDirectory_Yes) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.IsDirectory("gs://bucket/subfolder", nullptr));
-  TF_EXPECT_OK(fs.IsDirectory("gs://bucket/subfolder/", nullptr));
+  EXPECT_OK(fs.IsDirectory("gs://bucket/subfolder", nullptr));
+  EXPECT_OK(fs.IsDirectory("gs://bucket/subfolder/", nullptr));
 }
 
 TEST(GcsFileSystemTest, IsDirectory_Bucket) {
@@ -3560,8 +3554,8 @@ TEST(GcsFileSystemTest, IsDirectory_Bucket) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.IsDirectory("gs://bucket", nullptr));
-  TF_EXPECT_OK(fs.IsDirectory("gs://bucket/", nullptr));
+  EXPECT_OK(fs.IsDirectory("gs://bucket", nullptr));
+  EXPECT_OK(fs.IsDirectory("gs://bucket/", nullptr));
 }
 
 TEST(GcsFileSystemTest, IsDirectory_BucketNotFound) {
@@ -3639,7 +3633,7 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath", nullptr));
+  EXPECT_OK(fs.CreateDir("gs://bucket/subpath", nullptr));
   // Check that when GCS returns the object already exists return that the
   // directory already exists.
   EXPECT_EQ(absl::AlreadyExistsError("gs://bucket/subpath"),
@@ -3673,8 +3667,8 @@ TEST(GcsFileSystemTest, CreateDir_Bucket) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  TF_EXPECT_OK(fs.CreateDir("gs://bucket/", nullptr));
-  TF_EXPECT_OK(fs.CreateDir("gs://bucket", nullptr));
+  EXPECT_OK(fs.CreateDir("gs://bucket/", nullptr));
+  EXPECT_OK(fs.CreateDir("gs://bucket", nullptr));
 }
 
 TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
@@ -3746,8 +3740,8 @@ TEST(GcsFileSystemTest, DeleteRecursively_Ok) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   int64_t undeleted_files, undeleted_dirs;
-  TF_EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr,
-                                    &undeleted_files, &undeleted_dirs));
+  EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr, &undeleted_files,
+                                 &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
 }
@@ -3839,8 +3833,8 @@ TEST(GcsFileSystemTest, DeleteRecursively_DeletionErrors) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   int64_t undeleted_files, undeleted_dirs;
-  TF_EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr,
-                                    &undeleted_files, &undeleted_dirs));
+  EXPECT_OK(fs.DeleteRecursively("gs://bucket/path", nullptr, &undeleted_files,
+                                 &undeleted_dirs));
   EXPECT_EQ(1, undeleted_files);
   EXPECT_EQ(1, undeleted_dirs);
 }
@@ -3958,10 +3952,10 @@ TEST(GcsFileSystemTest, AdditionalRequestHeaderTest) {
       add_header /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<HttpRequest> request;
-  TF_EXPECT_OK(fs7.CreateHttpRequest(&request));
+  EXPECT_OK(fs7.CreateHttpRequest(&request));
   request->SetUri("https://www.googleapis.com/fake");
   request->AddHeader("Hello", "world");
-  TF_EXPECT_OK(request->Send());
+  EXPECT_OK(request->Send());
 }
 
 TEST(GcsFileSystemTest, OverrideCacheParameters) {
@@ -4070,10 +4064,10 @@ TEST(GcsFileSystemTest, CreateHttpRequest) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<HttpRequest> request;
-  TF_EXPECT_OK(fs.CreateHttpRequest(&request));
+  EXPECT_OK(fs.CreateHttpRequest(&request));
   request->SetUri("https://www.googleapis.com/fake");
   request->AddHeader("Hello", "world");
-  TF_EXPECT_OK(request->Send());
+  EXPECT_OK(request->Send());
 }
 
 class TestGcsStats : public GcsStatsInterface {
@@ -4137,7 +4131,7 @@ TEST(GcsFileSystemTest, Stat_StatsRecording) {
   EXPECT_EQ(stats.fs_, &fs);
 
   FileStatistics stat;
-  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
+  EXPECT_OK(fs.Stat("gs://bucket/file.txt", nullptr, &stat));
   EXPECT_EQ(1, stats.stat_object_request_count_);
 }
 
@@ -4164,13 +4158,13 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
   EXPECT_EQ(stats.fs_, &fs);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/random_access.txt", nullptr, &file));
 
   char scratch[6];
   absl::string_view result;
 
-  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
+  EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   EXPECT_EQ("gs://bucket/random_access.txt", stats.block_load_request_file_);
@@ -4325,14 +4319,14 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
   // Create an appendable file. This should read the file from GCS, and pull its
   // contents into the block cache.
   std::unique_ptr<WritableFile> wfile;
-  TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/some/path/appendable", nullptr,
-                                    &wfile));
-  TF_EXPECT_OK(wfile->Append(contents[1]));
-  TF_EXPECT_OK(wfile->Flush());
-  TF_EXPECT_OK(wfile->Append(contents[2]));
-  TF_EXPECT_OK(wfile->Flush());
-  TF_EXPECT_OK(wfile->Append(contents[3]));
-  TF_EXPECT_OK(wfile->Close());
+  EXPECT_OK(fs.NewAppendableFile("gs://bucket/some/path/appendable", nullptr,
+                                 &wfile));
+  EXPECT_OK(wfile->Append(contents[1]));
+  EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Append(contents[2]));
+  EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Append(contents[3]));
+  EXPECT_OK(wfile->Close());
 }
 
 TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithoutCompose) {
@@ -4421,14 +4415,14 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithoutCompose) {
   // Create an appendable file. This should read the file from GCS, and pull its
   // contents into the block cache.
   std::unique_ptr<WritableFile> wfile;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       fs.NewAppendableFile("gs://bucket/path/appendable", nullptr, &wfile));
-  TF_EXPECT_OK(wfile->Append(contents[1]));
-  TF_EXPECT_OK(wfile->Flush());
-  TF_EXPECT_OK(wfile->Append(contents[2]));
-  TF_EXPECT_OK(wfile->Flush());
-  TF_EXPECT_OK(wfile->Append(contents[3]));
-  TF_EXPECT_OK(wfile->Close());
+  EXPECT_OK(wfile->Append(contents[1]));
+  EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Append(contents[2]));
+  EXPECT_OK(wfile->Flush());
+  EXPECT_OK(wfile->Append(contents[3]));
+  EXPECT_OK(wfile->Close());
 }
 
 TEST(GcsFileSystemTest, AppendModeCompose) {

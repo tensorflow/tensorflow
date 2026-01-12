@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -182,7 +183,7 @@ class BufferDonationTest : public HloTestBase {
           });
     }
 
-    TF_ASSERT_OK(run_options.stream()->BlockHostUntilDone());
+    ASSERT_OK(run_options.stream()->BlockHostUntilDone());
     TF_ASSERT_OK_AND_ASSIGN(
         Literal result_literal,
         backend_->transfer_manager()->TransferLiteralFromDevice(
@@ -278,8 +279,8 @@ class BufferDonationTest : public HloTestBase {
 // output buffers.
 TEST_F(BufferDonationTest, SimpleWhileTupleTest) {
   std::unique_ptr<HloModule> module = CreateTestModule("SimpleWhile");
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
 
   std::vector<Literal> args;
   args.push_back(LiteralUtil::MakeTupleFromSlices(
@@ -295,8 +296,8 @@ TEST_F(BufferDonationTest, SimpleWhileTupleTest) {
 TEST_F(BufferDonationTest, SimpleWhileTupleTestCopyProtection) {
   std::unique_ptr<HloModule> module =
       CreateTestModule("SimpleWhileCopyProtection");
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
 
   std::vector<Literal> args;
   args.push_back(LiteralUtil::MakeTupleFromSlices(
@@ -353,7 +354,7 @@ ENTRY entry {
   )",
                                    config);
 
-  TF_ASSERT_OK(module->get()->input_output_alias_config().SetUpAlias(
+  ASSERT_OK(module->get()->input_output_alias_config().SetUpAlias(
       {0}, 0, {}, HloInputOutputAliasConfig::kMustAlias));
 
   std::vector<Literal> args;

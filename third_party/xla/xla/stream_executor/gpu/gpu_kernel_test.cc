@@ -80,9 +80,9 @@ class GpuKernelTest : public ::testing::Test {
     DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(length, 0);
     DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(length, 0);
 
-    TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
-    TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
-    TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+    ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+    ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+    ASSERT_OK(stream->MemZero(&c, byte_length));
 
     // Launch kernel.
     ASSERT_TRUE(
@@ -90,7 +90,7 @@ class GpuKernelTest : public ::testing::Test {
 
     // Copy data back to host.
     std::vector<int32_t> dst(4, 42);
-    TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+    ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
 
     std::vector<int32_t> expected = {3, 3, 3, 3};
     ASSERT_EQ(dst, expected);
@@ -135,21 +135,21 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbolWithCustomArgsPacking) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
                           executor_->CreateStream());
-  TF_ASSERT_OK(stream->Memset32(&in, 10, kArraySizeBytes));
-  TF_ASSERT_OK(stream->MemZero(&out, kArraySizeBytes));
+  ASSERT_OK(stream->Memset32(&in, 10, kArraySizeBytes));
+  ASSERT_OK(stream->MemZero(&out, kArraySizeBytes));
 
   TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec spec,
                           GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(
                               executor_->GetPlatform()->id()));
   TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
-  TF_ASSERT_OK(kernel->Launch(
+  ASSERT_OK(kernel->Launch(
       ThreadDim(), BlockDim(4),
       /*cluster_dims=*/std::nullopt, stream.get(),
       KernelArgsDeviceAddressArray({in, out}, /*shared_memory_bytes=*/0)));
 
   // Copy data back to host and verify that the output is 5 + 10 = 15.
   std::vector<int32_t> dst(4, 0);
-  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, kArraySizeBytes));
+  ASSERT_OK(stream->Memcpy(dst.data(), out, kArraySizeBytes));
   EXPECT_THAT(dst, Each(15));
 }
 
@@ -160,7 +160,7 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
   constexpr int64_t kLength = 16;
 
   DeviceAddress<char> dst = executor_->AllocateArray<char>(kLength, 0);
-  TF_ASSERT_OK(stream->MemZero(&dst, kLength));
+  ASSERT_OK(stream->MemZero(&dst, kLength));
 
   std::array<std::byte, 16> storage;
   int i = 0;
@@ -170,12 +170,12 @@ TEST_F(GpuKernelTest, ArrayArgByValue) {
 
   // Launch kernel.
   auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, storage);
-  TF_ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
+  ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
 
   // Copy data back to host.
   std::byte dst_host[16] = {};
-  TF_ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
+  ASSERT_OK(stream->BlockHostUntilDone());
 
   EXPECT_THAT(dst_host, ::testing::ElementsAreArray(storage));
 }
@@ -255,9 +255,9 @@ TEST_F(GpuKernelTest, TmaLoadAndRunKernelFromPtx) {
       stream_executor::PackKernelArgs(
           absl::Span<const stream_executor::KernelArg>({tma0, tma1, tma2}),
           tma_kernel->metadata()));
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tma_kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *packed_args));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 }  // namespace

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,12 +41,12 @@ class TupleSimplifierTest : public HloHardwareIndependentTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
     auto changed_status = RunHloPass(TupleSimplifier(), module);
-    TF_ASSERT_OK(changed_status.status());
+    ASSERT_OK(changed_status.status());
     EXPECT_EQ(change_expected, changed_status.value());
   }
   void Run(HloModule* module, bool change_expected, bool exclude_entry) {
     auto changed_status = RunHloPass(TupleSimplifier(exclude_entry), module);
-    TF_ASSERT_OK(changed_status.status());
+    ASSERT_OK(changed_status.status());
     EXPECT_EQ(change_expected, changed_status.value());
   }
 

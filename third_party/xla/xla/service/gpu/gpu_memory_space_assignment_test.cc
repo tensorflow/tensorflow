@@ -52,7 +52,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   EXPECT_EQ(alias_analysis->buffers().size(), 1);
   EXPECT_EQ(alias_analysis->buffers()[0].values().size(), 1);
@@ -107,7 +107,7 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   const int kExpectedBuffersCount = 5;
   const int kExpectedDefaultBuffersCount = 3;
@@ -199,7 +199,7 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   EXPECT_EQ(alias_analysis->buffers().size(), 3);
 
@@ -263,7 +263,7 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info));
   DependencyHloOrdering ordering(module.get());
-  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+  EXPECT_OK(colorer(alias_analysis.get(), ordering));
 
   const int kExpectedBuffersCount = 5;
   EXPECT_EQ(alias_analysis->buffers().size(), kExpectedBuffersCount);

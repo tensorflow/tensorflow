@@ -934,8 +934,8 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
-  TF_EXPECT_OK(HloCSE(true).Run(&*module));
-  TF_EXPECT_OK(HloDCE().Run(&*module));
+  EXPECT_OK(HloCSE(true).Run(&*module));
+  EXPECT_OK(HloDCE().Run(&*module));
   ASSERT_TRUE(pass.Run(&*module).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
@@ -1721,8 +1721,8 @@ ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10]
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_EXPECT_OK(HloCSE(true).Run(&*module));
-  TF_EXPECT_OK(HloDCE().Run(&*module));
+  EXPECT_OK(HloCSE(true).Run(&*module));
+  EXPECT_OK(HloDCE().Run(&*module));
   ConditionalCodeMotion pass(true, true);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   ASSERT_TRUE(changed);

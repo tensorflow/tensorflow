@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -1419,7 +1420,7 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
     const int64_t src_base[] = {3, 1, 5, 7};
     const int64_t dest_base[] = {6, 4, 12, 2};
     const int64_t copy_size[] = {7, 8, 11, 9};
-    TF_EXPECT_OK(blank.CopySliceFrom(source, src_base, dest_base, copy_size));
+    EXPECT_OK(blank.CopySliceFrom(source, src_base, dest_base, copy_size));
 
     std::vector<int64_t> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64_t> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
@@ -1445,13 +1446,13 @@ TEST_F(LiteralUtilTest, CopySliceFrom) {
 TEST_F(LiteralUtilTest, CopyFromScalars) {
   auto zero = LiteralUtil::CreateR0<uint32_t>(0);
   auto nine = LiteralUtil::CreateR0<uint32_t>(9);
-  TF_EXPECT_OK(zero.CopyFrom(nine));
+  EXPECT_OK(zero.CopyFrom(nine));
   EXPECT_EQ(zero, nine);
 
   auto vect = LiteralUtil::CreateR1<uint32_t>({3, 4, 9, 12, 5, 17, 21});
-  TF_EXPECT_OK(zero.CopySliceFrom(vect, {5}, {}, {}));
+  EXPECT_OK(zero.CopySliceFrom(vect, {5}, {}, {}));
   EXPECT_EQ(zero.Get<uint32_t>({}), 17);
-  TF_EXPECT_OK(vect.CopySliceFrom(zero, {}, {4}, {}));
+  EXPECT_OK(vect.CopySliceFrom(zero, {}, {4}, {}));
   EXPECT_EQ(vect.Get<uint32_t>({4}), 17);
 }
 
@@ -1465,7 +1466,7 @@ TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
     const auto empty = Literal::CreateFromShape(empty_r1_shape);
     auto nine = LiteralUtil::CreateR1<float>({9});
 
-    TF_EXPECT_OK(nine.CopySliceFrom(empty, {0}, {0}, {0}));
+    EXPECT_OK(nine.CopySliceFrom(empty, {0}, {0}, {0}));
     EXPECT_EQ(nine, const_nine);
   }
 
@@ -1474,7 +1475,7 @@ TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
     auto empty = Literal::CreateFromShape(empty_r1_shape);
     auto nine = LiteralUtil::CreateR1<float>({9});
 
-    TF_EXPECT_OK(empty.CopySliceFrom(nine, {0}, {0}, {0}));
+    EXPECT_OK(empty.CopySliceFrom(nine, {0}, {0}, {0}));
     EXPECT_EQ(empty, const_empty);
   }
 }
@@ -1483,15 +1484,15 @@ TEST_F(LiteralUtilTest, CopyFromNilShape) {
   Literal nil_literal0(ShapeUtil::MakeNil());
   Literal nil_literal1(ShapeUtil::MakeNil());
   // This doesn't actually do any copying, but it should succeed.
-  TF_ASSERT_OK(nil_literal0.CopyFrom(nil_literal1));
+  ASSERT_OK(nil_literal0.CopyFrom(nil_literal1));
 }
 
 TEST_F(LiteralUtilTest, CopyFromArrays) {
   auto scalar_42 = LiteralUtil::CreateR0<float>(42.0);
   auto scalar_123 = LiteralUtil::CreateR0<float>(123.0);
   EXPECT_NE(scalar_42, scalar_123);
-  TF_ASSERT_OK(scalar_42.CopyFrom(scalar_123, /*dest_shape_index=*/{},
-                                  /*src_shape_index=*/{}));
+  ASSERT_OK(scalar_42.CopyFrom(scalar_123, /*dest_shape_index=*/{},
+                               /*src_shape_index=*/{}));
   EXPECT_EQ(scalar_42, scalar_123);
   EXPECT_EQ(scalar_42.Get<float>({}), 123.0f);
 
@@ -1499,8 +1500,8 @@ TEST_F(LiteralUtilTest, CopyFromArrays) {
   auto matrix_5678 = LiteralUtil::CreateR2<float>({{5.0, 6.0}, {7.0, 8.0}});
   EXPECT_NE(matrix_1234, matrix_5678);
   EXPECT_EQ(matrix_1234.Get<float>({0, 0}), 1.0f);
-  TF_ASSERT_OK(matrix_1234.CopyFrom(matrix_5678, /*dest_shape_index=*/{},
-                                    /*src_shape_index=*/{}));
+  ASSERT_OK(matrix_1234.CopyFrom(matrix_5678, /*dest_shape_index=*/{},
+                                 /*src_shape_index=*/{}));
   EXPECT_EQ(matrix_1234, matrix_5678);
   EXPECT_EQ(matrix_1234.Get<float>({0, 0}), 5.0f);
 }
@@ -1527,8 +1528,8 @@ TEST_F(LiteralUtilTest, CopyFromTuples) {
 
   // Overwrite the inner tuple element of nested_tuple with the contents of
   // 'tuple'.
-  TF_ASSERT_OK(nested_tuple.CopyFrom(tuple, /*dest_shape_index=*/{1},
-                                     /*src_shape_index=*/{}));
+  ASSERT_OK(nested_tuple.CopyFrom(tuple, /*dest_shape_index=*/{1},
+                                  /*src_shape_index=*/{}));
 
   // The matrix element should be unchanged.
   EXPECT_EQ(matrix, LiteralSlice(nested_tuple, {0}));
@@ -1547,8 +1548,8 @@ TEST_F(LiteralUtilTest, CopyBetweenSameTuple) {
   EXPECT_EQ(tuple.Get<int32_t>({}, {1}), 4);
 
   // Copy from one element to the other.
-  TF_ASSERT_OK(tuple.CopyFrom(tuple, /*dest_shape_index=*/{1},
-                              /*src_shape_index=*/{0}));
+  ASSERT_OK(tuple.CopyFrom(tuple, /*dest_shape_index=*/{1},
+                           /*src_shape_index=*/{0}));
 
   EXPECT_EQ(tuple.Get<int32_t>({}, {0}), -2);
   EXPECT_EQ(tuple.Get<int32_t>({}, {1}), -2);
@@ -1619,7 +1620,7 @@ TEST_F(LiteralUtilTest, Populate) {
                                                            indexes) +
              17;
     };
-    TF_EXPECT_OK(literal.Populate<uint32_t>(generator));
+    EXPECT_OK(literal.Populate<uint32_t>(generator));
 
     std::vector<int64_t> zero_base(data.dimensions.size(), 0);
     std::vector<int64_t> step(data.dimensions.size(), 1);
@@ -1662,7 +1663,7 @@ TEST_F(LiteralUtilTest, PopulateParallel) {
                                                            indexes) +
              17;
     };
-    TF_EXPECT_OK(literal.PopulateParallel<uint32_t>(generator));
+    EXPECT_OK(literal.PopulateParallel<uint32_t>(generator));
 
     std::vector<int64_t> zero_base(data.dimensions.size(), 0);
     std::vector<int64_t> step(data.dimensions.size(), 1);
@@ -1702,7 +1703,7 @@ TEST_F(LiteralUtilTest, PopulateLinearParallel) {
       // with zero.
       return linear_index + 17;
     };
-    TF_EXPECT_OK(literal.PopulateLinearParallel<uint32_t>(generator));
+    EXPECT_OK(literal.PopulateLinearParallel<uint32_t>(generator));
 
     std::vector<int64_t> zero_base(data.dimensions.size(), 0);
     std::vector<int64_t> step(data.dimensions.size(), 1);
@@ -2877,8 +2878,7 @@ TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTuple) {
   Literal c4 = LiteralUtil::CreateR0<int>(100);
   Literal c5 = LiteralUtil::MakeTuple({&c4, &c3});
   Literal c6 = Literal::CreateFromShape(c5.shape());
-  TF_ASSERT_OK(
-      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  ASSERT_OK(c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
   EXPECT_FALSE(c6.IsKnown());
 }
 
@@ -2893,12 +2893,11 @@ TEST_F(LiteralUtilTest, CopyFromPartiallyKnownTupleUnknownTupleElement) {
   Literal c6 = Literal::CreateFromShape(c5.shape());
   Literal c1_copy = Literal::CreateFromShape(c1.shape());
   Literal c2_copy = Literal::CreateFromShape(c2.shape());
-  TF_ASSERT_OK(
-      c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
-  TF_ASSERT_OK(c1_copy.CopyFrom(c6, /*dest_shape_index=*/{},
-                                /*src_shape_index=*/{1, 0}));
-  TF_ASSERT_OK(c2_copy.CopyFrom(c6, /*dest_shape_index=*/{},
-                                /*src_shape_index=*/{1, 1}));
+  ASSERT_OK(c6.CopyFrom(c5, /*dest_shape_index=*/{1}, /*src_shape_index=*/{1}));
+  ASSERT_OK(c1_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                             /*src_shape_index=*/{1, 0}));
+  ASSERT_OK(c2_copy.CopyFrom(c6, /*dest_shape_index=*/{},
+                             /*src_shape_index=*/{1, 1}));
   EXPECT_FALSE(c6.IsKnown());
   EXPECT_FALSE(c1_copy.IsKnown());
   EXPECT_TRUE(c2_copy.IsKnown());

@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -149,7 +150,7 @@ TEST(GlooCollectives, AllReduce) {
 
   // Verify that all participants successfully executed the collective.
   for (int rank = 0; rank < kNumParticipants; ++rank) {
-    TF_ASSERT_OK(output_buffers[rank].status());
+    ASSERT_OK(output_buffers[rank].status());
   }
   // Verify that all participants received the expected result.
   for (int rank = 0; rank < kNumParticipants; ++rank) {

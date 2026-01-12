@@ -110,7 +110,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulate) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -186,7 +186,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterAccumulate) {
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -322,7 +322,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceSliceAccumulate) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -394,7 +394,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceAccumulateUse) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -506,7 +506,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, TypeCastAllReduceAccumulate) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -580,7 +580,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectAllReduceAccumulate) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -658,7 +658,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, SelectReduceScatterAccumulate) {
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -785,7 +785,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleLoopCalls) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -858,7 +858,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleAllReduceAccumulate) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -934,7 +934,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MultipleReduceScatterAccumulate) {
       WhileLoopAllReduceCodeMotion{/*enable_reduce_scatter=*/true}.Run(
           module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1020,7 +1020,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, MixMovableAllReduceWithNotMovable) {
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1098,7 +1098,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1239,7 +1239,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterTransposeAccumulate) {
                                     /*run_setup_passes=*/true}
            .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1378,7 +1378,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
                                     /*run_setup_passes=*/true}
            .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1516,7 +1516,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterConvertAccumulate) {
                                     /*run_setup_passes=*/true}
            .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
@@ -1602,7 +1602,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, AllReduceConvertAccumulateUse) {
                                     /*run_setup_passes=*/true}
            .Run(module.get())));
   ASSERT_TRUE(simplified_loop);
-  TF_ASSERT_OK(
+  ASSERT_OK(
       HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/true)
           .Run(module.get())
           .status());
