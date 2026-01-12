@@ -568,18 +568,19 @@ class MklConvCustomBackpropInputOp
   }
 
   // Handle dynamic shape of input tensor.
-  template <typename T>
+  template <typename TShape>
   std::vector<int64> HandleDynamicShape(const Tensor& input_tensor,
-                                          OpKernelContext* context) {
+                                        OpKernelContext* context) {
+
     // Returns a vector with the explicit shape if dynamic, or an empty vector otherwise.
     std::vector<int64> explicit_shape;
-    auto shape_vec = input_tensor.flat<T>();
+    auto shape_vec = input_tensor.flat<TShape>();
 
     if (shape_vec(0) == -1) {
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
       int64 batch_size = diff_dst_tensor.dim_size(0);
       for (int i = 0; i < input_tensor.NumElements(); i++) {
-        T val = shape_vec(i);
+        TShape val = shape_vec(i);
         explicit_shape.push_back(val == -1 ? batch_size : val);
       }
     }
