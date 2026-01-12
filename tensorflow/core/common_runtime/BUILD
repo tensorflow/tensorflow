@@ -2849,17 +2849,6 @@ tf_cuda_cc_test(
 )
 
 tf_cc_test(
-    name = "process_util_test",
-    size = "small",
-    srcs = ["process_util_test.cc"],
-    deps = [
-        ":process_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
     name = "rendezvous_util_test",
     size = "small",
     srcs = ["rendezvous_util_test.cc"],
@@ -2873,13 +2862,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "process_util_thread_validation_test",
+    name = "process_util_test",
     size = "small",
-    srcs = ["segementation_test.cpp"],
+    srcs = ["process_util_test.cc"],
     deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
         ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/lib/core:threadpool",
     ],
 )
 
