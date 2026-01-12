@@ -903,9 +903,8 @@ ENTRY main {
             LayoutUtil::MakeLayout({3, 1, 4, 2, 0}).minor_to_major());
 }
 
-TEST_F(LayoutAssignmentTest, ReduceOperandLayoutDivisorOfWarpSize) {
-  // Same as ReduceOperandLayout, but with a small reduction dimension that
-  // is a divisor of the warp size.
+TEST_F(LayoutAssignmentTest, ReduceOperandLayoutSmallReductionDimension) {
+  // Same as ReduceOperandLayout, but with a small reduction dimension size.
   const char* module_str = R"(
 scalar_add_computation {
   scalar_lhs = c64[] parameter(0)
@@ -930,8 +929,9 @@ ENTRY main {
 
   EXPECT_THAT(layout_assignment.Run(m.get()), absl_testing::IsOkAndHolds(true));
   auto reduce = m->entry_computation()->root_instruction();
+  // Expect the layout to be unchanged.
   EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
-            LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
+            LayoutUtil::MakeLayout({3, 2, 1, 0}).minor_to_major());
 }
 
 TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
