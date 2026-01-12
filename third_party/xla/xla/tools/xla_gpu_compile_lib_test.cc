@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -46,11 +46,8 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloTestBase {
+class XlaCompileLibTest : public HloPjRtTestBase {
  protected:
-  XlaCompileLibTest()
-      : HloTestBase(*PlatformUtil::GetPlatform(std::string("GPU")),
-                    GetReferencePlatform()) {}
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                                                    "tools", "data", "add.hlo");
