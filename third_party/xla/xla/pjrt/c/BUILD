@@ -145,6 +145,7 @@ cc_library(
         ":pjrt_c_api_triton_extension_hdrs",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:triton",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -1224,24 +1225,56 @@ module {
 )";
 
 TEST(PjrtCAPIGpuExtensionTest, TritonCompile) {
-  constexpr absl::string_view kArchName = "7.0";
+  auto api = GetPjrtApi();
+
+  PJRT_Client_Create_Args create_args;
+  create_args.struct_size = PJRT_Client_Create_Args_STRUCT_SIZE;
+  create_args.extension_start = nullptr;
+  create_args.create_options = nullptr;
+  create_args.num_options = 0;
+  create_args.kv_get_callback = nullptr;
+  create_args.kv_get_user_arg = nullptr;
+  create_args.kv_put_callback = nullptr;
+  create_args.kv_put_user_arg = nullptr;
+  create_args.kv_try_get_callback = nullptr;
+  create_args.kv_try_get_user_arg = nullptr;
+  PJRT_Error* client_create_error = api->PJRT_Client_Create(&create_args);
+  EXPECT_EQ(client_create_error, nullptr)
+      << client_create_error->status.message();
+
+  PJRT_Client_PlatformName_Args platform_name_args;
+  platform_name_args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  platform_name_args.extension_start = nullptr;
+  platform_name_args.client = create_args.client;
+  PJRT_Error* platform_name_error =
+      api->PJRT_Client_PlatformName(&platform_name_args);
+  EXPECT_EQ(platform_name_error, nullptr)
+      << platform_name_error->status.message();
+
+  bool is_rocm = absl::string_view(platform_name_args.platform_name) == "rocm";
+  absl::string_view arch_name = is_rocm ? "gfx942:sramecc+:xnack-" : "7.0";
+
   PJRT_Triton_Compile_Args args;
   args.struct_size = PJRT_Triton_Compile_Args_STRUCT_SIZE;
   args.module = kAddOneTTIR.data();
   args.module_size = kAddOneTTIR.size();
-  args.arch_name = kArchName.data();
-  args.arch_name_size = kArchName.size();
+  args.arch_name = arch_name.data();
+  args.arch_name_size = arch_name.size();
   args.num_stages = 1;
   args.num_ctas = 1;
   args.num_warps = 1;
-  auto api = GetPjrtApi();
   const auto* triton_ext = pjrt::FindExtension<PJRT_Triton_Extension>(
       api, PJRT_Extension_Type::PJRT_Extension_Type_Triton);
   ASSERT_NE(triton_ext, nullptr);
 
   PJRT_Error* error = triton_ext->compile(&args);
   CHECK_EQ(error, nullptr) << error->status.message();
-  delete[] args.out_asm;
+  if (args.out_asm) {
+    delete[] args.out_asm;
+  } else {
+    std::remove(args.out_path);
+    delete[] args.out_path;
+  }
 }
 
 }  // namespace
