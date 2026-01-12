@@ -570,19 +570,22 @@ class MklConvCustomBackpropInputOp
 
   // Handle dynamic shape of input tensor.
   template <typename T>
-  bool HandleDynamicShape(const Tensor& input_tensor, OpKernelContext* context,
-                          std::vector<int64_t>* explicit_shape) {
+  std::vector<int64_t> HandleDynamicShape(const Tensor& input_tensor,
+                                          OpKernelContext* context) {
+
+    // Returns a vector with the explicit shape if dynamic, or an empty vector otherwise.
+    std::vector<int64_t> explicit_shape;
     auto shape_vec = input_tensor.flat<T>();
+
     if (shape_vec(0) == -1) {
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
       int64 batch_size = diff_dst_tensor.dim_size(0);
       for (int i = 0; i < input_tensor.NumElements(); i++) {
         T val = shape_vec(i);
-        explicit_shape->push_back(val == -1 ? batch_size : val);
+        explicit_shape.push_back(val == -1 ? batch_size : val);
       }
-      return true;
     }
-    return false;
+    return explicit_shape;
   }
 
   // Get TensorFlow shape of input tensor.
@@ -592,16 +595,15 @@ class MklConvCustomBackpropInputOp
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
 
     if (input_tensor.NumElements() > 0) {
-      bool is_dynamic = false;
       std::vector<int64_t> explicit_shape;
 
       if (input_tensor.dtype() == DT_INT32) {
-        is_dynamic = HandleDynamicShape<int32>(input_tensor, context, &explicit_shape);
+        explicit_shape = HandleDynamicShape<int32>(input_tensor, context);
       } else if (input_tensor.dtype() == DT_INT64) {
-        is_dynamic = HandleDynamicShape<int64>(input_tensor, context, &explicit_shape);
+        explicit_shape = HandleDynamicShape<int64>(input_tensor, context);
       }
 
-      if (is_dynamic) {
+      if (!explicit_shape.empty()) {
         return TensorShape(explicit_shape);
       }
     }
