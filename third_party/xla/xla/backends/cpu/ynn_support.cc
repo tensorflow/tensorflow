@@ -360,6 +360,10 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
         lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
       return false;
     }
+    if (rhs_shape.dimensions(conv_dimensions.kernel_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
   }
 
   // No base dilation for now.
