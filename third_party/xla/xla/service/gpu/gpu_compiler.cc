@@ -1470,6 +1470,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("OptimizeHloModule");
+  LOG(INFO) << "<< trigger XLA presubmits";
   const se::DeviceDescription& device_description =
       gpu_target_config.device_description;
 
