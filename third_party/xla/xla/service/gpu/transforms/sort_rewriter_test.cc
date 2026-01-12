@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,9 +50,38 @@ namespace {
 
 namespace m = ::xla::match;
 
-class SortRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {
+std::string GetNumpyOrderComparator(
+    const absl::string_view type_name, const absl::string_view direction,
+    const bool argsort = false, const absl::string_view index_type_name = "") {
+  std::string params = absl::Substitute(
+      "  lhs = $0[] parameter(0)\n  rhs = $0[] parameter(1)", type_name);
+  if (argsort) {
+    absl::StrAppend(&params,
+                    absl::Substitute("\n  p2 = $0[] parameter(2)\n  p3 = $0[] "
+                                     "parameter(3)",
+                                     index_type_name));
+  }
+
+  constexpr char kBody[] = R"(
+  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
+  c_nan = $0[] constant(nan)
+  c_zero = $0[] constant(0)
+  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
+  lhs_no_neg_zero = $0[] select(lhs_is_zero, c_zero, lhs)
+  lhs_no_neg_zero_or_nan = $0[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
+  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
+  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
+  rhs_no_neg_zero = $0[] select(rhs_is_zero, c_zero, rhs)
+  rhs_no_neg_zero_or_nan = $0[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
+  ROOT compare = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, type=TOTALORDER
+)";
+
+  return absl::StrCat("numpy_order_comparator {\n", params,
+                      absl::Substitute(kBody, type_name, direction), "}");
+}
+
+class SortRewriterTestBase
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   void SetUp() override {
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
@@ -88,6 +118,10 @@ class SortRewriterTest
  private:
   stream_executor::Platform* test_platform_ = nullptr;
 };
+
+class SortRewriterTest
+    : public SortRewriterTestBase,
+      public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {};
 
 // Basic sort: ascending.
 TEST_F(SortRewriterTest, SortKeysLessThan) {
@@ -601,31 +635,18 @@ ENTRY %main {
 }
 
 TEST_P(SortRewriterTest, SortNumpyOrder) {
-  constexpr char kHloTpl[] = R"(
-numpy_order_comparator {
-  lhs = $0[] parameter(0)
-  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
-  c_nan = $0[] constant(nan)
-  c_zero = $0[] constant(0)
-  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
-  lhs_no_neg_zero = $0[] select(lhs_is_zero, c_zero, lhs)
-  lhs_no_neg_zero_or_nan = $0[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
-  rhs = $0[] parameter(1)
-  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
-  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
-  rhs_no_neg_zero = $0[] select(rhs_is_zero, c_zero, rhs)
-  rhs_no_neg_zero_or_nan = $0[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
-  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, type=TOTALORDER
-}
+  auto [dtype, direction] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(dtype);
+  std::string direction_str = direction ? "LT" : "GT";
 
+  std::string hlo_str =
+      absl::StrCat(GetNumpyOrderComparator(type_name, direction_str),
+                   absl::Substitute(R"(
 ENTRY main {
   p = $0[16,128] parameter(0)
   ROOT sort = $0[16,128] sort(p), dimensions={1}, is_stable=true, to_apply=numpy_order_comparator
-})";
-  auto [dtype, direction] = GetParam();
-  std::string hlo_str = absl::Substitute(
-      kHloTpl, primitive_util::LowercasePrimitiveTypeName(dtype),
-      direction ? "LT" : "GT");
+})",
+                                    type_name));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
@@ -648,9 +669,78 @@ INSTANTIATE_TEST_SUITE_P(
           std::get<1>(info.param) ? "_asc" : "_desc");
     });
 
+TEST_F(SortRewriterTest, NoRewriteLargeInputNumpyOrder) {
+  std::string hlo_str = absl::StrCat(
+      GetNumpyOrderComparator("f32", "LT", /*argsort=*/true, "s32"),
+      R"(
+ENTRY main {
+  // 300,000,000 elements * 8 bytes (4 for f32 + 4 for s32) = 2.4 GB > 2 GB
+  p = f32[300000000] parameter(0)
+  i = s32[300000000] parameter(1)
+  ROOT sort = (f32[300000000], s32[300000000]) sort(p, i), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
+})");
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  // Should not rewrite because input size is too large.
+  EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
 TEST_F(SortRewriterTest, AlwaysUsesCubSort) {
   EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
+
+class SortRewriterArgsortTest
+    : public SortRewriterTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, bool, PrimitiveType>> {};
+
+TEST_P(SortRewriterArgsortTest, SortNumpyOrderArgsort) {
+  auto [key_type, ascending, index_type] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(key_type);
+  std::string direction_str = ascending ? "LT" : "GT";
+  std::string index_type_name =
+      primitive_util::LowercasePrimitiveTypeName(index_type);
+
+  std::string hlo_str =
+      absl::StrCat(GetNumpyOrderComparator(type_name, direction_str,
+                                           /*argsort=*/true, index_type_name),
+                   absl::Substitute(R"(
+ENTRY main {
+  p = $0[16,128] parameter(0)
+  i = $1[16,128] iota(), iota_dimension=1
+  ROOT sort = ($0[16,128], $1[16,128]) sort(p, i), dimensions={1}, is_stable=true, to_apply=numpy_order_comparator
+})",
+                                    type_name, index_type_name));
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  bool changed = RunModuleAndPass(module.get());
+  bool should_use_cub = key_type != F64;
+  if (should_use_cub) {
+    EXPECT_TRUE(changed) << module->ToString();
+    EXPECT_THAT(module->entry_computation()->instructions(),
+                ::testing::Contains(GmockMatch(m::CustomCall(
+                    {kCubDeviceRadixSortUnassignedScratchSizeTarget}))));
+  } else {
+    EXPECT_FALSE(changed) << module->ToString();
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SortRewriterArgsort, SortRewriterArgsortTest,
+    ::testing::Combine(::testing::Values(F16, BF16, F32, F64),
+                       ::testing::Bool(), ::testing::Values(S16, S32)),
+    [](const ::testing::TestParamInfo<SortRewriterArgsortTest::ParamType>&
+           info) {
+      PrimitiveType key_type = std::get<0>(info.param);
+      bool ascending = std::get<1>(info.param);
+      PrimitiveType index_type = std::get<2>(info.param);
+      bool should_use_cub = key_type != F64;
+      return absl::StrCat(
+          primitive_util::LowercasePrimitiveTypeName(key_type),
+          ascending ? "_asc" : "_desc", "_",
+          primitive_util::LowercasePrimitiveTypeName(index_type),
+          should_use_cub ? "_cub" : "_nocub");
+    });
 
 }  // namespace
 }  // namespace gpu
