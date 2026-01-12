@@ -123,3 +123,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ],
 )
+
+cc_library(
+    name = "symmetric_memory",
+    hdrs = ["symmetric_memory.h"],
+    deps = ["@com_google_absl//absl/strings:str_format"],
+)
