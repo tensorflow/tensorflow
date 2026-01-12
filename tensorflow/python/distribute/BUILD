@@ -1209,6 +1209,12 @@ py_strict_library(
 tf_py_strict_test(
     name = "multi_worker_test_base_test",
     srcs = ["multi_worker_test_base_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:asan_build": {"mem": "16g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     tags = [
         "no_oss",  # TODO(b/170834611)
     ],
