@@ -207,7 +207,7 @@ static void BM_ComputeTopologicalOrder(::testing::benchmark::State& state) {
   for (auto s : state) {
     topo_order.clear();
     absl::Status st = ComputeTopologicalOrder(graph, &topo_order);
-    CHECK(st.ok()) << "Failed to compute topological order";
+    CHECK_OK(st) << "Failed to compute topological order";
   }
 }
 BENCHMARK(BM_ComputeTopologicalOrder)
