@@ -81,6 +81,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "command",
+    srcs = ["command.cc"],
+    hdrs = ["command.h"],
+    deps = [
+        ":command_state",
+        ":thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/runtime:resource_use",
+        "//xla/stream_executor:command_buffer",
+    ],
+)
+
+cc_library(
     name = "command_buffer_cmd",
     srcs = ["command_buffer_cmd.cc"],
     hdrs = ["command_buffer_cmd.h"],
@@ -93,6 +106,7 @@ cc_library(
         ":collective_execution",
         ":collective_permute_thunk",
         ":collective_thunk",
+        ":command",
         ":command_state",
         ":copy_thunk",
         ":custom_call_thunk",
@@ -164,7 +178,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
@@ -174,6 +187,7 @@ xla_test(
     srcs = ["command_buffer_cmd_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":command",
         ":command_buffer_cmd",
         ":command_state",
         ":copy_thunk",
@@ -221,6 +235,7 @@ cc_library(
         ":collective_broadcast_thunk",
         ":collective_permute_thunk",
         ":collective_thunk",
+        ":command",
         ":command_buffer_cmd",
         ":command_state",
         ":conditional_thunk",
@@ -354,6 +369,7 @@ cc_library(
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
     deps = [
+        ":command",
         ":command_buffer_cmd",
         ":command_state",
         ":sequential_thunk",  # build_cleaner: keep
@@ -385,6 +401,7 @@ xla_test(
     srcs = ["command_buffer_thunk_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":command",
         ":command_buffer_cmd",
         ":command_buffer_thunk",
         ":dynamic_slice_thunk",
@@ -436,6 +453,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":command",
         ":command_buffer_cmd",
         ":command_buffer_thunk",
         ":thunk",

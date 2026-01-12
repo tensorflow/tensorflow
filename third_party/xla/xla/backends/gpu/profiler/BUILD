@@ -73,6 +73,7 @@ xla_test(
     ],
     deps = [
         ":kernel_name_tracer",
+        "//xla/backends/gpu/runtime:command",
         "//xla/backends/gpu/runtime:command_buffer_cmd",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
         "//xla/backends/gpu/runtime:thunk",

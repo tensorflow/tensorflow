@@ -31,6 +31,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -146,7 +147,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   }
 
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<CuDnnCmd>(
       args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -60,7 +61,7 @@ limitations under the License.
 namespace xla::gpu {
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+static absl::Status AppendCommands(CommandSequence& cmd_sequence,
                                    const ThunkSequence& sequence,
                                    const ConvertToCommandsOptions& options);
 
@@ -274,7 +275,7 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(const Thunk& thunk,
                       thunk);
 }
 
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+static absl::Status AppendCommands(CommandSequence& cmd_sequence,
                                    const Thunk& thunk,
                                    const ConvertToCommandsOptions& options) {
   auto append =
@@ -383,7 +384,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   }
 }
 
-static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+static absl::Status AppendCommands(CommandSequence& cmd_sequence,
                                    const ThunkSequence& sequence,
                                    const ConvertToCommandsOptions& options) {
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
@@ -410,7 +411,7 @@ absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
   VLOG(3) << absl::StreamFormat(
       "Convert thunk sequence to command executor: synchronization_mode=%v",
       options.synchronization_mode);
-  CommandBufferCmdSequence cmd_sequence;
+  CommandSequence cmd_sequence;
   TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, options));
   return CommandBufferCmdExecutor::Create(std::move(cmd_sequence),
                                           options.synchronization_mode);
