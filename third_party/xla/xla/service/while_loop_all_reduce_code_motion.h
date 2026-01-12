@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 #define XLA_SERVICE_WHILE_LOOP_ALL_REDUCE_CODE_MOTION_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -59,10 +61,12 @@ namespace xla {
 // c = all-reduce(get-tuple-element(a, tuple_index))
 class WhileLoopAllReduceCodeMotion : public HloModulePass {
  public:
-  explicit WhileLoopAllReduceCodeMotion(bool enable_reduce_scatter = false,
-                                        bool run_setup_passes = false)
+  explicit WhileLoopAllReduceCodeMotion(
+      bool enable_reduce_scatter = false, bool run_setup_passes = false,
+      int64_t all_reduce_max_size_bytes = 10240)
       : enable_reduce_scatter_(enable_reduce_scatter),
-        run_setup_passes_(run_setup_passes) {}
+        run_setup_passes_(run_setup_passes),
+        all_reduce_max_size_bytes_(all_reduce_max_size_bytes) {}
   ~WhileLoopAllReduceCodeMotion() override = default;
 
   static constexpr absl::string_view kName =
@@ -80,6 +84,8 @@ class WhileLoopAllReduceCodeMotion : public HloModulePass {
   // Whether to run passes that may setup the add(all-reduce/reduce-scatter,
   // accumulation_buffer) pattern.
   const bool run_setup_passes_;
+
+  const int64_t all_reduce_max_size_bytes_;
 };
 }  // namespace xla
 

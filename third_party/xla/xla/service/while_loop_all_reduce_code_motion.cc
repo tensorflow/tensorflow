@@ -179,8 +179,8 @@ HloInstruction* GetEffectiveScalar(HloInstruction* instruction) {
 //    may be either constants or the loop induction variable.
 std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
     HloAllReduceInstructionBase* all_reduce,
-    absl::Span<HloInstruction*> while_instructions,
-    const CallGraph* call_graph) {
+    absl::Span<HloInstruction*> while_instructions, const CallGraph* call_graph,
+    const int64_t all_reduce_max_size_bytes) {
   UpdateSliceContext context{/*update_slice_shape=*/all_reduce->shape(),
                              /*update_slice_offsets=*/{},
                              /*param_tuple_index=*/-1};
@@ -228,11 +228,10 @@ std::optional<MovableAllReduceContext> MatchDynamicUpdateSliceContext(
 
   // Do not hoist all-reduce ops if the resulting all-reduce is too large.
   // The threshold value is chosen arbitrarily.
-  constexpr int64_t kAllReduceMaxSizeBytes = 10240;
   if ((*loop_bound + 1) * ShapeUtil::ArraySize(all_reduce->shape()) >
-      kAllReduceMaxSizeBytes) {
+      all_reduce_max_size_bytes) {
     VLOG(5) << "Resulting all-reduce exceeds the size threshold: "
-            << kAllReduceMaxSizeBytes;
+            << all_reduce_max_size_bytes;
     return std::nullopt;
   }
 
@@ -389,7 +388,7 @@ MovableAllReduceContext IsAllReduceMovable(
         cross_replica_replication_analysis,
     const std::unique_ptr<HloReplicationAnalysis>&
         cross_partition_replication_analysis,
-    const CallGraph* call_graph) {
+    const CallGraph* call_graph, const int64_t all_reduce_max_size_bytes) {
   VLOG(4) << "IsAllReduceMovable: " << all_reduce->ToString();
   HloComputation* while_body = while_instructions[0]->called_computations()[0];
 
@@ -404,7 +403,8 @@ MovableAllReduceContext IsAllReduceMovable(
   // not reduce-scatter.
   if (all_reduce->opcode() == HloOpcode::kAllReduce) {
     if (auto update_slice_context = MatchDynamicUpdateSliceContext(
-            all_reduce, while_instructions, call_graph);
+            all_reduce, while_instructions, call_graph,
+            all_reduce_max_size_bytes);
         update_slice_context.has_value()) {
       return std::move(*update_slice_context);
     }
@@ -1331,7 +1331,8 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
       auto all_reduce_context = IsAllReduceMovable(
           all_reduce, absl::MakeSpan(while_caller_instructions),
           cross_replica_replication_analysis,
-          cross_partition_replication_analysis, call_graph.get());
+          cross_partition_replication_analysis, call_graph.get(),
+          all_reduce_max_size_bytes_);
       VLOG(3) << "WhileLoopAllReduceCodeMotion, all-reduce: "
               << all_reduce->ToString()
               << " is_movable: " << all_reduce_context.is_movable
