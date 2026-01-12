@@ -1,1 +1,133 @@
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
+@@ -30,6 +30,8 @@
+ #include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
+ #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
++#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVectorExtras.h"
++#include "third_party/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h"
+ 
+ namespace mlir {
+ namespace stablehlo {
+@@ -94,6 +96,43 @@
+       value));
+ }
+ 
++
++MlirOp IotaLike(MlirOp input, int64_t dim, Type elementType) {
++  auto inputType = mlir::cast<RankedTensorType>(input.getType());
++  if (inputType.hasStaticShape()) {
++    return stablehlo::Iota(input.getBuilder(), inputType.clone(elementType),
++                           dim);
++  }
++
++  // Use input's static shape and slice to the dynamic shape.
++  auto dims = mlir::stablehlo::getDimensions(input.getValue());
++  if (mlir::failed(dims)) llvm::report_fatal_error(
++      "failed to create dynamically shaped iota op, with MLIR error: ");
++
++  mlir::SmallVector<int64_t> iotaShape = llvm::map_to_vector(
++      *dims,
++      [&](mlir::stablehlo::DimensionInfo dim_size) { return dim_size.size; });
++  auto iotaType =
++      mlir::makeTensorType(input.getContext(), iotaShape, elementType);
++  mlir::MlirOp iota = mlir::stablehlo::Iota(input.getBuilder(), iotaType, dim);
++
++  // Slice bounded dimensions to the dynamic shape.
++  for (const mlir::stablehlo::DimensionInfo& dim : *dims) {
++    if (!dim.boundOp.has_value()) continue;
++
++    auto runtime_dim_size =
++        mlir::stablehlo::GetDimensionSize(input, dim.boundOpDim);
++    iota = mlir::stablehlo::SetDimensionSize(iota, runtime_dim_size,
++                                             dim.boundOpDim);
++  }
++  return iota;
++}
++
++MlirOp IotaLike(MlirOp input, int64_t dim, ElementType elementType) {
++  auto resultElementType = getElementType(input.getContext(), elementType);
++  return IotaLike(input, dim, resultElementType);
++}
++
+ namespace {
+ 
+ // Use preferred element type, if not use LHS element type.
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
+@@ -58,6 +58,12 @@
+ MlirOp Constant(MlirBuilder& builder, int64_t value);
+ MlirOp Constant(MlirBuilder& builder, std::vector<int64_t> value);
+ 
++// IotaLike is a sugar API for iota that accounts for bounded dynamism in the
++// input tensor. Eventually this should be a chlo.iota_like op with a StableHLO
++// decomposition, but for now it will be housed as a builder API.
++MlirOp IotaLike(MlirOp input, int64_t dim, ElementType elementType);
++MlirOp IotaLike(MlirOp input, int64_t dim, Type elementType);
++
+ // Better Dot / DotGeneral builders.
+ // These ops don't support full type inference because the result element type
+ // cannot be inferred from operands, however the result shape can be.
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -199,6 +199,56 @@
+         &ctx, {Precision::HIGHEST, Precision::HIGHEST});
+     auto dot = stablehlo::DotGeneral(arg0, arg1, dotDimsAttr, precision);
+     func::Return(fb, dot);
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, IotaLikeStatic) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2x3xi64>) -> tensor<2x3xi64> {
++    %0 = stablehlo.iota dim = 1 : tensor<2x3xi64>
++    return %0 : tensor<2x3xi64>
++  }
++})mlir";
++  StablehloModuleBuilder mb;
++  {  // Build Main Func
++    func::FunctionBuilder fb(mb.get(), "main");
++    auto& ctx = fb.getContext();
++    auto type2x3xi64 = makeTensorType(ctx, {2, 3}, ElementType::I64);
++    auto arg0 = func::Argument(fb, type2x3xi64);
++    auto iota = stablehlo::IotaLike(arg0, 1, type2x3xi64.getElementType());
++    func::Return(fb, iota);
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, IotaLikeDynamic) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<2x3xi64>, %arg1: tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>> {
++    %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<2x3xi64>, tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>>
++    %1 = stablehlo.iota dim = 1 : tensor<2x3xi64>
++    %2 = stablehlo.get_dimension_size %0, dim = 0 : (tensor<?x3xi64, #stablehlo.bounds<2, ?>>) -> tensor<i32>
++    %3 = stablehlo.set_dimension_size %1, %2, dim = 0 : (tensor<2x3xi64>, tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>>
++    return %3 : tensor<?x3xi64, #stablehlo.bounds<2, ?>>
++  }
++})mlir";
++  StablehloModuleBuilder mb;
++  {  // Build Main Func
++    func::FunctionBuilder fb(mb.get(), "main");
++    auto& ctx = fb.getContext();
++    auto type2x3xi64 = makeTensorType(ctx, {2, 3}, ElementType::I64);
++    auto typei32 = makeTensorType(ctx, {}, ElementType::I32);
++    auto arg0 = func::Argument(fb, type2x3xi64);
++    auto arg1 = func::Argument(fb, typei32);
++    auto sds = stablehlo::SetDimensionSize(arg0, arg1, 0);
++    auto iota = stablehlo::IotaLike(sds, 1, type2x3xi64.getElementType());
++    func::Return(fb, iota);
+   }
+ 
+   OwningOpRef<ModuleOp> module = mb->build();
 
