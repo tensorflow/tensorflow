@@ -19,7 +19,6 @@ def repo():
         patch_file = [
             "//third_party/absl:btree.patch",
             "//third_party/absl:build_dll.patch",
-            "//third_party/absl:endian.patch",
             "//third_party/absl:rules_cc.patch",
             "//third_party/absl:check_op.patch",
             "//third_party/absl:check_op_2.patch",
