@@ -265,6 +265,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
  private:
   friend class PjRtCpuExecutable;
+  friend class CpuPjRtRawLoadedExecutable;
   friend absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
       CpuClientOptions options);
 
@@ -353,6 +354,33 @@ class PjRtCpuClient final : public CommonPjRtClient {
   // Maximum number of threads to use for any one transpose. We will use the
   // the lesser of this number and the thread pool size. 1 = no threading.
   int max_transpose_threads_;
+};
+
+class PjRtCpuExecutable;
+
+class CpuPjRtRawLoadedExecutable {
+ public:
+  explicit CpuPjRtRawLoadedExecutable(RunId run_id) : run_id_(run_id) {}
+  PjRtDevice* device() { return device_; }
+
+  absl::Status Execute(
+      const ExecuteOptions& options,
+      PjRtRawLoadedExecutable::RawExecuteResult& result,
+      absl::Status& inline_result_status,
+      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
+          input_buffers,
+      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>&
+          output_leaf_buffers,
+      PjRtDeviceEventSet& input_deps, bool fill_future) &&;
+
+ private:
+  friend class PjRtCpuExecutable;
+
+  PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event_;
+  const PjRtCpuExecutable* executable_;
+  std::shared_ptr<DeviceAssignment> device_assignment_;
+  PjRtCpuDevice* device_;
+  RunId run_id_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {
@@ -449,6 +477,7 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
 
  private:
   friend class PjRtCpuClient;
+  friend class CpuPjRtRawLoadedExecutable;
 
   absl::Status SetUpDonation(bool tuple_inputs);
 
@@ -457,6 +486,13 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   absl::Status CheckBufferCompatibilities(
       absl::Span<const CommonPjRtBuffer::ScopedHold> input_buffers,
       absl::Span<PjRtBuffer* const> argument_handles) const;
+
+  absl::StatusOr<std::unique_ptr<CpuPjRtRawLoadedExecutable>>
+  StartRawExecutable(
+      const ExecuteOptions& options,
+      PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
+      const RunId& run_id, int replica, int partition,
+      PjRtDevice* device) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
