@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
@@ -729,6 +730,72 @@ TEST(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
   TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
   ASSERT_TRUE(proto.thunk().has_sequential_thunk());
   EXPECT_THAT(proto.thunk().sequential_thunk().thunks(), SizeIs(5));
+}
+
+TEST(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
+  const auto proto = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
+    module_name: "test_module"
+    gpu_compute_capability: {
+      cuda_compute_capability: { major: 9 minor: 0 feature_extension: NONE }
+    }
+    hlo_module_with_config {
+      config {
+        entry_computation_layout {
+          parameters { element_type: F32 dimensions: 1 }
+          parameter_names: "parameter"
+        }
+      }
+      hlo_module {
+        name: "test_module"
+        entry_computation_name: "test_computation"
+        host_program_shape {
+          parameters { element_type: F32 dimensions: 1 }
+          parameter_names: "parameter"
+        }
+        computations {
+          name: "test_computation"
+          instructions {
+            name: "test_instruction"
+            opcode: "parameter"
+            shape: { element_type: F32 dimensions: 1 }
+          }
+        }
+      }
+    }
+    thunk {
+      thunk_info { thunk_id: 1 }
+      sequential_thunk {
+        thunks {
+          thunk_info { thunk_id: 2 }
+          host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
+        }
+      }
+    }
+  )pb");
+
+  stream_executor::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Hopper()});
+
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_executable_embed_debug_info(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> executable,
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
+                               debug_options));
+  ASSERT_TRUE(executable->has_module());
+  EXPECT_TRUE(XlaDebugInfoManager::Get()->TracksModule(
+      executable->module().unique_id()));
+
+  debug_options.set_xla_gpu_executable_embed_debug_info(false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GpuExecutable> executable_without_debug_info_manager,
+      GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
+                               debug_options));
+  ASSERT_TRUE(executable_without_debug_info_manager->has_module());
+  EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
+      executable_without_debug_info_manager->module().unique_id()));
 }
 
 }  // namespace

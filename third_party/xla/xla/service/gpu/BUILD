@@ -798,6 +798,7 @@ xla_cc_test(
         "//xla/service:buffer_value",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
+        "//xla/service:xla_debug_info_manager",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
