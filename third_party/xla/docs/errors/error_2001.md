@@ -1,4 +1,4 @@
-# Error code: E201
+# Error code: E2001
 
 **Category:** Unsupported RHS DataType on Hardware
 
