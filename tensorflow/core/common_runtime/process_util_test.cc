@@ -36,6 +36,7 @@ TEST(ProcessUtilTest, ThreadPool) {
   EXPECT_EQ(10, pool->NumThreads());
   delete pool;
 }
+
 TEST(ProcessUtilTest, ValidThreadCountsAreAccepted) {
   SessionOptions options;
 

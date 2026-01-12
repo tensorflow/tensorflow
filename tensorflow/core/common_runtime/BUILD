@@ -2849,19 +2849,6 @@ tf_cuda_cc_test(
 )
 
 tf_cc_test(
-    name = "rendezvous_util_test",
-    size = "small",
-    srcs = ["rendezvous_util_test.cc"],
-    deps = [
-        ":rendezvous_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-tf_cc_test(
     name = "process_util_test",
     size = "small",
     srcs = ["process_util_test.cc"],
@@ -2875,6 +2862,19 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/lib/core:threadpool",
+    ],
+)
+
+tf_cc_test(
+    name = "rendezvous_util_test",
+    size = "small",
+    srcs = ["rendezvous_util_test.cc"],
+    deps = [
+        ":rendezvous_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
