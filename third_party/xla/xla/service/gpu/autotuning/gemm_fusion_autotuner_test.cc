@@ -657,8 +657,7 @@ ENTRY %e {
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      module->mutable_config().mutable_debug_options(),
-      /*force_allow_register_spills=*/false);
+      module->mutable_config().mutable_debug_options());
   Compiler::CompileOptions options;
   options.embed_hlo_module = false;
   std::unique_ptr<Executable> executable =
