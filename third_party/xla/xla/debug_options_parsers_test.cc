@@ -393,13 +393,12 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
 
   // Check that the default setting has 6 types.
   const auto& enabled_types = debug_options.xla_gpu_enable_command_buffer();
-  ASSERT_EQ(enabled_types.size(), 7);
+  ASSERT_EQ(enabled_types.size(), 6);
   ASSERT_THAT(
       enabled_types,
       ElementsAre(DebugOptions::FUSION, DebugOptions::CUBLAS,
                   DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::DYNAMIC_SLICE_COPY_FUSION));
+                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Initialize the flag objects.
   std::vector<tsl::Flag> flag_objects;
@@ -408,32 +407,29 @@ TEST(ParseRepeatedEnumFlagsTest, CommandBufferCmdType) {
   // Removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=-fusion,-cublas");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 5);
+  EXPECT_EQ(enabled_types.size(), 4);
   EXPECT_THAT(
       enabled_types,
       ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::DYNAMIC_SLICE_COPY_FUSION));
+                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
 
   // Removing an option that isn't there and adding a duplicate.
   SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublaslt,-fusion");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(enabled_types.size(), 4);
+  EXPECT_THAT(
+      enabled_types,
+      ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
+                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION));
+
+  // Adding an option.
+  SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublas");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_types.size(), 5);
   EXPECT_THAT(
       enabled_types,
       ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
                   DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::DYNAMIC_SLICE_COPY_FUSION));
-
-  // Adding an option.
-  SetXlaFlagsEnvVar("--xla_gpu_enable_command_buffer=+cublas");
-  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
-  EXPECT_EQ(enabled_types.size(), 6);
-  EXPECT_THAT(
-      enabled_types,
-      ElementsAre(DebugOptions::CUBLASLT, DebugOptions::CUSTOM_CALL,
-                  DebugOptions::CUDNN, DebugOptions::DYNAMIC_SLICE_FUSION,
-                  DebugOptions::DYNAMIC_SLICE_COPY_FUSION,
                   DebugOptions::CUBLAS));
 
   // Overwriting the default setting.

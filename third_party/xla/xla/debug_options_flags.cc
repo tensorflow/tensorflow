@@ -244,8 +244,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
-  opts.add_xla_gpu_enable_command_buffer(
-      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
