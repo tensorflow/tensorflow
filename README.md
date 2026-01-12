@@ -56,7 +56,9 @@ $ pip install tensorflow
 ```
 
 Other devices (DirectX and MacOS-metal) are supported using
-[Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+[Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices), which enable hardware-specific acceleration outside of CUDA.
+ 
+
 
 A smaller CPU-only package is also available:
 
@@ -80,7 +82,7 @@ $ python
 ```python
 >>> import tensorflow as tf
 >>> tf.add(1, 2).numpy()
-3
+3 #returns a NumPy scalar
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
 b'Hello, TensorFlow!'
