@@ -96,4 +96,6 @@ const char kNumSlotVariables[] = "_num_slot_variables";
 const char kNumHyperparameters[] = "_num_hyperparameters";
 
 const char kLogTag[] = "_xla_log_tag";
+
+const char kXlaTableNameAttr[] = "_xla_table_name";
 }  // namespace xla

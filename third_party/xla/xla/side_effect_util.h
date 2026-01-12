@@ -118,6 +118,9 @@ extern const char kNumHyperparameters[];
 
 // XLA frontend attribute for specifying the tag of a log instruction.
 extern const char kLogTag[];
+
+// XLA frontend attribute for specifying the table name for SparseDenseMatmulOp.
+extern const char kXlaTableNameAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_
