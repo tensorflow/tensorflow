@@ -38,8 +38,7 @@ constexpr int32 kDefaultFallbackThreads = 128;
 constexpr int32 kThreadOversubscriptionFactor = 8;
 constexpr int32 kMinimumThreadCount = 128;
 
-// Calculate maximum thread count based on hardware
-int32 GetMaxThreadCount() {
+int32 ComputeMaxThreadCountFromHardwareConcurrency() {
   static const int32 max_threads = []() {
     const int hw_concurrency = std::thread::hardware_concurrency();
     if (hw_concurrency == 0) {
@@ -51,12 +50,10 @@ int32 GetMaxThreadCount() {
 }
 
 int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
-  // Auto-detect case
   if (requested_threads == 0) {
     return 0;
   }
 
-  // Negative case
   if (requested_threads < 0) {
     LOG(WARNING) << thread_type << " thread count " << requested_threads
                  << " is negative. Using 0 (auto-detect).";
@@ -64,7 +61,7 @@ int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
   }
 
   const int hardware_concurrency = std::thread::hardware_concurrency();
-  const int max_threads = GetMaxThreadCount();
+  const int max_threads = ComputeMaxThreadCountFromHardwareConcurrency();
   const int max_reasonable = std::max(hardware_concurrency * 2, 128);
 
   if (requested_threads > max_threads) {
@@ -97,7 +94,7 @@ int32_t DefaultNumInterOpThreads() {
     return ValidateThreadCount(env_num_threads, "inter_op_parallelism (env)");
   }
 
-  // Default to the maximum parallelism .
+  // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 #else
   // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
@@ -172,12 +169,13 @@ int32 DefaultNumIntraOpThreads() {
   if (env_num_threads > 0) {
     return ValidateThreadCount(env_num_threads, "intra_op_parallelism (env)");
   }
+
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
 #endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 
-int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
+int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32_t inter_op = ValidateThreadCount(
       options.config.inter_op_parallelism_threads(), "inter_op_parallelism");
   if (inter_op > 0) return inter_op;
