@@ -6344,6 +6344,39 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "file_backed_metrics_hook",
+    hdrs = ["file_backed_metrics_hook.h"],
+    deps = [
+        ":metrics_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/util/proto:proto_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_protobuf//:duration_cc_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "file_backed_metrics_hook_test",
+    srcs = ["file_backed_metrics_hook_test.cc"],
+    deps = [
+        ":file_backed_metrics_hook",
+        ":metrics_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
 xla_cc_test(
     name = "matmul_indexing_utils_test",
     srcs = ["matmul_indexing_utils_test.cc"],
