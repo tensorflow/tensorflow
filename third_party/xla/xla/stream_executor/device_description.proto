@@ -19,6 +19,7 @@ package stream_executor;
 
 import "xla/autotune_results.proto";
 import "xla/stream_executor/cuda/cuda_compute_capability.proto";
+import "xla/stream_executor/sycl/oneapi_compute_capability.proto";
 
 message RocmComputeCapabilityProto {
   string gcn_arch_name = 1;
@@ -28,6 +29,7 @@ message GpuComputeCapabilityProto {
   oneof compute_capability {
     CudaComputeCapabilityProto cuda_compute_capability = 1;
     RocmComputeCapabilityProto rocm_compute_capability = 2;
+    OneAPIComputeCapabilityProto oneapi_compute_capability = 3;
   }
 }
 
@@ -40,6 +42,7 @@ message ExecutionUnitDescriptionProto {
   map<int32, RateInfoProto> rate_infos = 1;
 }
 
+// Next ID: 23
 message GpuDeviceInfoProto {
   int32 threads_per_block_limit = 1;
   int32 threads_per_warp = 2;
@@ -59,6 +62,7 @@ message GpuDeviceInfoProto {
   oneof compute_capability {
     CudaComputeCapabilityProto cuda_compute_capability = 16;
     RocmComputeCapabilityProto rocm_compute_capability = 17;
+    OneAPIComputeCapabilityProto oneapi_compute_capability = 22;
   }
   int64 registers_per_core_limit = 18;
   int64 registers_per_block_limit = 19;

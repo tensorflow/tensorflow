@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -90,6 +91,10 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
     device_description.gpu_compute_capability_ =
         RocmComputeCapability(proto.rocm_compute_capability());
   }
+  if (proto.has_oneapi_compute_capability()) {
+    device_description.gpu_compute_capability_ =
+        OneAPIComputeCapability(proto.oneapi_compute_capability());
+  }
   device_description.core_count_ = proto.core_count();
   device_description.fpus_per_core_ = proto.fpus_per_core();
 
@@ -114,6 +119,9 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   }
   if (auto* ptr = gpu_compute_capability_.rocm_compute_capability()) {
     *proto.mutable_rocm_compute_capability() = ptr->ToProto();
+  }
+  if (auto* ptr = gpu_compute_capability_.oneapi_compute_capability()) {
+    *proto.mutable_oneapi_compute_capability() = ptr->ToProto();
   }
 
   proto.set_threads_per_block_limit(threads_per_block_limit_);
@@ -199,6 +207,13 @@ RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
   return RocmComputeCapability{};
 }
 
+OneAPIComputeCapability DeviceDescription::oneapi_compute_capability() const {
+  if (auto* ptr = gpu_compute_capability_.oneapi_compute_capability()) {
+    return *ptr;
+  }
+  return OneAPIComputeCapability{};
+}
+
 bool ThreadDimOk(const DeviceDescription& device_description,
                  const ThreadDim& thread_dim) {
   const int64_t total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
@@ -236,6 +251,9 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
   if (IsCuda()) {
     *proto.mutable_cuda_compute_capability() =
         cuda_compute_capability()->ToProto();
+  } else if (IsOneAPI()) {
+    *proto.mutable_oneapi_compute_capability() =
+        oneapi_compute_capability()->ToProto();
   } else {
     *proto.mutable_rocm_compute_capability() =
         rocm_compute_capability()->ToProto();
@@ -255,6 +273,11 @@ absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
   if (proto.has_rocm_compute_capability()) {
     return GpuComputeCapability(
         RocmComputeCapability::FromProto(proto.rocm_compute_capability()));
+  }
+
+  if (proto.has_oneapi_compute_capability()) {
+    return GpuComputeCapability(
+        OneAPIComputeCapability::FromProto(proto.oneapi_compute_capability()));
   }
 
   return absl::InvalidArgumentError(
