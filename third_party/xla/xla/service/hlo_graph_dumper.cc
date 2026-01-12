@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/statusor.h"
@@ -40,14 +42,9 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <atomic>
 #include <deque>
 #include <functional>
-#include <map>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
