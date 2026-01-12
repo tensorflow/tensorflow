@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -43,7 +44,7 @@ class ReplicaOrPartitionIdThunk : public Thunk {
 
   BufferUses buffer_uses() const override {
     return {
-        BufferUse::Write(dest_),
+        BufferUse::Write(dest_, ShapeUtil::MakeShape(S32, {})),
     };
   }
 

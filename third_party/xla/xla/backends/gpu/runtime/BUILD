@@ -1257,6 +1257,7 @@ cc_library(
     deps = [
         ":shaped_slice",
         ":thunk",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
@@ -2214,6 +2215,7 @@ cc_library(
     deps = [
         ":thunk",
         ":thunk_proto_cc",
+        "//xla:shape_util",
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",

@@ -859,6 +859,7 @@ cc_library(
     hdrs = ["logical_id_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla/runtime:buffer_use",
         "//xla/runtime:device_id",
@@ -1022,6 +1023,7 @@ cc_library(
     deps = [
         ":rng_state_lib",
         ":thunk",
+        "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
