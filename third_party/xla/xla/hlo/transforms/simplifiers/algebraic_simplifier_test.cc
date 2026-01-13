@@ -13196,5 +13196,102 @@ TEST_F(AlgebraicSimplifierTest,
               Not(GmockMatch(m::Parameter(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, RealWithNonComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule real_float
+    ENTRY main {
+      input = f32[4] parameter(0)
+      ROOT real = real(input)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(result);
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, ImagWithNonComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule imag_float
+    ENTRY main {
+      input = f32[4,2,8] parameter(0)
+      ROOT imag = imag(input)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(result);
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast()));
+}
+
+TEST_F(AlgebraicSimplifierTest, RealImagWithComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule real_float
+    ENTRY main {
+      input = c64[4] parameter(0)
+      real = real(input)
+      imag = imag(input)
+      ROOT t = tuple(real, imag)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&simplifier, module.get()));
+
+  // If inputs are complex, the pass should not change anything.
+  EXPECT_FALSE(result);
+}
+
+TEST_F(AlgebraicSimplifierTest, MultipleImagWithNonComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule imag_float
+    ENTRY main {
+      input = f32[4,2,8] parameter(0)
+      imag1 = imag(input)
+      ROOT imag2 = imag(imag1)
+    })";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(result);
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast()));
+}
+
+TEST_F(AlgebraicSimplifierTest, ImagWithDynamicNonComplexInput) {
+  const char* kModuleStr = R"(
+    HloModule imag_dynamic_float
+    ENTRY main {
+      input = f32[<=8] parameter(0)
+      ROOT imag = imag(input)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+
+  ASSERT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+
+  auto root = module->entry_computation()->root_instruction();
+  // Ensure the output is a broadcast and still has the dynamic bound (<=8).
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
+  EXPECT_TRUE(root->shape().is_dynamic_dimension(0));
+  EXPECT_EQ(root->shape().dimensions(0), 8);
+}
+
 }  // namespace
 }  // namespace xla

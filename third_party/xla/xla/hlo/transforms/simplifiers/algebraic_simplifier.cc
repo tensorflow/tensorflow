@@ -5620,6 +5620,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleReal(HloInstruction* real) {
   if (Match(real, m::Real(m::Complex(m::Op(&op), m::Op())))) {
     return ReplaceInstruction(real, op);
   }
+  // real(x) -> x if x is not complex.
+  if (!ShapeUtil::ElementIsComplex(real->operand(0)->shape())) {
+    return ReplaceInstruction(real, real->mutable_operand(0));
+  }
   return absl::OkStatus();
 }
 
@@ -5628,6 +5632,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleImag(HloInstruction* imag) {
   HloInstruction* op;
   if (Match(imag, m::Imag(m::Complex(m::Op(), m::Op(&op))))) {
     return ReplaceInstruction(imag, op);
+  }
+  // imag(x) -> 0 if x is not complex.
+  if (!ShapeUtil::ElementIsComplex(imag->operand(0)->shape())) {
+    return ReplaceInstruction(imag,
+                              BroadcastZeros(computation_, imag->shape()));
   }
   return absl::OkStatus();
 }
