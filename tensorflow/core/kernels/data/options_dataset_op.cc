@@ -85,7 +85,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->Get(ctx, index, out_tensors);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
