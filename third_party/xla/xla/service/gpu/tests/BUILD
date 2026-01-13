@@ -72,6 +72,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_pjrt_gpu_test_base",
+    testonly = True,
+    srcs = ["hlo_pjrt_gpu_test_base.cc"],
+    hdrs = ["hlo_pjrt_gpu_test_base.h"],
+    deps = [
+        "//xla/backends/gpu/target_config",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:pjrt_client_registry",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = if_gpu_is_configured(["dynamic_slice_fusion_test.cc"]),

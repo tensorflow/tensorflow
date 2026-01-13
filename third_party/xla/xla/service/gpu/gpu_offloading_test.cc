@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -55,7 +55,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 class GpuOffloadingTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  protected:
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
@@ -191,16 +191,6 @@ TEST_F(GpuOffloadingTest, WeightOffloadingD2HWithWaitTest) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_offloading_d2h, ErrorSpec{1e-3}));
 }
 
-se::Platform* GpuPlatform() {
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  return se::PlatformManager::PlatformWithName(name).value();
-}
-
-se::StreamExecutor* GpuExecutor() {
-  return GpuPlatform()->ExecutorForDevice(0).value();
-}
-
 TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   const char* hlo_text = R"(
   HloModule test
@@ -234,8 +224,7 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
-  StreamAttributeAnnotator attr_annotator(
-      GpuExecutor()->GetDeviceDescription());
+  StreamAttributeAnnotator attr_annotator(device_description());
   TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
   EXPECT_TRUE(changed_attr);
   // Verify that the stream attribute for a copy-start is annotated
@@ -278,6 +267,16 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module_ref),
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
+}
+
+se::Platform* GpuPlatform() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  return se::PlatformManager::PlatformWithName(name).value();
+}
+
+se::StreamExecutor* GpuExecutor() {
+  return GpuPlatform()->ExecutorForDevice(0).value();
 }
 
 // The memory management operations (allocation and deallocation) for the host
