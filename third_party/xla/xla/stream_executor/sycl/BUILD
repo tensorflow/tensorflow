@@ -190,6 +190,7 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":sycl_event",
+        ":sycl_executor",
         ":sycl_platform_id",
         ":sycl_stream",
         "//xla/backends/gpu/runtime:kernel_thunk",
@@ -269,6 +270,64 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "sycl_executor",
+    srcs = ["sycl_executor.cc"],
+    hdrs = ["sycl_executor.h"],
+    compatible_with = [],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_kernel",
+        ":sycl_stream",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/platform:initialize",
+        "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:numbers",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "sycl_executor_test",
+    srcs = ["sycl_executor_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    use_legacy_runtime = True,
+    deps = [
+        ":sycl_executor",
+        "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:intel_gpu_compiler",
+        "//xla/tests:llvm_irgen_test_base",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 sycl_library(
     name = "sycl_event",
     srcs = ["sycl_event.cc"],
@@ -331,6 +390,7 @@ xla_test(
         "oneapi-only",
     ],
     deps = [
+        ":sycl_executor",
         ":sycl_timer",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:typed_kernel_factory",
