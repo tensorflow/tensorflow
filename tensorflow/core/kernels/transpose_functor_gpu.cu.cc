@@ -41,16 +41,16 @@ __global__ void ConjugateKernel(int nthreads, const T* __restrict__ src,
 
 template <typename T, bool conjugate>
 __global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
-                                const int32* __restrict__ buf,
-                                const int32 ndims, T* __restrict__ dst) {
-  const int32* in_strides = buf;
-  const int32* out_strides = buf + ndims;
-  const int32* perm = buf + ndims * 2;
+                                const int32_t* __restrict__ buf,
+                                const int32_t ndims, T* __restrict__ dst) {
+  const int32_t* in_strides = buf;
+  const int32_t* out_strides = buf + ndims;
+  const int32_t* perm = buf + ndims * 2;
   GPU_1D_KERNEL_LOOP(o_idx, nthreads) {
-    int32 i_idx = 0;
-    int32 t = o_idx;
-    for (int32 i = 0; i < ndims; ++i) {
-      const int32 ratio = t / out_strides[i];
+    int32_t i_idx = 0;
+    int32_t t = o_idx;
+    for (int32_t i = 0; i < ndims; ++i) {
+      const int32_t ratio = t / out_strides[i];
       t -= ratio * out_strides[i];
       i_idx += ratio * in_strides[perm[i]];
     }
@@ -64,13 +64,13 @@ __global__ void TransposeKernel(int nthreads, const T* __restrict__ src,
 
 template <typename T, bool conjugate>
 void TransposeSimple(const GPUDevice& d, const Tensor& in,
-                     const gtl::ArraySlice<int32> perm, Tensor* out) {
+                     const absl::Span<const int32> perm, Tensor* out) {
   // Ensures we can use 32-bit index.
-  const int64 nelem = in.NumElements();
+  const int64_t nelem = in.NumElements();
   CHECK_LT(nelem, std::numeric_limits<int32_t>::max())
       << "Tensor too large to transpose on GPU";
   // Pack strides and permutation into one buffer.
-  const int32 ndims = in.dims();
+  const int32_t ndims = in.dims();
   GpuLaunchConfig cfg = GetGpuLaunchConfig(nelem, d);
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
@@ -80,9 +80,11 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
                                 cfg.virtual_thread_count, p, q));
     return;
   }
-  gtl::InlinedVector<int32, 24> host_buf(ndims * 3);
-  gtl::InlinedVector<int32, 8> in_strides = ComputeStride<int32>(in.shape());
-  gtl::InlinedVector<int32, 8> out_strides = ComputeStride<int32>(out->shape());
+  absl::InlinedVector<int32, 24UL> host_buf(ndims * 3);
+  absl::InlinedVector<int32, 8UL> in_strides =
+      ComputeStride<int32_t>(in.shape());
+  absl::InlinedVector<int32, 8UL> out_strides =
+      ComputeStride<int32_t>(out->shape());
   // Dimension permutation.
   for (int i = 0; i < ndims; ++i) {
     host_buf[i] = in_strides[i];
@@ -90,7 +92,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
     host_buf[ndims * 2 + i] = perm[i];
   }
   // Copies the input strides, output strides and permutation to the device.
-  auto num_bytes = sizeof(int32) * host_buf.size();
+  auto num_bytes = sizeof(int32_t) * host_buf.size();
   auto dev_buf = d.allocate(num_bytes);
   // NOTE: host_buf is not allocated by GpuHostAllocator, and
   // therefore we are doing a sync copy effectively.
@@ -99,7 +101,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   TF_CHECK_OK(GpuLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,
-      reinterpret_cast<const int32*>(dev_buf), ndims, q));
+      reinterpret_cast<const int32_t*>(dev_buf), ndims, q));
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
 }
@@ -111,7 +113,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
 template <typename T, bool conjugate = false>
 struct TransposeUsingTile {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     // First try to reduce the dimensions of the input tensor.
     TransposePermsVec new_perm;
     TransposeDimsVec new_dims;
@@ -160,9 +162,9 @@ struct TransposeUsingTile {
 template <bool conjugate>
 struct TransposeUsingTile<complex64, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     if (!conjugate) {
-      return TransposeUsingTile<uint64>::run(d, in, perm, out);
+      return TransposeUsingTile<uint64_t>::run(d, in, perm, out);
     } else {
       return TransposeUsingTile<float2, true>::run(d, in, perm, out);
     }
@@ -172,7 +174,7 @@ struct TransposeUsingTile<complex64, conjugate> {
 template <bool conjugate>
 struct TransposeUsingTile<complex128, conjugate> {
   static bool run(const Eigen::GpuDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     if (!conjugate) {
       return TransposeUsingTile<float4>::run(d, in, perm, out);
     } else {
@@ -193,7 +195,7 @@ struct TransposeUsingTile<complex128, conjugate> {
 template <typename T, bool conjugate>
 struct Transpose<GPUDevice, T, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     if (in.dims() > 1 &&
         internal::TransposeUsingTile<T, conjugate>::run(d, in, perm, out)) {
       return;
@@ -219,7 +221,7 @@ struct Transpose<GPUDevice, T, conjugate> {
 template <bool conjugate>
 struct Transpose<GPUDevice, tstring, conjugate> {
   static void run(const GPUDevice& d, const Tensor& in,
-                  const gtl::ArraySlice<int32> perm, Tensor* out) {
+                  const absl::Span<const int32> perm, Tensor* out) {
     LOG(FATAL) << "Transpose of DT_STRING tensor not supported on GPU.";
   }
 };
@@ -228,23 +230,24 @@ struct Transpose<GPUDevice, tstring, conjugate> {
 template struct Transpose<GPUDevice, tstring, false>;
 
 template <>
-Status DoTranspose(const GPUDevice& device, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out) {
+absl::Status DoTranspose(const GPUDevice& device, const Tensor& in,
+                         const absl::Span<const int32> perm, Tensor* out) {
   return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/false, out);
 }
 template <>
-Status DoConjugateTranspose(const GPUDevice& device, const Tensor& in,
-                            const gtl::ArraySlice<int32> perm, Tensor* out) {
+absl::Status DoConjugateTranspose(const GPUDevice& device, const Tensor& in,
+                                  const absl::Span<const int32> perm,
+                                  Tensor* out) {
   return internal::DoTransposeImpl(device, in, perm, /*conjugate=*/true, out);
 }
 template <>
-Status DoMatrixTranspose(const GPUDevice& device, const Tensor& in,
-                         Tensor* out) {
+absl::Status DoMatrixTranspose(const GPUDevice& device, const Tensor& in,
+                               Tensor* out) {
   return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/false, out);
 }
 template <>
-Status DoConjugateMatrixTranspose(const GPUDevice& device, const Tensor& in,
-                                  Tensor* out) {
+absl::Status DoConjugateMatrixTranspose(const GPUDevice& device,
+                                        const Tensor& in, Tensor* out) {
   return internal::DoMatrixTransposeImpl(device, in, /*conjugate=*/true, out);
 }
 
