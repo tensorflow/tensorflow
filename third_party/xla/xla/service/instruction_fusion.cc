@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
-#include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
