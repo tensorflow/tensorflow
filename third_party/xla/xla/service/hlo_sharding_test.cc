@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,6 +47,7 @@ namespace xla {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> contents) {
@@ -120,43 +122,47 @@ TEST_P(HloShardingRepresentationTest, DevicePlacement) {
 }
 
 TEST_F(HloShardingTest, ProtoRoundTrip) {
-  OpSharding proto;
-  proto.set_type(OpSharding::TUPLE);
-  auto* tiled = proto.add_tuple_shardings();
-  tiled->set_type(OpSharding::OTHER);
-  tiled->add_tile_assignment_devices(0);
-  tiled->add_tile_assignment_devices(1);
-  tiled->add_tile_assignment_dimensions(1);
-  tiled->add_tile_assignment_dimensions(2);
-  *tiled->add_metadata() = GetMetadata("a");
-  *tiled->add_metadata() = GetMetadata("b");
-  auto* replicated = proto.add_tuple_shardings();
-  replicated->set_type(OpSharding::REPLICATED);
-  *replicated->add_metadata() = GetMetadata("c");
-  auto* manual = proto.add_tuple_shardings();
-  manual->set_type(OpSharding::MANUAL);
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: TUPLE
+    tuple_shardings {
+      type: OTHER
+      tile_assignment_devices: 0
+      tile_assignment_devices: 1
+      tile_assignment_dimensions: 1
+      tile_assignment_dimensions: 2
+      metadata { op_name: "a" }
+      metadata { op_name: "b" }
+    }
+    tuple_shardings {
+      type: REPLICATED
+      metadata { op_name: "c" }
+    }
+    tuple_shardings { type: MANUAL }
+  )pb");
   HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, IotaProtoRoundTrip) {
-  OpSharding proto;
-  proto.set_type(OpSharding::TUPLE);
-  auto* tiled = proto.add_tuple_shardings();
-  tiled->set_type(OpSharding::OTHER);
-  tiled->add_tile_assignment_dimensions(6);
-  tiled->add_tile_assignment_dimensions(1);
-  tiled->add_iota_reshape_dims(3);
-  tiled->add_iota_reshape_dims(2);
-  tiled->add_iota_transpose_perm(1);
-  tiled->add_iota_transpose_perm(0);
-  *tiled->add_metadata() = GetMetadata("a");
-  *tiled->add_metadata() = GetMetadata("b");
-  auto* replicated = proto.add_tuple_shardings();
-  replicated->set_type(OpSharding::REPLICATED);
-  *replicated->add_metadata() = GetMetadata("c");
-  auto* manual = proto.add_tuple_shardings();
-  manual->set_type(OpSharding::MANUAL);
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: TUPLE
+    tuple_shardings {
+      type: OTHER
+      tile_assignment_dimensions: 6
+      tile_assignment_dimensions: 1
+      iota_reshape_dims: 3
+      iota_reshape_dims: 2
+      iota_transpose_perm: 1
+      iota_transpose_perm: 0
+      metadata { op_name: "a" }
+      metadata { op_name: "b" }
+    }
+    tuple_shardings {
+      type: REPLICATED
+      metadata { op_name: "c" }
+    }
+    tuple_shardings { type: MANUAL }
+  )pb");
   HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
