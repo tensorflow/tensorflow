@@ -172,9 +172,9 @@ std::optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
 
 void ReplaceAllUsesWithCast(Value old_val, Value new_val) {
   if (old_val.use_empty()) return;
-  auto cast_op =
-      OpBuilder(old_val.getDefiningOp())
-          .create<tensor::CastOp>(old_val.getLoc(), old_val.getType(), new_val);
+  auto builder = OpBuilder(old_val.getDefiningOp());
+  auto cast_op = tensor::CastOp::create(builder, old_val.getLoc(),
+                                        old_val.getType(), new_val);
   old_val.replaceAllUsesWith(cast_op);
 }
 
@@ -603,8 +603,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
       new_retvals.push_back(body_stats[arg].grads[source]);
     }
   }
-  OpBuilder(old_body_ret)
-      .create<func::ReturnOp>(old_body_ret->getLoc(), new_retvals);
+  auto ret_op_builder = OpBuilder(old_body_ret);
+  func::ReturnOp::create(ret_op_builder, old_body_ret->getLoc(), new_retvals);
   old_body_ret->erase();
   UpdateFuncType(body);
   // Recreate the while op.
@@ -629,8 +629,8 @@ LogicalResult HandleWhileOp(TF::WhileOp while_op, ModuleOp module,
       }
     }
   }
-  OpBuilder builder(while_op);
-  auto new_while = TF::WhileOp::create(builder, while_op.getLoc(),
+  OpBuilder while_op_builder(while_op);
+  auto new_while = TF::WhileOp::create(while_op_builder, while_op.getLoc(),
                                        body.getFunctionType().getInputs(),
                                        operands, while_op->getAttrs());
   for (int64_t i = 0; i < while_op.getNumOperands(); ++i) {

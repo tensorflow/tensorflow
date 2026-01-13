@@ -235,7 +235,7 @@ struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> /*argTypes*/, ValueRange args,
                    ArrayRef<NamedAttribute> attributes, OpBuilder* b) {
-    return b->template create<StdScalarOp>(loc, resultTypes, args, attributes);
+    return StdScalarOp::create(*b, loc, resultTypes, args, attributes);
   }
 };
 
@@ -246,8 +246,7 @@ struct MapMhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
                    ArrayRef<NamedAttribute> attributes, OpBuilder* b) {
     Type elementType = getElementTypeOrSelf(argTypes.front());
     if (SupportedType{}(elementType)) {
-      return b->template create<StdScalarOp>(loc, resultTypes, args,
-                                             attributes);
+      return StdScalarOp::create(*b, loc, resultTypes, args, attributes);
     }
     return MapMhloOpToScalarOpImpl<Args...>{}(loc, resultTypes, argTypes, args,
                                               attributes, b);
@@ -858,8 +857,8 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
       auto predicate = getCmpPredicate<Predicate>(
           comparisonDirection, !elementType.isUnsignedInteger());
       assert(predicate.has_value() && "expected valid comparison direction");
-      auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
-                                                  args[0], args[1]);
+      auto cmp =
+          StdCompareOp::create(*b, loc, predicate.getValue(), args[0], args[1]);
       return ::mlir::arith::SelectOp::create(*b, loc, cmp, args[0], args[1]);
     }
     return CompareSelectOpToStdScalarOp<Args...>::map(

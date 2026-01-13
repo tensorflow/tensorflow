@@ -348,26 +348,27 @@ static Value StaticBinaryBroadcast(Location loc, Value x, Value y,
   }
   auto larger_broadcast_dims =
       GetI64ArrayAttrForSeq(0, result_type.getRank(), &builder);
+  auto broadcast_dims_attr = ToDenseI64ArrayAttr(broadcast_dims, &builder);
   if (x_type.getRank() < y_type.getRank()) {
     if (x_type != result_type) {
-      x = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, x,
-                                                      broadcast_dims);
+      x = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, x,
+                                              broadcast_dims_attr);
     }
     if (y_type != result_type) {
-      y = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, y,
-                                                      larger_broadcast_dims);
+      y = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, y,
+                                              larger_broadcast_dims);
     }
   } else {
     if (x_type != result_type) {
-      x = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, x,
-                                                      larger_broadcast_dims);
+      x = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, x,
+                                              larger_broadcast_dims);
     }
     if (y_type != result_type) {
-      y = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, y,
-                                                      broadcast_dims);
+      y = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, y,
+                                              broadcast_dims_attr);
     }
   }
-  return builder.create<BinaryOp>(loc, x, y);
+  return BinaryOp::create(builder, loc, x, y);
 }
 
 // Gets a 1D tensor type suitable for expressing extents of the given tensor

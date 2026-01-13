@@ -2081,8 +2081,9 @@ class RewriteQuantizedDynamicSliceOp
     if (rank > 1) {
       SmallVector<int64_t> begin_shape{rank};
       Type begin_type = operand_type.cloneWith(begin_shape, i64_type);
-      concatenated = rewriter.create<TFL::ConcatenationOp>(
-          op->getLoc(), begin_type, start_indices, /*axis=*/0,
+      concatenated = TFL::ConcatenationOp::create(
+          rewriter, op->getLoc(), begin_type, start_indices,
+          /*axis=*/rewriter.getI32IntegerAttr(0),
           /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
     }
 
