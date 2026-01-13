@@ -137,6 +137,40 @@ inline std::string GetErrorUrl(ErrorCode code) {
   return absl::StrCat("https://openxla.org/xla/errors/error_", id);
 }
 
+// Returns the error message with the standard XLA Error Code formatting:
+// "EXXXX: ErrorName:\n<Original Message>\nSee <URL> for more details."
+inline std::string FormatMessageWithCode(absl::string_view message,
+                                         ErrorCode code) {
+  return absl::StrCat(GetErrorCodeAndName(code), ":\n", message, "\nSee ",
+                      GetErrorUrl(code), " for more details.");
+}
+
+// Wraps an existing status with the standard XLA Error Code formatting:
+// "EXXXX: ErrorName:\n<Original Message>\nSee <URL> for more details."
+inline absl::Status AnnotateWithCode(const absl::Status& original,
+                                     ErrorCode code) {
+  if (original.ok()) {
+    return original;
+  }
+
+  absl::Status new_status(original.code(),
+                          FormatMessageWithCode(original.message(), code));
+
+  // Copy over the payloads and source locations from the original status.
+  original.ForEachPayload(
+      [&new_status](absl::string_view type_url, const absl::Cord& payload) {
+        new_status.SetPayload(type_url, payload);
+      });
+
+#if defined(PLATFORM_GOOGLE)
+  for (const auto& loc : original.GetSourceLocations()) {
+    new_status.AddSourceLocation(loc);
+  }
+#endif  // PLATFORM_GOOGLE
+
+  return new_status;
+}
+
 // The following three macros implement a factory pattern for creating
 // absl::Status objects. This pattern is necessary to reliably capture the
 // caller's source location while supporting variadic arguments.
