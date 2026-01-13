@@ -1038,9 +1038,12 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (primitive_util::IsSignedIntegralType(to_type)) {
         int64_t min_int = llvm::minIntN(to_width);
         int64_t max_int = llvm::maxIntN(to_width);
-        auto zero_int = llvm::ConstantInt::get(to_ir_type, 0);
-        auto min_value_int = llvm::ConstantInt::get(to_ir_type, min_int);
-        auto max_value_int = llvm::ConstantInt::get(to_ir_type, max_int);
+        auto zero_int = llvm::ConstantInt::get(
+            to_ir_type, 0, /*IsSigned=*/false, /*ImplicitTrunc=*/true);
+        auto min_value_int = llvm::ConstantInt::get(
+            to_ir_type, min_int, /*IsSigned=*/false, /*ImplicitTrunc=*/true);
+        auto max_value_int = llvm::ConstantInt::get(
+            to_ir_type, max_int, /*IsSigned=*/false, /*ImplicitTrunc=*/true);
         auto min_value_float = llvm::ConstantFP::get(from_ir_type, min_int);
         auto max_value_float = llvm::ConstantFP::get(from_ir_type, max_int);
         auto clamped = FPToSI(
@@ -1060,8 +1063,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (primitive_util::IsUnsignedIntegralType(to_type)) {
         uint64_t min_int = 0;
         uint64_t max_int = llvm::maxUIntN(to_width);
-        auto min_value_int = llvm::ConstantInt::get(to_ir_type, min_int);
-        auto max_value_int = llvm::ConstantInt::get(to_ir_type, max_int);
+        auto min_value_int = llvm::ConstantInt::get(
+            to_ir_type, min_int, /*IsSigned=*/false, /*ImplicitTrunc=*/true);
+        auto max_value_int = llvm::ConstantInt::get(
+            to_ir_type, max_int, /*IsSigned=*/false, /*ImplicitTrunc=*/true);
         auto min_value_float = llvm::ConstantFP::get(from_ir_type, min_int);
         auto max_value_float = llvm::ConstantFP::get(from_ir_type, max_int);
         auto clamped = FPToUI(
@@ -2397,7 +2402,7 @@ static llvm::Value* SaturateShiftIfNecessary(llvm::IRBuilderBase* b,
   llvm::ConstantInt* integer_bitsize_constant =
       llvm::ConstantInt::get(integer_type, integer_bitsize);
   llvm::ConstantInt* zero = llvm::ConstantInt::get(integer_type, 0);
-  llvm::ConstantInt* minus_one = llvm::ConstantInt::get(integer_type, -1);
+  llvm::ConstantInt* minus_one = llvm::ConstantInt::getSigned(integer_type, -1);
   llvm::Value* saturated_value;
   if (saturate_to_sign_bit) {
     saturated_value =

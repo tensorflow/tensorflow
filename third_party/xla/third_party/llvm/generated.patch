@@ -1,746 +1,1540 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
---- a/clang/lib/Serialization/ASTReader.cpp
-+++ b/clang/lib/Serialization/ASTReader.cpp
-@@ -555,25 +555,7 @@
- 
- using MacroDefinitionsMap =
-     llvm::StringMap<std::pair<StringRef, bool /*IsUndef*/>>;
--
--class DeclsSet {
--  SmallVector<NamedDecl *, 64> Decls;
--  llvm::SmallPtrSet<NamedDecl *, 8> Found;
--
--public:
--  operator ArrayRef<NamedDecl *>() const { return Decls; }
--
--  bool empty() const { return Decls.empty(); }
--
--  bool insert(NamedDecl *ND) {
--    auto [_, Inserted] = Found.insert(ND);
--    if (Inserted)
--      Decls.push_back(ND);
--    return Inserted;
--  }
--};
--
--using DeclsMap = llvm::DenseMap<DeclarationName, DeclsSet>;
-+using DeclsMap = llvm::DenseMap<DeclarationName, SmallVector<NamedDecl *, 8>>;
- 
- } // namespace
- 
-@@ -8752,23 +8734,14 @@
-     return false;
- 
-   // Load the list of declarations.
--  DeclsSet DS;
-+  SmallVector<NamedDecl *, 64> Decls;
-+  llvm::SmallPtrSet<NamedDecl *, 8> Found;
- 
-   auto Find = [&, this](auto &&Table, auto &&Key) {
-     for (GlobalDeclID ID : Table.find(Key)) {
-       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
--      if (ND->getDeclName() != Name)
--        continue;
--      // Special case for namespaces: There can be a lot of redeclarations of
--      // some namespaces, and we import a "key declaration" per imported module.
--      // Since all declarations of a namespace are essentially interchangeable,
--      // we can optimize namespace look-up by only storing the key declaration
--      // of the current TU, rather than storing N key declarations where N is
--      // the # of imported modules that declare that namespace.
--      // TODO: Try to generalize this optimization to other redeclarable decls.
--      if (isa<NamespaceDecl>(ND))
--        ND = cast<NamedDecl>(getKeyDeclaration(ND));
--      DS.insert(ND);
-+      if (ND->getDeclName() == Name && Found.insert(ND).second)
-+        Decls.push_back(ND);
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+@@ -16035,39 +16035,6 @@
      }
-   };
- 
-@@ -8803,8 +8776,8 @@
-     Find(It->second.Table, Name);
    }
  
--  SetExternalVisibleDeclsForName(DC, Name, DS);
--  return !DS.empty();
-+  SetExternalVisibleDeclsForName(DC, Name, Decls);
-+  return !Decls.empty();
- }
- 
- void ASTReader::completeVisibleDeclsMap(const DeclContext *DC) {
-@@ -8822,16 +8795,7 @@
- 
-     for (GlobalDeclID ID : It->second.Table.findAll()) {
-       NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
--      // Special case for namespaces: There can be a lot of redeclarations of
--      // some namespaces, and we import a "key declaration" per imported module.
--      // Since all declarations of a namespace are essentially interchangeable,
--      // we can optimize namespace look-up by only storing the key declaration
--      // of the current TU, rather than storing N key declarations where N is
--      // the # of imported modules that declare that namespace.
--      // TODO: Try to generalize this optimization to other redeclarable decls.
--      if (isa<NamespaceDecl>(ND))
--        ND = cast<NamedDecl>(getKeyDeclaration(ND));
--      Decls[ND->getDeclName()].insert(ND);
-+      Decls[ND->getDeclName()].push_back(ND);
-     }
- 
-     // FIXME: Why a PCH test is failing if we remove the iterator after findAll?
-@@ -8841,9 +8805,9 @@
-   findAll(ModuleLocalLookups, NumModuleLocalVisibleDeclContexts);
-   findAll(TULocalLookups, NumTULocalVisibleDeclContexts);
- 
--  for (auto &[Name, DS] : Decls)
--    SetExternalVisibleDeclsForName(DC, Name, DS);
+-  // 128-bit NEON vectors: writing to the 64-bit low half with
+-  // DUP/SCALAR_TO_VECTOR already zeroes the other 64 bits, so if the low half
+-  // is a splat and the upper half is zero/undef we can materialise just that
+-  // low half.
+-  if (VT.isFixedLengthVector() && VT.getSizeInBits() == 128) {
+-    EVT LaneVT = VT.getVectorElementType();
+-    const unsigned HalfElts = NumElts >> 1;
+-    SDValue FirstVal = Op.getOperand(0);
 -
-+  for (DeclsMap::iterator I = Decls.begin(), E = Decls.end(); I != E; ++I) {
-+    SetExternalVisibleDeclsForName(DC, I->first, I->second);
-+  }
-   const_cast<DeclContext *>(DC)->setHasExternalVisibleStorage(false);
- }
- 
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
---- a/clang/lib/Serialization/ASTWriter.cpp
-+++ b/clang/lib/Serialization/ASTWriter.cpp
-@@ -4397,20 +4397,20 @@
- 
-   template <typename Coll> data_type getData(const Coll &Decls) {
-     unsigned Start = DeclIDs.size();
--    auto AddDecl = [this](NamedDecl *D) {
-+    for (NamedDecl *D : Decls) {
-       NamedDecl *DeclForLocalLookup =
-           getDeclForLocalLookup(Writer.getLangOpts(), D);
- 
-       if (Writer.getDoneWritingDeclsAndTypes() &&
-           !Writer.wasDeclEmitted(DeclForLocalLookup))
--        return;
-+        continue;
- 
-       // Try to avoid writing internal decls to reduced BMI.
-       // See comments in ASTWriter::WriteDeclContextLexicalBlock for details.
-       if (Writer.isGeneratingReducedBMI() &&
-           !DeclForLocalLookup->isFromExplicitGlobalModule() &&
-           IsInternalDeclFromFileContext(DeclForLocalLookup))
--        return;
-+        continue;
- 
-       auto ID = Writer.GetDeclRef(DeclForLocalLookup);
- 
-@@ -4424,7 +4424,7 @@
-             ModuleLocalDeclsMap.insert({Key, DeclIDsTy{ID}});
-           else
-             Iter->second.push_back(ID);
--          return;
-+          continue;
-         }
-         break;
-       case LookupVisibility::TULocal: {
-@@ -4433,7 +4433,7 @@
-           TULocalDeclsMap.insert({D->getDeclName(), DeclIDsTy{ID}});
-         else
-           Iter->second.push_back(ID);
--        return;
-+        continue;
-       }
-       case LookupVisibility::GenerallyVisibile:
-         // Generally visible decls go into the general lookup table.
-@@ -4441,24 +4441,6 @@
-       }
- 
-       DeclIDs.push_back(ID);
+-    auto IsZero = [&](SDValue V) {
+-      return isNullConstant(V) || isNullFPConstant(V);
 -    };
--    ASTReader *Chain = Writer.getChain();
--    for (NamedDecl *D : Decls) {
--      if (Chain && isa<NamespaceDecl>(D) && D->isFromASTFile() &&
--          D == Chain->getKeyDeclaration(D)) {
--        // In ASTReader, we stored only the key declaration of a namespace decl
--        // for this TU rather than storing all of the key declarations from each
--        // imported module. If we have an external namespace decl, this is that
--        // key declaration and we need to re-expand it to write out all of the
--        // key declarations from each imported module again.
--        //
--        // See comment 'ASTReader::FindExternalVisibleDeclsByName' for details.
--        Chain->forEachImportedKeyDecl(D, [&AddDecl](const Decl *D) {
--          AddDecl(cast<NamedDecl>(const_cast<Decl *>(D)));
--        });
--      } else {
--        AddDecl(D);
--      }
-     }
-     return std::make_pair(Start, DeclIDs.size());
-   }
-diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/CMakeLists.txt b/clang/unittests/Serialization/CMakeLists.txt
---- a/clang/unittests/Serialization/CMakeLists.txt
-+++ b/clang/unittests/Serialization/CMakeLists.txt
-@@ -2,7 +2,6 @@
-   ForceCheckFileInputTest.cpp
-   InMemoryModuleCacheTest.cpp
-   ModuleCacheTest.cpp
--  NamespaceLookupTest.cpp
-   NoCommentsTest.cpp
-   PreambleInNamedModulesTest.cpp
-   LoadSpecLazilyTest.cpp
-diff -ruN --strip-trailing-cr a/clang/unittests/Serialization/NamespaceLookupTest.cpp b/clang/unittests/Serialization/NamespaceLookupTest.cpp
---- a/clang/unittests/Serialization/NamespaceLookupTest.cpp
-+++ b/clang/unittests/Serialization/NamespaceLookupTest.cpp
-@@ -1,247 +0,0 @@
--//== unittests/Serialization/NamespaceLookupOptimizationTest.cpp =======//
--//
--// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
--// See https://llvm.org/LICENSE.txt for license information.
--// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--//
--//===----------------------------------------------------------------------===//
 -
--#include "clang/Driver/CreateInvocationFromArgs.h"
--#include "clang/Frontend/CompilerInstance.h"
--#include "clang/Frontend/FrontendAction.h"
--#include "clang/Frontend/FrontendActions.h"
--#include "clang/Parse/ParseAST.h"
--#include "clang/Serialization/ASTReader.h"
--#include "clang/Tooling/Tooling.h"
--#include "gtest/gtest.h"
+-    if (llvm::all_of(llvm::seq<unsigned>(0, NumElts), [&](unsigned I) {
+-          SDValue Vi = Op.getOperand(I);
+-          return I < HalfElts ? (Vi == FirstVal) : IsZero(Vi);
+-        })) {
+-      EVT HalfVT = VT.getHalfNumVectorElementsVT(*DAG.getContext());
 -
--using namespace llvm;
--using namespace clang;
--using namespace clang::tooling;
+-      SDValue HiZero = LaneVT.isInteger() ? DAG.getConstant(0, DL, HalfVT)
+-                                          : DAG.getConstantFP(0.0, DL, HalfVT);
 -
--namespace {
+-      SDValue LoHalf =
+-          LaneVT.getSizeInBits() == 64
+-              // 64-bit lanes lower to an FMOV via SCALAR_TO_VECTOR.
+-              ? DAG.getNode(ISD::SCALAR_TO_VECTOR, DL, HalfVT, FirstVal)
+-              // Smaller lanes need DUP to splat the whole low half.
+-              : DAG.getNode(AArch64ISD::DUP, DL, HalfVT, FirstVal);
 -
--class NamespaceLookupTest : public ::testing::Test {
--  void SetUp() override {
--    ASSERT_FALSE(
--        sys::fs::createUniqueDirectory("namespace-lookup-test", TestDir));
--  }
--
--  void TearDown() override { sys::fs::remove_directories(TestDir); }
--
--public:
--  SmallString<256> TestDir;
--
--  void addFile(StringRef Path, StringRef Contents) {
--    ASSERT_FALSE(sys::path::is_absolute(Path));
--
--    SmallString<256> AbsPath(TestDir);
--    sys::path::append(AbsPath, Path);
--
--    ASSERT_FALSE(
--        sys::fs::create_directories(llvm::sys::path::parent_path(AbsPath)));
--
--    std::error_code EC;
--    llvm::raw_fd_ostream OS(AbsPath, EC);
--    ASSERT_FALSE(EC);
--    OS << Contents;
--  }
--
--  std::string GenerateModuleInterface(StringRef ModuleName,
--                                      StringRef Contents) {
--    std::string FileName = llvm::Twine(ModuleName + ".cppm").str();
--    addFile(FileName, Contents);
--
--    IntrusiveRefCntPtr<llvm::vfs::FileSystem> VFS =
--        llvm::vfs::createPhysicalFileSystem();
--    DiagnosticOptions DiagOpts;
--    IntrusiveRefCntPtr<DiagnosticsEngine> Diags =
--        CompilerInstance::createDiagnostics(*VFS, DiagOpts);
--    CreateInvocationOptions CIOpts;
--    CIOpts.Diags = Diags;
--    CIOpts.VFS = VFS;
--
--    std::string CacheBMIPath =
--        llvm::Twine(TestDir + "/" + ModuleName + ".pcm").str();
--    std::string PrebuiltModulePath =
--        "-fprebuilt-module-path=" + TestDir.str().str();
--    const char *Args[] = {"clang++",
--                          "-std=c++20",
--                          "--precompile",
--                          PrebuiltModulePath.c_str(),
--                          "-working-directory",
--                          TestDir.c_str(),
--                          "-I",
--                          TestDir.c_str(),
--                          FileName.c_str(),
--                          "-o",
--                          CacheBMIPath.c_str()};
--    std::shared_ptr<CompilerInvocation> Invocation =
--        createInvocation(Args, CIOpts);
--    EXPECT_TRUE(Invocation);
--
--    CompilerInstance Instance(std::move(Invocation));
--    Instance.setDiagnostics(Diags);
--    Instance.getFrontendOpts().OutputFile = CacheBMIPath;
--    // Avoid memory leaks.
--    Instance.getFrontendOpts().DisableFree = false;
--    GenerateModuleInterfaceAction Action;
--    EXPECT_TRUE(Instance.ExecuteAction(Action));
--    EXPECT_FALSE(Diags->hasErrorOccurred());
--
--    return CacheBMIPath;
--  }
--};
--
--struct NamespaceLookupResult {
--  int NumLocalNamespaces = 0;
--  int NumExternalNamespaces = 0;
--};
--
--class NamespaceLookupConsumer : public ASTConsumer {
--  NamespaceLookupResult &Result;
--
--public:
--  explicit NamespaceLookupConsumer(NamespaceLookupResult &Result)
--      : Result(Result) {}
--
--  void HandleTranslationUnit(ASTContext &Context) override {
--    TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
--    ASSERT_TRUE(TU);
--    ASTReader *Chain = dyn_cast_or_null<ASTReader>(Context.getExternalSource());
--    ASSERT_TRUE(Chain);
--    for (const Decl *D :
--         TU->lookup(DeclarationName(&Context.Idents.get("N")))) {
--      if (!isa<NamespaceDecl>(D))
--        continue;
--      if (!D->isFromASTFile()) {
--        ++Result.NumLocalNamespaces;
--      } else {
--        ++Result.NumExternalNamespaces;
--        EXPECT_EQ(D, Chain->getKeyDeclaration(D));
--      }
+-      return DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, LoHalf, HiZero);
 -    }
 -  }
--};
 -
--class NamespaceLookupAction : public ASTFrontendAction {
--  NamespaceLookupResult &Result;
--
--public:
--  explicit NamespaceLookupAction(NamespaceLookupResult &Result)
--      : Result(Result) {}
--
--  std::unique_ptr<ASTConsumer>
--  CreateASTConsumer(CompilerInstance &CI, StringRef /*Unused*/) override {
--    return std::make_unique<NamespaceLookupConsumer>(Result);
+   // Use DUP for non-constant splats. For f32 constant splats, reduce to
+   // i32 and try again.
+   if (usesOnlyOneValue) {
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AArch64/AArch64MIPeepholeOpt.cpp b/llvm/lib/Target/AArch64/AArch64MIPeepholeOpt.cpp
+--- a/llvm/lib/Target/AArch64/AArch64MIPeepholeOpt.cpp
++++ b/llvm/lib/Target/AArch64/AArch64MIPeepholeOpt.cpp
+@@ -688,57 +688,14 @@
+ }
+ 
+ // All instructions that set a FPR64 will implicitly zero the top bits of the
+-// register. When the def is expressed as a COPY from a GPR, turn it into an
+-// explicit FMOV so it cannot be elided later in further passes.
++// register.
+ static bool is64bitDefwithZeroHigh64bit(MachineInstr *MI,
+-                                        MachineRegisterInfo *MRI,
+-                                        const AArch64InstrInfo *TII) {
++                                        MachineRegisterInfo *MRI) {
+   if (!MI->getOperand(0).isReg() || !MI->getOperand(0).isDef())
+     return false;
+   const TargetRegisterClass *RC = MRI->getRegClass(MI->getOperand(0).getReg());
+   if (RC != &AArch64::FPR64RegClass)
+     return false;
+-  if (MI->getOpcode() == TargetOpcode::COPY) {
+-    MachineOperand &SrcOp = MI->getOperand(1);
+-    if (!SrcOp.isReg())
+-      return false;
+-    if (SrcOp.getSubReg())
+-      return false;
+-    Register SrcReg = SrcOp.getReg();
+-    auto IsGPR64Like = [&]() -> bool {
+-      if (SrcReg.isVirtual())
+-        return AArch64::GPR64allRegClass.hasSubClassEq(
+-            MRI->getRegClass(SrcReg));
+-      return AArch64::GPR64allRegClass.contains(SrcReg);
+-    };
+-    if (!IsGPR64Like())
+-      return false;
+-    assert(TII && "Expected InstrInfo when materializing COPYs");
+-    // FMOVXDr insists on strict GPR64 operands, so fix up the COPY source.
+-    MachineOperand &SrcMO = MI->getOperand(1);
+-    bool SrcKill = SrcMO.isKill();
+-    if (SrcReg.isVirtual()) {
+-      if (MRI->getRegClass(SrcReg) != &AArch64::GPR64RegClass) {
+-        // Pass the value through a temporary GPR64 vreg to satisfy the
+-        // verifier.
+-        Register NewSrc = MRI->createVirtualRegister(&AArch64::GPR64RegClass);
+-        BuildMI(*MI->getParent(), MI, MI->getDebugLoc(),
+-                TII->get(TargetOpcode::COPY), NewSrc)
+-            .addReg(SrcReg, getKillRegState(SrcKill));
+-        SrcReg = NewSrc;
+-        SrcKill = true;
+-      }
+-    } else if (!AArch64::GPR64RegClass.contains(SrcReg)) {
+-      return false;
+-    }
+-    SrcMO.setReg(SrcReg);
+-    SrcMO.setSubReg(0);
+-    SrcMO.setIsKill(SrcKill);
+-    // Replace the COPY with an explicit FMOV so the zeroing behaviour stays
+-    // visible.
+-    MI->setDesc(TII->get(AArch64::FMOVXDr));
+-    return true;
 -  }
--};
--
--TEST_F(NamespaceLookupTest, ExternalNamespacesOnly) {
--  GenerateModuleInterface("M1", R"cpp(
--export module M1;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M2", R"cpp(
--export module M2;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M3", R"cpp(
--export module M3;
--namespace N {}
--  )cpp");
--  const char *test_file_contents = R"cpp(
--import M1;
--import M2;
--import M3;
--  )cpp";
--  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
--  NamespaceLookupResult Result;
--  EXPECT_TRUE(runToolOnCodeWithArgs(
--      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
--      {
--          "-std=c++20",
--          DepArg.c_str(),
--          "-I",
--          TestDir.c_str(),
--      },
--      "main.cpp"));
--
--  EXPECT_EQ(0, Result.NumLocalNamespaces);
--  EXPECT_EQ(1, Result.NumExternalNamespaces);
--}
--
--TEST_F(NamespaceLookupTest, ExternalReplacedByLocal) {
--  GenerateModuleInterface("M1", R"cpp(
--export module M1;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M2", R"cpp(
--export module M2;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M3", R"cpp(
--export module M3;
--namespace N {}
--  )cpp");
--  const char *test_file_contents = R"cpp(
--import M1;
--import M2;
--import M3;
--
--namespace N {}
--  )cpp";
--  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
--  NamespaceLookupResult Result;
--  EXPECT_TRUE(runToolOnCodeWithArgs(
--      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
--      {
--          "-std=c++20",
--          DepArg.c_str(),
--          "-I",
--          TestDir.c_str(),
--      },
--      "main.cpp"));
--
--  EXPECT_EQ(1, Result.NumLocalNamespaces);
--  EXPECT_EQ(0, Result.NumExternalNamespaces);
--}
--
--TEST_F(NamespaceLookupTest, LocalAndExternalInterleaved) {
--  GenerateModuleInterface("M1", R"cpp(
--export module M1;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M2", R"cpp(
--export module M2;
--namespace N {}
--  )cpp");
--  GenerateModuleInterface("M3", R"cpp(
--export module M3;
--namespace N {}
--  )cpp");
--  const char *test_file_contents = R"cpp(
--import M1;
--
--namespace N {}
--
--import M2;
--import M3;
--  )cpp";
--  std::string DepArg = "-fprebuilt-module-path=" + TestDir.str().str();
--  NamespaceLookupResult Result;
--  EXPECT_TRUE(runToolOnCodeWithArgs(
--      std::make_unique<NamespaceLookupAction>(Result), test_file_contents,
--      {
--          "-std=c++20",
--          DepArg.c_str(),
--          "-I",
--          TestDir.c_str(),
--      },
--      "main.cpp"));
--
--  EXPECT_EQ(1, Result.NumLocalNamespaces);
--  EXPECT_EQ(1, Result.NumExternalNamespaces);
--}
--
--} // namespace
-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/AliasAnalysis.cpp b/llvm/lib/Analysis/AliasAnalysis.cpp
---- a/llvm/lib/Analysis/AliasAnalysis.cpp
-+++ b/llvm/lib/Analysis/AliasAnalysis.cpp
-@@ -433,7 +433,7 @@
-                                     const MemoryLocation &Loc,
-                                     AAQueryInfo &AAQI) {
-   // Be conservative in the face of atomic.
--  if (isStrongerThanMonotonic(L->getOrdering()))
-+  if (isStrongerThan(L->getOrdering(), AtomicOrdering::Unordered))
-     return ModRefInfo::ModRef;
+   return MI->getOpcode() > TargetOpcode::GENERIC_OP_END;
+ }
  
-   // If the load address doesn't alias the given address, it doesn't read
-@@ -443,13 +443,6 @@
-     if (AR == AliasResult::NoAlias)
-       return ModRefInfo::NoModRef;
+@@ -754,7 +711,7 @@
+   if (Low64MI->getOpcode() != AArch64::INSERT_SUBREG)
+     return false;
+   Low64MI = MRI->getUniqueVRegDef(Low64MI->getOperand(2).getReg());
+-  if (!Low64MI || !is64bitDefwithZeroHigh64bit(Low64MI, MRI, TII))
++  if (!Low64MI || !is64bitDefwithZeroHigh64bit(Low64MI, MRI))
+     return false;
+ 
+   // Check there is `mov 0` MI for high 64-bits.
+@@ -795,7 +752,7 @@
+ bool AArch64MIPeepholeOpt::visitFMOVDr(MachineInstr &MI) {
+   // An FMOVDr sets the high 64-bits to zero implicitly, similar to ORR for GPR.
+   MachineInstr *Low64MI = MRI->getUniqueVRegDef(MI.getOperand(1).getReg());
+-  if (!Low64MI || !is64bitDefwithZeroHigh64bit(Low64MI, MRI, TII))
++  if (!Low64MI || !is64bitDefwithZeroHigh64bit(Low64MI, MRI))
+     return false;
+ 
+   // Let's remove MIs for high 64-bits.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/BoundsChecking.cpp b/llvm/lib/Transforms/Instrumentation/BoundsChecking.cpp
+--- a/llvm/lib/Transforms/Instrumentation/BoundsChecking.cpp
++++ b/llvm/lib/Transforms/Instrumentation/BoundsChecking.cpp
+@@ -113,12 +113,16 @@
+   if (!DebugTrapBB)
+     return IRB.CreateIntrinsic(Intrinsic::trap, {});
+ 
+-  return IRB.CreateIntrinsic(
+-      Intrinsic::ubsantrap,
+-      ConstantInt::get(IRB.getInt8Ty(),
+-                       GuardKind.has_value()
+-                           ? GuardKind.value()
+-                           : IRB.GetInsertBlock()->getParent()->size()));
++  uint64_t ImmArg = GuardKind.has_value()
++                        ? GuardKind.value()
++                        : IRB.GetInsertBlock()->getParent()->size();
++  // Ensure we constrain ImmArg to fitting within a 8-but unsigned integer to
++  // prevent overflow.
++  if (ImmArg > 255)
++    ImmArg = 255;
++
++  return IRB.CreateIntrinsic(Intrinsic::ubsantrap,
++                             ConstantInt::get(IRB.getInt8Ty(), ImmArg));
+ }
+ 
+ static CallInst *InsertCall(BuilderTy &IRB, bool MayReturn, StringRef Name) {
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/SeparateConstOffsetFromGEP.cpp b/llvm/lib/Transforms/Scalar/SeparateConstOffsetFromGEP.cpp
+--- a/llvm/lib/Transforms/Scalar/SeparateConstOffsetFromGEP.cpp
++++ b/llvm/lib/Transforms/Scalar/SeparateConstOffsetFromGEP.cpp
+@@ -983,7 +983,7 @@
+ 
+   // Create a GEP with the constant offset index.
+   if (AccumulativeByteOffset != 0) {
+-    Value *Offset = ConstantInt::get(PtrIndexTy, AccumulativeByteOffset);
++    Value *Offset = ConstantInt::getSigned(PtrIndexTy, AccumulativeByteOffset);
+     ResultPtr = Builder.CreatePtrAdd(ResultPtr, Offset, "uglygep");
+   } else
+     isSwapCandidate = false;
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+--- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
++++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+@@ -2344,13 +2344,6 @@
+   return Ctx.TTI.getCFInstrCost(Instruction::PHI, Ctx.CostKind);
+ }
+ 
+-/// A helper function that returns an integer or floating-point constant with
+-/// value C.
+-static Constant *getSignedIntOrFpConstant(Type *Ty, int64_t C) {
+-  return Ty->isIntegerTy() ? ConstantInt::getSigned(Ty, C)
+-                           : ConstantFP::get(Ty, C);
+-}
+-
+ #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+ void VPWidenIntOrFpInductionRecipe::printRecipe(
+     raw_ostream &O, const Twine &Indent, VPSlotTracker &SlotTracker) const {
+@@ -2452,8 +2445,14 @@
+     StartIdx0 = Builder.CreateSIToFP(StartIdx0, BaseIVTy);
+ 
+   for (unsigned Lane = StartLane; Lane < EndLane; ++Lane) {
+-    Value *StartIdx = Builder.CreateBinOp(
+-        AddOp, StartIdx0, getSignedIntOrFpConstant(BaseIVTy, Lane));
++    // It is okay if the induction variable type cannot hold the lane number,
++    // we expect truncation in this case.
++    Constant *LaneValue =
++        BaseIVTy->isIntegerTy()
++            ? ConstantInt::get(BaseIVTy, Lane, /*IsSigned=*/false,
++                               /*ImplicitTrunc=*/true)
++            : ConstantFP::get(BaseIVTy, Lane);
++    Value *StartIdx = Builder.CreateBinOp(AddOp, StartIdx0, LaneValue);
+     // The step returned by `createStepForVF` is a runtime-evaluated value
+     // when VF is scalable. Otherwise, it should be folded into a Constant.
+     assert((State.VF.isScalable() || isa<Constant>(StartIdx)) &&
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/aarch64-addv.ll b/llvm/test/CodeGen/AArch64/aarch64-addv.ll
+--- a/llvm/test/CodeGen/AArch64/aarch64-addv.ll
++++ b/llvm/test/CodeGen/AArch64/aarch64-addv.ll
+@@ -553,8 +553,9 @@
+ define i8 @addv_zero_lanes_v16i8(ptr %arr)  {
+ ; CHECK-SD-LABEL: addv_zero_lanes_v16i8:
+ ; CHECK-SD:       // %bb.0:
++; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    ldrb w8, [x0]
+-; CHECK-SD-NEXT:    fmov d0, x8
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    addv b0, v0.16b
+ ; CHECK-SD-NEXT:    fmov w0, s0
+ ; CHECK-SD-NEXT:    ret
+@@ -577,8 +578,9 @@
+ define i16 @addv_zero_lanes_v8i16(ptr %arr)  {
+ ; CHECK-SD-LABEL: addv_zero_lanes_v8i16:
+ ; CHECK-SD:       // %bb.0:
++; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    ldrh w8, [x0]
+-; CHECK-SD-NEXT:    fmov d0, x8
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    addv h0, v0.8h
+ ; CHECK-SD-NEXT:    fmov w0, s0
+ ; CHECK-SD-NEXT:    ret
+@@ -601,8 +603,9 @@
+ define i32 @addv_zero_lanes_v4i32(ptr %arr)  {
+ ; CHECK-SD-LABEL: addv_zero_lanes_v4i32:
+ ; CHECK-SD:       // %bb.0:
++; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    ldr w8, [x0]
+-; CHECK-SD-NEXT:    fmov d0, x8
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    addv s0, v0.4s
+ ; CHECK-SD-NEXT:    fmov w0, s0
+ ; CHECK-SD-NEXT:    ret
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/aarch64-matrix-umull-smull.ll b/llvm/test/CodeGen/AArch64/aarch64-matrix-umull-smull.ll
+--- a/llvm/test/CodeGen/AArch64/aarch64-matrix-umull-smull.ll
++++ b/llvm/test/CodeGen/AArch64/aarch64-matrix-umull-smull.ll
+@@ -823,14 +823,15 @@
+ ; CHECK-SD-NEXT:  // %bb.9: // %vec.epilog.iter.check
+ ; CHECK-SD-NEXT:    cbz x11, .LBB6_13
+ ; CHECK-SD-NEXT:  .LBB6_10: // %vec.epilog.ph
+-; CHECK-SD-NEXT:    mov w11, w1
+ ; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+-; CHECK-SD-NEXT:    movi v3.2d, #0x000000000000ff
++; CHECK-SD-NEXT:    mov w11, w1
++; CHECK-SD-NEXT:    movi v1.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    sxtb x11, w11
+-; CHECK-SD-NEXT:    fmov d2, x8
+-; CHECK-SD-NEXT:    dup v1.2s, w11
++; CHECK-SD-NEXT:    movi v3.2d, #0x000000000000ff
++; CHECK-SD-NEXT:    dup v2.2s, w11
+ ; CHECK-SD-NEXT:    mov x11, x10
+ ; CHECK-SD-NEXT:    and x10, x9, #0xfffffffc
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    sub x8, x11, x10
+ ; CHECK-SD-NEXT:    add x11, x0, x11
+ ; CHECK-SD-NEXT:  .LBB6_11: // %vec.epilog.vector.body
+@@ -845,11 +846,11 @@
+ ; CHECK-SD-NEXT:    and v4.16b, v4.16b, v3.16b
+ ; CHECK-SD-NEXT:    xtn v5.2s, v5.2d
+ ; CHECK-SD-NEXT:    xtn v4.2s, v4.2d
+-; CHECK-SD-NEXT:    smlal v0.2d, v1.2s, v4.2s
+-; CHECK-SD-NEXT:    smlal v2.2d, v1.2s, v5.2s
++; CHECK-SD-NEXT:    smlal v1.2d, v2.2s, v4.2s
++; CHECK-SD-NEXT:    smlal v0.2d, v2.2s, v5.2s
+ ; CHECK-SD-NEXT:    b.ne .LBB6_11
+ ; CHECK-SD-NEXT:  // %bb.12: // %vec.epilog.middle.block
+-; CHECK-SD-NEXT:    add v0.2d, v2.2d, v0.2d
++; CHECK-SD-NEXT:    add v0.2d, v0.2d, v1.2d
+ ; CHECK-SD-NEXT:    cmp x10, x9
+ ; CHECK-SD-NEXT:    addp d0, v0.2d
+ ; CHECK-SD-NEXT:    fmov x8, d0
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/arm64-vector-insertion.ll b/llvm/test/CodeGen/AArch64/arm64-vector-insertion.ll
+--- a/llvm/test/CodeGen/AArch64/arm64-vector-insertion.ll
++++ b/llvm/test/CodeGen/AArch64/arm64-vector-insertion.ll
+@@ -318,7 +318,10 @@
+ define <2 x double> @test_insert_v2f64_undef_insert1(double %a) {
+ ; CHECK-LABEL: test_insert_v2f64_undef_insert1:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    fmov d0, d0
++; CHECK-NEXT:    movi.2d v1, #0000000000000000
++; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
++; CHECK-NEXT:    mov.d v1[0], v0[0]
++; CHECK-NEXT:    mov.16b v0, v1
+ ; CHECK-NEXT:    ret
+   %v.0 = insertelement <2 x double > <double undef, double 0.000000e+00>, double %a, i32 0
+   ret <2 x double> %v.0
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/bitcast-extend.ll b/llvm/test/CodeGen/AArch64/bitcast-extend.ll
+--- a/llvm/test/CodeGen/AArch64/bitcast-extend.ll
++++ b/llvm/test/CodeGen/AArch64/bitcast-extend.ll
+@@ -339,8 +339,9 @@
+ define <16 x i8> @load_zext_v16i8(ptr %p) {
+ ; CHECK-SD-LABEL: load_zext_v16i8:
+ ; CHECK-SD:       // %bb.0:
++; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    ldr w8, [x0]
+-; CHECK-SD-NEXT:    fmov d0, x8
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    ret
+ ;
+ ; CHECK-GI-LABEL: load_zext_v16i8:
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/combine-sdiv.ll b/llvm/test/CodeGen/AArch64/combine-sdiv.ll
+--- a/llvm/test/CodeGen/AArch64/combine-sdiv.ll
++++ b/llvm/test/CodeGen/AArch64/combine-sdiv.ll
+@@ -578,10 +578,10 @@
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI21_1
+ ; CHECK-SD-NEXT:    ushl v1.2d, v1.2d, v2.2d
+ ; CHECK-SD-NEXT:    ldr q2, [x8, :lo12:.LCPI21_1]
+-; CHECK-SD-NEXT:    mov x8, #-1 // =0xffffffffffffffff
++; CHECK-SD-NEXT:    adrp x8, .LCPI21_2
+ ; CHECK-SD-NEXT:    add v1.2d, v0.2d, v1.2d
+ ; CHECK-SD-NEXT:    sshl v1.2d, v1.2d, v2.2d
+-; CHECK-SD-NEXT:    fmov d2, x8
++; CHECK-SD-NEXT:    ldr q2, [x8, :lo12:.LCPI21_2]
+ ; CHECK-SD-NEXT:    bif v0.16b, v1.16b, v2.16b
+ ; CHECK-SD-NEXT:    ret
+ ;
+@@ -613,20 +613,20 @@
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI22_0
+ ; CHECK-SD-NEXT:    cmlt v2.2d, v0.2d, #0
+ ; CHECK-SD-NEXT:    ldr q3, [x8, :lo12:.LCPI22_0]
+-; CHECK-SD-NEXT:    adrp x8, .LCPI22_2
+-; CHECK-SD-NEXT:    ldr q4, [x8, :lo12:.LCPI22_2]
++; CHECK-SD-NEXT:    adrp x8, .LCPI22_3
++; CHECK-SD-NEXT:    ldr q4, [x8, :lo12:.LCPI22_3]
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI22_1
+ ; CHECK-SD-NEXT:    ushl v2.2d, v2.2d, v3.2d
+ ; CHECK-SD-NEXT:    cmlt v3.2d, v1.2d, #0
+ ; CHECK-SD-NEXT:    add v2.2d, v0.2d, v2.2d
+ ; CHECK-SD-NEXT:    ushl v3.2d, v3.2d, v4.2d
+ ; CHECK-SD-NEXT:    ldr q4, [x8, :lo12:.LCPI22_1]
+-; CHECK-SD-NEXT:    mov x8, #-1 // =0xffffffffffffffff
++; CHECK-SD-NEXT:    adrp x8, .LCPI22_2
+ ; CHECK-SD-NEXT:    sshl v2.2d, v2.2d, v4.2d
+-; CHECK-SD-NEXT:    fmov d4, x8
++; CHECK-SD-NEXT:    ldr q4, [x8, :lo12:.LCPI22_2]
+ ; CHECK-SD-NEXT:    add v1.2d, v1.2d, v3.2d
+-; CHECK-SD-NEXT:    adrp x8, .LCPI22_3
+-; CHECK-SD-NEXT:    ldr q3, [x8, :lo12:.LCPI22_3]
++; CHECK-SD-NEXT:    adrp x8, .LCPI22_4
++; CHECK-SD-NEXT:    ldr q3, [x8, :lo12:.LCPI22_4]
+ ; CHECK-SD-NEXT:    bif v0.16b, v2.16b, v4.16b
+ ; CHECK-SD-NEXT:    sshl v1.2d, v1.2d, v3.2d
+ ; CHECK-SD-NEXT:    ret
+@@ -670,26 +670,26 @@
+ ; CHECK-SD-NEXT:    cmlt v4.2d, v0.2d, #0
+ ; CHECK-SD-NEXT:    cmlt v6.2d, v2.2d, #0
+ ; CHECK-SD-NEXT:    ldr q5, [x8, :lo12:.LCPI23_0]
+-; CHECK-SD-NEXT:    adrp x8, .LCPI23_2
++; CHECK-SD-NEXT:    adrp x8, .LCPI23_3
+ ; CHECK-SD-NEXT:    cmlt v7.2d, v3.2d, #0
+-; CHECK-SD-NEXT:    ldr q16, [x8, :lo12:.LCPI23_2]
++; CHECK-SD-NEXT:    ldr q16, [x8, :lo12:.LCPI23_3]
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI23_1
+ ; CHECK-SD-NEXT:    ushl v4.2d, v4.2d, v5.2d
+ ; CHECK-SD-NEXT:    ushl v5.2d, v6.2d, v5.2d
+ ; CHECK-SD-NEXT:    cmlt v6.2d, v1.2d, #0
+ ; CHECK-SD-NEXT:    ldr q17, [x8, :lo12:.LCPI23_1]
+ ; CHECK-SD-NEXT:    ushl v7.2d, v7.2d, v16.2d
+-; CHECK-SD-NEXT:    mov x8, #-1 // =0xffffffffffffffff
++; CHECK-SD-NEXT:    adrp x8, .LCPI23_2
+ ; CHECK-SD-NEXT:    add v4.2d, v0.2d, v4.2d
+ ; CHECK-SD-NEXT:    add v5.2d, v2.2d, v5.2d
+ ; CHECK-SD-NEXT:    ushl v6.2d, v6.2d, v16.2d
+-; CHECK-SD-NEXT:    fmov d16, x8
+-; CHECK-SD-NEXT:    adrp x8, .LCPI23_3
++; CHECK-SD-NEXT:    ldr q16, [x8, :lo12:.LCPI23_2]
++; CHECK-SD-NEXT:    adrp x8, .LCPI23_4
+ ; CHECK-SD-NEXT:    add v3.2d, v3.2d, v7.2d
+ ; CHECK-SD-NEXT:    sshl v4.2d, v4.2d, v17.2d
+ ; CHECK-SD-NEXT:    sshl v5.2d, v5.2d, v17.2d
+ ; CHECK-SD-NEXT:    add v1.2d, v1.2d, v6.2d
+-; CHECK-SD-NEXT:    ldr q6, [x8, :lo12:.LCPI23_3]
++; CHECK-SD-NEXT:    ldr q6, [x8, :lo12:.LCPI23_4]
+ ; CHECK-SD-NEXT:    bif v0.16b, v4.16b, v16.16b
+ ; CHECK-SD-NEXT:    bif v2.16b, v5.16b, v16.16b
+ ; CHECK-SD-NEXT:    sshl v1.2d, v1.2d, v6.2d
+@@ -920,13 +920,13 @@
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI27_1
+ ; CHECK-SD-NEXT:    ushl v1.4s, v1.4s, v2.4s
+ ; CHECK-SD-NEXT:    ldr q2, [x8, :lo12:.LCPI27_1]
+-; CHECK-SD-NEXT:    mov w8, #-1 // =0xffffffff
+-; CHECK-SD-NEXT:    dup v3.2s, w8
+ ; CHECK-SD-NEXT:    adrp x8, .LCPI27_2
+ ; CHECK-SD-NEXT:    add v1.4s, v0.4s, v1.4s
+ ; CHECK-SD-NEXT:    sshl v1.4s, v1.4s, v2.4s
+ ; CHECK-SD-NEXT:    ldr q2, [x8, :lo12:.LCPI27_2]
+-; CHECK-SD-NEXT:    bif v0.16b, v1.16b, v3.16b
++; CHECK-SD-NEXT:    adrp x8, .LCPI27_3
++; CHECK-SD-NEXT:    bif v0.16b, v1.16b, v2.16b
++; CHECK-SD-NEXT:    ldr q2, [x8, :lo12:.LCPI27_3]
+ ; CHECK-SD-NEXT:    neg v1.4s, v0.4s
+ ; CHECK-SD-NEXT:    bit v0.16b, v1.16b, v2.16b
+ ; CHECK-SD-NEXT:    ret
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/ctpop.ll b/llvm/test/CodeGen/AArch64/ctpop.ll
+--- a/llvm/test/CodeGen/AArch64/ctpop.ll
++++ b/llvm/test/CodeGen/AArch64/ctpop.ll
+@@ -599,9 +599,10 @@
+ define i128 @i128_mask(i128 %x) {
+ ; CHECK-SD-LABEL: i128_mask:
+ ; CHECK-SD:       // %bb.0: // %entry
++; CHECK-SD-NEXT:    movi v0.2d, #0000000000000000
+ ; CHECK-SD-NEXT:    and x8, x0, #0xff
+ ; CHECK-SD-NEXT:    mov x1, xzr
+-; CHECK-SD-NEXT:    fmov d0, x8
++; CHECK-SD-NEXT:    mov v0.d[0], x8
+ ; CHECK-SD-NEXT:    cnt v0.16b, v0.16b
+ ; CHECK-SD-NEXT:    addv b0, v0.16b
+ ; CHECK-SD-NEXT:    fmov x0, d0
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/fpclamptosat_vec.ll b/llvm/test/CodeGen/AArch64/fpclamptosat_vec.ll
+--- a/llvm/test/CodeGen/AArch64/fpclamptosat_vec.ll
++++ b/llvm/test/CodeGen/AArch64/fpclamptosat_vec.ll
+@@ -829,9 +829,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -858,9 +858,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+@@ -1296,9 +1296,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -1326,9 +1326,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+@@ -1748,9 +1748,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -1778,9 +1778,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+@@ -2774,9 +2774,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -2803,9 +2803,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+@@ -3232,9 +3232,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -3262,9 +3262,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+@@ -3675,9 +3675,9 @@
+ ; CHECK-CVT-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-CVT-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    cmp x20, #0
++; CHECK-CVT-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-CVT-SD-NEXT:    fmov d0, x8
+-; CHECK-CVT-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-CVT-SD-NEXT:    fmov d1, x8
++; CHECK-CVT-SD-NEXT:    fmov d1, x9
+ ; CHECK-CVT-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-CVT-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-CVT-SD-NEXT:    add sp, sp, #48
+@@ -3705,9 +3705,9 @@
+ ; CHECK-FP16-SD-NEXT:    ldr x30, [sp, #16] // 8-byte Reload
+ ; CHECK-FP16-SD-NEXT:    csel x8, x0, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    cmp x20, #0
++; CHECK-FP16-SD-NEXT:    csel x9, x19, xzr, eq
+ ; CHECK-FP16-SD-NEXT:    fmov d0, x8
+-; CHECK-FP16-SD-NEXT:    csel x8, x19, xzr, eq
+-; CHECK-FP16-SD-NEXT:    fmov d1, x8
++; CHECK-FP16-SD-NEXT:    fmov d1, x9
+ ; CHECK-FP16-SD-NEXT:    ldp x20, x19, [sp, #32] // 16-byte Folded Reload
+ ; CHECK-FP16-SD-NEXT:    mov v0.d[1], v1.d[0]
+ ; CHECK-FP16-SD-NEXT:    add sp, sp, #48
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/implicitly-set-zero-high-64-bits.ll b/llvm/test/CodeGen/AArch64/implicitly-set-zero-high-64-bits.ll
+--- a/llvm/test/CodeGen/AArch64/implicitly-set-zero-high-64-bits.ll
++++ b/llvm/test/CodeGen/AArch64/implicitly-set-zero-high-64-bits.ll
+@@ -95,7 +95,10 @@
+ define <2 x double> @fadd(double noundef %x, double noundef %y) {
+ ; CHECK-LABEL: fadd:
+ ; CHECK:       // %bb.0: // %entry
++; CHECK-NEXT:    movi v2.2d, #0000000000000000
+ ; CHECK-NEXT:    fadd d0, d0, d1
++; CHECK-NEXT:    mov v2.d[0], v0.d[0]
++; CHECK-NEXT:    mov v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+ entry:
+   %add = fadd double %x, %y
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/neon-lowhalf128-optimisation.ll b/llvm/test/CodeGen/AArch64/neon-lowhalf128-optimisation.ll
+--- a/llvm/test/CodeGen/AArch64/neon-lowhalf128-optimisation.ll
++++ b/llvm/test/CodeGen/AArch64/neon-lowhalf128-optimisation.ll
+@@ -1,91 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+-; RUN: llc -mtriple=aarch64-linux-gnu -o - %s | FileCheck %s
+-
+-define <2 x i64> @low_vector_splat_v2i64_from_i64(i64 %0){
+-; CHECK-LABEL: low_vector_splat_v2i64_from_i64:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    fmov d0, x0
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <1 x i64> poison, i64 %0, i64 0
+-  %3 = shufflevector <1 x i64> %2, <1 x i64> zeroinitializer, <2 x i32> <i32 0, i32 1>
+-  ret <2 x i64> %3
+-}
+-
+-define <4 x i32> @low_vector_splat_v4i32_from_i32(i32 %0) {
+-; CHECK-LABEL: low_vector_splat_v4i32_from_i32:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    dup v0.2s, w0
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <2 x i32> poison, i32 %0, i64 0
+-  %3 = shufflevector <2 x i32> %2, <2 x i32> poison, <2 x i32> zeroinitializer
+-  %4 = shufflevector <2 x i32> %3, <2 x i32> zeroinitializer, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+-  ret <4 x i32> %4
+-}
+-
+-define <8 x i16> @low_vector_splat_v8i16_from_i16(i16 %0) {
+-; CHECK-LABEL: low_vector_splat_v8i16_from_i16:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    dup v0.4h, w0
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <4 x i16> poison, i16 %0, i64 0
+-  %3 = shufflevector <4 x i16> %2, <4 x i16> poison, <4 x i32> zeroinitializer
+-  %4 = shufflevector <4 x i16> %3, <4 x i16> zeroinitializer, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+-  ret <8 x i16> %4
+-}
+-
+-define <16 x i8> @low_vector_splat_v16i8_from_i8(i8 %0) {
+-; CHECK-LABEL: low_vector_splat_v16i8_from_i8:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    dup v0.8b, w0
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <8 x i8> poison, i8 %0, i64 0
+-  %3 = shufflevector <8 x i8> %2, <8 x i8> poison, <8 x i32> zeroinitializer
+-  %4 = shufflevector <8 x i8> %3, <8 x i8> zeroinitializer, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
+-  ret <16 x i8> %4
+-}
+-
+-define <2 x double> @low_vector_splat_v2f64_from_f64(double %0) {
+-; CHECK-LABEL: low_vector_splat_v2f64_from_f64:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    fmov d0, d0
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <1 x double> poison, double %0, i64 0
+-  %3 = shufflevector <1 x double> %2, <1 x double> zeroinitializer, <2 x i32> <i32 0, i32 1>
+-  ret <2 x double> %3
+-}
+-
+-define <4 x float> @low_vector_splat_v4f32_from_f32(float %0) {
+-; CHECK-LABEL: low_vector_splat_v4f32_from_f32:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    // kill: def $s0 killed $s0 def $q0
+-; CHECK-NEXT:    dup v0.2s, v0.s[0]
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <2 x float> poison, float %0, i64 0
+-  %3 = shufflevector <2 x float> %2, <2 x float> poison, <2 x i32> zeroinitializer
+-  %4 = shufflevector <2 x float> %3, <2 x float> zeroinitializer, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+-  ret <4 x float> %4
+-}
+-
+-define <8 x half> @low_vector_splat_v8f16_from_f16(half %0) {
+-; CHECK-LABEL: low_vector_splat_v8f16_from_f16:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    // kill: def $h0 killed $h0 def $q0
+-; CHECK-NEXT:    dup v0.4h, v0.h[0]
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <4 x half> poison, half %0, i64 0
+-  %3 = shufflevector <4 x half> %2, <4 x half> poison, <4 x i32> zeroinitializer
+-  %4 = shufflevector <4 x half> %3, <4 x half> zeroinitializer, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+-  ret <8 x half> %4
+-}
+-
+-define <8 x bfloat> @low_vector_splat_v8bf16_from_bf16(bfloat %0) {
+-; CHECK-LABEL: low_vector_splat_v8bf16_from_bf16:
+-; CHECK:       // %bb.0:
+-; CHECK-NEXT:    // kill: def $h0 killed $h0 def $q0
+-; CHECK-NEXT:    dup v0.4h, v0.h[0]
+-; CHECK-NEXT:    ret
+-  %2 = insertelement <4 x bfloat> poison, bfloat %0, i64 0
+-  %3 = shufflevector <4 x bfloat> %2, <4 x bfloat> poison, <4 x i32> zeroinitializer
+-  %4 = shufflevector <4 x bfloat> %3, <4 x bfloat> zeroinitializer, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
+-  ret <8 x bfloat> %4
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/peephole-insvigpr.mir b/llvm/test/CodeGen/AArch64/peephole-insvigpr.mir
+--- a/llvm/test/CodeGen/AArch64/peephole-insvigpr.mir
++++ b/llvm/test/CodeGen/AArch64/peephole-insvigpr.mir
+@@ -41,11 +41,6 @@
+     ret void
    }
+ 
+-  define void @insert_vec_from_gpr64_zero_high(i64 %v, ptr %dst) {
+-  entry:
+-    ret void
+-  }
 -
--  assert(!isStrongerThanMonotonic(L->getOrdering()) &&
--         "Stronger atomic orderings should have been handled above!");
+   attributes #0 = { nocallback nofree nosync nounwind willreturn memory(none) }
+ 
+ ...
+@@ -526,50 +521,4 @@
+     STRSui killed %16, %0, 0 :: (store (s32) into %ir.hist)
+     RET_ReallyLR
+ 
+----
+-name:            insert_vec_from_gpr64_zero_high
+-tracksRegLiveness: true
+-registers:
+-  - { id: 0, class: gpr64common, preferred-register: '' }
+-  - { id: 1, class: gpr64common, preferred-register: '' }
+-  - { id: 2, class: fpr64, preferred-register: '' }
+-  - { id: 3, class: fpr128, preferred-register: '' }
+-  - { id: 4, class: fpr128, preferred-register: '' }
+-  - { id: 5, class: fpr64, preferred-register: '' }
+-  - { id: 6, class: fpr128, preferred-register: '' }
+-  - { id: 7, class: fpr128, preferred-register: '' }
+-  - { id: 8, class: fpr128, preferred-register: '' }
+-liveins:
+-  - { reg: '$x0', virtual-reg: '%0' }
+-  - { reg: '$x1', virtual-reg: '%1' }
+-body:             |
+-  bb.0.entry:
+-    liveins: $x0, $x1
 -
--  if (isStrongerThanUnordered(L->getOrdering()))
--    return ModRefInfo::ModRef;
+-    ; CHECK-LABEL: name: insert_vec_from_gpr64_zero_high
+-    ; CHECK: liveins: $x0, $x1
+-    ; CHECK-NEXT: {{  $}}
+-    ; CHECK-NEXT: [[PTR:%[0-9]+]]:gpr64common = COPY $x0
+-    ; CHECK-NEXT: [[VAL:%[0-9]+]]:gpr64common = COPY $x1
+-    ; CHECK-NEXT: [[GPR:%[0-9]+]]:gpr64 = COPY [[VAL]]
+-    ; CHECK-NEXT: [[FMOV:%[0-9]+]]:fpr64 = FMOVXDr killed [[GPR]]
+-    ; CHECK-NEXT: [[DEF:%[0-9]+]]:fpr128 = IMPLICIT_DEF
+-    ; CHECK-NEXT: [[INSERT_LOW:%[0-9]+]]:fpr128 = INSERT_SUBREG [[DEF]], [[FMOV]], %subreg.dsub
+-    ; CHECK-NEXT: [[MOVID:%[0-9]+]]:fpr64 = MOVID 0
+-    ; CHECK-NEXT: [[DEF1:%[0-9]+]]:fpr128 = IMPLICIT_DEF
+-    ; CHECK-NEXT: [[INSERT_ZERO:%[0-9]+]]:fpr128 = INSERT_SUBREG [[DEF1]], killed [[MOVID]], %subreg.dsub
+-    ; CHECK-NEXT: STRQui killed [[INSERT_LOW]], [[PTR]], 0 :: (store (s128) into %ir.dst, align 8)
+-    ; CHECK-NEXT: RET_ReallyLR
+-    %0:gpr64common = COPY $x0
+-    %1:gpr64common = COPY $x1
+-    %2:fpr64 = COPY %1
+-    %4:fpr128 = IMPLICIT_DEF
+-    %3:fpr128 = INSERT_SUBREG %4, %2, %subreg.dsub
+-    %5:fpr64 = MOVID 0
+-    %7:fpr128 = IMPLICIT_DEF
+-    %6:fpr128 = INSERT_SUBREG %7, killed %5, %subreg.dsub
+-    %8:fpr128 = INSvi64lane %3, 1, killed %6, 0
+-    STRQui killed %8, %0, 0 :: (store (s128) into %ir.dst, align 8)
+-    RET_ReallyLR
 -
-   // Otherwise, a load just reads.
-   return ModRefInfo::Ref;
- }
-@@ -458,7 +451,7 @@
-                                     const MemoryLocation &Loc,
-                                     AAQueryInfo &AAQI) {
-   // Be conservative in the face of atomic.
--  if (isStrongerThanMonotonic(S->getOrdering()))
-+  if (isStrongerThan(S->getOrdering(), AtomicOrdering::Unordered))
-     return ModRefInfo::ModRef;
- 
-   if (Loc.Ptr) {
-@@ -476,13 +469,7 @@
-       return ModRefInfo::NoModRef;
-   }
- 
--  assert(!isStrongerThanMonotonic(S->getOrdering()) &&
--         "Stronger atomic orderings should have been handled above!");
--
--  if (isStrongerThanUnordered(S->getOrdering()))
--    return ModRefInfo::ModRef;
--
--  // A store just writes.
-+  // Otherwise, a store just writes.
-   return ModRefInfo::Mod;
- }
- 
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic.ll b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
---- a/llvm/test/Transforms/DeadStoreElimination/atomic.ll
-+++ b/llvm/test/Transforms/DeadStoreElimination/atomic.ll
-@@ -37,21 +37,9 @@
-   ret void
- }
- 
--; DSE doesn't remove monotonic store.
-+; DSE unordered store overwriting non-atomic store (allowed)
- define void @test5() {
- ; CHECK-LABEL: @test5(
--; CHECK-NEXT:    store atomic i32 2, ptr @x monotonic, align 4
--; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    ret void
--;
--  store atomic i32 2, ptr @x monotonic, align 4
--  store i32 1, ptr @x
--  ret void
--}
--
--; DSE unordered store overwriting non-atomic store (allowed)
--define void @test6() {
--; CHECK-LABEL: @test6(
- ; CHECK-NEXT:    store atomic i32 1, ptr @x unordered, align 4
- ; CHECK-NEXT:    ret void
- ;
-@@ -61,8 +49,8 @@
- }
- 
- ; DSE no-op unordered atomic store (allowed)
--define void @test7() {
--; CHECK-LABEL: @test7(
-+define void @test6() {
-+; CHECK-LABEL: @test6(
- ; CHECK-NEXT:    ret void
- ;
-   %x = load atomic i32, ptr @x unordered, align 4
-@@ -72,8 +60,8 @@
- 
- ; DSE seq_cst store (be conservative; DSE doesn't have infrastructure
- ; to reason about atomic operations).
--define void @test8() {
--; CHECK-LABEL: @test8(
-+define void @test7() {
-+; CHECK-LABEL: @test7(
- ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
- ; CHECK-NEXT:    store atomic i32 0, ptr [[A]] seq_cst, align 4
- ; CHECK-NEXT:    ret void
-@@ -85,8 +73,8 @@
- 
- ; DSE and seq_cst load (be conservative; DSE doesn't have infrastructure
- ; to reason about atomic operations).
--define i32 @test9() {
--; CHECK-LABEL: @test9(
-+define i32 @test8() {
-+; CHECK-LABEL: @test8(
- ; CHECK-NEXT:    [[A:%.*]] = alloca i32, align 4
- ; CHECK-NEXT:    call void @randomop(ptr [[A]])
- ; CHECK-NEXT:    store i32 0, ptr [[A]], align 4
-@@ -100,40 +88,11 @@
-   ret i32 %x
- }
- 
--; DSE across monotonic load (allowed if the monotonic load's address is NoAlias)
--define i32 @test10() {
--; CHECK-LABEL: @test10(
--; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
--; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    ret i32 [[X]]
--;
--  store i32 0, ptr @x
--  %x = load atomic i32, ptr @y monotonic, align 4
--  store i32 1, ptr @x
--  ret i32 %x
--}
--
--; DSE across monotonic load (blocked if the atomic load's address isn't NoAlias)
--define i32 @test11(ptr %ptr) {
--; CHECK-LABEL: @test11(
--; CHECK-NEXT:    store i32 0, ptr @x, align 4
--; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr [[PTR:%.*]] monotonic, align 4
--; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    ret i32 [[X]]
--;
--  store i32 0, ptr @x
--  %x = load atomic i32, ptr %ptr monotonic, align 4
--  store i32 1, ptr @x
--  ret i32 %x
--}
--
- ; DSE across monotonic store (allowed as long as the eliminated store isUnordered)
--define void @test12() {
--; CHECK-LABEL: @test12(
--; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
--; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    ret void
--;
-+define void @test10() {
-+; CHECK-LABEL: test10
-+; CHECK-NOT: store i32 0
-+; CHECK: store i32 1
-   store i32 0, ptr @x
-   store atomic i32 42, ptr @y monotonic, align 4
-   store i32 1, ptr @x
-@@ -141,8 +100,8 @@
- }
- 
- ; DSE across monotonic load (forbidden since the eliminated store is atomic)
--define i32 @test13() {
--; CHECK-LABEL: @test13(
-+define i32 @test11() {
-+; CHECK-LABEL: @test11(
- ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
- ; CHECK-NEXT:    [[X:%.*]] = load atomic i32, ptr @y monotonic, align 4
- ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
-@@ -155,8 +114,8 @@
- }
- 
- ; DSE across monotonic store (forbidden since the eliminated store is atomic)
--define void @test14() {
--; CHECK-LABEL: @test14(
-+define void @test12() {
-+; CHECK-LABEL: @test12(
- ; CHECK-NEXT:    store atomic i32 0, ptr @x monotonic, align 4
- ; CHECK-NEXT:    store atomic i32 42, ptr @y monotonic, align 4
- ; CHECK-NEXT:    store atomic i32 1, ptr @x monotonic, align 4
-@@ -191,7 +150,7 @@
- define i64 @test_atomicrmw_0() {
- ; CHECK-LABEL: @test_atomicrmw_0(
- ; CHECK-NEXT:    store i64 1, ptr @z, align 8
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-   store i64 1, ptr @z
-@@ -203,7 +162,7 @@
- define i64 @test_atomicrmw_1() {
- ; CHECK-LABEL: @test_atomicrmw_1(
- ; CHECK-NEXT:    store i64 1, ptr @z, align 8
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 acq_rel
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-   store i64 1, ptr @z
-@@ -214,7 +173,7 @@
- ; Monotonic atomicrmw should not block eliminating no-aliasing stores.
- define i64 @test_atomicrmw_2() {
- ; CHECK-LABEL: @test_atomicrmw_2(
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 monotonic
- ; CHECK-NEXT:    store i64 2, ptr @z, align 8
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-@@ -228,7 +187,7 @@
- define i64 @test_atomicrmw_3() {
- ; CHECK-LABEL: @test_atomicrmw_3(
- ; CHECK-NEXT:    store i64 1, ptr @z, align 8
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @a, i64 -1 release
- ; CHECK-NEXT:    store i64 2, ptr @z, align 8
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-@@ -242,7 +201,7 @@
- define i64 @test_atomicrmw_4(ptr %ptr) {
- ; CHECK-LABEL: @test_atomicrmw_4(
- ; CHECK-NEXT:    store i64 1, ptr @z, align 8
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr [[PTR:%.*]], i64 -1 monotonic
- ; CHECK-NEXT:    store i64 2, ptr @z, align 8
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-@@ -256,7 +215,7 @@
- define i64 @test_atomicrmw_5() {
- ; CHECK-LABEL: @test_atomicrmw_5(
- ; CHECK-NEXT:    store i64 1, ptr @z, align 8
--; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic, align 8
-+; CHECK-NEXT:    [[RES:%.*]] = atomicrmw add ptr @z, i64 -1 monotonic
- ; CHECK-NEXT:    store i64 2, ptr @z, align 8
- ; CHECK-NEXT:    ret i64 [[RES]]
- ;
-@@ -270,7 +229,7 @@
- define { i32, i1} @test_cmpxchg_1() {
- ; CHECK-LABEL: @test_cmpxchg_1(
- ; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic, align 4
-+; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 seq_cst monotonic
- ; CHECK-NEXT:    store i32 2, ptr @x, align 4
- ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
- ;
-@@ -283,7 +242,7 @@
- ; Monotonic cmpxchg should not block DSE for non-aliasing stores.
- define { i32, i1} @test_cmpxchg_2() {
- ; CHECK-LABEL: @test_cmpxchg_2(
--; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic, align 4
-+; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 monotonic monotonic
- ; CHECK-NEXT:    store i32 2, ptr @x, align 4
- ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
- ;
-@@ -297,7 +256,7 @@
- define { i32, i1} @test_cmpxchg_3() {
- ; CHECK-LABEL: @test_cmpxchg_3(
- ; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst, align 4
-+; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @y, i32 10, i32 20 seq_cst seq_cst
- ; CHECK-NEXT:    store i32 2, ptr @x, align 4
- ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
- ;
-@@ -311,7 +270,7 @@
- define { i32, i1} @test_cmpxchg_4(ptr %ptr) {
- ; CHECK-LABEL: @test_cmpxchg_4(
- ; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic, align 4
-+; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr [[PTR:%.*]], i32 10, i32 20 monotonic monotonic
- ; CHECK-NEXT:    store i32 2, ptr @x, align 4
- ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
- ;
-@@ -325,7 +284,7 @@
- define { i32, i1} @test_cmpxchg_5(ptr %ptr) {
- ; CHECK-LABEL: @test_cmpxchg_5(
- ; CHECK-NEXT:    store i32 1, ptr @x, align 4
--; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic, align 4
-+; CHECK-NEXT:    [[RET:%.*]] = cmpxchg volatile ptr @x, i32 10, i32 20 monotonic monotonic
- ; CHECK-NEXT:    store i32 2, ptr @x, align 4
- ; CHECK-NEXT:    ret { i32, i1 } [[RET]]
- ;
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
---- a/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
-+++ b/llvm/test/Transforms/DeadStoreElimination/atomic-todo.ll
-@@ -0,0 +1,23 @@
-+; XFAIL: *
-+; RUN: opt -passes=dse -S < %s | FileCheck %s
+ ...
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/srem-seteq-illegal-types.ll b/llvm/test/CodeGen/AArch64/srem-seteq-illegal-types.ll
+--- a/llvm/test/CodeGen/AArch64/srem-seteq-illegal-types.ll
++++ b/llvm/test/CodeGen/AArch64/srem-seteq-illegal-types.ll
+@@ -89,9 +89,9 @@
+ ; CHECK-NEXT:    add x8, x12, x8
+ ; CHECK-NEXT:    and v0.16b, v0.16b, v1.16b
+ ; CHECK-NEXT:    fmov d3, x8
+-; CHECK-NEXT:    mov w8, #3 // =0x3
++; CHECK-NEXT:    adrp x8, .LCPI3_1
+ ; CHECK-NEXT:    cmeq v0.2d, v0.2d, v2.2d
+-; CHECK-NEXT:    fmov d2, x8
++; CHECK-NEXT:    ldr q2, [x8, :lo12:.LCPI3_1]
+ ; CHECK-NEXT:    and v1.16b, v3.16b, v1.16b
+ ; CHECK-NEXT:    mvn v0.16b, v0.16b
+ ; CHECK-NEXT:    cmeq v1.2d, v1.2d, v2.2d
+diff -ruN --strip-trailing-cr a/llvm/test/Instrumentation/BoundsChecking/big-function.ll b/llvm/test/Instrumentation/BoundsChecking/big-function.ll
+--- a/llvm/test/Instrumentation/BoundsChecking/big-function.ll
++++ b/llvm/test/Instrumentation/BoundsChecking/big-function.ll
+@@ -0,0 +1,647 @@
++; Ensure that we do not crash on functions with more than 256 basic blocks.
++; RUN: opt -passes="bounds-checking<trap>" %s -disable-output
 +
-+target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64"
-+target triple = "x86_64-apple-macosx10.7.0"
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"
++target triple = "aarch64-grtev4-linux-gnu"
 +
-+; Basic correctness tests for atomic stores.
-+; Note that it turns out essentially every transformation DSE does is legal on
-+; atomic ops, just some transformations are not allowed across release-acquire pairs.
++define i8 @_ZNSt3__u18__d2exp_buffered_nEPcS0_dj() {
++  br label %11
 +
-+@x = common global i32 0, align 4
-+@y = common global i32 0, align 4
++1:                                                ; No predecessors!
++  br i1 false, label %2, label %3
 +
-+; DSE across monotonic load (allowed as long as the eliminated store isUnordered)
-+define i32 @test9() {
-+; CHECK-LABEL: test9
-+; CHECK-NOT: store i32 0
-+; CHECK: store i32 1
-+  store i32 0, ptr @x
-+  %x = load atomic i32, ptr @y monotonic, align 4
-+  store i32 1, ptr @x
-+  ret i32 %x
++2:                                                ; preds = %1
++  unreachable
++
++3:                                                ; preds = %1
++  br i1 false, label %4, label %5
++
++4:                                                ; preds = %3
++  unreachable
++
++5:                                                ; preds = %3
++  br label %6
++
++6:                                                ; preds = %5
++  br i1 false, label %7, label %8
++
++7:                                                ; preds = %196, %6
++  unreachable
++
++8:                                                ; preds = %6
++  br label %9
++
++9:                                                ; preds = %8
++  store i8 0, ptr null, align 1
++  br label %10
++
++10:                                               ; preds = %9
++  store i32 0, ptr null, align 1
++  br label %209
++
++11:                                               ; preds = %0
++  br label %12
++
++12:                                               ; preds = %11
++  br i1 false, label %15, label %13
++
++13:                                               ; preds = %12
++  br i1 false, label %15, label %14
++
++14:                                               ; preds = %13
++  unreachable
++
++15:                                               ; preds = %13, %12
++  br i1 false, label %16, label %19
++
++16:                                               ; preds = %15
++  %17 = load i16, ptr null, align 2
++  br label %18
++
++18:                                               ; preds = %16
++  br i1 false, label %20, label %21
++
++19:                                               ; preds = %15
++  unreachable
++
++20:                                               ; preds = %18
++  unreachable
++
++21:                                               ; preds = %18
++  br i1 false, label %23, label %22
++
++22:                                               ; preds = %21
++  unreachable
++
++23:                                               ; preds = %21
++  br i1 false, label %34, label %24
++
++24:                                               ; preds = %23
++  br label %25
++
++25:                                               ; preds = %24
++  br i1 false, label %209, label %26
++
++26:                                               ; preds = %25
++  br i1 false, label %27, label %28
++
++27:                                               ; preds = %26
++  br label %33
++
++28:                                               ; preds = %26
++  %29 = load i16, ptr null, align 1
++  br label %30
++
++30:                                               ; preds = %28
++  br i1 false, label %210, label %31
++
++31:                                               ; preds = %30
++  br label %33
++
++32:                                               ; No predecessors!
++  unreachable
++
++33:                                               ; preds = %31, %27
++  br label %76
++
++34:                                               ; preds = %23
++  br label %35
++
++35:                                               ; preds = %34
++  br i1 false, label %37, label %36
++
++36:                                               ; preds = %35
++  unreachable
++
++37:                                               ; preds = %35
++  br label %38
++
++38:                                               ; preds = %37
++  br i1 false, label %45, label %39
++
++39:                                               ; preds = %38
++  br i1 false, label %45, label %40
++
++40:                                               ; preds = %39
++  br label %41
++
++41:                                               ; preds = %40
++  br i1 false, label %45, label %42
++
++42:                                               ; preds = %41
++  br i1 false, label %45, label %43
++
++43:                                               ; preds = %42
++  br label %44
++
++44:                                               ; preds = %43
++  br label %45
++
++45:                                               ; preds = %44, %42, %41, %39, %38
++  br i1 false, label %46, label %47
++
++46:                                               ; preds = %45
++  unreachable
++
++47:                                               ; preds = %45
++  br i1 false, label %48, label %49
++
++48:                                               ; preds = %47
++  unreachable
++
++49:                                               ; preds = %47
++  br i1 false, label %136, label %50
++
++50:                                               ; preds = %49
++  br i1 false, label %73, label %51
++
++51:                                               ; preds = %50
++  br label %52
++
++52:                                               ; preds = %51
++  br i1 false, label %53, label %61
++
++53:                                               ; preds = %52
++  br label %54
++
++54:                                               ; preds = %53
++  store i16 0, ptr null, align 1
++  br i1 false, label %56, label %55
++
++55:                                               ; preds = %54
++  unreachable
++
++56:                                               ; preds = %54
++  br i1 false, label %70, label %57
++
++57:                                               ; preds = %56
++  br i1 false, label %211, label %58
++
++58:                                               ; preds = %57
++  %59 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  br label %60
++
++60:                                               ; preds = %58
++  br label %61
++
++61:                                               ; preds = %60, %52
++  br label %62
++
++62:                                               ; preds = %61
++  %63 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  br label %64
++
++64:                                               ; preds = %62
++  br i1 false, label %65, label %69
++
++65:                                               ; preds = %64
++  br i1 false, label %71, label %66
++
++66:                                               ; preds = %65
++  %67 = load i8, ptr null, align 1
++  store i8 0, ptr null, align 1
++  store i8 0, ptr null, align 1
++  %68 = load i8, ptr null, align 1
++  ret i8 0
++
++69:                                               ; preds = %64
++  store i8 0, ptr null, align 1
++  br label %72
++
++70:                                               ; preds = %56
++  unreachable
++
++71:                                               ; preds = %65
++  unreachable
++
++72:                                               ; preds = %69
++  br label %76
++
++73:                                               ; preds = %50
++  br i1 false, label %209, label %74
++
++74:                                               ; preds = %73
++  br label %75
++
++75:                                               ; preds = %74
++  br label %76
++
++76:                                               ; preds = %75, %72, %33
++  br label %77
++
++77:                                               ; preds = %76
++  br i1 false, label %78, label %135
++
++78:                                               ; preds = %77
++  br i1 false, label %212, label %79
++
++79:                                               ; preds = %78
++  %80 = load i8, ptr null, align 1
++  %81 = load i16, ptr null, align 2
++  br label %82
++
++82:                                               ; preds = %79
++  %83 = load i16, ptr null, align 2
++  br label %84
++
++84:                                               ; preds = %134, %82
++  br i1 false, label %85, label %88
++
++85:                                               ; preds = %84
++  br i1 false, label %87, label %86
++
++86:                                               ; preds = %85
++  unreachable
++
++87:                                               ; preds = %85
++  br i1 false, label %102, label %89
++
++88:                                               ; preds = %84
++  br label %134
++
++89:                                               ; preds = %87
++  br label %90
++
++90:                                               ; preds = %89
++  br i1 false, label %209, label %91
++
++91:                                               ; preds = %90
++  br i1 false, label %92, label %93
++
++92:                                               ; preds = %91
++  br label %101
++
++93:                                               ; preds = %91
++  %94 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  br label %95
++
++95:                                               ; preds = %93
++  br i1 false, label %214, label %96
++
++96:                                               ; preds = %95
++  %97 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  %98 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  %99 = load i16, ptr null, align 1
++  store i16 0, ptr null, align 1
++  store i8 0, ptr null, align 1
++  br label %101
++
++100:                                              ; No predecessors!
++  unreachable
++
++101:                                              ; preds = %96, %92
++  br label %134
++
++102:                                              ; preds = %87
++  br label %103
++
++103:                                              ; preds = %102
++  br i1 false, label %105, label %104
++
++104:                                              ; preds = %103
++  unreachable
++
++105:                                              ; preds = %103
++  br i1 false, label %113, label %106
++
++106:                                              ; preds = %105
++  br label %107
++
++107:                                              ; preds = %106
++  br i1 false, label %113, label %108
++
++108:                                              ; preds = %107
++  br label %109
++
++109:                                              ; preds = %108
++  br i1 false, label %113, label %110
++
++110:                                              ; preds = %109
++  br i1 false, label %113, label %111
++
++111:                                              ; preds = %110
++  br label %112
++
++112:                                              ; preds = %111
++  br label %113
++
++113:                                              ; preds = %112, %110, %109, %107, %105
++  br label %114
++
++114:                                              ; preds = %113
++  br i1 false, label %133, label %115
++
++115:                                              ; preds = %114
++  br label %116
++
++116:                                              ; preds = %115
++  br i1 false, label %117, label %124
++
++117:                                              ; preds = %116
++  br label %118
++
++118:                                              ; preds = %117
++  br i1 false, label %120, label %119
++
++119:                                              ; preds = %118
++  unreachable
++
++120:                                              ; preds = %118
++  br i1 false, label %130, label %121
++
++121:                                              ; preds = %120
++  br i1 false, label %215, label %122
++
++122:                                              ; preds = %121
++  br label %123
++
++123:                                              ; preds = %122
++  br label %124
++
++124:                                              ; preds = %123, %116
++  br label %125
++
++125:                                              ; preds = %124
++  br label %126
++
++126:                                              ; preds = %125
++  br i1 false, label %127, label %129
++
++127:                                              ; preds = %126
++  br i1 false, label %131, label %128
++
++128:                                              ; preds = %127
++  br label %132
++
++129:                                              ; preds = %126
++  br label %132
++
++130:                                              ; preds = %120
++  unreachable
++
++131:                                              ; preds = %127
++  unreachable
++
++132:                                              ; preds = %129, %128
++  br label %134
++
++133:                                              ; preds = %114
++  br label %209
++
++134:                                              ; preds = %132, %101, %88
++  br label %84
++
++135:                                              ; preds = %77
++  br label %139
++
++136:                                              ; preds = %49
++  br label %137
++
++137:                                              ; preds = %136
++  br label %138
++
++138:                                              ; preds = %137
++  br label %140
++
++139:                                              ; preds = %135
++  br label %159
++
++140:                                              ; preds = %138
++  br i1 false, label %141, label %142
++
++141:                                              ; preds = %140
++  unreachable
++
++142:                                              ; preds = %140
++  br i1 false, label %143, label %144
++
++143:                                              ; preds = %142
++  unreachable
++
++144:                                              ; preds = %142
++  br label %145
++
++145:                                              ; preds = %144
++  br i1 false, label %146, label %150
++
++146:                                              ; preds = %145
++  br i1 false, label %147, label %148
++
++147:                                              ; preds = %146
++  unreachable
++
++148:                                              ; preds = %146
++  br label %149
++
++149:                                              ; preds = %148
++  br i1 false, label %151, label %157
++
++150:                                              ; preds = %145
++  br label %152
++
++151:                                              ; preds = %149
++  br label %154
++
++152:                                              ; preds = %150
++  br label %153
++
++153:                                              ; preds = %152
++  unreachable
++
++154:                                              ; preds = %151
++  br label %155
++
++155:                                              ; preds = %154
++  br label %156
++
++156:                                              ; preds = %155
++  unreachable
++
++157:                                              ; preds = %149
++  br label %158
++
++158:                                              ; preds = %157
++  br label %159
++
++159:                                              ; preds = %158, %139
++  br i1 false, label %172, label %160
++
++160:                                              ; preds = %159
++  br label %161
++
++161:                                              ; preds = %160
++  br i1 false, label %162, label %163
++
++162:                                              ; preds = %161
++  br label %171
++
++163:                                              ; preds = %161
++  br label %164
++
++164:                                              ; preds = %163
++  br label %165
++
++165:                                              ; preds = %165, %164
++  br i1 false, label %165, label %166
++
++166:                                              ; preds = %165
++  br label %167
++
++167:                                              ; preds = %166
++  br label %168
++
++168:                                              ; preds = %167
++  br i1 false, label %169, label %170
++
++169:                                              ; preds = %168
++  unreachable
++
++170:                                              ; preds = %168
++  br label %171
++
++171:                                              ; preds = %170, %162
++  br label %194
++
++172:                                              ; preds = %159
++  br i1 false, label %191, label %173
++
++173:                                              ; preds = %172
++  br label %174
++
++174:                                              ; preds = %173
++  br i1 false, label %175, label %182
++
++175:                                              ; preds = %174
++  br label %176
++
++176:                                              ; preds = %175
++  br i1 false, label %178, label %177
++
++177:                                              ; preds = %176
++  unreachable
++
++178:                                              ; preds = %176
++  br i1 false, label %188, label %179
++
++179:                                              ; preds = %178
++  br i1 false, label %216, label %180
++
++180:                                              ; preds = %179
++  br label %181
++
++181:                                              ; preds = %180
++  br label %182
++
++182:                                              ; preds = %181, %174
++  br label %183
++
++183:                                              ; preds = %182
++  br label %184
++
++184:                                              ; preds = %183
++  br i1 false, label %185, label %187
++
++185:                                              ; preds = %184
++  br i1 false, label %189, label %186
++
++186:                                              ; preds = %185
++  br label %190
++
++187:                                              ; preds = %184
++  br label %190
++
++188:                                              ; preds = %178
++  unreachable
++
++189:                                              ; preds = %185
++  unreachable
++
++190:                                              ; preds = %187, %186
++  br label %194
++
++191:                                              ; preds = %172
++  br i1 false, label %209, label %192
++
++192:                                              ; preds = %191
++  br label %193
++
++193:                                              ; preds = %192
++  br label %194
++
++194:                                              ; preds = %193, %190, %171
++  br label %195
++
++195:                                              ; preds = %194
++  br i1 false, label %196, label %200
++
++196:                                              ; preds = %195
++  br label %7
++
++197:                                              ; preds = %204
++  br i1 false, label %198, label %199
++
++198:                                              ; preds = %197
++  unreachable
++
++199:                                              ; preds = %197
++  br label %205
++
++200:                                              ; preds = %195
++  switch i8 0, label %202 [
++    i8 46, label %204
++    i8 57, label %201
++  ]
++
++201:                                              ; preds = %200
++  br label %204
++
++202:                                              ; preds = %200
++  br label %203
++
++203:                                              ; preds = %202
++  br label %205
++
++204:                                              ; preds = %201, %200
++  br label %197
++
++205:                                              ; preds = %203, %199
++  br i1 false, label %206, label %208
++
++206:                                              ; preds = %205
++  br label %207
++
++207:                                              ; preds = %206
++  unreachable
++
++208:                                              ; preds = %205
++  br label %209
++
++209:                                              ; preds = %208, %191, %133, %90, %73, %25, %10
++  ret i8 0
++
++210:                                              ; preds = %30
++  unreachable
++
++211:                                              ; preds = %57
++  unreachable
++
++212:                                              ; preds = %78
++  unreachable
++
++213:                                              ; No predecessors!
++  unreachable
++
++214:                                              ; preds = %95
++  unreachable
++
++215:                                              ; preds = %121
++  unreachable
++
++216:                                              ; preds = %179
++  unreachable
 +}
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -517,6 +517,7 @@
-         ":IRDLDialect",
-         ":InferTypeOpInterface",
-         ":Parser",
-+        ":TransformsPassIncGen",
-     ],
- )
- 
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var.ll b/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var.ll
+--- a/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var.ll
++++ b/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var.ll
+@@ -0,0 +1,48 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -passes=loop-vectorize -force-vector-width=2 -S %s 2>&1 | FileCheck %s
++
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
++target triple = "x86_64-grtev4-linux-gnu"
++
++define void @copy_bitcast_fusion(ptr noalias %foo, ptr noalias %bar) {
++; CHECK-LABEL: define void @copy_bitcast_fusion(
++; CHECK-SAME: ptr noalias [[FOO:%.*]], ptr noalias [[BAR:%.*]]) {
++; CHECK-NEXT:  [[HEADER:.*:]]
++; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
++; CHECK:       [[VECTOR_PH]]:
++; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
++; CHECK:       [[VECTOR_BODY]]:
++; CHECK-NEXT:    [[TMP0:%.*]] = select i1 false, i64 1, i64 0
++; CHECK-NEXT:    [[TMP1:%.*]] = select i1 true, i64 1, i64 0
++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr float, ptr [[FOO]], i64 [[TMP0]]
++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr float, ptr [[FOO]], i64 [[TMP1]]
++; CHECK-NEXT:    [[TMP4:%.*]] = load float, ptr [[TMP2]], align 4
++; CHECK-NEXT:    [[TMP5:%.*]] = load float, ptr [[TMP3]], align 4
++; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <2 x float> poison, float [[TMP4]], i32 0
++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <2 x float> [[TMP6]], float [[TMP5]], i32 1
++; CHECK-NEXT:    store <2 x float> [[TMP7]], ptr [[BAR]], align 4
++; CHECK-NEXT:    br label %[[MIDDLE_BLOCK:.*]]
++; CHECK:       [[MIDDLE_BLOCK]]:
++; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK:       [[EXIT]]:
++; CHECK-NEXT:    ret void
++;
++header:
++  br label %body
++
++body:
++  %iv = phi i64 [ 0, %header ], [ %iv.next, %body ]
++  %iv.trunc = trunc i64 %iv to i1
++  %iv.trunc2 = select i1 %iv.trunc, i64 1, i64 0
++  %load.addr = getelementptr float, ptr %foo, i64 %iv.trunc2
++  %l1 = load float, ptr %load.addr, align 4
++  %store.addr = getelementptr float, ptr %bar, i64 %iv
++  store float %l1, ptr %store.addr, align 4
++  %iv.next = add i64 %iv, 1
++  %exitcond.not = icmp eq i64 %iv, 1
++  br i1 %exitcond.not, label %exit, label %body
++
++exit:
++  ret void
++}
++
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var-width-4.ll b/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var-width-4.ll
+--- a/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var-width-4.ll
++++ b/llvm/test/Transforms/LoopVectorize/X86/vplan-single-bit-ind-var-width-4.ll
+@@ -0,0 +1,68 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -passes=loop-vectorize -force-vector-width=4 -S %s 2>&1 | FileCheck %s
++
++target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
++target triple = "x86_64-grtev4-linux-gnu"
++
++define void @copy_bitcast_fusion(ptr noalias %foo, ptr noalias %bar) {
++; CHECK-LABEL: define void @copy_bitcast_fusion(
++; CHECK-SAME: ptr noalias [[FOO:%.*]], ptr noalias [[BAR:%.*]]) {
++; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
++; CHECK:       [[VECTOR_PH]]:
++; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
++; CHECK:       [[VECTOR_BODY]]:
++; CHECK-NEXT:    [[TMP1:%.*]] = select i1 false, i64 1, i64 0
++; CHECK-NEXT:    [[TMP2:%.*]] = select i1 true, i64 1, i64 0
++; CHECK-NEXT:    [[TMP3:%.*]] = select i1 false, i64 1, i64 0
++; CHECK-NEXT:    [[TMP4:%.*]] = select i1 true, i64 1, i64 0
++; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr { float, float }, ptr [[FOO]], i64 [[TMP1]]
++; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr { float, float }, ptr [[FOO]], i64 [[TMP2]]
++; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr { float, float }, ptr [[FOO]], i64 [[TMP3]]
++; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr { float, float }, ptr [[FOO]], i64 [[TMP4]]
++; CHECK-NEXT:    [[TMP9:%.*]] = load float, ptr [[TMP5]], align 4
++; CHECK-NEXT:    [[TMP10:%.*]] = load float, ptr [[TMP6]], align 4
++; CHECK-NEXT:    [[TMP11:%.*]] = load float, ptr [[TMP7]], align 4
++; CHECK-NEXT:    [[TMP12:%.*]] = load float, ptr [[TMP8]], align 4
++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <4 x float> poison, float [[TMP9]], i32 0
++; CHECK-NEXT:    [[TMP14:%.*]] = insertelement <4 x float> [[TMP13]], float [[TMP10]], i32 1
++; CHECK-NEXT:    [[TMP15:%.*]] = insertelement <4 x float> [[TMP14]], float [[TMP11]], i32 2
++; CHECK-NEXT:    [[TMP16:%.*]] = insertelement <4 x float> [[TMP15]], float [[TMP12]], i32 3
++; CHECK-NEXT:    [[TMP17:%.*]] = shufflevector <4 x float> [[TMP16]], <4 x float> zeroinitializer, <8 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7>
++; CHECK-NEXT:    [[TMP18:%.*]] = shufflevector <8 x float> [[TMP17]], <8 x float> zeroinitializer, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP19:%.*]] = shufflevector <16 x float> [[TMP18]], <16 x float> <float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float 0.000000e+00, float undef, float undef, float undef, float undef, float undef, float undef, float undef, float undef>, <24 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15, i32 16, i32 17, i32 18, i32 19, i32 20, i32 21, i32 22, i32 23>
++; CHECK-NEXT:    [[INTERLEAVED_VEC:%.*]] = shufflevector <24 x float> [[TMP19]], <24 x float> poison, <24 x i32> <i32 0, i32 4, i32 8, i32 12, i32 16, i32 20, i32 1, i32 5, i32 9, i32 13, i32 17, i32 21, i32 2, i32 6, i32 10, i32 14, i32 18, i32 22, i32 3, i32 7, i32 11, i32 15, i32 19, i32 23>
++; CHECK-NEXT:    store <24 x float> [[INTERLEAVED_VEC]], ptr [[BAR]], align 4
++; CHECK-NEXT:    br label %[[MIDDLE_BLOCK:.*]]
++; CHECK:       [[MIDDLE_BLOCK]]:
++; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK:       [[EXIT]]:
++; CHECK-NEXT:    ret void
++;
++  br label %body
++
++body:
++  %iv = phi i64 [ 0, %0 ], [ %ptr3, %body ]
++  %iv.trunc = trunc i64 %iv to i1
++  %iv.trunc2 = select i1 %iv.trunc, i64 1, i64 0
++  %unpack.ptr = getelementptr { float, float }, ptr %foo, i64 %iv.trunc2
++  %unpack = load float, ptr %unpack.ptr, align 4
++  %idx3 = mul i64 %iv, 24
++  %bar.ptr = getelementptr i8, ptr %bar, i64 %idx3
++  store float %unpack, ptr %bar.ptr, align 4
++  %repack4 = getelementptr i8, ptr %bar.ptr, i64 4
++  store float 0.000000e+00, ptr %repack4, align 4
++  %ptr1 = getelementptr i8, ptr %bar.ptr, i64 8
++  store float 0.000000e+00, ptr %ptr1, align 4
++  %repack4.1 = getelementptr i8, ptr %bar.ptr, i64 12
++  store float 0.000000e+00, ptr %repack4.1, align 4
++  %ptr2 = getelementptr i8, ptr %bar.ptr, i64 16
++  store float 0.000000e+00, ptr %ptr2, align 4
++  %repack4.2 = getelementptr i8, ptr %bar.ptr, i64 20
++  store float 0.000000e+00, ptr %repack4.2, align 4
++  %ptr3 = add i64 %iv, 1
++  %exitcond.not = icmp eq i64 %ptr3, 4
++  br i1 %exitcond.not, label %exit, label %body
++
++exit:
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SeparateConstOffsetFromGEP/negative-i32-offset.ll b/llvm/test/Transforms/SeparateConstOffsetFromGEP/negative-i32-offset.ll
+--- a/llvm/test/Transforms/SeparateConstOffsetFromGEP/negative-i32-offset.ll
++++ b/llvm/test/Transforms/SeparateConstOffsetFromGEP/negative-i32-offset.ll
+@@ -0,0 +1,16 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 6
++; RUN: opt -S -passes='separate-const-offset-from-gep<lower-gep>' < %s | FileCheck %s
++target datalayout = "p:32:32"
++
++define ptr @test(ptr %p, i32 %a) {
++; CHECK-LABEL: define ptr @test(
++; CHECK-SAME: ptr [[P:%.*]], i32 [[A:%.*]]) {
++; CHECK-NEXT:    [[TMP1:%.*]] = shl i32 [[A]], 2
++; CHECK-NEXT:    [[UGLYGEP:%.*]] = getelementptr i8, ptr [[P]], i32 [[TMP1]]
++; CHECK-NEXT:    [[UGLYGEP2:%.*]] = getelementptr i8, ptr [[UGLYGEP]], i32 -4
++; CHECK-NEXT:    ret ptr [[UGLYGEP2]]
++;
++  %add = add i32 %a, -1
++  %gep = getelementptr i32, ptr %p, i32 %add
++  ret ptr %gep
++}
