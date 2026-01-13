@@ -742,8 +742,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     }
     return CodegenDecision::Allow();
   }
-  return CodegenDecision::Forbid(absl::StrCat("Unsupported instruction opcode ",
-                                              HloOpcodeString(instr.opcode())));
+  return CodegenDecision::Forbid(
+      absl::StrCat("support.cc: Unsupported instruction opcode ",
+                   HloOpcodeString(instr.opcode())));
 }
 
 }  // namespace

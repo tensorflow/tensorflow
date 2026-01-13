@@ -2825,7 +2825,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTuple:
       return ThunkSequence{};
     default:
-      return Internal("Unsupported instruction opcode: %s",
+      return Internal("thunk_emitter.cc: Unsupported instruction opcode: %s",
                       HloOpcodeString(hlo->opcode()));
   }
   return Internal("Unhandled HLO instruction");
