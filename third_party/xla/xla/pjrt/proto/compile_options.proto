@@ -157,6 +157,13 @@ message OptionOverrideProto {
   }
 }
 
+enum CompilationMode {
+  // Default compilation mode, which is linked compiler.
+  DEFAULT = 0;
+  FORGE_COMPILER = 1;
+  XLA_COMPILATION_SERVICE = 2;
+}
+
 message CompileOptionsProto {
   // Refer CompileOptions for documentation of fields.
   repeated ShapeProto argument_layouts = 1;
@@ -169,6 +176,7 @@ message CompileOptionsProto {
   stream_executor.GpuTargetConfigProto target_config = 8;
   bool allow_in_place_mlir_modification = 9;
   PrecisionConfig.Precision matrix_unit_operand_precision = 10;
+  optional CompilationMode compilation_mode = 11;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

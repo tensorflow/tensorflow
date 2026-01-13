@@ -81,6 +81,12 @@ class MultiSliceConfig {
   virtual std::string Serialize() const = 0;
 };
 
+// enum class CompilationMode {
+//   kLinkedCompiler = 0,
+//   kForgeCompiler = 1,
+//   kXlaCompilationService = 2,
+// };
+
 struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
   std::optional<std::vector<Shape>> argument_layouts;
@@ -133,6 +139,9 @@ struct CompileOptions {
 
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
+
+  // Compilation mode to indicate the how the compilation is invoked.
+  std::optional<CompilationMode> compilation_mode = std::nullopt;
 
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
