@@ -84,6 +84,10 @@ namespace xla::error {
     absl::StatusCode::kResourceExhausted)                                     \
   X("E0102", RuntimeProgramInputMismatch, absl::StatusCode::kInvalidArgument) \
   X("E0103", RuntimeUnexpectedCoreHalt, absl::StatusCode::kInternal)          \
+  X("E3000", CompileTimeSparseCoreAllocationFailure,                          \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E3001", CompileTimeSparseCoreInvalidReplicaCount,                        \
+    absl::StatusCode::kInvalidArgument)                                       \
                                                                               \
   /* go/keep-sorted end */
 
@@ -143,7 +147,7 @@ inline std::string GetErrorUrl(ErrorCode code) {
 // "EXXXX: ErrorName:\n<Original Message>\nSee <URL> for more details."
 inline std::string FormatMessageWithCode(absl::string_view message,
                                          ErrorCode code) {
-  return absl::StrCat(GetErrorCodeAndName(code), ":\n", message, "\nSee ",
+  return absl::StrCat(GetErrorCodeAndName(code), ": ", message, "\nSee ",
                       GetErrorUrl(code), " for more details.");
 }
 
