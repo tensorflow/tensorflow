@@ -64,7 +64,10 @@ bool IsTritonSupportedDataType(PrimitiveType type,
       return true;
     case F8E5M2:
     case F8E4M3FN:
-      return gpu_version.IsCuda();
+      return gpu_version.IsCuda() || gpu_version.IsRocm();
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
+      return gpu_version.IsRocm();
     case BF16:
       return gpu_version.IsCuda() ||
              (gpu_version.IsRocm() &&
@@ -76,7 +79,7 @@ bool IsTritonSupportedDataType(PrimitiveType type,
 
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
-    PrimitiveType element_type) {
+    PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
   if (element_type == PrimitiveType::PRED) {
     return {HloOpcode::kNot, HloOpcode::kCopy};
   }
@@ -93,7 +96,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
 
   if (element_type != PrimitiveType::F8E5M2 &&
       element_type != PrimitiveType::F8E4M3FN &&
-      element_type != PrimitiveType::F8E8M0FNU) {
+      element_type != PrimitiveType::F8E8M0FNU &&
+      !(gpu_version.IsRocm() && element_type == PrimitiveType::F8E5M2FNUZ) &&
+      !(gpu_version.IsRocm() && element_type == PrimitiveType::F8E4M3FNUZ)) {
     ret.insert(HloOpcode::kNegate);
   }
 
@@ -162,9 +167,11 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message();
   }
 
-  bool is_f8_conversion =
-      any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
-  bool is_f8 = any_is(PrimitiveType::F8E4M3FN) || any_is(PrimitiveType::F8E5M2);
+  auto supported_fp8_types = {F8E4M3FN, F8E5M2, F8E4M3FNUZ, F8E5M2FNUZ};
+  bool is_input_fp8 = absl::c_linear_search(supported_fp8_types, input);
+  bool is_output_fp8 = absl::c_linear_search(supported_fp8_types, output);
+  bool is_f8_conversion = is_input_fp8 && is_output_fp8;
+  bool is_f8 = is_input_fp8 || is_output_fp8;
   bool is_f16_or_f32 = any_is(PrimitiveType::F16) ||
                        any_is(PrimitiveType::BF16) ||
                        any_is(PrimitiveType::F32);
@@ -193,7 +200,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     PrimitiveType element_type, const se::GpuComputeCapability& gpu_version) {
   if (element_type == PrimitiveType::S4 || element_type == PrimitiveType::U16 ||
       element_type == PrimitiveType::F8E5M2 ||
-      element_type == PrimitiveType::F8E4M3FN) {
+      element_type == PrimitiveType::F8E4M3FN ||
+      (gpu_version.IsRocm() && element_type == PrimitiveType::F8E5M2FNUZ) ||
+      (gpu_version.IsRocm() && element_type == PrimitiveType::F8E4M3FNUZ)) {
     return {};
   }
 
@@ -230,6 +239,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     ret.insert(HloOpcode::kAtan2);
     ret.insert(HloOpcode::kPower);
     ret.insert(HloOpcode::kRemainder);
+    if (gpu_version.IsRocm()) {
+      ret.insert(HloOpcode::kDivide);
+    }
   }
 
   return ret;
@@ -243,7 +255,9 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
   }
 
   if (element_type == PrimitiveType::F8E5M2 ||
-      element_type == PrimitiveType::F8E4M3FN) {
+      element_type == PrimitiveType::F8E4M3FN ||
+      (gpu_version.IsRocm() && element_type == PrimitiveType::F8E5M2FNUZ) ||
+      (gpu_version.IsRocm() && element_type == PrimitiveType::F8E4M3FNUZ)) {
     return {HloOpcode::kSelect};
   }
 
@@ -256,7 +270,8 @@ absl::flat_hash_set<HloOpcode> TritonSupportedTernaryElementwiseOps(
 // device of interest.
 bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
                                   const se::GpuComputeCapability& gpu_version) {
-  return TritonSupportedUnaryElementwiseOps(element_type).contains(opcode) ||
+  return TritonSupportedUnaryElementwiseOps(element_type, gpu_version)
+             .contains(opcode) ||
          TritonSupportedBinaryElementwiseOps(element_type, gpu_version)
              .contains(opcode) ||
          TritonSupportedTernaryElementwiseOps(element_type, gpu_version)
@@ -271,7 +286,11 @@ CodegenDecision CanTritonHandleReduce(
     const HloReduceInstruction& reduce,
     const se::GpuComputeCapability& gpu_version) {
   if (reduce.shape().element_type() == PrimitiveType::F8E4M3FN ||
-      reduce.shape().element_type() == PrimitiveType::F8E5M2) {
+      reduce.shape().element_type() == PrimitiveType::F8E5M2 ||
+      (gpu_version.IsRocm() &&
+       reduce.shape().element_type() == PrimitiveType::F8E5M2FNUZ) ||
+      (gpu_version.IsRocm() &&
+       reduce.shape().element_type() == PrimitiveType::F8E4M3FNUZ)) {
     return CodegenDecision::Forbid(
         "F8E4M3FN and F8E5M2 are not supported for reductions.");
   }
@@ -377,7 +396,12 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
     }
   }
 
-  auto supported_float_types = {BF16, F16, F32, F64, F8E5M2, F8E4M3FN};
+  std::vector<PrimitiveType> supported_float_types = {BF16, F16,      F32,
+                                                      F64,  F8E4M3FN, F8E5M2};
+  if (gpu_version.IsRocm()) {
+    supported_float_types.insert(supported_float_types.end(),
+                                 {F8E4M3FNUZ, F8E5M2FNUZ});
+  }
   if (absl::c_linear_search(supported_float_types, input_type)) {
     return CodegenDecision::Allow();
   }
@@ -442,8 +466,9 @@ CodegenDecision AreDotAlgorithmInputAndOutputConversionsSupported(
 
   if (algorithm == PrecisionConfig::ALG_DOT_F64_F64_F64 &&
       primitive_util::BitWidth(lhs_type) < 32 &&
-      !gpu_version.cuda_compute_capability()->IsAtLeastBlackwell()) {
-    return forbid("Unsupported BF16 on GPUs before Blackwell");
+      (gpu_version.IsRocm() ||
+       !gpu_version.cuda_compute_capability()->IsAtLeastBlackwell())) {
+    return forbid("Unsupported BF16 on GPUs on ROCm and before Blackwell");
   }
 
   if (allowed_operands_types_or->size() != 1) {
@@ -683,6 +708,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     return CodegenDecision(
         element_type != PrimitiveType::F8E4M3FN &&
             element_type != PrimitiveType::F8E5M2 &&
+            !(gpu_version.IsRocm() &&
+              element_type == PrimitiveType::F8E4M3FNUZ) &&
+            !(gpu_version.IsRocm() &&
+              element_type == PrimitiveType::F8E5M2FNUZ) &&
             element_type != PrimitiveType::S4,
         "F8E4M3FN, F8E5M2 and S4 are not supported for iota.");
   }
