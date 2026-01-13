@@ -32,9 +32,11 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   static absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>> Create(
       ncclComm_t comm, stream_executor::DeviceAddressBase addr);
 
+  stream_executor::DeviceAddressBase addr() const { return addr_; }
+
   std::string ToString() const final;
 
-  stream_executor::DeviceAddressBase addr() const { return addr_; }
+  PackedKernelArg PackKernelArg() const final;
 
  private:
   NcclSymmetricMemory(ncclComm_t comm, ncclWindow_t win,
