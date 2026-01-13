@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
@@ -66,8 +66,6 @@ single_version_override(
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
         "//third_party/absl:rules_cc.patch",
-        "//third_party/absl:check_op.patch",
-        "//third_party/absl:check_op_2.patch",
     ],
 )
 
