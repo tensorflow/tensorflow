@@ -18,39 +18,54 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 
 namespace stream_executor::gpu {
 
-// Counts the number of NaNs, Infs and zeros in a buffer of floats in parallel,
-// and stores partially accumulated results in the FloatCheckResult array.
-struct BufferDebugFloatCheckF32Kernel {
-  using KernelType =
-      TypedKernel<DeviceAddress<float>, uint64_t,
-                  DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
-};
-
-// Counts the number of NaNs, Infs and zeros in a buffer of bfloat16s in
-// parallel, and stores partially accumulated results in the FloatCheckResult
-// array.
-struct BufferDebugFloatCheckBf16Kernel {
-  using KernelType =
-      TypedKernel<DeviceAddress<Eigen::bfloat16>, uint64_t,
-                  DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
-};
-
-// Trait for a kernel that reduces the partially accumulated results from
-// `BufferDebugFloatCheckF32Kernel` or `BufferDebugFloatCheckBf16Kernel`
-// invocations and appends the result to the buffer debug log.
+// The implementation relies on cub:: templates which are CUDA specific. To
+// keep this header platform-agnostic, provide forward declarations for
+// template specializations that are going to be implemented in
+// CUDA-specific code.
 //
-// This kernel MUST execute on a single thread block.
-struct BufferDebugAppendReducedFloatCheckResultsKernel {
+// And we need *some* definition to still compile on non-CUDA GPU platforms,
+// even if the float check is not going to work.
+template <typename T>
+absl::Status CheckFloats(
+    stream_executor::DeviceAddress<T> input,
+    stream_executor::DeviceAddress<xla::gpu::FloatCheckResult> result,
+    stream_executor::Stream* stream) {
+  return absl::InternalError(
+      "CheckFloats not implemented (missing explicit specialization?)");
+}
+
+#define CHECK_FLOATS_FORWARD_DECL(T)                                     \
+  template <>                                                            \
+  absl::Status CheckFloats<T>(                                           \
+      stream_executor::DeviceAddress<T> input,                           \
+      stream_executor::DeviceAddress<xla::gpu::FloatCheckResult> result, \
+      stream_executor::Stream * stream);
+
+CHECK_FLOATS_FORWARD_DECL(float)
+CHECK_FLOATS_FORWARD_DECL(Eigen::bfloat16)
+
+#undef CHECK_FLOATS_FORWARD_DECL
+
+// Trait for a kernel that appends a range of `FloatCheckResult`s accompanied
+// by their `BufferDebugLogEntryId`s to `BufferDebugLog`.
+//
+// The FloatCheckResult and BufferDebugLogEntryId arrays must have the same
+// size, passed as the uint64_t parameter.
+//
+// FloatCheckResult can be calculated with CheckFloats functions above.
+struct BufferDebugAppendFloatCheckResultsKernel {
   using KernelType =
-      TypedKernel<DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t,
-                  xla::gpu::BufferDebugLogEntryId,
+      TypedKernel<DeviceAddress<xla::gpu::FloatCheckResult>,
+                  DeviceAddress<xla::gpu::BufferDebugLogEntryId>, uint64_t,
                   DeviceAddress<xla::gpu::BufferDebugLogHeader>,
                   DeviceAddress<xla::gpu::BufferDebugFloatCheckEntry>>;
 };
