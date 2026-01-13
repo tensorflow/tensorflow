@@ -73,8 +73,7 @@ using se::dnn::FilterLayout;
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          const se::GpuComputeCapability& gpu_version,
-                          const se::dnn::VersionInfo& dnn_version) {
+                          const se::GpuComputeCapability& gpu_version) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
@@ -234,7 +233,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     FilterLayout filter;
     DataLayout output;
     std::tie(input, filter, output) =
-        HeuristicLayoutAssignment(instr, gpu_version_, dnn_version_);
+        HeuristicLayoutAssignment(instr, gpu_version_);
 
     TF_ASSIGN_OR_RETURN(
         std::tie(*input_shape->mutable_layout(),

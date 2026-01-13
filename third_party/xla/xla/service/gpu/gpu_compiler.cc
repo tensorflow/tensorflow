@@ -1107,7 +1107,6 @@ absl::Status RunCollectiveOptimizationPasses(
 
 absl::Status RunLayoutAssignmentPasses(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
-    se::dnn::VersionInfo dnn_version,
     const se::DeviceDescription& device_description) {
   // Run layout assignment in a separate pipeline from
   // "post-layout-assignment" because we want everything after layout
@@ -1121,7 +1120,7 @@ absl::Status RunLayoutAssignmentPasses(
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
   pipeline.AddPass<GpuLayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout(), gpu_version, dnn_version,
+      hlo_module->mutable_entry_computation_layout(), gpu_version,
       device_description, &layout_constraints);
   // Run SubByteNormalization because GpuLayoutAssignment may modify a
   // Layout's element_size_in_bits field.
@@ -1556,8 +1555,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
       hlo_module, gpu_version, dnn_version,
       device_description.runtime_version()));
 
-  RETURN_IF_ERROR(RunLayoutAssignmentPasses(hlo_module, gpu_version,
-                                            dnn_version, device_description));
+  RETURN_IF_ERROR(
+      RunLayoutAssignmentPasses(hlo_module, gpu_version, device_description));
   if (options.early_exit_with_layouts) {
     return absl::OkStatus();
   }
