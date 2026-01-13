@@ -310,31 +310,6 @@ class EmptyCmd : public Command {
 };
 
 //===----------------------------------------------------------------------===//
-// AsyncDoneCmd
-//===----------------------------------------------------------------------===//
-
-class AsyncDoneCmd : public Command {
- public:
-  explicit AsyncDoneCmd(
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUseVector buffers() const override { return {}; }
-
-  bool IsAsync() const { return async_events_ != nullptr; }
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-};
-
-//===----------------------------------------------------------------------===//
 // ComputationIdCmd (ReplicaId and PartitionId)
 //===----------------------------------------------------------------------===//
 
@@ -765,7 +740,7 @@ class CustomCallCmd : public Command {
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-class CollectiveCmd : public Command {
+class CollectiveCmd : public AsyncStartCommand {
  public:
   CollectiveCmd(CommandType cmd_type, CollectiveConfig config,
                 std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
@@ -782,7 +757,7 @@ class CollectiveCmd : public Command {
       se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
-  bool IsAsync() const { return async_events_ != nullptr; }
+  bool IsAsync() const final { return async_events_ != nullptr; }
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
     return async_events_;
   }
@@ -792,6 +767,31 @@ class CollectiveCmd : public Command {
 
  private:
   CollectiveConfig config_;
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
+};
+
+//===----------------------------------------------------------------------===//
+// CollectiveDoneCmd
+//===----------------------------------------------------------------------===//
+
+class CollectiveDoneCmd : public AsyncDoneCommand {
+ public:
+  explicit CollectiveDoneCmd(
+      const AsyncStartCommand* async_start,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  BufferUseVector buffers() const override { return {}; }
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
+    return async_events_;
+  }
+
+ private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
 };
 
