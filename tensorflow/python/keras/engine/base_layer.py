@@ -952,6 +952,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
+      TypeError: if the layer's `call` method returns a Layer object instead
+        of a Tensor. This typically indicates that the user forgot to call
+        the layer on its inputs.
       RuntimeError: if `super().__init__()` was not called in the constructor.
     """
     if not hasattr(self, '_thread_local'):
@@ -1042,6 +1045,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             self._compute_dtype_object):
           outputs = call_fn(inputs, *args, **kwargs)
 
+        # Validate that outputs are valid tensor types, not Layer objects.
+        self._validate_call_outputs(outputs)
+
         if self._activity_regularizer:
           self._handle_activity_regularization(inputs, outputs)
         if self._supports_masking:
@@ -1124,6 +1130,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         raise ValueError('A layer\'s `call` method should return a '
                          'Tensor or a list of Tensors, not None '
                          '(layer: ' + self.name + ').')
+      # Validate that outputs are valid tensor types, not Layer objects.
+      self._validate_call_outputs(outputs)
       if training_arg_passed_by_framework:
         args, kwargs = self._set_call_arg_value(
             'training', None, args, kwargs, pop_kwarg_if_none=True)
@@ -2450,6 +2458,40 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.add_loss(functools.partial(_loss_for_variable, v))
     else:
       self.add_loss(functools.partial(_loss_for_variable, variable))
+
+  def _validate_call_outputs(self, outputs):
+    """Validates that `call` method outputs are valid tensor types.
+
+    This method checks that the outputs of a layer's `call` method are valid
+    tensor-like types (Tensors, CompositeTensors, TensorArrays, or None).
+    Returning Layer objects instead of Tensors is a common mistake that
+    leads to inconsistent behavior between eager and graph modes.
+
+    Args:
+      outputs: The outputs returned from `call`.
+
+    Raises:
+      TypeError: If any output is a Layer object instead of a Tensor.
+    """
+    flat_outputs = nest.flatten(outputs)
+    for output in flat_outputs:
+      if output is None:
+        continue
+      # Check if the output is a Layer object (invalid return type).
+      # A Layer object being returned typically indicates the user forgot
+      # to call the layer on inputs.
+      if isinstance(output, Layer):
+        raise TypeError(
+            f"The layer '{self.name}' has a `call` method that returns "
+            f"a Layer object ({type(output).__name__}) instead of a Tensor. "
+            f"All outputs from a layer's `call` method must be Tensors or "
+            f"CompositeTensors. "
+            f"This error can occur when the user forgets to call a layer on "
+            f"its inputs. For example:\n"
+            f"  # Wrong:\n"
+            f"  return tf.keras.layers.Dense(10)  # Returns a Layer object\n"
+            f"  # Correct:\n"
+            f"  return tf.keras.layers.Dense(10)(x)  # Returns a Tensor")
 
   def _handle_activity_regularization(self, inputs, outputs):
     # Apply activity regularization.

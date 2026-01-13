@@ -662,6 +662,9 @@ class Layer(base_layer.Layer):
 
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
+      TypeError: if the layer's `call` method returns a Layer object instead
+        of a Tensor. This typically indicates that the user forgot to call
+        the layer on its inputs.
       RuntimeError: if `super().__init__()` was not called in the constructor.
     """
     self._assert_built_as_v1()
@@ -803,6 +806,8 @@ class Layer(base_layer.Layer):
             raise ValueError('A layer\'s `call` method should return a '
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
+          # Validate that outputs are valid tensor types, not Layer objects.
+          self._validate_call_outputs(outputs)
           if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
               args, kwargs = self._set_call_arg_value(
@@ -828,6 +833,8 @@ class Layer(base_layer.Layer):
           with autocast_variable.enable_auto_cast_variables(
               self._compute_dtype_object):
             outputs = self.call(cast_inputs, *args, **kwargs)
+          # Validate that outputs are valid tensor types, not Layer objects.
+          self._validate_call_outputs(outputs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
 
