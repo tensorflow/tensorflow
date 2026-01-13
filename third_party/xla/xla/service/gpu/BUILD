@@ -1574,6 +1574,8 @@ cc_library(
     name = "gpu_compiler",
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
     tags = ["gpu"],
     deps = [
         ":alias_info",
@@ -1891,6 +1893,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@nanobind",
     ] + xla_internal(["service:export_hlo"]) + if_google([
         "//xla/hlo/experimental/auto_sharding",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_option",
