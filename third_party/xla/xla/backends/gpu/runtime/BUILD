@@ -207,6 +207,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
