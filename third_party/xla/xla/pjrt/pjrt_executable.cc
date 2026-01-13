@@ -106,6 +106,9 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   if (gpu_target_config.has_value()) {
     *output.mutable_target_config() = gpu_target_config->ToProto();
   }
+  if (compiler_variant.has_value()) {
+    output.set_compiler_variant(*compiler_variant);
+  }
   return output;
 }
 
@@ -144,6 +147,9 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     TF_ASSIGN_OR_RETURN(
         output.gpu_target_config,
         Compiler::GpuTargetConfig::FromProto(proto.target_config()));
+  }
+  if (proto.has_compiler_variant()) {
+    output.compiler_variant = proto.compiler_variant();
   }
   return output;
 }
