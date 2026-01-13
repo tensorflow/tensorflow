@@ -2665,7 +2665,8 @@ std::shared_ptr<const HloSharding> CreateTupleSharding(
     if (element->has_sharding()) {
       sub_shardings.push_back(element->sharding());
     } else {
-      sub_shardings.push_back(HloSharding::Replicate());
+      sub_shardings.push_back(HloSharding::Replicate(
+          {}, element->sharding().UseNamedShardingLeaf()));
     }
   }
   return std::make_shared<const HloSharding>(
