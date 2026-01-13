@@ -75,11 +75,11 @@ namespace {
 
 static std::optional<absl::string_view> GetStoredThunkTypeName(
     const ThunkProto& proto) {
-  const tsl::protobuf::Descriptor* descriptor = proto.GetDescriptor();
-  const tsl::protobuf::Reflection* reflection = proto.GetReflection();
-  const tsl::protobuf::OneofDescriptor* impl_descriptor =
+  const google::protobuf::Descriptor* descriptor = proto.GetDescriptor();
+  const google::protobuf::Reflection* reflection = proto.GetReflection();
+  const google::protobuf::OneofDescriptor* impl_descriptor =
       descriptor->FindOneofByName("impl");
-  const tsl::protobuf::FieldDescriptor* field_descriptor =
+  const google::protobuf::FieldDescriptor* field_descriptor =
       reflection->GetOneofFieldDescriptor(proto, impl_descriptor);
   CHECK(impl_descriptor != nullptr);
 

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace tools {
@@ -131,7 +130,7 @@ GetHardwareToContainerImage() {
 
 // --- JSON Generation Helpers ---
 Json::Value RepeatedStringFieldToJsonArray(
-    const tsl::protobuf::RepeatedPtrField<std::string>& field) {
+    const google::protobuf::RepeatedPtrField<std::string>& field) {
   Json::Value array(Json::arrayValue);
   for (const auto& item : field) {
     array.append(item);
@@ -372,7 +371,7 @@ absl::StatusOr<BenchmarkSuite> LoadBenchmarkSuiteFromFile(
         absl::StrCat("Error reading registry file: ", registry_path));
   }
   // Using TextFormat::ParseFromString for TextProto
-  if (!tsl::protobuf::TextFormat::ParseFromString(content, &suite)) {
+  if (!google::protobuf::TextFormat::ParseFromString(content, &suite)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Error parsing TextProto registry file: ", registry_path));
   }

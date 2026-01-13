@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace emitters {
@@ -76,8 +75,8 @@ class LowerToLLVMGPUPass
   void runOnOperation() override {
     if (!gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
-      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
-                                                       &device_info));
+      CHECK(
+          google::protobuf::TextFormat::ParseFromString(gpu_device_info_, &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
       CHECK_OK(device_description.status());

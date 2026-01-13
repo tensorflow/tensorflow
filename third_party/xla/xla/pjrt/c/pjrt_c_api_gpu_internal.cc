@@ -21,9 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
@@ -46,18 +50,22 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -233,8 +241,8 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     std::string target_config_proto_string =
         std::get<std::string>(target_config_it->second);
     stream_executor::GpuTargetConfigProto target_config_proto;
-    if (!tsl::protobuf::TextFormat::ParseFromString(target_config_proto_string,
-                                                    &target_config_proto)) {
+    if (!google::protobuf::TextFormat::ParseFromString(target_config_proto_string,
+                                             &target_config_proto)) {
       return absl::FailedPreconditionError(
           "Failed to parse GpuTargetConfigProto "
           "from the 'target_config' parameter.");
@@ -311,8 +319,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       sizes.num_hosts_per_partition, sizes.num_devices_per_host);
 
   std::string target_config_attr;
-  if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
-                                                &target_config_attr)) {
+  if (!google::protobuf::TextFormat::PrintToString(target_config_proto,
+                                         &target_config_attr)) {
     return new PJRT_Error{
         absl::FailedPreconditionError("Cannot serialize target_config_proto")};
   }

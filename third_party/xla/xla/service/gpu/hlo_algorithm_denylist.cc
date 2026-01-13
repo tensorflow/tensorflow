@@ -185,7 +185,7 @@ static std::string HloStringWithGpuBackendConfig(const std::string& hlo,
 absl::Status ParseTextFormatDenyList(DenyListMapType& list,
                                      absl::string_view denylist_text) {
   AlgorithmDenylist proto;
-  if (!tsl::protobuf::TextFormat::ParseFromString(denylist_text, &proto)) {
+  if (!google::protobuf::TextFormat::ParseFromString(denylist_text, &proto)) {
     return absl::InvalidArgumentError("Failed to parse denylist text proto");
   }
 
@@ -273,7 +273,7 @@ absl::StatusOr<std::string> GenerateDenyListEntry(
   denylisted_algo->set_tensor_ops(algo.tensor_ops_enabled());
 
   std::string denylist_string;
-  tsl::protobuf::TextFormat::PrintToString(list, &denylist_string);
+  google::protobuf::TextFormat::PrintToString(list, &denylist_string);
   return denylist_string;
 }
 

@@ -357,9 +357,6 @@ tf_cc_test(
     ],
     deps = [
         ":c_plugin_coordination_service_agent",
-        "//tensorflow/c:tf_buffer",
-        "//tensorflow/c:tf_tensor",
-        "//tensorflow/c/experimental/next_pluggable_device:c_api",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -372,8 +369,6 @@ tf_cc_test(
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:env_impl",
-        "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:test_main",
         "@local_xla//xla/tsl/protobuf:coordination_config_proto_cc",

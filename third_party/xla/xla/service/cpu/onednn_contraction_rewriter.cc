@@ -14,13 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <type_traits>
+#include <utility>
 #include <vector>
+
+#include "xla/tsl/platform/env.h"
 
 #define EIGEN_USE_THREADS
 
@@ -1450,7 +1454,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     }
   }
 
-  absl::StatusOr<tsl::protobuf::RepeatedField<uint64_t>*> GetOperandTensor(
+  absl::StatusOr<google::protobuf::RepeatedField<uint64_t>*> GetOperandTensor(
       int operand_idx, absl::StatusOr<BackendConfig>* backend_config) {
     if (operand_idx > 1) {
       return absl::CancelledError("Operand index must be either 0 or 1");

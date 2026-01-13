@@ -12,17 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/tsl/lib/strings/proto_serialization.h"
 
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/string_view.h"
-#include "xla/tsl/lib/gtl/inlined_vector.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
 #include "tsl/platform/hash.h"
 
 namespace tsl {
@@ -31,10 +32,10 @@ namespace {
 // Helper for deterministic serialization.
 class DeterministicSerializer {
  public:
-  explicit DeterministicSerializer(const protobuf::MessageLite& msg)
+  explicit DeterministicSerializer(const google::protobuf::MessageLite& msg)
       : DeterministicSerializer(msg, msg.ByteSizeLong()) {}
 
-  DeterministicSerializer(const protobuf::MessageLite& msg, size_t size)
+  DeterministicSerializer(const google::protobuf::MessageLite& msg, size_t size)
       : size_(size) {
     char* ptr = space_;
     if (size_ > sizeof(space_)) {
@@ -58,7 +59,7 @@ class DeterministicSerializer {
 };
 }  // namespace
 
-bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
+bool SerializeToStringDeterministic(const google::protobuf::MessageLite& msg,
                                     std::string* result) {
   const size_t size = msg.ByteSizeLong();
   if (size > static_cast<size_t>(INT_MAX)) {
@@ -69,7 +70,7 @@ bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                         result->size());
 }
 
-bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
+bool SerializeToBufferDeterministic(const google::protobuf::MessageLite& msg,
                                     char* buffer, size_t size) {
   if (msg.ByteSizeLong() != size) {
     return false;
@@ -77,16 +78,16 @@ bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
   if (size > static_cast<size_t>(INT_MAX)) {
     return false;
   }
-  protobuf::io::ArrayOutputStream array_stream(buffer, size);
-  protobuf::io::CodedOutputStream output_stream(&array_stream);
+  google::protobuf::io::ArrayOutputStream array_stream(buffer, size);
+  google::protobuf::io::CodedOutputStream output_stream(&array_stream);
   output_stream.SetSerializationDeterministic(true);
   msg.SerializeWithCachedSizes(&output_stream);
   return !output_stream.HadError() &&
          size == static_cast<size_t>(output_stream.ByteCount());
 }
 
-bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
-                              const protobuf::MessageLite& y) {
+bool AreSerializedProtosEqual(const google::protobuf::MessageLite& x,
+                              const google::protobuf::MessageLite& y) {
   const size_t size = x.ByteSizeLong();
   if (size != y.ByteSizeLong()) return false;
   if (size == 0) return true;
@@ -95,13 +96,13 @@ bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
   return memcmp(x_serialized.data(), y_serialized.data(), size) == 0;
 }
 
-uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto,
+uint64_t DeterministicProtoHash64(const google::protobuf::MessageLite& proto,
                                   uint64_t seed) {
   DeterministicSerializer serialized(proto);
   return Hash64(serialized.data(), serialized.size(), seed);
 }
 
-uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto) {
+uint64_t DeterministicProtoHash64(const google::protobuf::MessageLite& proto) {
   DeterministicSerializer serialized(proto);
   return Hash64(serialized.data(), serialized.size());
 }

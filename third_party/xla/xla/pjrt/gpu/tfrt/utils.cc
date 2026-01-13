@@ -287,7 +287,7 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
   if (target_config.has_value()) {
     std::string attr;
-    if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
+    if (google::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
       attrs["target_config"] = std::move(attr);
     }
   }

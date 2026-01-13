@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 
@@ -72,8 +71,8 @@ std::vector<xla::PrimitiveType> AllXlaDataTypes() {
   std::vector<xla::PrimitiveType> xla_data_types;
   std::vector<xla::PrimitiveType> to_filter_out = {
       PRIMITIVE_TYPE_INVALID, TUPLE, BUFFER, OPAQUE_TYPE, TOKEN};
-  const tsl::protobuf::EnumDescriptor* xla_type_descriptor =
-      tsl::protobuf::GetEnumDescriptor<xla::PrimitiveType>();
+  const google::protobuf::EnumDescriptor* xla_type_descriptor =
+      google::protobuf::GetEnumDescriptor<xla::PrimitiveType>();
   for (int enum_ix = 0; enum_ix < xla_type_descriptor->value_count();
        ++enum_ix) {
     xla::PrimitiveType xla_type = static_cast<xla::PrimitiveType>(

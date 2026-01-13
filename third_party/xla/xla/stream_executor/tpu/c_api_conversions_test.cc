@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace ApiConverter {
 
@@ -272,9 +272,9 @@ TEST(XlaHloModuleConfig, ToAndFromC) {
   xla::HloModuleConfigProto in_config_proto = in_config.ToProto();
   xla::HloModuleConfigProto out_config_proto = out_config.ToProto();
 
-  tsl::protobuf::util::MessageDifferencer diff;
+  google::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(
-      tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
   EXPECT_TRUE(diff.Equals(in_config_proto, out_config_proto));
 
   Destroy(&c_config);
@@ -296,9 +296,9 @@ TEST(XlaHloModule, ToAndFromC) {
   xla::HloModuleProtoWithConfig out_module_proto =
       out_module.ToProtoWithConfig();
 
-  tsl::protobuf::util::MessageDifferencer diff;
+  google::protobuf::util::MessageDifferencer diff;
   diff.set_message_field_comparison(
-      tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+      google::protobuf::util::MessageDifferencer::EQUIVALENT);
   const auto* ignore_unique_id =
       xla::HloModuleProto::GetDescriptor()->FindFieldByName("id");
   diff.IgnoreField(ignore_unique_id);

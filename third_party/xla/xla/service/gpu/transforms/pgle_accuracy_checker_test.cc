@@ -32,15 +32,14 @@ limitations under the License.
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla::gpu {
 namespace {
 
 using PGLEAccuracyCheckerTest = HloHardwareIndependentTestBase;
+using ::google::protobuf::TextFormat;
 using ::tensorflow::profiler::ProfiledInstructionsProto;
-using ::tsl::protobuf::TextFormat;
 
 // Constructs PGLE estimator for a given `profile`.
 std::unique_ptr<ProfileGuidedLatencyEstimator> GetProfileGuidedLatencyEstimator(

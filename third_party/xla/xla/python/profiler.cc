@@ -28,6 +28,7 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "google/protobuf/text_format.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
@@ -139,7 +139,7 @@ static std::string GetFdoProfile(const std::string& xspace,
       {xspace_proto}, &fdo_profile));
   if (as_textproto) {
     std::string textproto;
-    if (tsl::protobuf::TextFormat::PrintToString(fdo_profile, &textproto)) {
+    if (google::protobuf::TextFormat::PrintToString(fdo_profile, &textproto)) {
       return textproto;
     }
     throw xla::XlaRuntimeError("Unable to serialize format to textproto");

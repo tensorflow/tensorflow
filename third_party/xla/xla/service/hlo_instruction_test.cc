@@ -31,12 +31,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -56,8 +58,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -3197,7 +3197,7 @@ TEST_F(HloInstructionTest, RaggedDotHasPrecisionConfig) {
 
 TEST_F(HloInstructionTest, ValidResultAccuracy) {
   ResultAccuracy result_accuracy_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         tolerance { rtol: 0.4 atol: 0.0 ulps: 1 }
       )pb",
@@ -3213,7 +3213,7 @@ TEST_F(HloInstructionTest, ValidResultAccuracy) {
   EXPECT_THAT(exp->result_accuracy(), EqualsProto(result_accuracy_proto));
 
   // mode: HIGHEST
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         mode: HIGHEST
       )pb",
@@ -3225,7 +3225,7 @@ TEST_F(HloInstructionTest, ValidResultAccuracy) {
 
 TEST_F(HloInstructionTest, InvalidResultAccuracy) {
   ResultAccuracy result_accuracy_proto;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         tolerance { rtol: -0.4 }
       )pb",

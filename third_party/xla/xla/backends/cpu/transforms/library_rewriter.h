@@ -34,12 +34,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "tsl/platform/protobuf.h"
 
 #if XLA_ONEDNN_USE_GRAPH_API
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #endif  // XLA_ONEDNN_USE_GRAPH_API
-
 
 namespace xla::cpu {
 
@@ -52,8 +50,8 @@ enum class FusionDirection {
 struct LibraryRewriterOptions {
   bool use_onednn = false;
   bool use_ynnpack = false;
-  const tsl::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
-  const tsl::protobuf::RepeatedField<int>* ynn_fusion_types = nullptr;
+  const google::protobuf::RepeatedField<int>* onednn_fusion_types = nullptr;
+  const google::protobuf::RepeatedField<int>* ynn_fusion_types = nullptr;
 };
 
 // Rewrites suitable Dot operations into library fusions.

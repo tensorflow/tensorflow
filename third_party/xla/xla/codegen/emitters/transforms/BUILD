@@ -132,7 +132,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorToLLVM",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -225,7 +224,6 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
         "@llvm-project//mlir:VectorUtils",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

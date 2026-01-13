@@ -48,6 +48,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -1394,8 +1396,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(!proto.name().empty());
   instruction->SetAndSanitizeName(proto.name());
-  if (!tsl::protobuf::util::MessageDifferencer::Equals(proto.metadata(),
-                                                       *kEmptyMetadata)) {
+  if (!google::protobuf::util::MessageDifferencer::Equals(proto.metadata(),
+                                                *kEmptyMetadata)) {
     instruction->mutable_metadata() = proto.metadata();
   }
   instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
@@ -5445,8 +5447,8 @@ absl::StatusOr<T> StringToEnum(absl::string_view value_name, F enum_to_string,
   static const absl::NoDestructor<absl::flat_hash_map<std::string, T>> map(
       [enum_to_string] {
         absl::flat_hash_map<std::string, T> map;
-        const tsl::protobuf::EnumDescriptor* enum_descriptor =
-            tsl::protobuf::GetEnumDescriptor<T>();
+        const google::protobuf::EnumDescriptor* enum_descriptor =
+            google::protobuf::GetEnumDescriptor<T>();
         for (int i = 0; i < enum_descriptor->value_count(); ++i) {
           T value = static_cast<T>(enum_descriptor->value(i)->number());
           map[enum_to_string(value)] = value;

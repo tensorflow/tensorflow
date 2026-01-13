@@ -62,8 +62,8 @@ namespace {
 static const DeviceHloInstructionProfiles& Profile() {
   static const DeviceHloInstructionProfiles* profile = []() {
     auto* profile = new DeviceHloInstructionProfiles();
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable,
-                                                     profile))
+    CHECK(
+        google::protobuf::TextFormat::ParseFromString(kDefaultCollectivePTable, profile))
         << "Cannot parse a default profile.";
     return profile;
   }();

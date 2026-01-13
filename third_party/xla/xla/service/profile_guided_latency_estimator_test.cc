@@ -25,24 +25,27 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 
 namespace {
-
 
 int GetIndex(absl::Span<HloInstruction* const> instruction_sequence,
              absl::string_view hlo_name) {
@@ -140,7 +143,7 @@ ENTRY entry {
     )pb";
   }
   tensorflow::profiler::ProfiledInstructionsProto profiled_instructions_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       profiled_instructions_text_proto, &profiled_instructions_proto));
 
   auto sched_config = GetDefaultSchedConfig();
@@ -201,7 +204,7 @@ ENTRY entry {
   )pb";
   ;
   tensorflow::profiler::ProfiledInstructionsProto profiled_instructions_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       profiled_instructions_text_proto, &profiled_instructions_proto));
 
   auto sched_config = GetDefaultSchedConfig();
@@ -245,7 +248,7 @@ ENTRY entry {
   )pb";
   ;
   tensorflow::profiler::ProfiledInstructionsProto profiled_instructions_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       profiled_instructions_text_proto, &profiled_instructions_proto));
 
   auto sched_config = GetDefaultSchedConfig();
@@ -291,8 +294,7 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
-  ASSERT_TRUE(
-      tsl::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kFdoProfile, &fdo_profile));
 
   auto sched_config = GetDefaultSchedConfig();
   auto latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(

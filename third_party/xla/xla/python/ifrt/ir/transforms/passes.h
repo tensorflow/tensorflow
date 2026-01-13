@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -91,13 +90,12 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsToVhloPass(
-    tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
+    google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
     std::string vhlo_target_version);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsFromVhloPass(
-    const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
-        atom_programs);
+    const google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>& atom_programs);
 
 void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
                                  mlir::TypeConverter* converter,

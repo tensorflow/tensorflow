@@ -20,7 +20,6 @@ limitations under the License.
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "google/protobuf/text_format.h"
 #include "xla/python/profiler/profile_data_lib.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace {
@@ -78,19 +77,17 @@ NB_MODULE(profile_data, m) {
       .def_static("from_serialized_xspace",
                   &ProfileData::from_serialized_xspace,
                   nb::arg("serialized_xspace"))
-      .def_static("from_text_proto",
-                  [](const std::string& text_proto) {
-                    auto xspace =
-                        std::make_shared<tensorflow::profiler::XSpace>();
-                    tsl::protobuf::TextFormat::ParseFromString(text_proto,
-                                                               xspace.get());
-                    return tensorflow::profiler::python::ProfileData(xspace);
-                  })
+      .def_static(
+          "from_text_proto",
+          [](const std::string& text_proto) {
+            auto xspace = std::make_shared<tensorflow::profiler::XSpace>();
+            google::protobuf::TextFormat::ParseFromString(text_proto, xspace.get());
+            return tensorflow::profiler::python::ProfileData(xspace);
+          })
       .def_static("text_proto_to_serialized_xspace",
                   [](const std::string& text_proto) {
                     tensorflow::profiler::XSpace xspace;
-                    tsl::protobuf::TextFormat::ParseFromString(text_proto,
-                                                               &xspace);
+                    google::protobuf::TextFormat::ParseFromString(text_proto, &xspace);
                     const auto serialized = xspace.SerializeAsString();
                     return nb::bytes(serialized.data(), serialized.size());
                   })

@@ -42,7 +42,7 @@ void RealMain(const std::string& mode, const std::string& path) {
   } else if (mode == "bin2txt") {
     CHECK_OK(tsl::ReadBinaryProto(env, path, &module));
     std::string out;
-    tsl::protobuf::TextFormat::PrintToString(module, &out);
+    google::protobuf::TextFormat::PrintToString(module, &out);
     fprintf(stdout, "%s", out.c_str());
   } else {
     LOG(QFATAL) << "unknown mode for computation conversion: " << mode;

@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -58,11 +58,11 @@ HloUnoptimizedSnapshot CreateSnapshot() {
 absl::StatusOr<HloUnoptimizedSnapshot> SerializeAndDeserialize(
     const HloUnoptimizedSnapshot& snapshot) {
   std::string serialized_snapshot;
-  tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
+  google::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
   TF_RETURN_IF_ERROR(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
-  tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
-                                                   serialized_snapshot.size());
+  google::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
+                                            serialized_snapshot.size());
   return DeserializeHloUnoptimizedSnapshot(&input_stream);
 }
 
@@ -98,14 +98,14 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeBrokenSnapshot) {
   HloUnoptimizedSnapshot snapshot = CreateSnapshot();
 
   std::string serialized_snapshot;
-  tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
+  google::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
   TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   serialized_snapshot[0] = '~';
 
   HloUnoptimizedSnapshot deserialized_snapshot;
-  tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
-                                                   serialized_snapshot.size());
+  google::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
+                                            serialized_snapshot.size());
   auto status = DeserializeHloUnoptimizedSnapshot(&input_stream).status();
   EXPECT_THAT(status.message(), "Failed to deserialize metadata");
 }
@@ -114,13 +114,13 @@ TEST(LargeHloSnapshotSerializationTest, SerializeAndDeserializeBrokenLiteral) {
   HloUnoptimizedSnapshot snapshot = CreateSnapshot();
 
   std::string serialized_snapshot;
-  tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
+  google::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
   TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   serialized_snapshot.resize(serialized_snapshot.size() - 3);
   HloUnoptimizedSnapshot deserialized_snapshot;
-  tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
-                                                   serialized_snapshot.size());
+  google::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
+                                            serialized_snapshot.size());
   auto status = DeserializeHloUnoptimizedSnapshot(&input_stream).status();
   EXPECT_THAT(status.message(),
               HasSubstr("Failed to deserialize argument with"));
@@ -132,12 +132,12 @@ TEST(LargeHloSnapshotSerializationTest,
   snapshot.set_version(1);
 
   std::string serialized_snapshot;
-  tsl::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
+  google::protobuf::io::StringOutputStream output_stream(&serialized_snapshot);
   TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   HloUnoptimizedSnapshot deserialized_snapshot;
-  tsl::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
-                                                   serialized_snapshot.size());
+  google::protobuf::io::ArrayInputStream input_stream(serialized_snapshot.data(),
+                                            serialized_snapshot.size());
   auto status = DeserializeHloUnoptimizedSnapshot(&input_stream).status();
   EXPECT_THAT(status.message(), HasSubstr("Unsupported snapshot version"));
 }

@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -203,7 +202,7 @@ absl::Status FileBasedAutotunerCache::Load() {
     }
 
     AutotunerCacheEntry entry;
-    if (!tsl::protobuf::TextFormat::ParseFromString(proto_string, &entry)) {
+    if (!google::protobuf::TextFormat::ParseFromString(proto_string, &entry)) {
       LOG(ERROR) << "Failed to parse autotuner cache file: " << file_path;
       continue;
     }
@@ -228,7 +227,7 @@ absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
   VLOG(1) << "Saving autotuner entry to: " << file_path;
 
   std::string proto_string;
-  if (!tsl::protobuf::TextFormat::PrintToString(entry, &proto_string)) {
+  if (!google::protobuf::TextFormat::PrintToString(entry, &proto_string)) {
     return absl::InternalError("Failed to serialize autotuner entry.");
   }
 

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/io/zero_copy_stream.h"
 #include "xla/service/hlo.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -34,12 +34,12 @@ namespace xla {
 // limitation.
 absl::Status SerializeHloUnoptimizedSnapshot(
     const HloUnoptimizedSnapshot& snapshot,
-    tsl::protobuf::io::ZeroCopyOutputStream* zero_copy_output_stream);
+    google::protobuf::io::ZeroCopyOutputStream* zero_copy_output_stream);
 
 // Deserialization of the HLO unoptimized snapshot. The snapshot is expected to
 // be in the format produced by `SerializeHloUnoptimizedSnapshot`.
 absl::StatusOr<HloUnoptimizedSnapshot> DeserializeHloUnoptimizedSnapshot(
-    tsl::protobuf::io::ZeroCopyInputStream* zero_copy_input_stream);
+    google::protobuf::io::ZeroCopyInputStream* zero_copy_input_stream);
 }  // namespace xla
 
 #endif  // XLA_RUNTIME_LARGE_HLO_SNAPSHOT_SERIALIZATION_SERIALIZATION_H_

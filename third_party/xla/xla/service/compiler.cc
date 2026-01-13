@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/stream_executor/platform.h"
@@ -36,14 +37,13 @@ namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
-std::vector<std::unique_ptr<tsl::protobuf::Message>>
-Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
-                                se::StreamExecutor* executor) const {
+std::vector<std::unique_ptr<google::protobuf::Message>> Compiler::ComputeBackendConfigs(
+    const HloInstruction& hlo, se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return {};
 }
 
-std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
+std::unique_ptr<google::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
     const HloInstruction& hlo, se::StreamExecutor* executor) const {
   CHECK(executor != nullptr);
   return nullptr;

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -64,8 +65,8 @@ namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
-    std::unique_ptr<tsl::protobuf::Message> msg) {
+std::unique_ptr<google::protobuf::Message> ProcessNewEnv(
+    std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
       tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   if (!env) {

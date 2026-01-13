@@ -47,7 +47,7 @@ class RPCState : public GrpcClientCQTag {
  public:
   RPCState(
       ::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
-      const ::grpc::string& method, const protobuf::Message& request,
+      const ::grpc::string& method, const google::protobuf::Message& request,
       Response* response, StatusCallback done, CallOptions* call_opts,
       thread::ThreadPool* threadpool, int32_t max_retries = 0,
       bool fail_fast = true, const std::string* target = nullptr,

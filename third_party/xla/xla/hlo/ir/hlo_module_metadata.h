@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_MODULE_METADATA_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -29,11 +28,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -108,7 +104,7 @@ class HloModuleMetadata {
   void add_partitioned_module_id(int64_t id) {
     module_metadata_.add_partitioned_module_ids(id);
   }
-  absl::Status set_custom_metadata(const ::tsl::protobuf::Message& message);
+  absl::Status set_custom_metadata(const ::google::protobuf::Message& message);
   // Adds a (key, value) pair metric if none was already set. Otherwise, it
   // updates the existing value.
   absl::Status set_key_value_metric(const std::string& key, int64_t value);

@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
+using ::google::protobuf::TextFormat;
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Eq;
@@ -54,7 +54,6 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EquivToProto;
 using ::tsl::proto_testing::Partially;
-using ::tsl::protobuf::TextFormat;
 
 namespace xla {
 namespace ifrt {

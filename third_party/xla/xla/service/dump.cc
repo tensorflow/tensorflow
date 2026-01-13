@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "google/protobuf/descriptor.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -616,7 +617,7 @@ static void DumpHloModuleMetadata(
   std::string filename = absl::StrFormat("module_%04d.metadata.textproto",
                                          metadata.canonical_module_id());
   std::string content;
-  if (tsl::protobuf::TextFormat::PrintToString(metadata, &content)) {
+  if (google::protobuf::TextFormat::PrintToString(metadata, &content)) {
     DumpToFileInDirImpl(filename, content, opts);
   } else {
     LOG(ERROR) << "Failed to convert HloModuleMetadataProto to text.";
@@ -741,11 +742,11 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
                               opts);
 }
 
-void DumpProtobufToFile(const tsl::protobuf::Message& proto,
+void DumpProtobufToFile(const google::protobuf::Message& proto,
                         const DebugOptions& debug_options,
                         absl::string_view filename,
                         absl::AnyInvocable<absl::StatusOr<std::string>(
-                            tsl::Env*, const tsl::protobuf::Message&)>
+                            tsl::Env*, const google::protobuf::Message&)>
                             text_formatter) {
   CanonicalDebugOptions opts(debug_options);
   tsl::Env* env = tsl::Env::Default();
@@ -780,22 +781,21 @@ void DumpProtobufToFile(const tsl::protobuf::Message& proto,
   }
 }
 
-void DumpPerModuleProtobufToFile(const HloModule& module,
-                                 const tsl::protobuf::Message& proto,
-                                 const DebugOptions& debug_options,
-                                 absl::string_view name,
-                                 absl::AnyInvocable<absl::StatusOr<std::string>(
-                                     tsl::Env*, const tsl::protobuf::Message&)>
-                                     text_formatter) {
+void DumpPerModuleProtobufToFile(
+    const HloModule& module, const google::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<absl::StatusOr<std::string>(tsl::Env*,
+                                                   const google::protobuf::Message&)>
+        text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
 void DumpPerExecutionProtobufToFile(
-    const HloModule& module, const tsl::protobuf::Message& proto,
+    const HloModule& module, const google::protobuf::Message& proto,
     const DebugOptions& debug_options, absl::string_view name,
-    absl::AnyInvocable<
-        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+    absl::AnyInvocable<absl::StatusOr<std::string>(tsl::Env*,
+                                                   const google::protobuf::Message&)>
         text_formatter) {
   int64_t execution_count = 0;
   {
@@ -810,40 +810,40 @@ void DumpPerExecutionProtobufToFile(
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
-std::string GetRepeatedValueAsString(
-    const tsl::protobuf::Reflection* reflection,
-    const DebugOptions& debug_options,
-    const tsl::protobuf::FieldDescriptor* field, int index) {
+std::string GetRepeatedValueAsString(const google::protobuf::Reflection* reflection,
+                                     const DebugOptions& debug_options,
+                                     const google::protobuf::FieldDescriptor* field,
+                                     int index) {
   switch (field->type()) {
-    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+    case google::protobuf::FieldDescriptor::TYPE_INT32:
       return std::to_string(
           reflection->GetRepeatedInt32(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+    case google::protobuf::FieldDescriptor::TYPE_INT64:
       return std::to_string(
           reflection->GetRepeatedInt64(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+    case google::protobuf::FieldDescriptor::TYPE_UINT32:
       return std::to_string(
           reflection->GetRepeatedUInt32(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+    case google::protobuf::FieldDescriptor::TYPE_UINT64:
       return std::to_string(
           reflection->GetRepeatedUInt64(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+    case google::protobuf::FieldDescriptor::TYPE_DOUBLE:
       return std::to_string(
           reflection->GetRepeatedDouble(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+    case google::protobuf::FieldDescriptor::TYPE_FLOAT:
       return std::to_string(
           reflection->GetRepeatedFloat(debug_options, field, index));
-    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+    case google::protobuf::FieldDescriptor::TYPE_BOOL:
       return reflection->GetRepeatedBool(debug_options, field, index) ? "true"
                                                                       : "false";
-    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+    case google::protobuf::FieldDescriptor::TYPE_ENUM:
       return std::string(
           reflection->GetRepeatedEnum(debug_options, field, index)->name());
-    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+    case google::protobuf::FieldDescriptor::TYPE_STRING:
       return "\"" + reflection->GetRepeatedString(debug_options, field, index) +
              "\"";
-    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
-      tsl::protobuf::TextFormat::Printer tsl_printer;
+    case google::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      google::protobuf::TextFormat::Printer tsl_printer;
       tsl_printer.SetInitialIndentLevel(1);
       std::string result;
       tsl_printer.PrintToString(
@@ -855,31 +855,31 @@ std::string GetRepeatedValueAsString(
   }
 }
 
-std::string GetValueAsString(const tsl::protobuf::Reflection* reflection,
+std::string GetValueAsString(const google::protobuf::Reflection* reflection,
                              const DebugOptions& debug_options,
-                             const tsl::protobuf::FieldDescriptor* field) {
+                             const google::protobuf::FieldDescriptor* field) {
   // Based on the field type, get the value and convert it to a string
   switch (field->type()) {
-    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+    case google::protobuf::FieldDescriptor::TYPE_INT32:
       return std::to_string(reflection->GetInt32(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+    case google::protobuf::FieldDescriptor::TYPE_INT64:
       return std::to_string(reflection->GetInt64(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+    case google::protobuf::FieldDescriptor::TYPE_UINT32:
       return std::to_string(reflection->GetUInt32(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+    case google::protobuf::FieldDescriptor::TYPE_UINT64:
       return std::to_string(reflection->GetUInt64(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+    case google::protobuf::FieldDescriptor::TYPE_DOUBLE:
       return std::to_string(reflection->GetDouble(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+    case google::protobuf::FieldDescriptor::TYPE_FLOAT:
       return std::to_string(reflection->GetFloat(debug_options, field));
-    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+    case google::protobuf::FieldDescriptor::TYPE_BOOL:
       return reflection->GetBool(debug_options, field) ? "true" : "false";
-    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+    case google::protobuf::FieldDescriptor::TYPE_ENUM:
       return std::string(reflection->GetEnum(debug_options, field)->name());
-    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+    case google::protobuf::FieldDescriptor::TYPE_STRING:
       return "\"" + reflection->GetString(debug_options, field) + "\"";
-    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
-      tsl::protobuf::TextFormat::Printer tsl_printer;
+    case google::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      google::protobuf::TextFormat::Printer tsl_printer;
       tsl_printer.SetSingleLineMode(false);
       std::string result;
       tsl_printer.PrintToString(reflection->GetMessage(debug_options, field),
@@ -897,12 +897,12 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
   std::string non_default_options;
 
   // Use protobuf reflection to compare fields
-  const tsl::protobuf::Descriptor* descriptor = debug_options.GetDescriptor();
-  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+  const google::protobuf::Descriptor* descriptor = debug_options.GetDescriptor();
+  const google::protobuf::Reflection* reflection = debug_options.GetReflection();
 
   // Iterate through all fields
   for (int i = 0; i < descriptor->field_count(); i++) {
-    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    const google::protobuf::FieldDescriptor* field = descriptor->field(i);
 
     if (field->is_repeated()) {
       // Handle repeated fields by comparing the values
@@ -1008,8 +1008,8 @@ void DumpHloConfigIfEnabled(const HloModule& module) {
     return;
   }
   std::string config_str;
-  if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
-                                               &config_str)) {
+  if (google::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                        &config_str)) {
     std::string filename = FilenameFor(module, "", "config.pbtxt");
     DumpToFileInDirImpl(filename, config_str, opts);
   } else {
@@ -1194,9 +1194,7 @@ void DumpHloUnoptimizedSnapshotIfEnabled(
       return;
     }
     tsl::WritableFileCopyingOutputStream output_stream(file.get());
-    // TODO - b/457711066: Add missing include once capybara can re-write the
-    // dependency correctly.
-    tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
+    google::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output_stream);
     if (!SerializeHloUnoptimizedSnapshot(hlo_snapshot, &adaptor).ok()) {
       LOG(ERROR) << "Failed to serialize HLO unoptimized snapshot proto";
     }
@@ -1223,7 +1221,7 @@ void DumpHloModuleMetadataIfEnabled(HloModule* module) {
   }
 }
 
-absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
+absl::Status DumpProtoToDirectory(const google::protobuf::Message& message,
                                   const std::string& directory,
                                   const std::string& file_name,
                                   std::string* full_path) {

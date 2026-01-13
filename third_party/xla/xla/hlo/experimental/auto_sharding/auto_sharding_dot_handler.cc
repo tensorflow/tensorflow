@@ -53,8 +53,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace spmd {
@@ -242,13 +242,12 @@ class DotHandler : public HandlerBase {
   // Dimension information
   bool is_dot_;
   int64_t space_base_dim_;
-  tsl::protobuf::RepeatedField<int64_t> lhs_space_dims_, rhs_space_dims_;
-  tsl::protobuf::RepeatedField<int64_t> out_lhs_space_dims_,
-      out_rhs_space_dims_;
-  tsl::protobuf::RepeatedField<int64_t> lhs_con_dims_;
-  tsl::protobuf::RepeatedField<int64_t> rhs_con_dims_;
-  tsl::protobuf::RepeatedField<int64_t> lhs_batch_dims_;
-  tsl::protobuf::RepeatedField<int64_t> rhs_batch_dims_;
+  google::protobuf::RepeatedField<int64_t> lhs_space_dims_, rhs_space_dims_;
+  google::protobuf::RepeatedField<int64_t> out_lhs_space_dims_, out_rhs_space_dims_;
+  google::protobuf::RepeatedField<int64_t> lhs_con_dims_;
+  google::protobuf::RepeatedField<int64_t> rhs_con_dims_;
+  google::protobuf::RepeatedField<int64_t> lhs_batch_dims_;
+  google::protobuf::RepeatedField<int64_t> rhs_batch_dims_;
   std::vector<int64_t> out_batch_dims_;
 };
 

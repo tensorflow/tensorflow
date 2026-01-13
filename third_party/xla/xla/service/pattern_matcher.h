@@ -40,11 +40,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "absl/utility/utility.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -2049,8 +2051,7 @@ class HloInstructionPatternConvDnumsImpl {
 
     const ConvolutionDimensionNumbers& actual_dnums =
         inst->convolution_dimension_numbers();
-    if (!tsl::protobuf::util::MessageDifferencer::Equals(dnums_,
-                                                         actual_dnums)) {
+    if (!google::protobuf::util::MessageDifferencer::Equals(dnums_, actual_dnums)) {
       EXPLAIN << "convolution_dimension_numbers "
               << ConvolutionDimensionNumbersToString(actual_dnums)
               << " don't match expected "

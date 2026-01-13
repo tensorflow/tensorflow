@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"
 
 using ::testing::IsEmpty;
 
@@ -30,9 +29,9 @@ namespace {
 TEST(DebugOptions, AllFieldsHavePresence) {
   absl::flat_hash_set<std::string> fields_missing_presence;
 
-  const tsl::protobuf::Descriptor* debug_options = DebugOptions::descriptor();
+  const google::protobuf::Descriptor* debug_options = DebugOptions::descriptor();
   for (int i = 0; i < debug_options->field_count(); ++i) {
-    const tsl::protobuf::FieldDescriptor* field = debug_options->field(i);
+    const google::protobuf::FieldDescriptor* field = debug_options->field(i);
     // Repeated fields don't technically have presence (no has_foo) but
     // foo().empty() is just as good.
     if (!field->is_repeated() && !field->has_presence()) {

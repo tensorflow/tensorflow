@@ -211,7 +211,6 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:stringpiece",
     ],
 )
@@ -235,7 +234,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@curl",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:scanner",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
@@ -251,14 +249,13 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":curl_http_request",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
+        ":http_request",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:strcat",
     ],
 )
 

@@ -71,7 +71,7 @@ HloInstruction* CanonicalizeOperand(
     absl::Span<const int64_t> original_contracting_dims,
     absl::Span<const int64_t> canonical_batch_dims,
     const std::vector<bool>& canonical_batch_dynamic_dims,
-    tsl::protobuf::RepeatedField<int64_t>* canonical_contracting_dims,
+    google::protobuf::RepeatedField<int64_t>* canonical_contracting_dims,
     bool contracting_dim_as_most_minor) {
   const Shape& operand_shape = operand->shape();
   const int64_t rank = operand_shape.dimensions().size();

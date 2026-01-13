@@ -18,7 +18,7 @@ cc_library(
     name = "coded_stream_iterators",
     hdrs = ["coded_stream_iterators.h"],
     deps = [
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
     ],
 )
 
@@ -29,7 +29,7 @@ xla_cc_test(
         ":coded_stream_iterators",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
     ],
 )
 
@@ -47,7 +47,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//:delimited_message_util",
+        "@com_google_protobuf//src/google/protobuf/io",
     ],
 )
 
@@ -69,6 +70,6 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@com_google_protobuf//src/google/protobuf/io",
     ],
 )

@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
@@ -112,8 +111,8 @@ absl::StatusOr<FusionProcessDump> FusionProcessDump::LoadFromData(
     const std::string& data, absl::string_view format) {
   FusionProcessDumpProto fusion_process_dump_proto;
   if (format == "txt" || format == "pbtxt") {
-    if (!tsl::protobuf::TextFormat::ParseFromString(
-            data, &fusion_process_dump_proto)) {
+    if (!google::protobuf::TextFormat::ParseFromString(data,
+                                             &fusion_process_dump_proto)) {
       return InvalidArgument("Failed to parse input as HLO protobuf text");
     }
   } else if (format == "pb") {

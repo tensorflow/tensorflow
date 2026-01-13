@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -100,7 +100,7 @@ class HloModuleConfig {
   // Assigns the repeated ShardableValueUpdatePairProto field to the given
   // values in 'update_pairs'.
   static void AssignProtoShardableValueUpdatePairs(
-      tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>*
+      google::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>*
           proto_update_pairs,
       const std::vector<HloModuleConfig::ShardableValueUpdatePair>&
           update_pairs);
@@ -109,8 +109,7 @@ class HloModuleConfig {
   // in 'pairs'.
   static void AssignStructShardableValueUpdatePairs(
       HloModuleConfig& config,
-      const tsl::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>&
-          pairs);
+      const google::protobuf::RepeatedPtrField<ShardableValueUpdatePairProto>& pairs);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {

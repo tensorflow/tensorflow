@@ -1010,19 +1010,19 @@ OpSharding HloSharding::ToProto() const {
   if (tile_assignment_.iota_) {
     result.mutable_iota_reshape_dims()->Reserve(
         tile_assignment_.iota_->reshape_dims().size());
-    absl::c_copy(tile_assignment_.iota_->reshape_dims(),
-                 tsl::protobuf::RepeatedFieldBackInserter(
-                     result.mutable_iota_reshape_dims()));
+    absl::c_copy(
+        tile_assignment_.iota_->reshape_dims(),
+        google::protobuf::RepeatedFieldBackInserter(result.mutable_iota_reshape_dims()));
     result.mutable_iota_transpose_perm()->Reserve(
         tile_assignment_.iota_->transpose_perm().size());
     absl::c_copy(tile_assignment_.iota_->transpose_perm(),
-                 tsl::protobuf::RepeatedFieldBackInserter(
+                 google::protobuf::RepeatedFieldBackInserter(
                      result.mutable_iota_transpose_perm()));
   } else {
     result.mutable_tile_assignment_devices()->Reserve(
         tile_assignment_.num_elements());
     absl::c_copy(tile_assignment_.array(),
-                 tsl::protobuf::RepeatedFieldBackInserter(
+                 google::protobuf::RepeatedFieldBackInserter(
                      result.mutable_tile_assignment_devices()));
   }
 
@@ -1044,7 +1044,7 @@ OpSharding HloSharding::ToProto() const {
     }
     result.mutable_tile_assignment_dimensions()->Reserve(num_dimensions());
     absl::c_copy(dimensions(),
-                 tsl::protobuf::RepeatedFieldBackInserter(
+                 google::protobuf::RepeatedFieldBackInserter(
                      result.mutable_tile_assignment_dimensions()));
   }
 

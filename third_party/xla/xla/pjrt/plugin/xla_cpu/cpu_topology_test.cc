@@ -18,16 +18,16 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "google/protobuf/text_format.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
 TEST(CpuTopology, FromProto) {
   CpuTopologyProto msg;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         cpu_devices:
         [ { process_index: 2, local_hardware_id: 3 }]

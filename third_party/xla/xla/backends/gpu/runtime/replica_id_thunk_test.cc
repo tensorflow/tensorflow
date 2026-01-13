@@ -35,7 +35,7 @@ using ::tsl::proto_testing::EqualsProto;
 
 TEST(ReplicaIdThunkTest, ProtoRoundTrip) {
   ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  CHECK(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         thunk_info {
           profile_annotation: "replica_id_profile_annotation"
@@ -65,7 +65,7 @@ TEST(ReplicaIdThunkTest, ProtoRoundTrip) {
 
 TEST(PartitionIdThunkTest, ProtoRoundTrip) {
   ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  CHECK(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         thunk_info {
           profile_annotation: "partition_id_profile_annotation"

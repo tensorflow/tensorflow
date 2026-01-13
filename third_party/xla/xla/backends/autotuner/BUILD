@@ -38,6 +38,7 @@ cc_library(
         ":profiler",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:dump",
@@ -88,7 +89,6 @@ xla_cc_test(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/testing:temporary_directory",
         "//xla/tsl/util/proto:proto_matchers",
@@ -103,7 +103,6 @@ xla_cc_test(
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -165,7 +164,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:base64",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

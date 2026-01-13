@@ -35,9 +35,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/text_format.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/hlo/translate/register.h"
@@ -47,7 +50,6 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace {
 
@@ -81,14 +83,14 @@ llvm::cl::opt<bool> print_sugar(
     llvm::cl::init(true));
 
 // Error collector that simply ignores errors reported.
-class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
+class NoOpErrorCollector : public google::protobuf::io::ErrorCollector {
  public:
-  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+  void RecordError(int line, google::protobuf::io::ColumnNumber column,
                    absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
+  google::protobuf::TextFormat::Parser parser;
   NoOpErrorCollector collector;
   parser.RecordErrorsTo(&collector);
   return hlo_proto->ParseFromString(contents) ||

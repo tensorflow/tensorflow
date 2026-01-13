@@ -443,8 +443,8 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
         std::string autotune_results_str,
         ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                           &results));
+    EXPECT_TRUE(
+        google::protobuf::TextFormat::ParseFromString(autotune_results_str, &results));
   }
 
   // Overwrite results with an invalid textproto.
@@ -459,8 +459,8 @@ TEST_F(PersistedAutotuningTest, WriteResultsOnEachCompilation) {
         std::string autotune_results_str,
         ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
     AutotuneResults results;
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                           &results));
+    EXPECT_TRUE(
+        google::protobuf::TextFormat::ParseFromString(autotune_results_str, &results));
   }
 }
 
@@ -475,8 +475,8 @@ e {
   TF_ASSERT_OK_AND_ASSIGN(std::string autotune_results_str,
                           ReadNonEmptyFile(xla_gpu_dump_autotune_results_to_));
   AutotuneResults results;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                         &results));
+  EXPECT_TRUE(
+      google::protobuf::TextFormat::ParseFromString(autotune_results_str, &results));
   EXPECT_THAT(results.results(), Not(IsEmpty()));
 }
 

@@ -278,13 +278,14 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:json_util",
+        "@com_google_protobuf//:protobuf",
+        "@com_google_protobuf//:protobuf_lite",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringpiece",
     ],
 )
 

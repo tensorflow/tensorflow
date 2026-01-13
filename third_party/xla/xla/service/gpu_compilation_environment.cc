@@ -25,12 +25,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
-#include "xla/service/compilation_environments.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -87,10 +85,10 @@ absl::Status InitializeMissingFieldsFromXLAFlags(
   auto reflection = env.GetReflection();
   auto reflection_from_env = from_env.GetReflection();
   auto descriptor = GpuCompilationEnvironment::descriptor();
-  std::vector<const tsl::protobuf::FieldDescriptor*> missing_fields;
+  std::vector<const google::protobuf::FieldDescriptor*> missing_fields;
 
   for (int j = 0; j < descriptor->field_count(); ++j) {
-    const tsl::protobuf::FieldDescriptor* field = descriptor->field(j);
+    const google::protobuf::FieldDescriptor* field = descriptor->field(j);
     if (reflection->HasField(env, field) &&
         reflection_from_env->HasField(from_env, field)) {
       return InvalidArgument(
@@ -118,9 +116,9 @@ namespace {
 //
 // The implementation returns Empty env if one doesn't exist already.
 // NOLINTNEXTLINE
-absl::StatusOr<std::unique_ptr<tsl::protobuf::Message>>
+absl::StatusOr<std::unique_ptr<google::protobuf::Message>>
 ProcessNewGpuCompilationEnvironment(
-    std::unique_ptr<tsl::protobuf::Message> env) {  // NOLINT
+    std::unique_ptr<google::protobuf::Message> env) {  // NOLINT
   if (!env) {
     env = std::make_unique<GpuCompilationEnvironment>();
   }

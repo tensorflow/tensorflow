@@ -25,10 +25,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/types.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -46,7 +47,7 @@ namespace {
 
 // Returns the indices of all elements in array for which pred is true.
 template <typename T, typename Pred>
-std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
+std::vector<int> FindAll(const google::protobuf::RepeatedPtrField<T>& array,
                          const Pred& pred) {
   std::vector<int> indices;
   for (int i = 0; i < array.size(); ++i) {
@@ -58,7 +59,7 @@ std::vector<int> FindAll(const protobuf::RepeatedPtrField<T>& array,
 // Returns the index of the first element in array for which pred is true.
 // Returns -1 if no such element is found.
 template <typename T, typename Pred>
-int Find(const protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
+int Find(const google::protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
   std::vector<int> indices = FindAll(array, pred);
   if (indices.size() > 1) {
     LOG(WARNING) << "Found multiple " << T().GetTypeName()
@@ -68,7 +69,7 @@ int Find(const protobuf::RepeatedPtrField<T>& array, const Pred& pred) {
 }
 
 template <typename T>
-void RemoveAt(protobuf::RepeatedPtrField<T>* array,
+void RemoveAt(google::protobuf::RepeatedPtrField<T>* array,
               const std::vector<int>& indices) {
   if (indices.empty()) return;
   if (array->size() == indices.size()) {
@@ -90,13 +91,13 @@ void RemoveAt(protobuf::RepeatedPtrField<T>* array,
 
 // Removes the given element from array.
 template <typename T>
-void Remove(protobuf::RepeatedPtrField<T>* array, const T* elem) {
+void Remove(google::protobuf::RepeatedPtrField<T>* array, const T* elem) {
   int i = Find(*array, [elem](const T* e) { return elem == e; });
   RemoveAt(array, {i});
 }
 
 template <typename T, typename Pred>
-void RemoveIf(protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
+void RemoveIf(google::protobuf::RepeatedPtrField<T>* array, Pred&& pred) {
   std::vector<int> indices = FindAll(*array, pred);
   RemoveAt(array, indices);
 }

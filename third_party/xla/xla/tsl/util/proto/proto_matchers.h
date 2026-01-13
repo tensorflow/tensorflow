@@ -32,7 +32,7 @@ limitations under the License.
 // equivalent to the given proto (represented as a text string).
 //
 // The difference between EqualsProto and EquivToProto can be found in
-// `::tsl::protobuf::util::MessageDifferencer::MessageFieldComparison` (see
+// `::google::protobuf::util::MessageDifferencer::MessageFieldComparison` (see
 // `EQUAL` vs. `EQUIVALENT`).
 //
 // It also defines a few transformers for proto matchers:
@@ -68,9 +68,11 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/protobuf.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/util/message_differencer.h"
 
 namespace tsl {
 namespace proto_testing {
@@ -121,16 +123,14 @@ class UniquePtrWrapper {
 
 // Matcher ignore-checker that makes fields not in 'gold' ignored.
 class PartialIgnore final
-    : public ::tsl::protobuf::util::MessageDifferencer::IgnoreCriteria {
-  using SpecificField =
-      ::tsl::protobuf::util::MessageDifferencer::SpecificField;
+    : public ::google::protobuf::util::MessageDifferencer::IgnoreCriteria {
+  using SpecificField = ::google::protobuf::util::MessageDifferencer::SpecificField;
 
  public:
   PartialIgnore() = default;
 
-  bool IsIgnored(const ::tsl::protobuf::Message& gold,
-                 const ::tsl::protobuf::Message& test,
-                 const ::tsl::protobuf::FieldDescriptor* field,
+  bool IsIgnored(const ::google::protobuf::Message& gold, const ::google::protobuf::Message& test,
+                 const ::google::protobuf::FieldDescriptor* field,
                  const std ::vector<SpecificField>& specific_field) final {
     // Ignore any field fully absent from the gold proto.
     if (field->is_repeated()) {
@@ -139,8 +139,7 @@ class PartialIgnore final
     return !gold.GetReflection()->HasField(gold, field);
   }
 
-  bool IsUnknownFieldIgnored(const ::tsl::protobuf::Message&,
-                             const ::tsl::protobuf::Message&,
+  bool IsUnknownFieldIgnored(const ::google::protobuf::Message&, const ::google::protobuf::Message&,
                              const SpecificField&,
                              const std ::vector<SpecificField>&) final {
     return true;
@@ -153,7 +152,7 @@ class PartialIgnore final
 template <typename ExpectedProto>
 class ProtoMatcher {
  public:
-  static_assert(std::is_base_of_v<::tsl::protobuf::Message, ExpectedProto> ||
+  static_assert(std::is_base_of_v<::google::protobuf::Message, ExpectedProto> ||
                     std::is_same_v<ExpectedProto, std::string>,
                 "EqualsProto(p) requires p to be a proto or a string.");
   using is_gtest_matcher = void;
@@ -161,7 +160,7 @@ class ProtoMatcher {
 
   explicit ProtoMatcher(
       ExpectedProto expected_proto,
-      ::tsl::protobuf::util::MessageDifferencer::MessageFieldComparison cmp)
+      ::google::protobuf::util::MessageDifferencer::MessageFieldComparison cmp)
       : expected_proto_(std::move(expected_proto)), cmp_(cmp) {}
 
   // Matches a proto against the expected proto.
@@ -172,8 +171,8 @@ class ProtoMatcher {
     Actual expected;
     const Actual* expected_ptr = &expected;
     if constexpr (std::is_same_v<ExpectedProto, std::string>) {
-      const bool parsed = ::tsl::protobuf::TextFormat::ParseFromString(
-          expected_proto_, &expected);
+      const bool parsed =
+          ::google::protobuf::TextFormat::ParseFromString(expected_proto_, &expected);
       if (!parsed) {
         *listener << "Unable to parse \"" << expected_proto_ << "\" as "
                   << expected.GetTypeName();
@@ -183,7 +182,7 @@ class ProtoMatcher {
       expected_ptr = &expected_proto_;
     }
 
-    ::tsl::protobuf::util::MessageDifferencer diff;
+    ::google::protobuf::util::MessageDifferencer diff;
     diff.set_message_field_comparison(cmp_);
     diff.set_report_ignores(false);
     if (partial_) {
@@ -192,7 +191,7 @@ class ProtoMatcher {
     std::string str_report;
     if (unordered_repeated_fields_) {
       diff.set_repeated_field_comparison(
-          ::tsl::protobuf::util::MessageDifferencer::AS_SET);
+          ::google::protobuf::util::MessageDifferencer::AS_SET);
     }
     diff.ReportDifferencesToString(&str_report);
     bool same_message = diff.Compare(*expected_ptr, actual_proto);
@@ -205,8 +204,8 @@ class ProtoMatcher {
 
   // Describes this matcher to an ostream.
   void DescribeTo(std::ostream* os) const {
-    if (cmp_ == ::tsl::protobuf::util::MessageDifferencer::
-                    MessageFieldComparison::EQUAL) {
+    if (cmp_ ==
+        ::google::protobuf::util::MessageDifferencer::MessageFieldComparison::EQUAL) {
       *os << "equals ";
     } else {
       *os << "is equivalent to ";
@@ -216,8 +215,8 @@ class ProtoMatcher {
 
   // Describes the negation of this matcher to an ostream.
   void DescribeNegationTo(std::ostream* os) const {
-    if (cmp_ == ::tsl::protobuf::util::MessageDifferencer::
-                    MessageFieldComparison::EQUAL) {
+    if (cmp_ ==
+        ::google::protobuf::util::MessageDifferencer::MessageFieldComparison::EQUAL) {
       *os << "not equals ";
     } else {
       *os << "is not equivalent to ";
@@ -249,40 +248,39 @@ class ProtoMatcher {
   ExpectedProto expected_proto_;
   bool partial_ = false;
   bool unordered_repeated_fields_ = false;
-  const ::tsl::protobuf::util::MessageDifferencer::MessageFieldComparison cmp_;
+  const ::google::protobuf::util::MessageDifferencer::MessageFieldComparison cmp_;
 };
 
 }  // namespace internal
 
 // Returns a matcher that matches a proto that equals the given proto.
-template <typename Proto, typename = std::enable_if_t<std::is_base_of_v<
-                              ::tsl::protobuf::Message, Proto>>>
+template <typename Proto, typename = std::enable_if_t<
+                              std::is_base_of_v<::google::protobuf::Message, Proto>>>
 inline auto EqualsProto(Proto proto) {
   return internal::ProtoMatcher<Proto>(
-      std::move(proto), ::tsl::protobuf::util::MessageDifferencer::EQUAL);
+      std::move(proto), ::google::protobuf::util::MessageDifferencer::EQUAL);
 }
 
 // Returns a matcher that matches a proto that equals the given proto
 // (represented as a text string).
 inline auto EqualsProto(absl::string_view proto) {
   return internal::ProtoMatcher<std::string>(
-      std::string(proto), ::tsl::protobuf::util::MessageDifferencer::EQUAL);
+      std::string(proto), ::google::protobuf::util::MessageDifferencer::EQUAL);
 }
 
 // Returns a matcher that matches a proto that is equivalent to the given proto.
-template <typename Proto, typename = std::enable_if_t<std::is_base_of_v<
-                              ::tsl::protobuf::Message, Proto>>>
+template <typename Proto, typename = std::enable_if_t<
+                              std::is_base_of_v<::google::protobuf::Message, Proto>>>
 inline auto EquivToProto(Proto proto) {
   return internal::ProtoMatcher<Proto>(
-      std::move(proto), ::tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+      std::move(proto), ::google::protobuf::util::MessageDifferencer::EQUIVALENT);
 }
 
 // Returns a matcher that matches a proto that is equivalent to the given proto
 // (represented as a text string).
 inline auto EquivToProto(absl::string_view proto) {
   return internal::ProtoMatcher<std::string>(
-      std::string(proto),
-      ::tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+      std::string(proto), ::google::protobuf::util::MessageDifferencer::EQUIVALENT);
 }
 
 }  // namespace proto_testing

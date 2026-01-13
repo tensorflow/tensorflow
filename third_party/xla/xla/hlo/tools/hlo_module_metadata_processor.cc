@@ -58,7 +58,7 @@ struct HloPassMetadataFormatter {
 
 void ProcessMetadata(const std::string& serialized) {
   HloModuleMetadataProto metadata;
-  if (!tsl::protobuf::TextFormat::ParseFromString(serialized, &metadata)) {
+  if (!google::protobuf::TextFormat::ParseFromString(serialized, &metadata)) {
     LOG(FATAL) << "Unable to parse HloModuleMetadata";
   }
   absl::flat_hash_map<std::string, std::vector<HloPassMetadata>>

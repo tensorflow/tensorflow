@@ -253,7 +253,7 @@ LoadTritonConfigs() {
   auto parse_config =
       [](absl::string_view config_str) -> std::vector<TritonGemmConfig> {
     TritonGemmConfigsProto proto;
-    CHECK(tsl::protobuf::TextFormat::ParseFromString(config_str, &proto))
+    CHECK(google::protobuf::TextFormat::ParseFromString(config_str, &proto))
         << config_str;
     std::vector<TritonGemmConfig> configs;
     absl::c_transform(proto.config(), std::back_inserter(configs),

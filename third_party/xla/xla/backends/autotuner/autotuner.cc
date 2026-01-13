@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
+#include "xla/util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -539,7 +540,6 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
-
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
   for (ConfigResult& result : results) {
@@ -659,7 +659,7 @@ absl::Status Autotuner::DumpLogsToFile() {
   }
 
   std::string textproto;
-  tsl::protobuf::TextFormat::PrintToString(logs_, &textproto);
+  google::protobuf::TextFormat::PrintToString(logs_, &textproto);
 
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
       tsl::Env::Default(), autotune_config_.dump_logs_to, textproto));

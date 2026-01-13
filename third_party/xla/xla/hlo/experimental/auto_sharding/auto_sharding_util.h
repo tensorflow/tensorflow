@@ -182,11 +182,10 @@ inline bool DimensionsEqual(const Shape& a, const Shape& b) {
  * HloInstruction Utility
  */
 // Get the space dimensions of a dot instruction.
-inline std::pair<tsl::protobuf::RepeatedField<int64_t>,
-                 tsl::protobuf::RepeatedField<int64_t>>
+inline std::pair<google::protobuf::RepeatedField<int64_t>, google::protobuf::RepeatedField<int64_t>>
 GetSpaceDims(const Shape& lhs_shape, const Shape& rhs_shape,
              const DotDimensionNumbers& dnums) {
-  tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
+  google::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
 
   for (int64_t i = 0; i < lhs_shape.dimensions().size(); ++i) {
     if (absl::c_linear_search(dnums.lhs_batch_dimensions(), i) ||

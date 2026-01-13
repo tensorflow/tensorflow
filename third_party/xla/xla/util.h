@@ -47,7 +47,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
-#include "xla/status_macros.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -1014,7 +1012,7 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
-std::string PrintAllFields(const tsl::protobuf::Message& message);
+std::string PrintAllFields(const google::protobuf::Message& message);
 
 // Returns true if x is a power of 2.
 ABSL_DEPRECATE_AND_INLINE()

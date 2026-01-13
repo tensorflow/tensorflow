@@ -218,27 +218,26 @@ struct DotDimensionIndexMapping {
 
 void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
                   bool lhs) {
-  auto update_dims =
-      [&reshaped_dim](tsl::protobuf::RepeatedField<int64_t>* dims) {
-        bool add_reshaped_dim = false;
-        if (absl::c_linear_search(*dims, reshaped_dim)) {
-          add_reshaped_dim = true;
-        }
-        for (int64_t i = 0; i < dims->size(); ++i) {
-          auto dim = dims->at(i);
-          if (reshaped_dim <= dim) {
-            dims->Set(i, dim + 1);
-          }
-        }
-        if (add_reshaped_dim) {
-          dims->Add(reshaped_dim);
-          // Sort the dimensions (assumes they were sorted before the addition)
-          for (int64_t i = dims->size() - 1;
-               i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
-            dims->SwapElements(i - 1, i);
-          }
-        }
-      };
+  auto update_dims = [&reshaped_dim](google::protobuf::RepeatedField<int64_t>* dims) {
+    bool add_reshaped_dim = false;
+    if (absl::c_linear_search(*dims, reshaped_dim)) {
+      add_reshaped_dim = true;
+    }
+    for (int64_t i = 0; i < dims->size(); ++i) {
+      auto dim = dims->at(i);
+      if (reshaped_dim <= dim) {
+        dims->Set(i, dim + 1);
+      }
+    }
+    if (add_reshaped_dim) {
+      dims->Add(reshaped_dim);
+      // Sort the dimensions (assumes they were sorted before the addition)
+      for (int64_t i = dims->size() - 1;
+           i >= 1 && dims->at(i) < dims->at(i - 1); i--) {
+        dims->SwapElements(i - 1, i);
+      }
+    }
+  };
 
   if (lhs) {
     update_dims(new_ddnums->mutable_lhs_contracting_dimensions());

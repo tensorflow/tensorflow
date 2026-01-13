@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -27,11 +29,10 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
@@ -49,8 +50,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
                           "backends/gpu/target_config/specs",
                           absl::StrCat(file_name, ".txtpb")),
         &spec_string));
-    ASSERT_TRUE(
-        tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
+    ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(spec_string, &proto));
     gpu_specs[proto.device_description_str()] = proto.gpu_device_info();
   }
   auto name = absl::AsciiStrToUpper(
@@ -74,11 +74,11 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
     }
     all_skipped = false;
     const GpuDeviceInfoProto& stored_device_info = it->second;
-    tsl::protobuf::util::MessageDifferencer diff;
+    google::protobuf::util::MessageDifferencer diff;
     diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
         "device_memory_size"));
     diff.set_message_field_comparison(
-        tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
+        google::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;
     diff.ReportDifferencesToString(&result);
     EXPECT_TRUE(diff.Compare(physical_device_info, stored_device_info))

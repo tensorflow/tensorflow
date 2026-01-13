@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 
@@ -57,8 +58,8 @@ limitations under the License.
 namespace tsl {
 
 namespace protobuf = ::google::protobuf;
-using protobuf_int64 = int64_t;
-using protobuf_uint64 = uint64_t;
+using protobuf_int64 ABSL_DEPRECATE_AND_INLINE() = int64_t;
+using protobuf_uint64 ABSL_DEPRECATE_AND_INLINE() = uint64_t;
 extern const char* kProtobufInt64Typename;
 extern const char* kProtobufUint64Typename;
 

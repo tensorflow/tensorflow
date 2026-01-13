@@ -121,11 +121,11 @@ tf_cuda_library(
     deps = [
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
-        "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:regexp",
     ],
 )

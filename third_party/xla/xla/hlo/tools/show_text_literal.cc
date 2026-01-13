@@ -28,9 +28,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   tsl::port::InitMain(argv[0], &argc, &argv);
 
   if (argc < 2) {

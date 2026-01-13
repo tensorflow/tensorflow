@@ -46,19 +46,17 @@
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 namespace {
 
+using ::google::protobuf::TextFormat;
 using ::testing::_;
 using ::testing::ElementsAre;
-using ::testing::Invoke;
 using ::testing::Optional;
 using ::testing::Return;
-using ::tsl::protobuf::TextFormat;
 
 struct TestProgram : llvm::RTTIExtends<TestProgram, Program> {
   static char ID;  // NOLINT

@@ -69,7 +69,7 @@ std::string ShapeToBenchmarkString(const Shape& shape) {
       ", {", absl::StrJoin(shape.dimensions(), ","), "}");
 }
 
-std::string TupleToString(const tsl::protobuf::RepeatedField<int64_t>& tuple) {
+std::string TupleToString(const google::protobuf::RepeatedField<int64_t>& tuple) {
   std::vector<int64_t> tuple_vec(tuple.begin(), tuple.end());
   return absl::StrCat("{", absl::StrJoin(tuple_vec, ","), "}");
 }

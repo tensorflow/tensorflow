@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -131,8 +131,8 @@ struct CompileOptions {
   // Applies a single option to executable_build_options.debug_options().
   absl::Status ApplyOption(const std::string& key, const OptionOverride& value);
 
-  absl::Status ApplyOptionFromString(
-      const tsl::protobuf::FieldDescriptor* field, const std::string& value);
+  absl::Status ApplyOptionFromString(const google::protobuf::FieldDescriptor* field,
+                                     const std::string& value);
 
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&

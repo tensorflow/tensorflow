@@ -1207,7 +1207,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
 
 TEST(GpuTopology, FromProto) {
   GpuTopologyProto msg;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_version: "platform_version"
         num_partitions: 2

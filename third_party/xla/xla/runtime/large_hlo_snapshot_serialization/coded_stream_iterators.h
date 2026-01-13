@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <iterator>
 
-#include "tsl/platform/protobuf.h"
+#include "google/protobuf/io/coded_stream.h"
 
 // The main Motivations for these iterators is to be able to use the
 // `Literal::Serialize` method with a `std::string` output stream.
@@ -31,7 +31,7 @@ limitations under the License.
 // argument.
 
 namespace xla {
-// An output iterator over a tsl::protobuf::io::CodedOutputStream.
+// An output iterator over a google::protobuf::io::CodedOutputStream.
 class CodedStreamOutputIterator {
  public:
   typedef std::output_iterator_tag iterator_category;
@@ -41,7 +41,7 @@ class CodedStreamOutputIterator {
   typedef char& reference;
 
   explicit CodedStreamOutputIterator(
-      tsl::protobuf::io::CodedOutputStream* output_stream)
+      google::protobuf::io::CodedOutputStream* output_stream)
       : output_stream_(output_stream) {}
 
   // CodedOutputStream is buffered by default, thus it is being performant
@@ -56,10 +56,10 @@ class CodedStreamOutputIterator {
   CodedStreamOutputIterator operator++(int) { return *this; }
 
  private:
-  tsl::protobuf::io::CodedOutputStream* output_stream_;
+  google::protobuf::io::CodedOutputStream* output_stream_;
 };
 
-// An input iterator over a tsl::protobuf::io::CodedInputStream. The iterator
+// An input iterator over a google::protobuf::io::CodedInputStream. The iterator
 // can be limited to read a specific number of bytes to read delimited chunks of
 // data.
 class CodedStreamInputIterator {
@@ -70,8 +70,8 @@ class CodedStreamInputIterator {
   typedef char* pointer;
   typedef char& reference;
 
-  explicit CodedStreamInputIterator(
-      tsl::protobuf::io::CodedInputStream* input_stream, int limit = -1)
+  explicit CodedStreamInputIterator(google::protobuf::io::CodedInputStream* input_stream,
+                                    int limit = -1)
       : input_stream_(input_stream), read_limit_(limit) {
     ReadNext();
   }
@@ -117,7 +117,7 @@ class CodedStreamInputIterator {
     }
   }
 
-  tsl::protobuf::io::CodedInputStream* input_stream_;
+  google::protobuf::io::CodedInputStream* input_stream_;
   char current_byte_;
   bool end_of_stream_ = false;
   int read_limit_;

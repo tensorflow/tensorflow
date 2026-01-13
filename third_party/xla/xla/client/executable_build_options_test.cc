@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace {
@@ -44,8 +44,8 @@ using ::tsl::proto_testing::EqualsProto;
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
-    std::unique_ptr<tsl::protobuf::Message> msg) {
+std::unique_ptr<google::protobuf::Message> ProcessNewEnv(
+    std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
       tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   return env;

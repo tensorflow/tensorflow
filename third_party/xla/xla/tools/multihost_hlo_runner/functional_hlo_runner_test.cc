@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
@@ -30,24 +31,34 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tools/multihost_hlo_runner/profiler_interface.h"
@@ -63,7 +74,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -837,7 +847,7 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshotCustomSerialization) {
 
   tsl::WritableFileCopyingOutputStream output(file.get());
 
-  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  google::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
   TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(message, &adaptor));
   adaptor.Flush();
 
@@ -882,7 +892,7 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
 
   tsl::WritableFileCopyingOutputStream output(file.get());
 
-  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  google::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
   EXPECT_TRUE(message.SerializeToZeroCopyStream(&adaptor));
   adaptor.Flush();
 
@@ -944,7 +954,7 @@ TEST_F(FunctionalHloRunnerTest,
 
   tsl::WritableFileCopyingOutputStream output(file.get());
 
-  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  google::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
   EXPECT_TRUE(message.SerializeToZeroCopyStream(&adaptor));
   adaptor.Flush();
 
@@ -1002,12 +1012,11 @@ TEST(FunctionalHloRunnerTest, TestHloUnoptimizedSnapshotDeSerialization) {
 
   // Serialize the snapshot to string
   std::string output;
-  tsl::protobuf::io::StringOutputStream output_stream(&output);
+  google::protobuf::io::StringOutputStream output_stream(&output);
   TF_ASSERT_OK(SerializeHloUnoptimizedSnapshot(snapshot, &output_stream));
 
   // Read the snapshot back from the string
-  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
-                                                   output.size());
+  google::protobuf::io::ArrayInputStream input_stream(output.data(), output.size());
   auto maybe_deserialized_snapshot =
       DeserializeHloUnoptimizedSnapshot(&input_stream);
   ASSERT_TRUE(maybe_deserialized_snapshot.ok());
@@ -1130,8 +1139,7 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   std::string output;
   TF_ASSERT_OK(ReadFileToString(env, matching_files[0], &output));
 
-  tsl::protobuf::io::ArrayInputStream input_stream(output.data(),
-                                                   output.size());
+  google::protobuf::io::ArrayInputStream input_stream(output.data(), output.size());
 
   TF_ASSERT_OK_AND_ASSIGN(HloUnoptimizedSnapshot snapshot,
                           DeserializeHloUnoptimizedSnapshot(&input_stream));

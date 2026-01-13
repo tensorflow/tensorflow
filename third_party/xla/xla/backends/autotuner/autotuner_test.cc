@@ -47,14 +47,12 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -671,8 +669,7 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
                                     &content),
               absl_testing::IsOk());
   AutotuningLogs actual_logs;
-  EXPECT_TRUE(
-      tsl::protobuf::TextFormat::ParseFromString(content, &actual_logs));
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(content, &actual_logs));
 
   AutotuningLogs expected_logs;
   AutotuningLog* log = expected_logs.add_logs();

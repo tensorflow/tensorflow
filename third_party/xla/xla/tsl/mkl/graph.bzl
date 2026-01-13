@@ -12,6 +12,11 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 
+# Internally this loads a macro, but in OSS this is a function
+# buildifier: disable=out-of-order-load
+def register_extension_info(**_kwargs):
+    pass
+
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 def onednn_graph_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
@@ -22,6 +27,11 @@ def onednn_graph_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
         deps = if_graph_api(deps),
         **kwargs
     )
+
+register_extension_info(
+    extension = onednn_graph_cc_library,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def onednn_graph_cc_test(
         srcs = [],
@@ -47,6 +57,11 @@ def onednn_cc_library(srcs = [], hdrs = [], deps = [], **kwargs):
         # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
         **kwargs
     )
+
+register_extension_info(
+    extension = onednn_cc_library,
+    label_regex_for_dep = "{extension_name}",
+)
 
 def onednn_cc_test(
         srcs = [],

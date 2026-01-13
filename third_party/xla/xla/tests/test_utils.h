@@ -16,21 +16,24 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_UTILS_H_
 #define XLA_TESTS_TEST_UTILS_H_
 
-#include <initializer_list>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/text_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -119,9 +122,9 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
 
 template <typename MessageType>
 absl::StatusOr<MessageType> ParseTextProto(const std::string& text_proto) {
-  tsl::protobuf::TextFormat::Parser parser;
+  google::protobuf::TextFormat::Parser parser;
   MessageType parsed_proto;
-  tsl::protobuf::io::ArrayInputStream input_stream(
+  google::protobuf::io::ArrayInputStream input_stream(
       text_proto.data(), static_cast<int32_t>(text_proto.size()));
   if (!parser.Parse(&input_stream, &parsed_proto)) {
     return absl::InvalidArgumentError(

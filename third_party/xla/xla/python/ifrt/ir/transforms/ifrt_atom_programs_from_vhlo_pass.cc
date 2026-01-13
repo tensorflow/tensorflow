@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -42,8 +41,7 @@ class IfrtAtomProgramsFromVhloPass
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
   explicit IfrtAtomProgramsFromVhloPass(
-      const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
-          atom_programs)
+      const google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>& atom_programs)
       : atom_programs_(atom_programs) {}
 
   llvm::StringRef getArgument() const override {
@@ -63,7 +61,7 @@ class IfrtAtomProgramsFromVhloPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IfrtAtomProgramsFromVhloPass);
 
  private:
-  const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>& atom_programs_;
+  const google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>& atom_programs_;
 };
 
 void IfrtAtomProgramsFromVhloPass::runOnOperation() {
@@ -92,8 +90,7 @@ void IfrtAtomProgramsFromVhloPass::runOnOperation() {
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsFromVhloPass(
-    const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
-        atom_programs) {
+    const google::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>& atom_programs) {
   return std::make_unique<IfrtAtomProgramsFromVhloPass>(atom_programs);
 }
 

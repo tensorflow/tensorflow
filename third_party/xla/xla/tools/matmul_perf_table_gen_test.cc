@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -299,14 +298,14 @@ TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
     }
   )pb";
   GemmPerfTable old_perf_table;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableOld,
-                                                         &old_perf_table));
+  EXPECT_TRUE(
+      google::protobuf::TextFormat::ParseFromString(kGemmTableOld, &old_perf_table));
   GemmPerfTable new_perf_table;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableNew,
-                                                         &new_perf_table));
+  ASSERT_TRUE(
+      google::protobuf::TextFormat::ParseFromString(kGemmTableNew, &new_perf_table));
   GemmPerfTable expected_merged_perf_table;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      kGemmTableExpected, &expected_merged_perf_table));
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kGemmTableExpected,
+                                                  &expected_merged_perf_table));
   GemmPerfTable actual_merged_perf_table =
       MatmulPerfTableGen::Merge({old_perf_table, new_perf_table});
   EXPECT_THAT(expected_merged_perf_table,

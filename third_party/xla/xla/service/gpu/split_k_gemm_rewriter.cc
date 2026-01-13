@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
 #include "xla/literal_util.h"
-#include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -80,8 +80,8 @@ namespace {
 
 // Copy source values into destination incrementing those >= threshold by 1.
 void CopyIncrementingAboveThreshold(
-    const tsl::protobuf::RepeatedField<int64_t>& source,
-    tsl::protobuf::RepeatedField<int64_t>& destination, const int threshold) {
+    const google::protobuf::RepeatedField<int64_t>& source,
+    google::protobuf::RepeatedField<int64_t>& destination, const int threshold) {
   destination.Reserve(source.size());
   for (int64_t x : source) {
     if (x >= threshold) {

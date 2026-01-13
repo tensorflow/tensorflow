@@ -30,7 +30,7 @@ namespace spmd {
 namespace {
 
 // Converts rows of an int64_t matrix into the repeated fields of a proto.
-std::function<tsl::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
+std::function<google::protobuf::RepeatedField<int64_t>(int64_t)>  // NOLINT
 Convert(const std::vector<std::vector<int64_t>>& live) {
   return [live](int64_t live_idx) {
     return ::google::protobuf::RepeatedField<int64_t>(live[live_idx].begin(),  // NOLINT

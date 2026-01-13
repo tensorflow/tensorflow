@@ -43,16 +43,14 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
 
 // Returns the size (in number of elements) of the subshape of `shape` defined
 // by `dimensions`.
-int64_t GetSizeInDimensions(
-    const Shape& shape,
-    const tsl::protobuf::RepeatedField<int64_t>& dimensions) {
+int64_t GetSizeInDimensions(const Shape& shape,
+                            const google::protobuf::RepeatedField<int64_t>& dimensions) {
   int64_t size = 1;
   for (int64_t dim : dimensions) {
     size *= shape.dimensions(dim);

@@ -26,14 +26,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::cpu {
 
 class LibraryMatcher {
  public:
   explicit LibraryMatcher(const TargetMachineFeatures* target_machine_features,
-                          const tsl::protobuf::RepeatedField<int>* fusion_types)
+                          const google::protobuf::RepeatedField<int>* fusion_types)
       : target_machine_features_(target_machine_features) {
     for (auto it = fusion_types->begin(); it != fusion_types->end(); ++it) {
       switch (*it) {

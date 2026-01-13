@@ -27,17 +27,17 @@ limitations under the License.
 
 namespace tsl {
 
-::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+::grpc::Status GrpcMaybeUnparseProto(const google::protobuf::Message& src,
                                      grpc::ByteBuffer* dst) {
   bool own_buffer;
   // grpc::ProtoBufferWriter
-  return ::grpc::SerializationTraits<protobuf::Message>::Serialize(src, dst,
-                                                                   &own_buffer);
+  return ::grpc::SerializationTraits<google::protobuf::Message>::Serialize(src, dst,
+                                                                 &own_buffer);
 }
 
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst) {
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, google::protobuf::Message* dst) {
   // grpc::ProtoBufferReader
-  return ::grpc::SerializationTraits<protobuf::Message>::Deserialize(src, dst)
+  return ::grpc::SerializationTraits<google::protobuf::Message>::Deserialize(src, dst)
       .ok();
 }
 

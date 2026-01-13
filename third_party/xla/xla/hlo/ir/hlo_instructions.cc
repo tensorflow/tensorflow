@@ -36,6 +36,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -643,24 +645,24 @@ namespace {
 // Currently implements a small subset of cases; feel free to add more as
 // needed.
 void PrintAttributeProto(HloInstruction::AttributePrinter& printer,
-                         const tsl::protobuf::Message& message) {
-  const tsl::protobuf::Reflection* reflection = message.GetReflection();
-  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
+                         const google::protobuf::Message& message) {
+  const google::protobuf::Reflection* reflection = message.GetReflection();
+  std::vector<const google::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
-  for (const tsl::protobuf::FieldDescriptor* field : fields) {
+  for (const google::protobuf::FieldDescriptor* field : fields) {
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
     printer.Next([&](Printer* printer) {
       printer->Append(field->name());
       printer->Append("=");
       switch (field->type()) {
-        case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
+        case google::protobuf::FieldDescriptor::TYPE_BOOL: {
           bool val = reflection->GetBool(message, field);
           printer->Append(val ? "true" : "false");
           break;
         }
-        case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
-          const tsl::protobuf::EnumValueDescriptor* evd =
+        case google::protobuf::FieldDescriptor::TYPE_ENUM: {
+          const google::protobuf::EnumValueDescriptor* evd =
               reflection->GetEnum(message, field);
           printer->Append(evd->name());
           break;

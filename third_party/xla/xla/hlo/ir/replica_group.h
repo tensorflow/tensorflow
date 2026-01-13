@@ -28,13 +28,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "google/protobuf/repeated_ptr_field.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -273,8 +273,8 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
       return false;
     }
     for (size_t i = 0; i < this_groups.size(); ++i) {
-      if (!tsl::protobuf::util::MessageDifferencer::Equals(this_groups[i],
-                                                           other_groups[i])) {
+      if (!google::protobuf::util::MessageDifferencer::Equals(this_groups[i],
+                                                    other_groups[i])) {
         return false;
       }
     }
@@ -339,8 +339,8 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
 
  private:
   CollectiveDeviceList(
-      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
-      tsl::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
+      google::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator start,
+      google::protobuf::RepeatedPtrField<ReplicaGroup>::const_iterator end) {
     replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>(start, end);
   };
 

@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -165,7 +164,7 @@ const auto kSelectStr = HloOpcodeString(xla::HloOpcode::kSelect);
 void ExpectCompareOp(
     const xla::HloInstructionProto op, xla::PrimitiveType type,
     absl::string_view direction, int parameter0_number, int parameter1_number,
-    const tsl::protobuf::RepeatedPtrField<xla::HloInstructionProto>& all_ops) {
+    const google::protobuf::RepeatedPtrField<xla::HloInstructionProto>& all_ops) {
   EXPECT_EQ(op.opcode(), kCompareStr);
 
   const auto& operand0 = all_ops.at(op.operand_ids(0) - 1);

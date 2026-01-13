@@ -26,22 +26,21 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
-    const tsl::protobuf::Message* proto) {
+std::unique_ptr<google::protobuf::Message> CloneBackendConfigProto(
+    const google::protobuf::Message* proto) {
   if (proto == nullptr) {
     return nullptr;
   }
-  std::unique_ptr<tsl::protobuf::Message> result(proto->New());
+  std::unique_ptr<google::protobuf::Message> result(proto->New());
   result->CopyFrom(*proto);
   return result;
 }
 
 absl::StatusOr<std::string> BackendConfigToRawString(
-    const tsl::protobuf::Message& proto) {
+    const google::protobuf::Message& proto) {
   // Pass ignore_accuracy_loss = true because estimated_cycles field can be
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
@@ -59,7 +58,7 @@ const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
 }
 
 absl::Status BackendConfigWrapper::GetProto(
-    tsl::protobuf::Message* output_proto) const {
+    google::protobuf::Message* output_proto) const {
   output_proto->Clear();
 
   absl::WriterMutexLock lock{mutex_};
@@ -84,7 +83,7 @@ absl::Status BackendConfigWrapper::GetProto(
 
 BackendConfigWrapper& BackendConfigWrapper::operator=(
     BackendConfigWrapper&& other) {
-  std::unique_ptr<tsl::protobuf::Message> temp_proto;
+  std::unique_ptr<google::protobuf::Message> temp_proto;
   std::string temp_string;
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
@@ -102,7 +101,7 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 }
 
 bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
-  tsl::protobuf::Message* this_proto = nullptr;
+  google::protobuf::Message* this_proto = nullptr;
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {
@@ -114,7 +113,7 @@ bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
   {
     absl::MutexLock other_lock{other.mutex_};
     if (this_proto != nullptr && other.proto_ != nullptr) {
-      using ::tsl::protobuf::util::MessageDifferencer;
+      using ::google::protobuf::util::MessageDifferencer;
       return MessageDifferencer::Equals(*this_proto, *other.proto_);
     }
     other_raw_string = &other.GetRawStringWithoutMutex();

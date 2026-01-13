@@ -83,9 +83,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
@@ -103,10 +101,10 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/mlir_hlo/utils/unregistered_attributes.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
@@ -114,7 +112,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -656,30 +653,29 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(T input) {
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
-  std::copy(
-      offset_dims.begin(), offset_dims.end(),
-      tsl::protobuf::RepeatedFieldBackInserter(output.mutable_offset_dims()));
+  std::copy(offset_dims.begin(), offset_dims.end(),
+            google::protobuf::RepeatedFieldBackInserter(output.mutable_offset_dims()));
 
   auto collapsed_slice_dims = input.getCollapsedSliceDims();
-  std::copy(collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_collapsed_slice_dims()));
+  std::copy(
+      collapsed_slice_dims.begin(), collapsed_slice_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_collapsed_slice_dims()));
 
   auto operand_batching_dims = input.getOperandBatchingDims();
   std::copy(operand_batching_dims.begin(), operand_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_operand_batching_dims()));
 
   auto start_indices_batching_dims = input.getStartIndicesBatchingDims();
   std::copy(start_indices_batching_dims.begin(),
             start_indices_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_start_indices_batching_dims()));
 
   auto start_index_map = input.getStartIndexMap();
-  std::copy(start_index_map.begin(), start_index_map.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_start_index_map()));
+  std::copy(
+      start_index_map.begin(), start_index_map.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_start_index_map()));
 
   output.set_index_vector_dim(input.getIndexVectorDim());
   return output;
@@ -702,30 +698,30 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();
-  std::copy(update_window_dims.begin(), update_window_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_update_window_dims()));
+  std::copy(
+      update_window_dims.begin(), update_window_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_update_window_dims()));
 
   auto inserted_window_dims = input.getInsertedWindowDims();
-  std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_inserted_window_dims()));
+  std::copy(
+      inserted_window_dims.begin(), inserted_window_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_inserted_window_dims()));
 
   auto input_batching_dims = input.getInputBatchingDims();
-  std::copy(input_batching_dims.begin(), input_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_input_batching_dims()));
+  std::copy(
+      input_batching_dims.begin(), input_batching_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_input_batching_dims()));
 
   auto scatter_indices_batching_dims = input.getScatterIndicesBatchingDims();
   std::copy(scatter_indices_batching_dims.begin(),
             scatter_indices_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_indices_batching_dims()));
 
   auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
             scatter_dims_to_operand_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_dims_to_operand_dims()));
 
   output.set_index_vector_dim(input.getIndexVectorDim());
@@ -737,30 +733,30 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();
-  std::copy(update_window_dims.begin(), update_window_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_update_window_dims()));
+  std::copy(
+      update_window_dims.begin(), update_window_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_update_window_dims()));
 
   auto inserted_window_dims = input.getInsertedWindowDims();
-  std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_inserted_window_dims()));
+  std::copy(
+      inserted_window_dims.begin(), inserted_window_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_inserted_window_dims()));
 
   auto input_batching_dims = input.getInputBatchingDims();
-  std::copy(input_batching_dims.begin(), input_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
-                output.mutable_input_batching_dims()));
+  std::copy(
+      input_batching_dims.begin(), input_batching_dims.end(),
+      google::protobuf::RepeatedFieldBackInserter(output.mutable_input_batching_dims()));
 
   auto scatter_indices_batching_dims = input.getScatterIndicesBatchingDims();
   std::copy(scatter_indices_batching_dims.begin(),
             scatter_indices_batching_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_indices_batching_dims()));
 
   auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
             scatter_dims_to_operand_dims.end(),
-            tsl::protobuf::RepeatedFieldBackInserter(
+            google::protobuf::RepeatedFieldBackInserter(
                 output.mutable_scatter_dims_to_operand_dims()));
 
   output.set_index_vector_dim(input.getIndexVectorDim());

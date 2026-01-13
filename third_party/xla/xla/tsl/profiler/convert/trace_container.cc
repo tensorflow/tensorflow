@@ -15,16 +15,18 @@ limitations under the License.
 #include "xla/tsl/profiler/convert/trace_container.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include "tsl/platform/protobuf.h"
+#include "google/protobuf/text_format.h"
 
 namespace tsl {
 namespace profiler {
 
 bool TraceContainer::ParseMetadataFromString(const std::string& description) {
-  return protobuf::TextFormat::ParseFromString(description, &metadata_);
+  return google::protobuf::TextFormat::ParseFromString(description, &metadata_);
 }
 
 void TraceContainer::CapEvents(const uint32_t max_count) {

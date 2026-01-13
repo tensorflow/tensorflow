@@ -27,7 +27,6 @@ limitations under the License.
 #include "grpcpp/support/byte_buffer.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/tstring.h"
 
 namespace tsl {
@@ -113,11 +112,11 @@ inline ::grpc::Status ToGrpcStatus(const absl::Status& s) {
 typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
 
 // Serialize src and store in *dst.
-::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
+::grpc::Status GrpcMaybeUnparseProto(const google::protobuf::Message& src,
                                      ::grpc::ByteBuffer* dst);
 
 // Parse contents of src and initialize *dst with them.
-bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, protobuf::Message* dst);
+bool GrpcMaybeParseProto(::grpc::ByteBuffer* src, google::protobuf::Message* dst);
 
 // Copy string src to grpc buffer *dst.
 ::grpc::Status GrpcMaybeUnparseProto(const std::string& src,

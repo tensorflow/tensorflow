@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
@@ -166,8 +165,8 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto1) {
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                         &results));
+  EXPECT_TRUE(
+      google::protobuf::TextFormat::ParseFromString(autotune_results_str, &results));
   EXPECT_GT(results.results_size(), 0);
 }
 
@@ -178,8 +177,8 @@ TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_TextProto2) {
 
   std::string autotune_results_str = ExpectToReadNonEmptyFile(kFilePath);
   AutotuneResults results;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(autotune_results_str,
-                                                         &results));
+  EXPECT_TRUE(
+      google::protobuf::TextFormat::ParseFromString(autotune_results_str, &results));
 }
 
 TEST_F(AutotunerUtilTest, SerializeAutotuneResultsToFile_Protobuf) {
@@ -203,15 +202,14 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 
   stream_executor::GpuDeviceInfoProto device_description_proto;
-  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      kDeviceDescriptionTextProto, &device_description_proto));
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kDeviceDescriptionTextProto,
+                                                  &device_description_proto));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(kDotFusionHloText));
 
   AutotuneResults results;
-  EXPECT_TRUE(
-      tsl::protobuf::TextFormat::ParseFromString(kResultText, &results));
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(kResultText, &results));
   ASSERT_GT(results.results().size(), 0);
   AddVersionToAutotuneResults(results);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -342,7 +340,7 @@ class FileBasedCacheTest : public AutotunerUtilTest {
  public:
   static std::string ToString(const AutotuneResult& message) {
     std::string textproto;
-    CHECK(tsl::protobuf::TextFormat::PrintToString(message, &textproto));
+    CHECK(google::protobuf::TextFormat::PrintToString(message, &textproto));
     return textproto;
   }
 

@@ -284,7 +284,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
 
     BackendConfig backend_config;
     absl::c_copy(dim_partition_counts,
-                 tsl::protobuf::RepeatedFieldBackInserter(
+                 google::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
     CHECK_OK(instruction->set_backend_config(backend_config));
 

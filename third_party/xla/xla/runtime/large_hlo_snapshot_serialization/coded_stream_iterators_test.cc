@@ -18,15 +18,16 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tsl/platform/protobuf.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 
 namespace xla {
 namespace {
 
 TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorEof) {
   std::string data = "";
-  tsl::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
-  tsl::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
+  google::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
+  google::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
   CodedStreamInputIterator iterator(&coded_input_stream);
   EXPECT_TRUE(iterator == iterator);
   EXPECT_FALSE(iterator != iterator);
@@ -35,8 +36,8 @@ TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorEof) {
 
 TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorRead) {
   std::string data = "hello";
-  tsl::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
-  tsl::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
+  google::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
+  google::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
   CodedStreamInputIterator iterator(&coded_input_stream);
   EXPECT_EQ(*iterator, 'h');
   ++iterator;
@@ -48,8 +49,8 @@ TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorRead) {
 
 TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorReadLimit) {
   std::string data = "hello";
-  tsl::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
-  tsl::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
+  google::protobuf::io::ArrayInputStream input_stream(data.data(), data.size());
+  google::protobuf::io::CodedInputStream coded_input_stream(&input_stream);
   CodedStreamInputIterator iterator(&coded_input_stream, 2);
   EXPECT_EQ(*iterator, 'h');
   ++iterator;
@@ -60,8 +61,8 @@ TEST(CodedStreamIteratorsTest, CodedStreamInputIteratorReadLimit) {
 
 TEST(CodedStreamIteratorsTest, CodedStreamOutputIteratorWrite) {
   std::string data = "";
-  tsl::protobuf::io::StringOutputStream output_stream(&data);
-  tsl::protobuf::io::CodedOutputStream coded_output_stream(&output_stream);
+  google::protobuf::io::StringOutputStream output_stream(&data);
+  google::protobuf::io::CodedOutputStream coded_output_stream(&output_stream);
   CodedStreamOutputIterator iterator(&coded_output_stream);
   *iterator = 'h';
   *iterator = 'e';

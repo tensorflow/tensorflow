@@ -35,7 +35,7 @@ using ::tsl::proto_testing::EqualsProto;
 
 TEST(TriangularSolveThunkTest, ProtoRoundTrip) {
   ThunkProto proto;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+  CHECK(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         thunk_info {
           profile_annotation: "profile_annotation"

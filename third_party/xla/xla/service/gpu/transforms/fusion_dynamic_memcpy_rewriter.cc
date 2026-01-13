@@ -240,7 +240,7 @@ absl::Status ComputeOffsetsForLoop(
     absl::Span<const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset>
         dynamic_offsets,
     int64_t static_offset, const WhileLoopBackendConfig& loop_config,
-    tsl::protobuf::RepeatedField<int64_t>* output_offsets) {
+    google::protobuf::RepeatedField<int64_t>* output_offsets) {
   for (int64_t i = 0; i < loop_config.known_trip_count().n(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto dynamic_offset,

@@ -97,7 +97,7 @@ DeviceHloInstructionProfiles TestProfiles(
     }
   )pb";
   DeviceHloInstructionProfiles profiles;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(perf_table, &profiles));
+  CHECK(google::protobuf::TextFormat::ParseFromString(perf_table, &profiles));
   return profiles;
 }
 

@@ -82,7 +82,6 @@ limitations under the License.
 #include "tsl/platform/base64.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/numbers.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/platform/status.h"
 

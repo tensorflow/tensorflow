@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/protobuf.h"
+#include "google/protobuf/message.h"
 
 namespace tensorflow {
 namespace crash_analysis {
@@ -28,8 +28,8 @@ class BufferedDataSource {};
 // Reports `message` proto which will be stored in the `file_name` in case
 // of a process crash.
 // Default implementation is currently NOOP.
-BufferedDataSource* ReportProtoDataOnCrash(
-    const std::string& file_name, const tsl::protobuf::Message& message);
+BufferedDataSource* ReportProtoDataOnCrash(const std::string& file_name,
+                                           const google::protobuf::Message& message);
 
 // Removes `data_source` from the list of data reported in case of a process
 // crash.

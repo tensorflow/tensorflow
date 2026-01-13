@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -1290,7 +1289,7 @@ TEST(ShapeUtilTest, IsEffectivelyMostMajorDimension) {
 TEST(ShapeUtilTest, B_250640044) {
   // This case failed the fuzzer; see b/250640044.
   ShapeProto proto;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(element_type: TUPLE
            tuple_shapes {
              element_type: S8
@@ -1312,7 +1311,7 @@ TEST(ShapeUtilTest, B_250640044) {
 TEST(ShapeUtilTest, B_251055887) {
   // This case failed the fuzzer; see b/251055887.
   ShapeProto proto;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+  EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(
       R"pb(
         element_type: S8
         dimensions: 0
@@ -1348,15 +1347,15 @@ TEST(ShapeUtilTest, B_385192799) {
   ShapeProto proto;
 
   {
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-        R"pb(element_type: 2000)pb", &proto));
+    EXPECT_TRUE(google::protobuf::TextFormat::ParseFromString(R"pb(element_type: 2000)pb",
+                                                    &proto));
     ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 
   {
-    EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-        R"pb(element_type: -1)pb", &proto));
+    EXPECT_TRUE(
+        google::protobuf::TextFormat::ParseFromString(R"pb(element_type: -1)pb", &proto));
     ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }

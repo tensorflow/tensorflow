@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/protobuf.h"
 
 namespace tsl {
 namespace profiler {
