@@ -139,7 +139,7 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.clear_triton_gemm_config();
-    backend_config.set_kind(kTritonNestedGemmFusionKind);
+    backend_config.set_kind(kTritonGemmFusionKind);
 
     ASSIGN_OR_RETURN(BlockLevelParameters block_level_parameters,
                      FindBlockLevelParameters(dot, config, mlir_context_,

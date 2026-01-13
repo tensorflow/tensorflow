@@ -478,6 +478,10 @@ absl::StatusOr<TensorValue> MaskDotOperand(
     return absl::FailedPreconditionError(
         "contracting_dimension_tile_index must be an i32 scalar");
   }
+  if (!dot_operand_value) {
+    return absl::InternalError(
+        absl::StrCat("Dot operand value is null for ", dot_operand.ToString()));
+  }
 
   llvm::ArrayRef<int64_t> tile_shape = dot_operand_value.getType().getShape();
 
@@ -526,7 +530,16 @@ absl::StatusOr<TensorValue> MaskDotOperand(
                           PrimitiveTypeToMlirType(
                               b, dot_operand.hlo()->shape().element_type()));
 
-      TensorValue zero = CreateConst(b, element_type, 0.0f, tile_shape);
+      TensorValue zero;
+      if (auto float_type = mlir::dyn_cast<mlir::FloatType>(element_type)) {
+        auto tensor_type = mlir::RankedTensorType::get({}, element_type);
+        auto attr = mlir::DenseElementsAttr::get(
+            tensor_type, b.getFloatAttr(float_type, 0.0));
+        auto zero_const = b.create<arith::ConstantOp>(attr);
+        zero = xtile::Splat(b, zero_const, tile_shape);
+      } else {
+        zero = CreateConst(b, element_type, 0.0f, tile_shape);
+      }
 
       Value masked_dot_operand =
           arith::SelectOp::create(b, mask, dot_operand_value, zero);
@@ -725,6 +738,11 @@ absl::StatusOr<TensorValue> EmitDot(
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
             result.size()));
+      }
+      if (!result.front()) {
+        return absl::InternalError(
+            absl::StrCat("EmitTiledComputation returned null result for ",
+                         operand->ToString()));
       }
       dot_args.push_back(result.front());
     }
@@ -1230,6 +1248,23 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
                          values);
   }
 
+  if (hlo->opcode() == HloOpcode::kFusion) {
+    const TiledHloFusionInstruction* tiled_fusion =
+        static_cast<const TiledHloFusionInstruction*>(&tiled_hlo);
+    TF_ASSIGN_OR_RETURN(
+        std::vector<TensorValue> result,
+        EmitTiledComputation(
+            b, ::xla::Cast<HloFusionInstruction>(tiled_fusion->hlo()),
+            *tiled_fusion->called_computation(), block_level_parameters, fn,
+            pid, values));
+    if (result.size() != 1) {
+      return absl::InternalError(absl::StrCat(
+          "Expected nested fusion computation to emit a single value, got ",
+          result.size()));
+    }
+    return result.front();
+  }
+
   if (hlo->opcode() == HloOpcode::kConstant) {
     if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
       return EmitConstant(b, *hlo);
@@ -1317,20 +1352,49 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     mlir::FunctionOpInterface fn, Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
+
+  absl::flat_hash_map<const TiledHloInstruction*,
+                      std::vector<const TiledHloInstruction*>>
+      users;
+  for (const TiledHloInstruction* instruction :
+       tiled_computation.instructions()) {
+    for (const TiledHloInstruction* operand : instruction->operands()) {
+      users[operand].push_back(instruction);
+    }
+  }
+
   for (const TiledHloInstruction* tiled_hlo :
        tiled_computation.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
     // Skip generating nested fusions, they are emitted by their consumer.
+    // Exceptions are roots, which are not consumed by any instruction in the
+    // computation.
     if (hlo->parent()->IsFusionComputation() &&
-        hlo->opcode() == HloOpcode::kFusion) {
-      VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
-      continue;
+        hlo->opcode() == HloOpcode::kFusion &&
+        !absl::c_linear_search(tiled_computation.GetRoots(), tiled_hlo)) {
+      // We only skip the fusion if all its users are emitters that will
+      // re-emit this fusion.
+      bool only_used_by_emitters =
+          absl::c_all_of(users[tiled_hlo], [](const TiledHloInstruction* user) {
+            return user->hlo()->opcode() == HloOpcode::kDot ||
+                   user->hlo()->opcode() == HloOpcode::kScaledDot ||
+                   user->hlo()->opcode() == HloOpcode::kConcatenate;
+          });
+      if (only_used_by_emitters) {
+        VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
+        continue;
+      }
     }
     TF_ASSIGN_OR_RETURN(
         TensorValue result,
         EmitTiledHloInstruction(b, fusion, *tiled_hlo, block_level_parameters,
                                 fn, pid, values));
-    TF_RET_CHECK(values.insert({tiled_hlo, result}).second) << hlo->ToString();
+    // This ensures that when instructions are emitted multiple times (e.g.,
+    // inside a tiled loop for dot product operands), the values map is
+    // correctly updated with the new values for the current iteration,
+    // preventing stale or missing values that led to the "Dot operand value is
+    // null" error.
+    values.insert_or_assign(tiled_hlo, result);
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
   std::vector<TensorValue> results;

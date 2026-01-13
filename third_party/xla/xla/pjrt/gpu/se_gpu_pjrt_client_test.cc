@@ -3393,7 +3393,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   const std::string optimized_hlo =
       executable->GetExecutable()->GetHloModules()->front()->ToString();
   TF_RET_CHECK(absl::StrContains(optimized_hlo, "triton_gemm") ||
-               absl::StrContains(optimized_hlo, "__triton_nested_gemm_fusion"))
+               absl::StrContains(optimized_hlo, "__triton_gemm"))
       << optimized_hlo;
 
   return absl::OkStatus();

@@ -1082,13 +1082,13 @@ ENTRY triton_computation {
   p2 = $0[128] parameter(2)
 
   fusion0 = $0[128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    "fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
   fusion1 = $0[128] fusion(p1), kind=kCustom, calls=nest1, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    "fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
   fusion2 = $0[128] fusion(p2), kind=kCustom, calls=nest2, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+    "fusion_backend_config":{"kind":"__triton_gemm",
     "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
   ROOT result = $0[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
 })";
@@ -1905,14 +1905,14 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
   }
   rhs = $0[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "32"]}]
       }
     }
@@ -1980,14 +1980,14 @@ triton_computation {
   p1 = $1[256,512] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
   }
   rhs = $1[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "32"]}]
       }
     }
@@ -2025,7 +2025,7 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
@@ -2052,7 +2052,7 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   rhs = $0[256,512] fusion(p1), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
@@ -2083,14 +2083,14 @@ ENTRY triton_computation {
   p1 = $0[16,256,512] parameter(1)
   lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1", "16", "64"]}]
       }
     }
   }
   rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1", "64", "32"]}]
       }
     }
@@ -2122,14 +2122,14 @@ ENTRY triton_computation {
   p1 = $0[16,256,512] parameter(1)
   lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1", "16", "64"]}]
       }
     }
   }
   rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1", "64", "32"]}]
       }
     }
@@ -2159,7 +2159,7 @@ ENTRY triton_computation {
   p0 = $0[128,16,256] parameter(0)
   lhs = $0[128,16,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "4", "64"]}]
       }
     }
@@ -2167,7 +2167,7 @@ ENTRY triton_computation {
   p1 = $0[16,256,512] parameter(1)
   rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "4", "32"]}]
       }
     }
@@ -2200,14 +2200,14 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   lhs = $0[256,128] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "16"]}]
       }
     }
   }
   rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "32"]}]
       }
     }
@@ -2240,14 +2240,14 @@ ENTRY triton_computation {
   p1 = $0[512,256] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
   }
   rhs = $0[512,256] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["32", "64"]}]
       }
     }
@@ -2299,14 +2299,14 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
   }
   rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "32"]}]
       }
     }
@@ -2380,14 +2380,14 @@ ENTRY triton_computation {
   p1 = $0[256,512] parameter(1)
   lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["16", "64"]}]
       }
     }
   }
   rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
     "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "kind":"__triton_gemm", "block_level_fusion_config":{
         "output_tiles":[{"sizes":["64", "32"]}]
       }
     }
@@ -2537,7 +2537,7 @@ ENTRY triton_computation {
 }
 
 std::vector<absl::string_view> FusionKindsForTest() {
-  return {kTritonFusionKind, kTritonNestedGemmFusionKind, "__invalid"};
+  return {kTritonFusionKind, kTritonGemmFusionKind, "__invalid"};
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2559,7 +2559,7 @@ identity {
 flhs {
   p0 = f32[128,256] parameter(0)
   ROOT result = f32[128,256] fusion(p0), kind=kCustom, calls=identity, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+    "fusion_backend_config":{"kind":"__triton_gemm", "block_level_fusion_config":{
     "output_tiles":[{"sizes":["16", "64"]}]}}}
 }
 
@@ -2571,10 +2571,10 @@ ENTRY triton_computation {
   p0 = f32[128,256] parameter(0)
   p1 = f32[256,512] parameter(1)
   lhs = f32[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+    "fusion_backend_config":{"kind":"__triton_gemm", "block_level_fusion_config":{
     "output_tiles":[{"sizes":["16", "64"]}]}}}
   rhs = f32[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs,
-    backend_config={ "fusion_backend_config":{ "kind":"__triton_nested_gemm_fusion",
+    backend_config={ "fusion_backend_config":{ "kind":"__triton_gemm",
     "block_level_fusion_config": {"output_tiles":[{"sizes":["64", "32"]}]}}}
   ROOT result = f32[128,512]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
