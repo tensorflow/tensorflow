@@ -1811,7 +1811,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       }
       return absl::OkStatus();
     };
-    allocator_options.unmap_fn = [stream_executor](void* data) {
+    allocator_options.unmap_fn = [stream_executor](void* data, size_t) {
       bool success = stream_executor->HostMemoryUnregister(data);
       if (!success) {
         return absl::InternalError(absl::StrFormat(
