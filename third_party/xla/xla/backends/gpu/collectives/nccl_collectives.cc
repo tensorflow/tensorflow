@@ -149,10 +149,11 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     return InvalidArgument(
         "CliqueIds size must be 1 for NCCL communicator initialization");
   }
-  VLOG(1) << "Initialize NCCL (version "
-          << absl::StrCat(NCCL_MAJOR, ".", NCCL_MINOR, ".", NCCL_PATCH)
-          << ") communicator for " << ranks.size() << " devices"
-          << "; fingerprint(id)=" << clique_ids->fingerprint();
+  VLOG(1) << absl::StreamFormat(
+      "Initialize NCCL (version %d.%d.%d) communicators for %d local devices "
+      "(out of %d global devices); fingerprint(id)=%v",
+      NCCL_MAJOR, NCCL_MINOR, NCCL_PATCH, ranks.size(),
+      clique_key.num_devices(), clique_ids->fingerprint());
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
@@ -165,10 +166,11 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << clique_key.num_devices()
-            << "; fingerprint(id)=" << clique_ids->fingerprint()
-            << "; size(id)=" << clique_ids->data().size();
+    VLOG(1) << absl::StreamFormat(
+        "Initialize NCCL communicator for rank #%v of %d; fingerprint(id)=%v; "
+        "size(id)=%zu",
+        ranks[i].rank, clique_key.num_devices(), clique_ids->fingerprint(),
+        clique_ids->data().size());
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
@@ -222,9 +224,9 @@ NcclCollectives::SplitCommunicatorsWithCancel(
       color, absl::StrJoin(keys, ",", rank_formatter));
 
   if (keys.size() != comms.size()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Comms and keys must have the same size, but %d != %d",
-                        comms.size(), keys.size()));
+    return InvalidArgument(
+        "Comms and keys must have the same size, but %d != %d", comms.size(),
+        keys.size());
   }
 
   const auto& gpu_config =
@@ -237,8 +239,9 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                         AsNcclConfig(gpu_config, device->stream_executor()));
 
-    VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
-            << " and key " << keys[i];
+    VLOG(1) << absl::StreamFormat(
+        "Split NCCL communicator %p with color %d and key %v",
+        static_cast<const void*>(comms[i]), color, keys[i]);
     ncclComm_t split_comm;
     XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
         Cast(comms[i]), color, keys[i].value(), &split_comm, &comm_config));
@@ -274,7 +277,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   xla::gpu::GpuCollectives* nvshmem_collectives =
       tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
-    return absl::InternalError("Failed to get NVSHMEM collectives");
+    return Internal("Failed to get NVSHMEM collectives");
   }
 
   return nvshmem_collectives;
@@ -289,11 +292,11 @@ absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to allocate %s (%llu bytes) from device collective memory: %s, "
+    return Internal(
+        "Failed to allocate %s (%llu bytes) from device collective memory: %s, "
         "Last NCCL warning(error) log entry (may be unrelated): %s",
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
-        ncclGetErrorString(res), ncclGetLastError(nullptr)));
+        ncclGetErrorString(res), ncclGetLastError(nullptr));
   }
   VLOG(2) << "Allocated collective memory " << ptr << " of " << bytes
           << " bytes";
@@ -308,10 +311,10 @@ absl::Status NcclCollectives::Deallocate(void* location) {
 
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to free device collective memory at %p; result: %s, Last NCCL "
+    return Internal(
+        "Failed to free device collective memory at %p; result: %s, Last NCCL "
         "warning(error) log entry (may be unrelated): %s",
-        location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
+        location, ncclGetErrorString(res), ncclGetLastError(nullptr));
   }
 
   VLOG(2) << "Deallocated collective memory " << location;
