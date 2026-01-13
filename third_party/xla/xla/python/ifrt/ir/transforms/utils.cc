@@ -242,7 +242,9 @@ mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
                                        mlir::OpBuilder& builder) {
   // Create a stub for the new module.
   mlir::ModuleOp cloned_module =
-      builder.create<mlir::ModuleOp>(module.getLoc(), module.getName());
+      mlir::ModuleOp::create(  // ALLOW_MLIR_MODULE_OP_CREATE - does not work
+                               // with CreateMlirModuleOp.
+          builder, module.getLoc(), module.getName());
   cloned_module->setAttrs(module->getAttrs());
   mlir::IRMapping mapper;
   // Clone each operation in the body of the module into the new module.
