@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
