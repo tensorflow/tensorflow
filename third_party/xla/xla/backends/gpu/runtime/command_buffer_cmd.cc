@@ -298,26 +298,25 @@ static std::vector<CommandOperation> CreateCommandOperations(
     }
 
     auto is_async_start = [](const CommandOperation& op) -> bool {
-      auto* collective_cmd = dynamic_cast<const CollectiveCmd*>(op.cmd());
-      return (collective_cmd && collective_cmd->IsAsync());
+      auto* async_start = dynamic_cast<const AsyncStartCommand*>(op.cmd());
+      return (async_start && async_start->IsAsync());
     };
 
     auto is_async_done = [](const CommandOperation& op) -> bool {
-      auto* async_done_cmd = dynamic_cast<const AsyncDoneCmd*>(op.cmd());
-      return (async_done_cmd && async_done_cmd->IsAsync());
+      auto* async_done = dynamic_cast<const AsyncDoneCommand*>(op.cmd());
+      return (async_done && async_done->IsAsync());
     };
 
     auto find_async_start_cmd_id = [&](int64_t async_done_cmd_id) -> int64_t {
-      auto* async_done_cmd = dynamic_cast<const AsyncDoneCmd*>(
+      auto* async_done = dynamic_cast<const AsyncDoneCommand*>(
           operations[async_done_cmd_id].cmd());
-      CHECK(async_done_cmd);
+      CHECK(async_done);
       for (int64_t j = async_done_cmd_id - 1; j >= 0; --j) {
         if (is_async_start(operations[j])) {
-          auto* async_start_cmd =
+          auto* async_start =
               dynamic_cast<const CollectiveCmd*>(operations[j].cmd());
-          if (async_start_cmd->IsAsync() &&
-              async_start_cmd->async_events() ==
-                  async_done_cmd->async_events()) {
+          if (async_start->IsAsync() &&
+              async_done->async_start() == async_start) {
             return j;
           }
         }
@@ -960,29 +959,6 @@ absl::StatusOr<const se::CommandBuffer::Command*> EmptyCmd::Record(
       },
       [&](const se::CommandBuffer::Command* command) {
         // Empty command is not updatable.
-        return absl::OkStatus();
-      });
-}
-
-//===----------------------------------------------------------------------===//
-// AsyncDoneCmd
-//===----------------------------------------------------------------------===//
-
-AsyncDoneCmd::AsyncDoneCmd(
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : Command(CommandType::kAsyncDone),
-      async_events_(std::move(async_events)) {}
-
-absl::StatusOr<const se::CommandBuffer::Command*> AsyncDoneCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  return Handle(
-      std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->CreateEmptyCmd(dependencies, priority());
-      },
-      [&](const se::CommandBuffer::Command* command) {
         return absl::OkStatus();
       });
 }
@@ -2026,7 +2002,7 @@ Command::BufferUseVector CustomCallCmd::buffers() const {
 CollectiveCmd::CollectiveCmd(
     CommandType cmd_type, CollectiveConfig config,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : Command(cmd_type, se::StreamPriority::Highest),
+    : AsyncStartCommand(cmd_type, se::StreamPriority::Highest),
       config_(std::move(config)),
       async_events_(std::move(async_events)) {}
 
@@ -2062,6 +2038,29 @@ CollectiveCmd::RecordTracedCommand(
       },
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateChildCommand(command, *nested_cmd);
+      });
+}
+
+//===----------------------------------------------------------------------===//
+// CollectiveDoneCmd
+//===----------------------------------------------------------------------===//
+
+CollectiveDoneCmd::CollectiveDoneCmd(
+    const AsyncStartCommand* async_start,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : AsyncDoneCommand(async_start), async_events_(std::move(async_events)) {}
+
+absl::StatusOr<const se::CommandBuffer::Command*> CollectiveDoneCmd::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  return Handle(
+      std::move(record_action),
+      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
+        return command_buffer->CreateEmptyCmd(dependencies, priority());
+      },
+      [&](const se::CommandBuffer::Command* command) {
+        return absl::OkStatus();
       });
 }
 
