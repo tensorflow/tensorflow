@@ -589,7 +589,7 @@ void operator()(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, conv_input_ptr,
@@ -659,7 +659,7 @@ void operator()(
   }
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  Status cudnn_launch_status;
+  absl::Status cudnn_launch_status;
   if (!autotune_entry.is_algorithm_config()) {
     auto& runners = autotune_entry.GetOpRunners();
     typename se::dnn::FusedConvOp::Config config{
