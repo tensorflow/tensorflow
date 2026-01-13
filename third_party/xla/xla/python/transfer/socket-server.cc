@@ -543,6 +543,13 @@ absl::Status SocketServer::Start(
   return absl::OkStatus();
 }
 
+SocketServer::~SocketServer() {
+  listener_.reset();
+  if (bulk_transport_factory_.use_count() == 1) {
+    bulk_transport_factory_->BlockingShutdown();
+  }
+}
+
 tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
     const SocketAddress& other_addr) {
   auto* local_ =

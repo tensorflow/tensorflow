@@ -30,6 +30,7 @@ namespace aux {
 class SocketServer {
  public:
   SocketServer() = default;
+  ~SocketServer();
 
   // Address that this server is listening on.
   const SocketAddress& addr() { return listener_->addr(); }

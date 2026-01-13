@@ -161,6 +161,10 @@ class PjRtClient final
         std::shared_ptr<xla::PjRtClient>)>
         transfer_server_factory;
 
+    // If true, force DCN-based cross-host transfers even when the PJRT plugin
+    // supports cross-host transfers.
+    bool force_dcn_cross_host_transfers = false;
+
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
     //
@@ -430,6 +434,10 @@ class PjRtClient final
 
   // If true, the backend implements the cross-host transfer APIs.
   bool pjrt_supports_cross_host_transfers_ = false;
+
+  // If true, force DCN-based cross-host transfers even when the backend
+  // supports cross-host transfers.
+  bool force_dcn_cross_host_transfers_ = false;
 
   absl::Status WatchGlobalProcessInfo(xla::CoordinationServiceAgent& agent);
 

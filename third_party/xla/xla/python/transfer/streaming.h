@@ -168,6 +168,12 @@ class BulkTransportFactory {
       const SocketTransferEstablishBulkTransport&
           remote_bulk_transport_info) = 0;
 
+  // Shutsdown in a blocking fashion to allow avoiding
+  // destroying the ifrt client on a background thread.
+  // This may make the BulkTransportFactory unusable, so be careful
+  // to only call it right before destruction.
+  virtual void BlockingShutdown() {}
+
   // Creates a factory (mostly for testing) which runs entirely
   // locally.
   static std::shared_ptr<BulkTransportFactory> CreateLocal();

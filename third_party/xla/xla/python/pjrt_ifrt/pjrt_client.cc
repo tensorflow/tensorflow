@@ -859,6 +859,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
   client->transfer_server_factory_ = std::move(options.transfer_server_factory);
+  client->force_dcn_cross_host_transfers_ =
+      options.force_dcn_cross_host_transfers;
 
   if (client->pjrt_client()->plugin_attributes().has_value()) {
     auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
@@ -1293,7 +1295,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
     return new_arrays;
   }
-  if (pjrt_supports_cross_host_transfers_) {
+  if (pjrt_supports_cross_host_transfers_ && !force_dcn_cross_host_transfers_) {
     return CopyArraysForCrossHost(arrays, src_devices, dst_devices,
                                   memory_kind);
   }
