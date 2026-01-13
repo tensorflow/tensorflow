@@ -220,8 +220,7 @@ static constexpr uintptr_t kInstructionTypeMask = 0b111;
 // HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
 // values are produced by one HLO and flow into consumers across dependency
 // edges.
-// Alignment must be explicitly specified due to ARM 32 platforms.
-class alignas(kInstructionTypeMask + 1) HloInstruction {
+class HloInstruction {
  public:
   // A fusion node computes the same value a call to its fusion computation
   // would compute.  However, the choice of fusion kind dictates codegen

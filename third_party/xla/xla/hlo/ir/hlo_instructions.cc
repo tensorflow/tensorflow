@@ -2135,10 +2135,6 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     auto* new_computation = CHECK_NOTNULL(instruction_to_append->GetModule())
                                 ->AddEmbeddedComputation(builder.Build());
     AppendComputation(new_computation);
-    if (opcode() == HloOpcode::kFusion) {
-      new_computation->SetFusionInstruction(this);
-    }
-
     clone = called_computation_root();
   } else {
     // When add_output is false, instruction_to_append is necessarily an
@@ -2369,31 +2365,6 @@ HloFusionInstruction::HloFusionInstruction(
     : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
                              fusion_computation, prefix),
       fusion_kind_(fusion_kind) {
-  fusion_computation->SetFusionInstruction(this);
-}
-
-HloFusionInstruction::~HloFusionInstruction() {
-  ClearFusionComputationInstruction();
-}
-
-void HloFusionInstruction::ClearFusionComputationInstruction() {
-  // Each fusion calls a single computation, but we use called_computations()
-  // instead of fused_instructions_computation(), because the order in which
-  // things get destructed can vary; the fusion computation's back-pointer may
-  // already be null, which violates a check in
-  // fused_instructions_computation.
-  for (HloComputation* computation : called_computations()) {
-    // Some passes that rewrite fusions may reassign a fusion computation to a
-    // different fusion instruction as this instruction gets destructed.
-    if (computation->FusionInstruction() == this) {
-      computation->SetFusionInstruction(nullptr);
-    }
-  }
-}
-
-void HloFusionInstruction::ClearCalledComputations() {
-  ClearFusionComputationInstruction();
-  HloInstruction::ClearCalledComputations();
 }
 
 HloInstruction*
@@ -2649,11 +2620,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
 
 HloComputation* HloFusionInstruction::fused_instructions_computation() const {
   CHECK_EQ(called_computations().size(), 1);
-  auto* fused_instructions_computation = called_computations().front();
-  CHECK(fused_instructions_computation->IsFusionComputation())
-      << "Computation " << fused_instructions_computation->name()
-      << " is not a fusion kind";
-  return fused_instructions_computation;
+  return called_computations().front();
 }
 
 HloInstruction* HloFusionInstruction::fused_expression_root() const {

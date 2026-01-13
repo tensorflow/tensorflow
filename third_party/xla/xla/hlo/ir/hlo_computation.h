@@ -209,30 +209,6 @@ class HloComputation {
 
   ~HloComputation();
 
-  enum class InstructionType : uint8_t {
-    kUnset,
-    // This computation is a fusion computation. A fusion computation ordinarily
-    // also has a non-null instruction. However, if a fusion instruction
-    // is removed during compilation, the fusion computation becomes
-    // unreachable, and its instruction is set to null. We still need to regard
-    // such computations as fusion computations for HLO scheduling purposes.
-    kFusion,
-    // Last Value for range checking.
-    kLast = kFusion,
-  };
-  static_assert(static_cast<int>(InstructionType::kUnset) == 0,
-                "kUnset must be 0.");
-
-  InstructionType instruction_type() const {
-    return static_cast<InstructionType>(instruction_and_type_ &
-                                        kInstructionTypeMask);
-  }
-
-  HloInstruction* instruction() const {
-    DCHECK(instruction_type() <= InstructionType::kLast);
-    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
-                                             ~kInstructionTypeMask);
-  }
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
@@ -822,23 +798,30 @@ class HloComputation {
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  // Do not use this method to determine if fusion_instruction_ != nullptr.
-  // Instead, directly do: FusionInstruction() != nullptr
   bool IsFusionComputation() const {
-    return instruction_type() == InstructionType::kFusion;
+    // TODO(b/418034360): There should be at most one fusion instruction calling
+    // a fusion computation. Assert this and fix all related tests.
+    return !caller_instructions(HloOpcode::kFusion).empty();
   }
 
   // Returns if this computation is the entry computation of the module.
   bool IsEntryComputation() const;
 
-  // Returns the owning fusion instruction, or nullptr if this is not a fusion
-  // computation.
-  HloInstruction* FusionInstruction() const {
-    return instruction_type() == InstructionType::kFusion ? instruction()
-                                                          : nullptr;
+  // Returns if this computation is dead. A computation is dead if it is not
+  // the entry computation and it is not called by any other computation.
+  bool IsDeadComputation() const {
+    return !IsEntryComputation() && caller_computations().empty();
   }
-  void SetFusionInstruction(HloInstruction* fusion_instruction) {
-    SetInstruction(fusion_instruction, InstructionType::kFusion);
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation. Note that this is just one of the fusion instructions that
+  // calls this computation, there may be more than one callers.
+  //
+  // TODO(b/418034360): There should be at most one fusion instruction calling
+  // a fusion computation. Assert this and fix all related tests.
+  HloInstruction* FusionInstruction() const {
+    auto callers = caller_instructions(HloOpcode::kFusion);
+    return callers.empty() ? nullptr : callers.front();
   }
 
   // Returns if this computation is an async computation.
@@ -1034,8 +1017,6 @@ class HloComputation {
   absl::Status RemoveInstructionImpl(HloInstruction* instruction,
                                      bool ignore_safety_check);
 
-  void SetInstruction(HloInstruction* instruction, InstructionType type);
-
   // Private, because only HloModule should be able to set the parent.
   // We maintain the invariant that a computation has a parent() if and only if
   // the computation has been added to a module. Accordingly, the only way to
@@ -1069,10 +1050,6 @@ class HloComputation {
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;
-
-  // Contains HloInstruction* and its type.
-  // The respective type in the least significant three bits.
-  uintptr_t instruction_and_type_ = 0;
 
   // Contains an HloInstruction* or an absl::flat_hash_map<HloInstruction*,
   // /*count=*/int> in the high bits and a CallersType in the least significant

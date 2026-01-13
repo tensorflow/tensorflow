@@ -1572,14 +1572,6 @@ class HloFusionInstruction : public HloCallableInstruction {
                                 HloComputation* fusion_computation,
                                 absl::string_view prefix = "");
 
-  ~HloFusionInstruction() override;
-
-  void ClearCalledComputations() override;
-
-  // When a fusion instruction is being destructed, clear the back pointer of
-  // its fusion computation, to avoid referencing freed memory.
-  void ClearFusionComputationInstruction();
-
   // Clones the given instruction_to_append and inserts the clone into this
   // callable instruction.
   HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
