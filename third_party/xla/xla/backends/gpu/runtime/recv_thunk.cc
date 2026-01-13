@@ -57,14 +57,13 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
     : RecvThunk(std::move(thunk_info),
                 GetP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                         replica_count, partition_count),
-                std::make_shared<CollectiveThunk::AsyncEvents>(),
-                GetStreamKindForP2P(instr), buffer, instr->name()) {}
+                std::make_shared<CollectiveThunk::AsyncEvents>(), buffer,
+                instr->name()) {}
 
 RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
                      std::shared_ptr<AsyncEvents> async_events,
-                     AsyncStreamKind stream_kind, const Buffer& buffer,
-                     absl::string_view instr_name)
-    : CollectiveThunk(Thunk::kRecv, thunk_info, async_events, stream_kind),
+                     const Buffer& buffer, absl::string_view instr_name)
+    : CollectiveThunk(Thunk::kRecv, thunk_info, async_events, true),
       config_(config),
       buffer_(buffer),
       execution_counters_(config_.validation_kind ==
@@ -127,8 +126,7 @@ absl::StatusOr<std::unique_ptr<RecvThunk>> RecvThunk::FromProto(
 
   return std::make_unique<RecvThunk>(
       std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
-      async_events, thunk_proto.async_stream_kind(), buffer,
-      thunk_proto.instruction_name());
+      async_events, buffer, thunk_proto.instruction_name());
 }
 
 absl::StatusOr<ThunkProto> RecvThunk::ToProto() const {
@@ -160,7 +158,6 @@ absl::StatusOr<ThunkProto> RecvThunk::ToProto() const {
   thunk_proto->mutable_source_target_pairs()->Assign(
       source_target_pairs.begin(), source_target_pairs.end());
 
-  thunk_proto->set_async_stream_kind(GetAsyncStreamKind());
   thunk_proto->set_instruction_name(hlo_name_);
   return proto;
 }
