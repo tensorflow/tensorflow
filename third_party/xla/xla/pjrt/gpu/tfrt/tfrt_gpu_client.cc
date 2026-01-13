@@ -1171,9 +1171,17 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 
         auto stream = device->stream();
 
+        PrimitiveType type = literal.shape().element_type();
+        bool should_pack = primitive_util::IsSubByteNonPredType(type) &&
+                           transfer_manager->PackSubbyteTypes();
+        int64_t byte_size = literal.size_bytes();
+        if (should_pack) {
+          byte_size = CeilOfRatio<int64_t>(byte_size,
+                                           8 / primitive_util::BitWidth(type));
+        }
         const auto& buffer = device_buffer->buffer();
         if (literal.shape().IsArray()) {
-          CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
+          CHECK_EQ(byte_size, buffer->size_bytes());
         }
 
         ShapedBuffer shaped_buffer = buffer->AsShapedBuffer(shape, device);

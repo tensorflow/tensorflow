@@ -144,10 +144,13 @@ absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     return new_shape;
   };
 
+  // Convert to device shape. E.g. S4 element type is packed on device.
+  Shape device_shape =
+      backend().transfer_manager()->HostShapeToDeviceShape(literal.shape());
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer buffer,
       backend().transfer_manager()->AllocateScopedShapedBuffer(
-          literal.shape(), backend().memory_allocator(),
+          device_shape, backend().memory_allocator(),
           backend().default_device_ordinal(), shape_representation_fn));
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
@@ -536,10 +539,13 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     for (int64_t arg_index = 0; arg_index < argument_count; arg_index++) {
       const Literal* const argument = argument_provider(i, arg_index);
       TF_RET_CHECK(argument != nullptr);
+      // Convert to device shape. E.g. S4 element type is packed on device.
+      Shape device_shape = backend().transfer_manager()->HostShapeToDeviceShape(
+          argument->shape());
       TF_ASSIGN_OR_RETURN(
           ScopedShapedBuffer argument_buffer,
           backend().transfer_manager()->AllocateScopedShapedBuffer(
-              argument->shape(), backend().memory_allocator(), device,
+              device_shape, backend().memory_allocator(), device,
               device_shape_representation_fn_));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
           streams.back().get(), *argument, argument_buffer));

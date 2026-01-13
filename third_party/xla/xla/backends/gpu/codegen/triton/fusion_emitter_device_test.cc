@@ -3401,13 +3401,13 @@ ENTRY entry_computation {
 TEST_F(TritonEmitterTest, ConvertS4ToS8Exhaustive) {
   constexpr absl::string_view kHloText = R"(
 computation {
-  p0 = s4[16] parameter(0)
-  ROOT convert = s8[16] convert(p0)
+  p0 = s4[16]{0:E(4)} parameter(0)
+  ROOT convert = s8[16]{0} convert(p0)
 }
 
 ENTRY entry_computation {
-  p0 = s4[16] parameter(0)
-  ROOT fusion = s8[16] fusion(p0), kind=kCustom,
+  p0 = s4[16]{0:E(4)} parameter(0)
+  ROOT fusion = s8[16]{0} fusion(p0), kind=kCustom,
     calls=computation,
     backend_config={
       "fusion_backend_config":{
@@ -3431,13 +3431,13 @@ ENTRY entry_computation {
 TEST_P(TmaParameterizedTritonEmitterTest, ConvertS4ToS8For2D) {
   constexpr absl::string_view kHloTextTemplate = R"(
 computation {
-  p0 = s4[64,64] parameter(0)
-  ROOT convert = s8[64,64] convert(p0)
+  p0 = s4[64,64]{1,0:E(4)} parameter(0)
+  ROOT convert = s8[64,64]{1,0} convert(p0)
 }
 
 ENTRY entry_computation {
-  p0 = s4[64,64] parameter(0)
-  ROOT fusion = s8[64,64] fusion(p0), kind=kCustom,
+  p0 = s4[64,64]{1,0:E(4)} parameter(0)
+  ROOT fusion = s8[64,64]{1,0} fusion(p0), kind=kCustom,
     calls=computation,
     backend_config={
       "fusion_backend_config":{
