@@ -1524,6 +1524,18 @@ cc_library(
     ),
 )
 
+cc_library(
+    name = "_pywrap_lib_filter",
+    deps = if_pywrap(
+        if_true = select({
+            "@platforms//cpu:s390x": [
+                "@llvm-project//llvm:TargetParser",
+            ],
+            "//conditions:default": [],
+        }),
+    ),
+)
+
 pywrap_library(
     name = "_pywrap_tensorflow",
     # buildifier: disable=unsorted-dict-items
@@ -1608,6 +1620,7 @@ pywrap_library(
         "//tensorflow:macos": False,
         "//conditions:default": True,
     }),
+    pywrap_lib_filter = ":_pywrap_lib_filter",
     starlark_only_deps = [
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization",
