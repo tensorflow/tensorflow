@@ -298,14 +298,14 @@ cc_library(
 xla_cc_test(
     name = "gpu_hlo_cost_analysis_test",
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":hlo_op_profiles",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_cost_analysis",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
