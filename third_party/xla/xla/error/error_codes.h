@@ -84,6 +84,8 @@ namespace xla::error {
     absl::StatusCode::kResourceExhausted)                                     \
   X("E0102", RuntimeProgramInputMismatch, absl::StatusCode::kInvalidArgument) \
   X("E0103", RuntimeUnexpectedCoreHalt, absl::StatusCode::kInternal)          \
+  X("E1000", CompileTimeHbmOom, absl::StatusCode::kResourceExhausted)         \
+  X("E1001", CompileTimeScopedVmemOom, absl::StatusCode::kResourceExhausted)  \
   X("E3000", CompileTimeSparseCoreAllocationFailure,                          \
     absl::StatusCode::kResourceExhausted)                                     \
   X("E3001", CompileTimeSparseCoreInvalidReplicaCount,                        \
