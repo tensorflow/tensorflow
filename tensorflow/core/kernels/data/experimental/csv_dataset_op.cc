@@ -104,7 +104,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       record_defaults.push_back(t);
     }
 
-    std::vector<string> filenames;
+    std::vector<std::string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
       filenames.push_back(filenames_tensor->flat<tstring>()(i));
@@ -163,13 +163,15 @@ class CSVDatasetOp : public DatasetOpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, std::vector<string> filenames, bool header,
-            string compression_type, io::ZlibCompressionOptions options,
+    Dataset(OpKernelContext* ctx, std::vector<std::string> filenames,
+            bool header, std::string compression_type,
+            io::ZlibCompressionOptions options,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults,
             std::vector<int64_t> select_cols, std::vector<int64_t> exclude_cols,
-            bool use_quote_delim, char delim, string na_value, int op_version)
+            bool use_quote_delim, char delim, std::string na_value,
+            int op_version)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_(header),
@@ -187,7 +189,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           options_(options) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::CSV")});
     }
@@ -198,7 +200,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override { return "CSVDatasetOp::Dataset"; }
+    std::string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
     absl::Status CheckExternalState() const override {
       return absl::OkStatus();
@@ -474,9 +476,9 @@ class CSVDatasetOp : public DatasetOpKernel {
       struct Piece {
         size_t start;
         size_t len;
-        string buffer;
+        std::string buffer;
 
-        Piece(string buffer, size_t start, size_t len)
+        Piece(std::string buffer, size_t start, size_t len)
             : start(start), len(len), buffer(std::move(buffer)) {}
       };
 
@@ -593,7 +595,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             return FieldToOutput(ctx, field, out_tensors);
           }
         }
-        string field_complete;
+        std::string field_complete;
         size_t str_len = field.size();
         for (const Piece& p : earlier_pieces) {
           str_len += p.len;
@@ -617,11 +619,12 @@ class CSVDatasetOp : public DatasetOpKernel {
         return FieldToOutput(ctx, result, out_tensors);
       }
 
-      void AppendUnescapedPiece(absl::string_view piece, string* field_complete,
+      void AppendUnescapedPiece(absl::string_view piece,
+                                std::string* field_complete,
                                 bool* skip_next_quote) {
         size_t from = 0;
         size_t found = piece.find('\"', from);
-        while (found != string::npos) {
+        while (found != std::string::npos) {
           if (!*skip_next_quote) {
             // This is the first quote in a pair of adjacent double quotes
             field_complete->append(piece.data() + from, found + 1 - from);
@@ -735,8 +738,8 @@ class CSVDatasetOp : public DatasetOpKernel {
           // Otherwise, we convert it to the right type.
           case DT_INT32: {
             if (field.empty() || field == dataset()->na_value_) {
-              component.scalar<int32>()() =
-                  dataset()->record_defaults_[output_idx].flat<int32>()(0);
+              component.scalar<int32_t>()() =
+                  dataset()->record_defaults_[output_idx].flat<int32_t>()(0);
             } else {
               int32_t value;
               if (!absl::SimpleAtoi(field, &value)) {
@@ -744,7 +747,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                     "Field ", output_idx,
                     " in record is not a valid int32: ", field);
               }
-              component.scalar<int32>()() = value;
+              component.scalar<int32_t>()() = value;
             }
             break;
           }
@@ -798,7 +801,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<tstring>()() =
                   dataset()->record_defaults_[output_idx].flat<tstring>()(0);
             } else {
-              component.scalar<tstring>()() = string(field);
+              component.scalar<tstring>()() = std::string(field);
             }
             break;
           }
@@ -844,7 +847,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         for (const Piece& p : earlier_pieces) {
           str_len += p.len;
         }
-        string field_complete;
+        std::string field_complete;
         field_complete.reserve(str_len);
 
         for (const Piece& p : earlier_pieces) {
@@ -916,7 +919,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           TF_GUARDED_BY(mu_);  // must outlive input_stream_
     };                         // class Iterator
 
-    const std::vector<string> filenames_;
+    const std::vector<std::string> filenames_;
     const bool header_;
     const DataTypeVector out_type_;
     const std::vector<PartialTensorShape> output_shapes_;
