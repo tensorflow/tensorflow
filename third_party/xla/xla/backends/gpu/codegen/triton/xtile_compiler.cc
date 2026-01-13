@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -322,6 +323,22 @@ absl::Status CheckAtLeastAmpere(const se::GpuComputeCapability& gpu_cc) {
                      cuda_cc->ToString(), "."));
   }
   return absl::OkStatus();
+}
+
+std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result) {
+  os << "\nTritonWrapperResult: " << "\n";
+  os << "  shmem_bytes: " << result.shmem_bytes << "\n";
+  auto tma_metadata = result.tma_metadata.ToProto();
+  os << "  tma_metadata: {\n";
+  for (const auto& tma_entry : tma_metadata.arg_index_to_tma_info()) {
+    os << "    " << tma_entry.first << " : " << tma_entry.second.DebugString()
+       << "\n";
+  }
+  os << "  }\n";
+  os << "  thread_dims: " << result.thread_dims.ToString() << "\n";
+  os << "  nvvm_annotations: " << result.nvvm_annotations.size() << "\n";
+  os << "  llvm_module: " << result.llvm_module->getName().str() << "\n";
+  return os;
 }
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(

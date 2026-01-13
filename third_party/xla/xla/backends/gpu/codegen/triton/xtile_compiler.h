@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,8 @@ struct TritonWrapperResult {
   std::vector<llvm::Metadata*> nvvm_annotations;
   std::unique_ptr<llvm::Module> llvm_module;
 };
+
+std::ostream& operator<<(std::ostream& os, const TritonWrapperResult& result);
 
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
