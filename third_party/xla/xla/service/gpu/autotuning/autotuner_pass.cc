@@ -52,7 +52,8 @@ namespace {
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
                                  bool is_deviceless,
-                                 bool optimize_scratch_bytes) {
+                                 bool optimize_scratch_bytes,
+                                 bool allow_reg_spills) {
   AutotuneConfig autotune_config;
   autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
   autotune_config.relative_tolerance =
@@ -77,6 +78,19 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
       debug_options.xla_gpu_require_complete_aot_autotune_results();
   autotune_config.dump_hlos =
       debug_options.xla_gpu_dump_autotuned_gemm_fusions();
+  if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling() &&
+      allow_reg_spills) {
+    autotune_config.allow_reg_spills = true;
+  }
+  // xla_gpu_filter_kernels_spilling_registers_on_autotuning is true by default,
+  // but some autotuner passes need to set it to false explicitly as there
+  // aren't enough configs to guarantee that no config will spill. So we allow
+  // allow_reg_spills to override the autotuner config unless this flag is
+  // explicitly set to false.
+  if (!debug_options
+           .xla_gpu_filter_kernels_spilling_registers_on_autotuning()) {
+    autotune_config.allow_reg_spills = false;
+  }
 
   return autotune_config;
 }
@@ -99,11 +113,11 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
     const Compiler::GpuTargetConfig* target_config,
     se::DeviceAddressAllocator* allocator, bool optimize_scratch_bytes,
-    MultiProcessKeyValueStore key_value_store) {
+    MultiProcessKeyValueStore key_value_store, bool allow_reg_spills) {
   std::unique_ptr<Profiler> profiler = nullptr;
   bool is_deviceless = stream_executor == nullptr;
-  AutotuneConfig autotune_config =
-      GetAutotuneConfig(debug_options, is_deviceless, optimize_scratch_bytes);
+  AutotuneConfig autotune_config = GetAutotuneConfig(
+      debug_options, is_deviceless, optimize_scratch_bytes, allow_reg_spills);
   VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
