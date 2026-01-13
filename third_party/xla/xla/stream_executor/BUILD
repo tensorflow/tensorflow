@@ -728,6 +728,7 @@ xla_cc_test(
         ":device_address",
         ":kernel_args",
         ":kernel_args_packing_spec",
+        ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",
