@@ -21,21 +21,6 @@
 #include "xla/python/ifrt_proxy/integration_tests/scoped_pjrt_cpu_via_proxy.h"
 
 int main(int argc, char** argv) {
-  const std::string disabled[] = {
-      // Neither IFRT Proxy nor PjRt CPU does not support `GetHloModules`.
-      "*LoadedExecutableImplTest.GetHloModules*",
-      // CPU backend does not support serialization.
-      "*SerializeAndLoad*",
-  };
-
-  const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));
-
-#ifdef GTEST_FLAG_SET
-  GTEST_FLAG_SET(filter, filter.c_str());
-#else
-  testing::GTEST_FLAG(filter) = filter.c_str();
-#endif
-
   testing::InitGoogleTest(&argc, argv);
   xla::ifrt::proxy::test_util::ScopedPjrtCpuViaProxy scoped_pjrt_cpu_via_proxy;
   return RUN_ALL_TESTS();

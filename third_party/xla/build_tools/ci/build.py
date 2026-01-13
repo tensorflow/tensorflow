@@ -52,6 +52,9 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
+_MADTHANU_TARGET_PATTERNS = (
+    "//xla/python/ifrt_proxy/integration_tests/...",
+)
 _XLA_ONEAPI_TARGET_PATTERNS = (
     "//xla/stream_executor/sycl/...",
     "//xla/service/gpu/...",
@@ -326,10 +329,14 @@ Build(
     type_=BuildType.XLA_LINUX_X86_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "nonccl", "rbe_linux_cpu"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    target_patterns=_MADTHANU_TARGET_PATTERNS,
     build_tag_filters=cpu_x86_tag_filter,
     test_tag_filters=cpu_x86_tag_filter,
-    options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
+    options={
+        **_DEFAULT_BAZEL_OPTIONS,
+        "//xla/tsl:ci_build": True,
+        "runs_per_test": 100,
+    },
 )
 
 windows_x86_tag_filter = (
@@ -416,11 +423,12 @@ Build(
     type_=BuildType.XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS,
     repo="openxla/xla",
     configs=("warnings", "rbe_cross_compile_linux_arm64", "nonccl"),
-    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
+    target_patterns=_MADTHANU_TARGET_PATTERNS,
     options={
         **_DEFAULT_BAZEL_OPTIONS,
         "build_tests_only": True,
         "//xla/tsl:ci_build": True,
+        "runs_per_test": 100,
     },
     build_tag_filters=cpu_arm_tag_filter,
     test_tag_filters=cpu_arm_tag_filter,
