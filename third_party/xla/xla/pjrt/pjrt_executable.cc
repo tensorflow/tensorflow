@@ -106,6 +106,10 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   if (gpu_target_config.has_value()) {
     *output.mutable_target_config() = gpu_target_config->ToProto();
   }
+  if (compilation_mode.has_value()) {
+    output.set_compilation_mode(
+        static_cast<xla::CompilationMode>(*compilation_mode));
+  }
   return output;
 }
 
@@ -144,6 +148,10 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     TF_ASSIGN_OR_RETURN(
         output.gpu_target_config,
         Compiler::GpuTargetConfig::FromProto(proto.target_config()));
+  }
+  if (proto.has_compilation_mode()) {
+    int64_t compilation_mode = proto.compilation_mode();
+    output.compilation_mode = static_cast<CompilationMode>(compilation_mode);
   }
   return output;
 }

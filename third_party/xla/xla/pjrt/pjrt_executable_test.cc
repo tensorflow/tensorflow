@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,7 @@ TEST(CompileOptionsTest, Serialization) {
   ExecutableBuildOptions build_option;
   build_option.set_device_assignment(DeviceAssignment(1, 1));
   src.executable_build_options = build_option;
+  src.compilation_mode = CompilationMode::FORGE_COMPILER;
 
   TF_ASSERT_OK_AND_ASSIGN(CompileOptionsProto proto, src.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(CompileOptions output,
@@ -73,6 +75,7 @@ TEST(CompileOptionsTest, Defaults) {
   EXPECT_EQ(src.parameter_is_tupled_arguments, false);
   EXPECT_EQ(src.allow_in_place_mlir_modification, false);
   EXPECT_EQ(src.matrix_unit_operand_precision, PrecisionConfig::DEFAULT);
+  EXPECT_EQ(src.compilation_mode, std::nullopt);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {
