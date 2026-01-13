@@ -29,9 +29,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -687,7 +690,8 @@ ttir::InputPrecision InferDotPrecision(
 LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
                                            stablehlo::DotGeneralOp op,
                                            mlir::Operation* add_op,
-                                           Value accumulator) {
+                                           Value accumulator,
+                                           bool warp_specialization_allowed) {
   auto dot_algorithm = op.getAlgorithm();
 
   auto hlo_algorithm_or_status =
@@ -741,6 +745,12 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
                                    triton_dot_op_or_result.status().message()));
   }
 
+  if (warp_specialization_allowed) {
+    if (auto for_op = mlir::dyn_cast<scf::ForOp>(op->getParentOp())) {
+      for_op->setAttr("tt.warp_specialize", rewriter.getBoolAttr(true));
+    }
+  }
+
   auto triton_dot_op = triton_dot_op_or_result.value();
 
   rewriter.replaceAllOpUsesWith(add_op, op.getResult());
@@ -753,7 +763,9 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
 
 class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  LowerDotGeneral(mlir::MLIRContext* context, bool warp_specialization_allowed)
+      : OpRewritePattern(context),
+        warp_specialization_allowed_(warp_specialization_allowed) {}
 
  private:
   mlir::LogicalResult matchAndRewrite(
@@ -782,12 +794,14 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
     auto accumulator = add_op->getOperand(1) == op ? add_op->getOperand(0)
                                                    : add_op->getOperand(1);
 
-    if (mlir::failed(
-            RewriteDotGeneralToTritonDot(rewriter, op, add_op, accumulator))) {
+    if (mlir::failed(RewriteDotGeneralToTritonDot(
+            rewriter, op, add_op, accumulator, warp_specialization_allowed_))) {
       return mlir::failure();
     }
     return mlir::success();
   }
+
+  bool warp_specialization_allowed_;
 };
 
 class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
@@ -866,12 +880,14 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
+  using StableHLOLowerToTritonPassBase::StableHLOLowerToTritonPassBase;
+
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
     patterns.add<
         LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
-        LowerReshape, LowerDotGeneral, LowerAllReduce,
+        LowerReshape, LowerAllReduce,
         LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
         LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
                                 arith::SubIOp>,
@@ -887,6 +903,7 @@ class StableHLOLowerToTritonPass
                                 arith::MaxSIOp, arith::MaxUIOp>,
         LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
                                 arith::MinSIOp, arith::MinUIOp>>(mlir_context);
+    patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -897,8 +914,11 @@ class StableHLOLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass() {
-  return std::make_unique<StableHLOLowerToTritonPass>();
+std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass(
+    bool warp_specialization_allowed) {
+  StableHLOLowerToTritonPassOptions options;
+  options.warp_specialization_allowed_ = warp_specialization_allowed;
+  return std::make_unique<StableHLOLowerToTritonPass>(options);
 }
 
 }  // namespace mlir::triton::xla

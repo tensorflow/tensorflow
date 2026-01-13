@@ -438,9 +438,8 @@ absl::StatusOr<TensorValue> EmitTiledBitcast(
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values);
 // Returns the number of iterations of the loop over the contracting
 // dimension of matrix multiplication.
@@ -615,9 +614,8 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
 
 absl::StatusOr<TensorValue> EmitDot(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_dot,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   // We expect to get a tiled HLO in form:
   //
@@ -699,10 +697,6 @@ absl::StatusOr<TensorValue> EmitDot(
       /*upperBound=*/MakeIndex(b, loop_iteration_count),
       /*step=*/MakeIndex(b, 1), accumulator);
 
-  if (block_level_parameters.is_warp_specialization_allowed) {
-    for_op->setAttr("tt.warp_specialize", b.getBoolAttr(true));
-  }
-
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
@@ -719,8 +713,8 @@ absl::StatusOr<TensorValue> EmitDot(
           std::vector<TensorValue> result,
           EmitTiledComputation(
               b, ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-              *tiled_fusion_operand->called_computation(),
-              block_level_parameters, fn, computation_index, values));
+              *tiled_fusion_operand->called_computation(), fn,
+              computation_index, values));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -782,9 +776,8 @@ absl::StatusOr<TensorValue> EmitDot(
 
 absl::StatusOr<TensorValue> EmitScaledDot(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_dot,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   VLOG(2) << "EmitScaledDot: " << tiled_hlo_dot.ToString();
   const HloScaledDotInstruction& scaled_dot =
@@ -851,8 +844,8 @@ absl::StatusOr<TensorValue> EmitScaledDot(
           std::vector<TensorValue> result,
           EmitTiledComputation(
               b, ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-              *tiled_fusion_operand->called_computation(),
-              block_level_parameters, fn, computation_index, values));
+              *tiled_fusion_operand->called_computation(), fn,
+              computation_index, values));
       if (result.size() != 1) {
         return absl::InternalError(absl::StrCat(
             "Expected nested fusion computation to emit a single value, got ",
@@ -936,9 +929,8 @@ absl::StatusOr<TensorValue> EmitScaledDot(
 
 absl::StatusOr<TensorValue> EmitConcatenate(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_concatenate,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   const int64_t concatenate_dimension =
       tiled_concatenate.hlo()->concatenate_dimension();
@@ -1032,8 +1024,7 @@ absl::StatusOr<TensorValue> EmitConcatenate(
         std::vector<TensorValue> result,
         EmitTiledComputation(
             b, ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
-            *tiled_fusion_operand->called_computation(), block_level_parameters,
-            fn, pid, values));
+            *tiled_fusion_operand->called_computation(), fn, pid, values));
     CHECK_EQ(result.size(), 1);
     mlir::scf::YieldOp::create(b, result.front());
   }
@@ -1160,9 +1151,8 @@ absl::StatusOr<TensorValue> EmitAllReduce(
 
 absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloInstruction& tiled_hlo, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
@@ -1212,8 +1202,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
-    return EmitConcatenate(b, fusion, tiled_hlo, block_level_parameters, fn,
-                           pid, values);
+    return EmitConcatenate(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kPad) {
@@ -1221,13 +1210,11 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
-    return EmitDot(b, fusion, tiled_hlo, block_level_parameters, fn, pid,
-                   values);
+    return EmitDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
-    return EmitScaledDot(b, fusion, tiled_hlo, block_level_parameters, fn, pid,
-                         values);
+    return EmitScaledDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
@@ -1312,9 +1299,8 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
 
 absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloComputation& tiled_computation,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, Value pid,
+    const TiledHloComputation& tiled_computation, mlir::FunctionOpInterface fn,
+    Value pid,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
   VLOG(2) << "EmitTiledComputation: " << tiled_computation.ToString();
   for (const TiledHloInstruction* tiled_hlo :
@@ -1328,8 +1314,7 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     }
     TF_ASSIGN_OR_RETURN(
         TensorValue result,
-        EmitTiledHloInstruction(b, fusion, *tiled_hlo, block_level_parameters,
-                                fn, pid, values));
+        EmitTiledHloInstruction(b, fusion, *tiled_hlo, fn, pid, values));
     TF_RET_CHECK(values.insert({tiled_hlo, result}).second) << hlo->ToString();
     VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
   }
@@ -1501,10 +1486,9 @@ absl::Status EmitGeneric(
 
   Value tile_id = fn.getTileId();
   absl::flat_hash_map<const TiledHloInstruction*, TensorValue> values;
-  TF_ASSIGN_OR_RETURN(
-      auto results,
-      EmitTiledComputation(b, fusion, tiled_hlo_computation,
-                           block_level_parameters, fn, tile_id, values));
+  TF_ASSIGN_OR_RETURN(auto results,
+                      EmitTiledComputation(b, fusion, tiled_hlo_computation, fn,
+                                           tile_id, values));
 
   for (auto [root, result, arg] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,

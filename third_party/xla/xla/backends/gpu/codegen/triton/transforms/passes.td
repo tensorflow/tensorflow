@@ -218,7 +218,11 @@ def StableHLOLowerToTritonPass
     "::mlir::triton::xla::XlaTritonDialect",
     "::xla::xtile::XTileDialect",
   ];
-  let constructor = "CreateStableHLOLowerToTritonPass()";
+  let options = [
+    Option<"warp_specialization_allowed_", "warp_specialization_allowed",
+           "bool", "",
+           "Whether to allow warp specializations.">,
+  ];
 }
 
 def TensorLowerToTritonPass

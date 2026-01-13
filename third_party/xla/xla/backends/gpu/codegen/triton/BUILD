@@ -957,7 +957,6 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/tsl/platform:errors",

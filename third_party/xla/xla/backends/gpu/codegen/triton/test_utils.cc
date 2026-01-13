@@ -188,9 +188,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
 absl::Status LowerXTileIrToTritonAndFileCheck(
     HloTestBaseWithMLIRContext* test, mlir::ModuleOp xtile_dialect_module,
     absl::string_view filecheck_pattern, const HloFusionInstruction& fusion) {
+  auto fusion_backend_config =
+      fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *test->mlir_context(), fusion,
-      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()));
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), block_level_parameters));
 
   std::string out;
   llvm::raw_string_ostream os(out);

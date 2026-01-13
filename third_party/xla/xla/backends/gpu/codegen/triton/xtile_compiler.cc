@@ -299,7 +299,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   }
 
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
-      triton_module.get(), mlir_context, *fusion, device_info));
+      triton_module.get(), mlir_context, *fusion, device_info,
+      block_level_parameters));
 
   VLOG(6) << GetModuleIrString(triton_module.get());
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
@@ -372,9 +373,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   EnableIRPrintingIfRequested(pm, &mlir_context, hlo_module, kernel_name,
                               "triton-to-llvm");
   pm.enableVerifier(should_verify);
-  CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
-                          block_level_parameters.is_tma_allowed,
-                          block_level_parameters.num_stages);
+  CreateTritonXlaPipeline(
+      &pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
+      block_level_parameters.is_tma_allowed, block_level_parameters.num_stages,
+      block_level_parameters.is_warp_specialization_allowed);
 
   int num_warps = block_level_parameters.num_warps;
   int num_ctas = block_level_parameters.num_ctas;
@@ -484,10 +486,11 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 
 namespace ir_emitter_triton_internal {
 
-absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
-                                mlir::MLIRContext& mlir_context,
-                                const HloFusionInstruction& fusion,
-                                const se::DeviceDescription& device_info) {
+absl::Status LowerXTileToTriton(
+    mlir::ModuleOp xtile_dialect_module, mlir::MLIRContext& mlir_context,
+    const HloFusionInstruction& fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters) {
   {
     const HloModule& hlo_module = *fusion.GetModule();
     // Convert xTile ops to Triton ops.
@@ -499,7 +502,8 @@ absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
     pm.enableVerifier(/*enabled=*/false);
     pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
-    pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
+    pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
+        block_level_parameters.is_warp_specialization_allowed));
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::CreateXTileLowerToTritonPass());
 

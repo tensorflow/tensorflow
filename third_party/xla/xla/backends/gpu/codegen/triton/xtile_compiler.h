@@ -138,10 +138,11 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
 //
 // The `fusion` instruction should be the one that was used to create the shared
 // dialect module.
-absl::Status LowerXTileToTriton(mlir::ModuleOp xtile_dialect_module,
-                                mlir::MLIRContext& mlir_context,
-                                const HloFusionInstruction& fusion,
-                                const se::DeviceDescription& device_info);
+absl::Status LowerXTileToTriton(
+    mlir::ModuleOp xtile_dialect_module, mlir::MLIRContext& mlir_context,
+    const HloFusionInstruction& fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters);
 
 }  // namespace ir_emitter_triton_internal
 }  // namespace gpu

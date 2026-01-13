@@ -1,6 +1,9 @@
 // RUN: xla-opt %s -split-input-file \
-// RUN: -stablehlo-lower-to-triton \
+// RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=false" \
 // RUN: | FileCheck %s
+// RUN: xla-opt %s -split-input-file \
+// RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=true" \
+// RUN: | FileCheck %s --check-prefix=WARP
 
 // CHECK: func @lower_transpose(%[[ARG:.*]]: tensor<2x4x8xf32>) -> tensor<8x2x4xf32>
 func.func @lower_transpose(%arg0: tensor<2x4x8xf32>) -> tensor<8x2x4xf32> {
@@ -419,3 +422,22 @@ func.func @lower_minimum_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : te
   return %0 : tensor<2x4xf32>
 }
 
+
+// CHECK: func @lower_dot_with_warp_specialization_to_triton
+func.func @lower_dot_with_warp_specialization_to_triton(
+    %arg0: tensor<2x4xf32>,
+    %arg1: tensor<4x8xf32>,
+    %arg2: tensor<2x8xf32>) -> tensor<2x8xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %res = scf.for %iv = %c0 to %c4 step %c1 iter_args(%accum = %arg2) -> tensor<2x8xf32> {
+    %dot = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xf32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+    %add = arith.addf %dot, %accum : tensor<2x8xf32>
+    // CHECK-NOT : tt.warp_specialize
+    // WARP: scf.yield
+    // WARP-NEXT: tt.warp_specialize = true
+    scf.yield %add : tensor<2x8xf32>
+  }
+  return %res : tensor<2x8xf32>
+}

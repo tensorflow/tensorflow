@@ -29,14 +29,15 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma, int num_stages) {
+    bool allow_tma, int num_stages, bool warp_specialization_allowed) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerAtomicsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerGetTidPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
-  pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
+  pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
+      warp_specialization_allowed));
 
   pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
   pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
