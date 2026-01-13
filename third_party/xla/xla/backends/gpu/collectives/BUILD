@@ -506,6 +506,7 @@ cc_library(
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",

@@ -2628,6 +2628,193 @@ TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
 }
 
+void VerifyAllReduceType(const HloModule* module, PrimitiveType expected_type) {
+  bool found = false;
+  for (auto* comp : module->computations()) {
+    for (auto* instr : comp->instructions()) {
+      if (instr->opcode() == HloOpcode::kAllReduce ||
+          instr->opcode() == HloOpcode::kAllReduceStart) {
+        PrimitiveType actual_type = instr->operand(0)->shape().element_type();
+        ASSERT_EQ(actual_type, expected_type)
+            << "Expected AllReduce type " << PrimitiveType_Name(expected_type)
+            << " but got " << PrimitiveType_Name(actual_type);
+        found = true;
+      }
+    }
+  }
+  ASSERT_TRUE(found) << "No AllReduce found in module";
+}
+
+// FP8 vs FP16 training step comparison.
+TEST_P(AllReduceTest, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
+  if (!Capability().IsCuda() ||
+      !Capability().cuda_compute_capability()->IsAtLeast(9, 0)) {
+    GTEST_SKIP() << "FP8 requires CUDA with Hopper or newer architecture.";
+  }
+
+  // FP16 baseline
+  const absl::string_view kF16ModuleStr = R"(
+  HloModule f16_training_step
+  add_f16 { x = f16[] parameter(0)  y = f16[] parameter(1)  ROOT add = f16[] add(x, y) }
+  ENTRY training_step {
+    activations = f16[32,64] parameter(0)
+    weights = f16[64,128] parameter(1)
+    upstream_grad = f16[32,128] parameter(2)
+    lr = f16[] parameter(3)
+    output = f16[32,128] dot(activations, weights), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    activations_t = f16[64,32] transpose(activations), dimensions={1,0}
+    weight_grad = f16[64,128] dot(activations_t, upstream_grad), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    weight_grad_allreduce = f16[64,128] all-reduce(weight_grad), to_apply=add_f16, replica_groups={{0,1}}
+    two = f16[] constant(2)
+    two_bcast = f16[64,128] broadcast(two), dimensions={}
+    weight_grad_avg = f16[64,128] divide(weight_grad_allreduce, two_bcast)
+    lr_bcast = f16[64,128] broadcast(lr), dimensions={}
+    weight_update = f16[64,128] multiply(lr_bcast, weight_grad_avg)
+    new_weights = f16[64,128] subtract(weights, weight_update)
+    ROOT result = (f16[32,128], f16[64,128]) tuple(output, new_weights)
+  })";
+
+  // FP8 version
+  const absl::string_view kF8ModuleStr = R"(
+  HloModule fp8_training_step
+  add_f8 { x = f8e4m3fn[] parameter(0)  y = f8e4m3fn[] parameter(1)  ROOT add = f8e4m3fn[] add(x, y) }
+  ENTRY training_step {
+    activations = f16[32,64] parameter(0)
+    weights = f16[64,128] parameter(1)
+    upstream_grad = f16[32,128] parameter(2)
+    lr = f16[] parameter(3)
+    output = f16[32,128] dot(activations, weights), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    activations_t = f16[64,32] transpose(activations), dimensions={1,0}
+    weight_grad = f16[64,128] dot(activations_t, upstream_grad), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    weight_grad_f8 = f8e4m3fn[64,128] convert(weight_grad)
+    weight_grad_allreduce_f8 = f8e4m3fn[64,128] all-reduce(weight_grad_f8), to_apply=add_f8, replica_groups={{0,1}}
+    weight_grad_allreduce = f16[64,128] convert(weight_grad_allreduce_f8)
+    two = f16[] constant(2)
+    two_bcast = f16[64,128] broadcast(two), dimensions={}
+    weight_grad_avg = f16[64,128] divide(weight_grad_allreduce, two_bcast)
+    lr_bcast = f16[64,128] broadcast(lr), dimensions={}
+    weight_update = f16[64,128] multiply(lr_bcast, weight_grad_avg)
+    new_weights = f16[64,128] subtract(weights, weight_update)
+    ROOT result = (f16[32,128], f16[64,128]) tuple(output, new_weights)
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  Array<Eigen::half> activations1({32, 64}), activations2({32, 64});
+  activations1.FillRandom(Eigen::half(0.1f), 0.5f, /*seed=*/0);
+  activations2.FillRandom(Eigen::half(0.1f), 0.5f, /*seed=*/1);
+  Array<Eigen::half> weights({64, 128});
+  weights.FillRandom(Eigen::half(0.1f), 0.3f, /*seed=*/42);
+  Array<Eigen::half> upstream_grad1({32, 128}), upstream_grad2({32, 128});
+  upstream_grad1.FillRandom(Eigen::half(0.01f), 0.1f, /*seed=*/100);
+  upstream_grad2.FillRandom(Eigen::half(0.01f), 0.1f, /*seed=*/101);
+
+  Literal lr = LiteralUtil::CreateR0<Eigen::half>(Eigen::half(0.01f));
+  Literal activations_lit1 = LiteralUtil::CreateFromArray(activations1);
+  Literal activations_lit2 = LiteralUtil::CreateFromArray(activations2);
+  Literal weights_lit = LiteralUtil::CreateFromArray(weights);
+  Literal upstream_grad_lit1 = LiteralUtil::CreateFromArray(upstream_grad1);
+  Literal upstream_grad_lit2 = LiteralUtil::CreateFromArray(upstream_grad2);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto f16_module, ParseAndReturnVerifiedModule(
+                                               kF16ModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult f16_result,
+      ExecuteReplicated(
+          std::move(f16_module),
+          std::vector<std::vector<Literal*>>{
+              {&activations_lit1, &weights_lit, &upstream_grad_lit1, &lr},
+              {&activations_lit2, &weights_lit, &upstream_grad_lit2, &lr}}));
+  // Verify FP16 all-reduce type in optimized module
+  VerifyAllReduceType(f16_result.optimized_module, F16);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto f8_module, ParseAndReturnVerifiedModule(kF8ModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult f8_result,
+      ExecuteReplicated(
+          std::move(f8_module),
+          std::vector<std::vector<Literal*>>{
+              {&activations_lit1, &weights_lit, &upstream_grad_lit1, &lr},
+              {&activations_lit2, &weights_lit, &upstream_grad_lit2, &lr}}));
+  // Verify FP8 all-reduce type in optimized module
+  VerifyAllReduceType(f8_result.optimized_module, F8E4M3FN);
+
+  ASSERT_EQ(f16_result.results.size(), kNumReplicas);
+  ASSERT_EQ(f8_result.results.size(), kNumReplicas);
+
+  std::vector<Literal> f16_r0 = f16_result.results[0].DecomposeTuple();
+  std::vector<Literal> f8_r0 = f8_result.results[0].DecomposeTuple();
+  std::vector<Literal> f8_r1 = f8_result.results[1].DecomposeTuple();
+
+  // Forward outputs should match exactly (no FP8 in forward path)
+  EXPECT_TRUE(LiteralTestUtil::Equal(f16_r0[0], f8_r0[0]));
+
+  // FP8 vs FP16 weight comparison: should be close but not identical
+  EXPECT_TRUE(
+      LiteralTestUtil::Near(f16_r0[1], f8_r0[1], ErrorSpec{1e-2, 1e-2}));
+
+  // Numerical precision check: FP8 should produce measurably different results
+  // than FP16. FP8 e4m3 has ~6% relative error (2^-4), FP16 has ~0.1% (2^-10).
+  TF_ASSERT_OK_AND_ASSIGN(Literal f16_f32, f16_r0[1].Convert(F32));
+  TF_ASSERT_OK_AND_ASSIGN(Literal f8_f32, f8_r0[1].Convert(F32));
+  absl::Span<const float> f16_data = f16_f32.data<float>();
+  absl::Span<const float> f8_data = f8_f32.data<float>();
+  float max_abs_diff = 0.0f;
+  for (size_t i = 0; i < f16_data.size(); ++i) {
+    max_abs_diff = std::max(max_abs_diff, std::abs(f16_data[i] - f8_data[i]));
+  }
+  // Expect measurable difference (> FP16 noise floor of ~0.1%)
+  EXPECT_GT(max_abs_diff, 1e-3f);
+}
+
+// Test that FP8 all-reduce fails on pre-Hopper GPUs.
+TEST_P(AllReduceTest, AsyncAllReduce_F8E4M3FN_FailsOnPreHopper) {
+  if (!Capability().IsCuda()) {
+    GTEST_SKIP() << "Test requires CUDA.";
+  }
+  if (Capability().cuda_compute_capability()->IsAtLeast(9, 0)) {
+    GTEST_SKIP() << "Test requires pre-Hopper GPU (compute capability < 9.0).";
+  }
+
+  const absl::string_view kF8ModuleStr = R"(
+  HloModule fp8_allreduce_test
+  add_f8 { x = f8e4m3fn[] parameter(0)  y = f8e4m3fn[] parameter(1)  ROOT add = f8e4m3fn[] add(x, y) }
+  ENTRY test_computation {
+    param_0 = f16[64,128] parameter(0)
+    param_f8 = f8e4m3fn[64,128] convert(param_0)
+    allreduce_f8 = f8e4m3fn[64,128] all-reduce(param_f8), to_apply=add_f8, replica_groups={{0,1}}
+    ROOT result = f16[64,128] convert(allreduce_f8)
+  })";
+
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << hlo_runner_->device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kF8ModuleStr, kNumReplicas));
+
+  Array<Eigen::half> input1({64, 128}), input2({64, 128});
+  input1.FillRandom(Eigen::half(0.1f), 0.5f, /*seed=*/0);
+  input2.FillRandom(Eigen::half(0.1f), 0.5f, /*seed=*/1);
+  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
+  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
+
+  auto result = ExecuteReplicated(
+      std::move(module),
+      std::vector<std::vector<Literal*>>{{&input_literal1}, {&input_literal2}});
+
+  EXPECT_FALSE(result.ok())
+      << "FP8 all-reduce should fail on pre-Hopper GPUs, but succeeded.";
+  // NCCL returns ncclInvalidArgument for FP8 reductions on pre-sm90 GPUs.
+  EXPECT_THAT(result.status().message(),
+              ::testing::HasSubstr("FP8 reduction support begins with sm90"));
+}
+
 TEST_P(AllReduceTest, AsyncAllReduce_PRED_2GPUs) {
   const absl::string_view kModuleStr = R"(
   HloModule test
