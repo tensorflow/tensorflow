@@ -378,18 +378,6 @@ Build(
         "-//xla/backends/gpu/...",
         "-//xla/codegen/emitters/tests/...",
         "-//xla/service/gpu/...",
-        # undefined symbols
-        "-//xla/codegen/xtile/ir/...",
-        "-//xla/codegen/tools:emitters_opt",
-        "-//xla/codegen/emitters/ir/tests/...",
-        "-//xla/codegen/emitters/transforms/tests/...",
-        "-//xla/backends/cpu/codegen/emitters/ir/tests/...",
-        "-//xla/backends/cpu/codegen/emitters/transforms/tests/...",
-        "-//xla/backends/cpu:ynn_emitter",
-        "-//xla/backends/cpu:ynn_support",
-        "-//xla/hlo/transforms/simplifiers:simplify_fp_conversions_test",
-        "-@local_tsl//tsl/platform:net_test",
-        "-//xla/backends/cpu/benchmarks:dag_execution_benchmark_test",
         # eigen is not windows compatible
         "-//xla/codegen/intrinsic/cpp:eigen_unary_test",
         "-//xla/codegen/intrinsic/cpp:eigen_unary_ll_generator",

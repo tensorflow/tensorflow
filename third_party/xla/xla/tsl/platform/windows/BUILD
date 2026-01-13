@@ -181,8 +181,10 @@ cc_library(
     ],
     deps = [
         ":error_windows",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
