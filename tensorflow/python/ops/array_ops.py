@@ -6311,8 +6311,14 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   Returns:
     A 4-D Tensor of the same type as the input.
   """
-  return gen_array_ops.extract_image_patches(images, sizes, strides, rates,
-                                             padding, name)
+    if isinstance(sizes, (list, tuple)):
+        sizes = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in sizes]
+    if isinstance(strides, (list, tuple)):
+        strides = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in strides]
+    if isinstance(rates, (list, tuple)):
+        rates = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in rates]
+    return gen_array_ops.extract_image_patches(images, sizes, strides, rates,
+                                                 padding, name)
 
 
 @tf_export(v1=["image.extract_image_patches", "extract_image_patches"])
@@ -6357,8 +6363,14 @@ def extract_image_patches(  # pylint: disable=missing-docstring
   """
   ksizes = deprecation.deprecated_argument_lookup("sizes", sizes, "ksizes",
                                                   ksizes)
-  return gen_array_ops.extract_image_patches(images, ksizes, strides, rates,
-                                             padding, name)
+  if isinstance(ksizes, (list, tuple)):
+    ksizes = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in ksizes]
+  if isinstance(strides, (list, tuple)):
+    strides = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in strides]
+  if isinstance(rates, (list, tuple)):
+    rates = [tensor_util.constant_value(s) if tensor_util.is_tf_type(s) else s for s in rates]
+
+  return gen_array_ops.extract_image_patches(images, ksizes, strides, rates, padding, name)
 
 
 extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
