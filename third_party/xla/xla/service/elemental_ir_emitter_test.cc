@@ -35,7 +35,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
 
@@ -44,7 +45,8 @@ namespace {
 
 using std::nullopt;
 
-class ElementalIrEmitterExecutionTest : public HloTestBase {
+class ElementalIrEmitterExecutionTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
@@ -456,15 +458,8 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
   }
   )",
                                             {{"${tname}", tname}});
-  HloModuleConfig config;
-  DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      HloTestBase::ParseAndReturnVerifiedModule(hlo_text, config));
-  EXPECT_TRUE(
-      HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(ElementalIrEmitterExecutionTest::RunAndCompare(
+      hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
 
 TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,

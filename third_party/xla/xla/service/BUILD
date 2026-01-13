@@ -4223,9 +4223,8 @@ xla_test(
     ],
     tags = [
         "no_windows",  # TODO(b/152037541)
-        "pjrt_migration_candidate",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
-    use_legacy_runtime = True,
     deps = [
         ":elemental_ir_emitter",
         ":hlo_module_config",
@@ -4236,7 +4235,8 @@ xla_test(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
