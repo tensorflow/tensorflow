@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/error/error_codes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout.h"
@@ -845,7 +846,7 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
     if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
       const auto& expected_shape = parameter_device_shapes_[i];
       const auto& actual_shape = argument_handles[i]->on_device_shape();
-      return InvalidArgument(
+      return error::RuntimeProgramInputMismatch(
           "Executable(%s) expected parameter %d of size %lld (%s) but got "
           "buffer with incompatible size %lld (%s)",
           name(), i, input_buffer_sizes_in_bytes_[i],

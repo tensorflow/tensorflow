@@ -58,25 +58,31 @@ namespace xla::error {
 // - an Enum value ErrorCode::kBinaryTooLarge that can be used in the XLA
 // codebase to uniquely identify error sources.
 
-#define XLA_ERROR_CODE_LIST(X)                                          \
-  /* go/keep-sorted start */                                            \
-  /* E00xx - Generic Error Codes mimicking absl::Status codes. */       \
-  X("E0000", Cancelled, absl::StatusCode::kCancelled)                   \
-  X("E0001", Unknown, absl::StatusCode::kUnknown)                       \
-  X("E0002", InvalidArgument, absl::StatusCode::kInvalidArgument)       \
-  X("E0003", DeadlineExceeded, absl::StatusCode::kDeadlineExceeded)     \
-  X("E0004", NotFound, absl::StatusCode::kNotFound)                     \
-  X("E0005", AlreadyExists, absl::StatusCode::kAlreadyExists)           \
-  X("E0006", PermissionDenied, absl::StatusCode::kPermissionDenied)     \
-  X("E0007", ResourceExhausted, absl::StatusCode::kResourceExhausted)   \
-  X("E0008", FailedPrecondition, absl::StatusCode::kFailedPrecondition) \
-  X("E0009", Aborted, absl::StatusCode::kAborted)                       \
-  X("E0010", OutOfRange, absl::StatusCode::kOutOfRange)                 \
-  X("E0011", Unimplemented, absl::StatusCode::kUnimplemented)           \
-  X("E0012", Internal, absl::StatusCode::kInternal)                     \
-  X("E0013", Unavailable, absl::StatusCode::kUnavailable)               \
-  X("E0014", DataLoss, absl::StatusCode::kDataLoss)                     \
-  X("E0015", Unauthenticated, absl::StatusCode::kUnauthenticated)       \
+#define XLA_ERROR_CODE_LIST(X)                                                \
+  /* go/keep-sorted start */                                                  \
+  /* E00xx - Generic Error Codes mimicking absl::Status codes. */             \
+  X("E0000", Cancelled, absl::StatusCode::kCancelled)                         \
+  X("E0001", Unknown, absl::StatusCode::kUnknown)                             \
+  X("E0002", InvalidArgument, absl::StatusCode::kInvalidArgument)             \
+  X("E0003", DeadlineExceeded, absl::StatusCode::kDeadlineExceeded)           \
+  X("E0004", NotFound, absl::StatusCode::kNotFound)                           \
+  X("E0005", AlreadyExists, absl::StatusCode::kAlreadyExists)                 \
+  X("E0006", PermissionDenied, absl::StatusCode::kPermissionDenied)           \
+  X("E0007", ResourceExhausted, absl::StatusCode::kResourceExhausted)         \
+  X("E0008", FailedPrecondition, absl::StatusCode::kFailedPrecondition)       \
+  X("E0009", Aborted, absl::StatusCode::kAborted)                             \
+  X("E0010", OutOfRange, absl::StatusCode::kOutOfRange)                       \
+  X("E0011", Unimplemented, absl::StatusCode::kUnimplemented)                 \
+  X("E0012", Internal, absl::StatusCode::kInternal)                           \
+  X("E0013", Unavailable, absl::StatusCode::kUnavailable)                     \
+  X("E0014", DataLoss, absl::StatusCode::kDataLoss)                           \
+  X("E0015", Unauthenticated, absl::StatusCode::kUnauthenticated)             \
+                                                                              \
+  X("E0100", RuntimeBufferAllocationFailure,                                  \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E0101", RuntimeProgramAllocationFailure,                                 \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E0102", RuntimeProgramInputMismatch, absl::StatusCode::kInvalidArgument) \
   /* go/keep-sorted end */
 
 // Enum that enumerates all XLA error codes.

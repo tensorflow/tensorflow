@@ -153,6 +153,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/error:error_codes",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
