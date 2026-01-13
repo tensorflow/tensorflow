@@ -151,7 +151,7 @@ std::string RemoveDoc(const OpDef& op, const std::string& file_contents,
                       size_t start_location) {
   // Look for a line starting with .Doc( after the REGISTER_OP.
   const auto doc_start_location = file_contents.find(kDocStart, start_location);
-  const std::string format_error = strings::Printf(
+  const std::string format_error = absl::StrFormat(
       "Could not find %s doc for removal. Make sure the doc is defined with "
       "'%s' prefix and '%s' suffix or remove the doc manually.",
       op.name().c_str(), kDocStart, kDocEnd);
@@ -205,7 +205,7 @@ void RemoveDocs(const std::vector<const OpDef*>& ops,
         continue;
       }
       std::string register_call =
-          strings::Printf("REGISTER_OP(\"%s\")", op->name().c_str());
+          absl::StrFormat("REGISTER_OP(\"%s\")", op->name().c_str());
       const auto register_call_location = file_contents.find(register_call);
       // Find REGISTER_OP(OpName) call.
       if (register_call_location == std::string::npos) {
