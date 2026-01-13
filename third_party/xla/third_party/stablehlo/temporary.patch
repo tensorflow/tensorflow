@@ -1,12 +1,19 @@
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
-@@ -30,6 +30,8 @@
+@@ -18,6 +18,7 @@
+ #include <cstdint>
+ #include <optional>
+ 
++#include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+@@ -30,6 +31,7 @@
  #include "stablehlo/dialect/TypeInference.h"
  #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
  #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/SmallVectorExtras.h"
-+#include "third_party/stablehlo/stablehlo/transforms/StablehloBroadcastLowering.h"
++#include "stablehlo/transforms/StablehloBroadcastLowering.h"
  
  namespace mlir {
  namespace stablehlo {
