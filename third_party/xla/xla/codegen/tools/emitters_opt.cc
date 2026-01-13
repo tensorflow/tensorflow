@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
@@ -73,6 +74,7 @@ int main(int argc, char** argv) {
   mlir::registerCSEPass();
   mlir::registerInliner();
   xla::emitters::registerTransformsPasses();
+  xla::emitters::registerTransformsLLVMGPUPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
