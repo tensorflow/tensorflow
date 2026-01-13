@@ -4342,14 +4342,6 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   ElementsAttr attr = dyn_cast<ElementsAttr>(tfl_const_op.getValueAttr());
 
   auto e_type = output_type.getElementType();
-  // TOSA only support up to 48-bits
-  // If source is higher than that, it's not representabble.
-  // For data type like 64 bits, we need to truncate them into 48 bits.
-  if (e_type.isInteger(64)) {
-    e_type = rewriter.getIntegerType(48);
-    attr = mlir::cast<DenseIntOrFPElementsAttr>(attr).mapValues(
-        e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
-  }
 
   if (!output_type.hasRank()) {
     if (auto attr_type = dyn_cast<ShapedType>(attr.getType())) {
