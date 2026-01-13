@@ -146,9 +146,10 @@ void GatherFusionInstructions(
 
 /* static */ absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
-  auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
-  std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, std::move(logical_buffer_analysis).value()));
+  TF_ASSIGN_OR_RETURN(auto logical_buffer_analysis,
+                      LogicalBufferAnalysis::Run(module));
+  std::unique_ptr<TuplePointsToAnalysis> analysis(
+      new TuplePointsToAnalysis(module, std::move(logical_buffer_analysis)));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
