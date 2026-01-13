@@ -16570,6 +16570,48 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestSchedulingImmediateCopiesBug) {
+  // * negate3 output is colored in alternate memory space
+  // * add0 use of negate2 is colored in alternate memory space
+  // * alternate memory size is 48 bytes, enough for exactly one value
+  // * this forces immediate eviction of negate3 and just in time prefetch of
+  //   negate2.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[3,4]{1,0} parameter(0)
+  p1 = f32[3,4]{1,0} parameter(1)
+  negate0 = f32[3,4]{1,0} negate(p0)
+  negate1 = f32[3,4]{1,0} negate(p1)
+  negate2 = f32[3,4]{1,0} negate(negate0)
+  negate3 = f32[3,4]{1,0} negate(negate1)
+  add0 = f32[3,4]{1,0} add(negate2, negate3)
+  negate4 = f32[3,4]{1,0} negate(add0)
+  negate5 = f32[3,4]{1,0} negate(negate4)
+  ROOT negate6 = f32[3,4]{1,0} negate(negate5)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* add0 = FindInstruction(module.get(), "add0");
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  HloPosition negate3_position{negate3, {}};
+  HloUse add0_use_of_negate2{add0, 0, {}};
+  memory_space_options.buffer_colorings = {
+      {negate3_position, kAlternateMemorySpace},
+      {add0_use_of_negate2, kAlternateMemorySpace}};
+  memory_space_options.max_size_in_bytes = 48;
+  memory_space_options.verify = true;
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla

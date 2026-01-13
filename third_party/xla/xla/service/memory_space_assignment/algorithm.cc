@@ -7017,10 +7017,14 @@ AllocationResult MsaAlgorithm::Evict(const AllocationRequest& request,
 
   if (force_evict) {
     VLOG(3) << "Forcing evicting.";
+    int64_t inclusive_eviction_start_time = prev_allocation->end_time() + 1;
     AddAsyncCopyOrOtherMemOp(
         *prev_allocation, MemorySpace::kDefault,
-        /*chunk=*/std::nullopt, prev_allocation->end_time() - 1,
-        request.end_time, prev_allocation->end_time() + 1,
+        /*chunk=*/std::nullopt,
+        /*exclusive_start_time=*/
+        InclusiveToExclusiveStartTime(inclusive_eviction_start_time),
+        request.end_time,
+        /*copy_done_schedule_before_time=*/prev_allocation->end_time() + 1,
         request.allocation_value->mutable_allocation_sequence(),
         /*aliased_offset=*/nullptr, 0);
     return AllocationResult::kSuccess;
