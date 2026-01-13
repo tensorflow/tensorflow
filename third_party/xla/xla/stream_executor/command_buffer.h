@@ -20,7 +20,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace stream_executor {
 
@@ -86,6 +89,14 @@ class CommandBuffer {
 
   CommandBuffer(const CommandBuffer&) = delete;
   void operator=(const CommandBuffer&) = delete;
+
+  // A base class for external resources that can be attached to a CommandBuffer
+  // instance. When a CommandBuffer instance is destroyed, all attached
+  // resources are destroyed as well.
+  class Resource {
+   public:
+    virtual ~Resource() = default;
+  };
 
   // Command buffer state:
   //
@@ -319,8 +330,36 @@ class CommandBuffer {
   virtual std::string ToString() const = 0;
 
   //--------------------------------------------------------------------------//
-  // Command buffer tracing API
+  // Command buffer user-attached resources API
   //--------------------------------------------------------------------------//
+
+  // Returns a pointer to the resource of the given type, or nullptr if resource
+  // of the given type is not attached to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(
+        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource(
+      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(GetOrCreateResource(
+        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource() {
+    return GetOrCreateResource<ConcreteResource>(
+        [] { return std::make_unique<ConcreteResource>(); });
+  }
+
  private:
   friend class TraceCommandBufferFactory;
 
@@ -333,6 +372,26 @@ class CommandBuffer {
   // into the command buffer. Command buffer must be empty.
   virtual absl::Status Trace(Stream* stream,
                              absl::AnyInvocable<absl::Status()> function) = 0;
+
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  Resource* GetOrNullResource(ResourceTypeId type_id);
+  Resource* GetOrCreateResource(
+      ResourceTypeId type_id,
+      absl::FunctionRef<std::unique_ptr<Resource>()> create);
+
+  template <typename F>
+  static ResourceTypeId GetResourceTypeId() {
+    static const ResourceTypeId id = GetNextResourceTypeId();
+    return id;
+  }
+
+  static ResourceTypeId GetNextResourceTypeId();
+
+  absl::Mutex resource_mutex_;
+  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
+      ABSL_GUARDED_BY(resource_mutex_);
 };
 
 //===----------------------------------------------------------------------===//
