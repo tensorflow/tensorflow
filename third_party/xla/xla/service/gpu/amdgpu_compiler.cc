@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/hipblaslt.h"
+#include "xla/backends/gpu/autotuner/miopen.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/rocblas.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
@@ -230,12 +230,13 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 // enabled.
 bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
     const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
+  if (stream_exec == nullptr ||
+      module->config().debug_options().xla_gpu_autotune_level() == 0) {
     return false;
   }
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
     for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+      if (IsCustomCallToDnnConvolution(*inst)) {
         return true;
       }
     }
@@ -251,33 +252,50 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     se::StreamExecutor* stream_exec,
     const Compiler::GpuTargetConfig* target_config) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
+  // TODO(rocm) Add more uses of xla_gpu_experimental_disable_binary_libraries
   if (hlo_module->config()
           .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      stream_exec == nullptr) {
+          .xla_gpu_experimental_disable_binary_libraries()) {
     return absl::OkStatus();
   }
 
-  // TODO(b/407494793): Remove the GpuConvAlgorithmPicker and use the autotuner
-  // it supports ROCM.
-  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+  // We still need to run autotuning pass in order to decompose fused
+  // convolutions
+  bool skip_autotuning = debug_options.xla_gpu_autotune_level() == 0 ||
+                         debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+                         stream_exec == nullptr;
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<RocblasBackend>(
+  backends.reserve(3);
+  if (!skip_autotuning) {
+    // TODO(b/407494793): - Add proper support for ROCM. Currently the Cublas
+    // backend uses the same API as rocBLAS.
+    backends.push_back(std::make_unique<RocblasBackend>(
+        stream_exec, &debug_options, this, target_config));
+    backends.push_back(std::make_unique<HipblasLtBackend>(
+        stream_exec, &debug_options, this, target_config));
+  }
+  backends.push_back(std::make_unique<MIOpenBackend>(
       stream_exec, &debug_options, this, target_config));
-  backends.push_back(std::make_unique<HipblasLtBackend>(
-      stream_exec, &debug_options, this, target_config));
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
+
+  auto should_autotune = +[](const HloInstruction& instruction) -> bool {
     return instruction.opcode() == HloOpcode::kCustomCall &&
-           IsCublasGemm(instruction);
+           (IsCublasGemm(instruction) ||
+            IsCustomCallToDnnConvolution(instruction));
+  };
+  auto should_autotune_when_skip =
+      +[](const HloInstruction& instruction) -> bool {
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           instruction.custom_call_target() ==
+               kCudnnConvBiasActivationForwardCallTarget;
   };
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator));
+      AutotunerPass::Create(
+          std::move(backends), debug_options,
+          !skip_autotuning ? stream_exec : nullptr, thread_pool,
+          !skip_autotuning ? should_autotune : should_autotune_when_skip,
+          target_config, options.device_allocator));
   pipeline->AddPass(std::move(autotuner_pass));
 
   return absl::OkStatus();
