@@ -85,6 +85,10 @@ EXCLUDED_TESTS=(
 
     # //tensorflow/python/kernel_tests/sparse_ops:sparse_ops_test
     SparseFillEmptyRowsTest.testSparseFillEmptyRowsGradInvalidReverseIndexMap
+
+    # //tensorflow/core/profiler/backends/gpu:device_tracer_test
+    DeviceTracerTest.StartTwoTracers
+    DeviceTracerTest.TraceToXSpace
 )
 
 # Run bazel test command. Double test timeouts to avoid flakes.
