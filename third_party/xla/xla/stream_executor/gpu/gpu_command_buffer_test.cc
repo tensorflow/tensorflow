@@ -735,6 +735,30 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   ASSERT_EQ(dst, expected);
 }
 
+struct TestResource : public CommandBuffer::Resource {
+  TestResource() = default;
+  explicit TestResource(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+TEST(GpuCommandBufferTest, GetOrCreateResource) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(CommandBuffer::Mode::kNested));
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), nullptr);
+
+  TestResource* resource = command_buffer->GetOrCreateResource<TestResource>(
+      [] { return std::make_unique<TestResource>(42); });
+  EXPECT_NE(resource, nullptr);
+  EXPECT_EQ(resource->value, 42);
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), resource);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

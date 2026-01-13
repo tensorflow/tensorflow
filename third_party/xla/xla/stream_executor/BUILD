@@ -852,6 +852,7 @@ cc_library(
 
 cc_library(
     name = "command_buffer",
+    srcs = ["command_buffer.cc"],
     hdrs = ["command_buffer.h"],
     visibility = [":internal"],
     deps = [
@@ -861,10 +862,16 @@ cc_library(
         ":kernel",
         ":launch_dim",
         ":platform",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
