@@ -106,20 +106,17 @@ class BuffersDebugFloatCheckThunkTest : public ::testing::Test {
 TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   static constexpr size_t kLogSize =
       BufferDebugLog<BufferDebugFloatCheckEntry>::RequiredSizeForEntries(10);
-  static constexpr size_t kTmpSizeElems = 1024;
-  static constexpr size_t kTmpSizeBytes = kTmpSizeElems * sizeof(uint32_t);
   static constexpr size_t kInputElems = 1024;
   static constexpr size_t kInputSizeInBytes = kInputElems * sizeof(float);
   static constexpr size_t kTotalDeviceMemoryBytes =
-      kLogSize + kTmpSizeBytes + kInputSizeInBytes * 2;
+      kLogSize + kInputSizeInBytes * 2;
   // Setup memory allocations for the log and inputs
   BufferAllocation alloc(/*index=*/0,
                          /*size=*/kTotalDeviceMemoryBytes,
                          /*color=*/0);
   int64_t input_offset = kLogSize;
   BufferAllocation::Slice log_slice(&alloc, /*offset=*/0, kLogSize);
-  BufferAllocation::Slice tmp_slice(&alloc, /*offset=*/kLogSize, kTmpSizeBytes);
-  input_offset += kLogSize + kTmpSizeBytes;
+  input_offset += kLogSize;
 
   BufferAllocation::Slice inputs[2];
   int64_t input_size_bf16 = kInputElems * sizeof(Eigen::bfloat16);
@@ -181,7 +178,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest, CalculatesNanCounts) {
   Thunk::ThunkInfo checked_thunk_info;
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice,
       {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
       metadata_store);
   TF_ASSERT_OK(thunk.Initialize(init_params));
@@ -224,13 +221,8 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
     GTEST_SKIP() << "need at least 2 devices for this test";
   }
 
-  static constexpr size_t kLogOffset = 0;
   static constexpr size_t kLogSizeBytes = 1024;
-  static constexpr size_t kTmpOffset = kLogOffset + kLogSizeBytes;
-  static constexpr size_t kTmpSizeBytes = 1024 * sizeof(uint32_t);
-  static constexpr size_t kInputOffset = kTmpOffset + kTmpSizeBytes;
   static constexpr size_t kInputSizeBytes = 1024;
-  static constexpr size_t kTotalDeviceMemory = kInputOffset + kInputSizeBytes;
 
   struct TestDevice {
     se::StreamExecutor* executor;
@@ -247,7 +239,7 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             executor);
     BufferAllocations allocations(
-        {executor->AllocateArray<uint8_t>(kTotalDeviceMemory)},
+        {executor->AllocateArray<uint8_t>(kLogSizeBytes + kInputSizeBytes)},
         executor->device_ordinal(), allocator.get());
 
     return TestDevice{std::move(executor), std::move(stream),
@@ -255,17 +247,16 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
   };
   TF_ASSERT_OK_AND_ASSIGN(TestDevice device0, setup_device(0));
   TF_ASSERT_OK_AND_ASSIGN(TestDevice device1, setup_device(1));
-  BufferAllocation allocation(/*index=*/0, kTotalDeviceMemory, /*color=*/0);
-  BufferAllocation::Slice log_slice(&allocation, kLogOffset, kLogSizeBytes);
-  BufferAllocation::Slice tmp_slice(&allocation, kTmpOffset, kTmpSizeBytes);
-  BufferAllocation::Slice f32_slice(&allocation, kInputOffset, kInputSizeBytes,
+  BufferAllocation allocation(0, kLogSizeBytes + kInputSizeBytes, 0);
+  BufferAllocation::Slice log_slice(&allocation, 0, kLogSizeBytes);
+  BufferAllocation::Slice f32_slice(&allocation, kLogSizeBytes, kInputSizeBytes,
                                     PrimitiveType::F32);
-  BufferAllocation::Slice bf16_slice(&allocation, kInputOffset, kInputSizeBytes,
-                                     PrimitiveType::BF16);
+  BufferAllocation::Slice bf16_slice(&allocation, kLogSizeBytes,
+                                     kInputSizeBytes, PrimitiveType::BF16);
   Thunk::ThunkInfo checked_thunk_info;
   checked_thunk_info.thunk_id = ThunkId(123);
   BuffersDebugFloatCheckThunk thunk(
-      Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice,
       {{/*buffer_idx=*/0, f32_slice}, {/*buffer_idx=*/1, bf16_slice}},
       std::make_shared<BufferDebugLogEntryMetadataStore>());
 
