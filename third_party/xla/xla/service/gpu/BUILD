@@ -555,6 +555,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:gpu_solver_context",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",

@@ -166,8 +166,7 @@ absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
 }
 
 absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
-                     Communicator& comm, int64_t current_id,
-                     std::optional<int64_t> target_id,
+                     Communicator& comm, int64_t current_id, int64_t target_id,
                      absl::string_view device_string) {
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
@@ -176,30 +175,15 @@ absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
 
   VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
                                 device_ordinal, device_string, current_id,
-                                target_id.value_or(-1));
+                                target_id);
 
   // Send source buffer to target peer if needed.
-  if (target_id) {
-    VLOG(3) << "[" << device_ordinal << "] target_id: " << *target_id
-            << ", call comm.Send()";
-    TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
-    auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
-                            RankId(*target_id), GpuCollectives::On(stream));
-    TF_RETURN_IF_ERROR(future.Await());
-  } else {
-    // TODO(b/324437509): make SendCommand not a TracedCommand but a custom
-    // implementation that traces conditionally.
-    // For now single byte memcpy is ok compromise.
-
-    // If there is no target_id, this is an unmatched sender. We issue a
-    // size-one self-copy as a placeholder to ensure the CUDA Graph
-    // capture remains valid and the stream maintains its sequence.
-    VLOG(3) << absl::StreamFormat(
-        "[%d] %s : Send: Unmatched sender; issuing size-one self-copy",
-        device_ordinal, device_string);
-    RETURN_IF_ERROR(stream.MemcpyD2D(&src_addr, src_addr, 1));
-  }
-
+  VLOG(3) << "[" << device_ordinal << "] target_id: " << target_id
+          << ", call comm.Send()";
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+  auto future = comm.Send(src_addr, buffer.element_type, buffer.element_count,
+                          RankId(target_id), GpuCollectives::On(stream));
+  TF_RETURN_IF_ERROR(future.Await());
   return absl::OkStatus();
 }
 
@@ -250,7 +234,7 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
       break;
   }
 
-  if (target_id && !should_run) {
+  if (!target_id || !should_run) {
     VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     return false;
   }
@@ -261,7 +245,7 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
           << ", hlo_name=(" << hlo_name_ << ")";
 
   TF_RETURN_IF_ERROR(RunSend(device_buffer_pair, stream, comm, current_id,
-                             target_id, device_string));
+                             *target_id, device_string));
   return false;
 }
 

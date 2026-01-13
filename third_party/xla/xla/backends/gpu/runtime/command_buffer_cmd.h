@@ -928,6 +928,50 @@ class CollectivePermuteCmd : public CollectiveCmd {
 };
 
 //===----------------------------------------------------------------------===//
+// RecvCmd
+//===----------------------------------------------------------------------===//
+
+class RecvCmd : public CollectiveCmd {
+ public:
+  RecvCmd(CollectiveConfig config, P2PConfig p2p_config,
+          const CollectiveThunk::Buffer& buffer,
+          std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  BufferUseVector buffers() const override;
+
+ private:
+  P2PConfig p2p_config_;
+  CollectiveThunk::Buffer buffer_;
+};
+
+//===----------------------------------------------------------------------===//
+// SendCmd
+//===----------------------------------------------------------------------===//
+
+class SendCmd : public CollectiveCmd {
+ public:
+  SendCmd(CollectiveConfig config, P2PConfig p2p_config,
+          const CollectiveThunk::Buffer& buffer,
+          std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  BufferUseVector buffers() const override;
+
+ private:
+  P2PConfig p2p_config_;
+  CollectiveThunk::Buffer buffer_;
+};
+
+//===----------------------------------------------------------------------===//
 // DynamicSliceFusionCmd
 //===----------------------------------------------------------------------===//
 

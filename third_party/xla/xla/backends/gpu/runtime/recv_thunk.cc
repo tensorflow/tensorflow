@@ -247,7 +247,7 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
       break;
   }
 
-  if (source_id && !should_run) {
+  if (!should_run) {
     VLOG(3) << "[" << device_ordinal << "] Skipping Recv";
     return false;
   }

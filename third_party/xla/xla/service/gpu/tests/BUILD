@@ -1097,3 +1097,31 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_test(
+    name = "collective_ops_command_buffer_test",
+    srcs = ["collective_ops_command_buffer_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)

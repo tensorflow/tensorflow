@@ -55,6 +55,8 @@ namespace xla::gpu {
   V(kAllGatherCmd, "AllGatherCmd")                           \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
   V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
+  V(kRecvCmd, "RecvCmd")                                     \
+  V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
   V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")         \
   V(kDynamicSliceCopyFusionCmd, "DynamicSliceCopyFusionCmd") \

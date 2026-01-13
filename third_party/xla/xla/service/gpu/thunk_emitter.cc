@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -153,10 +152,11 @@ limitations under the License.
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -2479,6 +2479,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncDone(
       return EmitCollectiveAsyncDone(Thunk::kCollectiveBroadcastDone, instr);
     case HloOpcode::kCollectivePermute:
       return EmitCollectiveAsyncDone(Thunk::kCollectivePermuteDone, instr);
+    case HloOpcode::kRecv:
+      return EmitCollectiveAsyncDone(Thunk::kRecvDone, instr);
+    case HloOpcode::kSend:
+      return EmitCollectiveAsyncDone(Thunk::kSendDone, instr);
     case HloOpcode::kFusion: {
       auto collective_hero = GetCollectiveHeroForDynamicSliceFusion(
           Cast<HloFusionInstruction>(wrapped));

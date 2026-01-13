@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 
 #include "absl/status/status.h"
@@ -80,8 +79,7 @@ class SendThunk : public CollectiveThunk {
 };
 
 absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
-                     Communicator& comm, int64_t current_id,
-                     std::optional<int64_t> target_id,
+                     Communicator& comm, int64_t current_id, int64_t target_id,
                      absl::string_view device_string);
 
 }  // namespace gpu

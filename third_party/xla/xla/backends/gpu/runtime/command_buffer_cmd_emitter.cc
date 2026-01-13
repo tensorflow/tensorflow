@@ -47,7 +47,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
+#include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -209,6 +211,18 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
+    const RecvThunk& thunk) {
+  return std::make_unique<RecvCmd>(thunk.config(), thunk.p2p_config(),
+                                   thunk.buffer(), thunk.async_events());
+}
+
+static absl::StatusOr<std::unique_ptr<Command>> Convert(
+    const SendThunk& thunk) {
+  return std::make_unique<SendCmd>(thunk.config(), thunk.p2p_config(),
+                                   thunk.buffer(), thunk.async_events());
+}
+
+static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor embedded_cmds,
@@ -322,6 +336,10 @@ static absl::Status AppendCommands(CommandSequence& cmd_sequence,
       return append(Convert<CollectiveBroadcastStartThunk>(thunk));
     case Thunk::Kind::kCollectivePermuteStart:
       return append(Convert<CollectivePermuteStartThunk>(thunk));
+    case Thunk::Kind::kRecv:
+      return append(Convert<RecvThunk>(thunk));
+    case Thunk::Kind::kSend:
+      return append(Convert<SendThunk>(thunk));
     case Thunk::Kind::kPartitionId:
       return append(Convert<PartitionIdThunk>(thunk));
     case Thunk::Kind::kReplicaId:
@@ -345,6 +363,8 @@ static absl::Status AppendCommands(CommandSequence& cmd_sequence,
     case Thunk::Kind::kAllToAllDone:
     case Thunk::Kind::kCollectiveBroadcastDone:
     case Thunk::Kind::kCollectivePermuteDone:
+    case Thunk::Kind::kRecvDone:
+    case Thunk::Kind::kSendDone:
     case Thunk::Kind::kReduceScatterDone:
       if (options.synchronization_mode ==
           CommandBufferCmdExecutor::SynchronizationMode::kLHS) {
