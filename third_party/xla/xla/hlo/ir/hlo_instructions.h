@@ -685,16 +685,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
     return device_list_->replica_groups();
   }
 
-  const CollectiveDeviceListBase& device_list() const {
-    const CollectiveDeviceList* device_list_v1 =
-        dynamic_cast<const CollectiveDeviceList*>(device_list_.get());
-    // TODO(b/468442352): After XLA codebase is genericized to utilize
-    // CollectiveDeviceListBase instead of CollectiveDeviceList remove this
-    // check and return CollectiveDeviceListBase instead.
-    CHECK(device_list_v1 != nullptr)
-        << "Failed to cast device_list_ to CollectiveDeviceList";
-    return *device_list_v1;
-  }
+  const CollectiveDeviceListBase& device_list() const { return *device_list_; }
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
