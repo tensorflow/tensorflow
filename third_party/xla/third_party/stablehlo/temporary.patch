@@ -130,4 +130,114 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
    }
  
    OwningOpRef<ModuleOp> module = mb->build();
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
+@@ -584,6 +584,56 @@
+   %1 = stablehlo.divide %cst_1, %cst_1 : tensor<ui32>
+   %2 = stablehlo.divide %cst_2, %cst_2 : tensor<f32>
+   return %0, %1, %2 : tensor<i32>, tensor<ui32>, tensor<f32>
++}
++
++// CHECK-LABEL: @div_fold_cst_zero_nan
++func.func @div_fold_cst_zero_nan() -> (tensor<f32>) {
++  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
++  %cst_0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
++  %0 = stablehlo.divide %cst, %cst_0 : tensor<f32>
++  // CHECK: stablehlo.constant dense<0x7F800000> : tensor<f32>
++  // CHECK-NOT: stablehlo.divide
++  return %0 : tensor<f32>
++}
++
++// CHECK-LABEL: @div_fold_cst_nan
++func.func @div_fold_cst_nan() -> (tensor<f32>) {
++  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
++  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  %0 = stablehlo.divide %cst, %cst_0 : tensor<f32>
++  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  // CHECK-NOT: stablehlo.divide
++  return %0 : tensor<f32>
++}
++
++// -----
++
++////////
++// MaximumOp
++
++// CHECK-LABEL: @max_fold_cst_nan
++func.func @max_fold_cst_nan() -> (tensor<f32>) {
++  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
++  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  %0 = stablehlo.maximum %cst, %cst_0 : tensor<f32>
++  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  // CHECK-NOT: stablehlo.maximum
++  return %0 : tensor<f32>
++}
++
++// -----
++
++////////
++// MinimumOp
++
++// CHECK-LABEL: @min_fold_cst_nan
++func.func @min_fold_cst_nan() -> (tensor<f32>) {
++  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
++  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  %0 = stablehlo.minimum %cst, %cst_0 : tensor<f32>
++  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
++  // CHECK-NOT: stablehlo.minimum
++  return %0 : tensor<f32>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+@@ -1058,14 +1058,14 @@
+   std::function<APInt(APInt, APInt)> foldIntFn;
+ 
+   APFloat operator()(APFloat lhs, APFloat rhs) {
+-    return lhs >= rhs ? lhs : rhs;
++    return llvm::maximum(lhs, rhs);
+   }
+   APInt operator()(APInt lhs, APInt rhs) { return foldIntFn(lhs, rhs); }
+   static APInt foldUint(APInt lhs, APInt rhs) {
+-    return lhs.uge(rhs) ? lhs : rhs;
++    return llvm::APIntOps::umax(lhs, rhs);
+   }
+   static APInt foldSint(APInt lhs, APInt rhs) {
+-    return lhs.sge(rhs) ? lhs : rhs;
++    return llvm::APIntOps::smax(lhs, rhs);
+   }
+ };
+ 
+@@ -1075,14 +1075,14 @@
+   std::function<APInt(APInt, APInt)> foldIntFn;
+ 
+   APFloat operator()(APFloat lhs, APFloat rhs) {
+-    return lhs <= rhs ? lhs : rhs;
++    return llvm::minimum(lhs, rhs);
+   }
+   APInt operator()(APInt lhs, APInt rhs) { return foldIntFn(lhs, rhs); }
+   static APInt foldUint(APInt lhs, APInt rhs) {
+-    return lhs.ule(rhs) ? lhs : rhs;
++    return llvm::APIntOps::umin(lhs, rhs);
+   }
+   static APInt foldSint(APInt lhs, APInt rhs) {
+-    return lhs.sle(rhs) ? lhs : rhs;
++    return llvm::APIntOps::smin(lhs, rhs);
+   }
+ };
+ 
+@@ -1533,7 +1533,9 @@
+   using FoldUnaryOpPattern::FoldUnaryOpPattern;
+ 
+   static std::optional<APInt> EvaluateOp(APInt operand) { return -operand; }
+-  static std::optional<APFloat> EvaluateOp(APFloat operand) { return -operand; }
++  static std::optional<APFloat> EvaluateOp(APFloat operand) {
++    return llvm::neg(operand);
++  }
+ };
+ 
+ struct FoldNotOpPattern : public FoldUnaryOpPattern<FoldNotOpPattern, NotOp> {
 
