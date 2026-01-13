@@ -474,13 +474,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
 
   opts.add_xla_gpu_experimental_autotune_backends(
-      DebugOptions::AUTOTUNE_BACKEND_CUDNN);
-  opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_TRITON);
   opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_CUBLAS);
   opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_CUBLASLT);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUDNN);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_ROCBLAS);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_MIOPEN);
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);

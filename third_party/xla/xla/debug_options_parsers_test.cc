@@ -513,10 +513,13 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
 
   // Check that the default setting is populated.
   ASSERT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_TRITON,
+              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_TRITON,
                           DebugOptions::AUTOTUNE_BACKEND_CUBLAS,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLASLT));
+                          DebugOptions::AUTOTUNE_BACKEND_CUBLASLT,
+                          DebugOptions::AUTOTUNE_BACKEND_CUDNN,
+                          DebugOptions::AUTOTUNE_BACKEND_ROCBLAS,
+                          DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT,
+                          DebugOptions::AUTOTUNE_BACKEND_MIOPEN));
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=cudnn,triton");
