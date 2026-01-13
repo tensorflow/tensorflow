@@ -199,6 +199,7 @@ xla_test(
         "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
+        "//xla:array",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
