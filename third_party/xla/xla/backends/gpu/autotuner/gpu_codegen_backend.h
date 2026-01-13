@@ -74,8 +74,7 @@ class GpuCodegenBackend : public CodegenBackend {
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
-        hlo_module->mutable_config().mutable_debug_options(),
-        allow_register_spills_);
+        hlo_module->mutable_config().mutable_debug_options());
 
     Compiler::CompileOptions options;
     options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
@@ -87,15 +86,8 @@ class GpuCodegenBackend : public CodegenBackend {
   }
 
   bool CanProduceWrongResults() const override { return false; }
-  // When called, the backend will not set
-  // `xla_gpu_fail_ptx_compilation_on_register_spilling` flag during autotuning,
-  // keeping the value already set in module config.
-  // TODO b/443207721 - Remove this once we have a better way to handle register
-  // spilling during autotuning.
-  void AllowRegisterSpills() { allow_register_spills_ = true; }
 
-  static void AdjustDebugOptionsForAutotuning(
-      DebugOptions& debug_options, bool force_allow_register_spills) {
+  static void AdjustDebugOptionsForAutotuning(DebugOptions& debug_options) {
     debug_options.set_xla_enable_dumping(false);
     debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
@@ -113,13 +105,6 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
     debug_options.set_xla_enable_scoped_logging_timers(false);
     debug_options.set_xla_gpu_executable_embed_debug_info(false);
-    // Don't touch the "fail on register spilling" flag if it's already on.
-    if (!debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling()) {
-      debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(
-          debug_options
-              .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
-          !force_allow_register_spills);
-    }
     // Avoid dumping compilation steps.
     debug_options.set_xla_gpu_dump_autotune_results_to("");
     debug_options.set_xla_gpu_load_autotune_results_from("");
@@ -149,7 +134,6 @@ class GpuCodegenBackend : public CodegenBackend {
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
   Compiler* compiler_;
-  bool allow_register_spills_ = false;
 };
 
 }  // namespace gpu
