@@ -322,6 +322,8 @@ MemorySpaceAssignment::Run(HloModule* module,
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "memory_space_assignment_options::Options:\n";
     XLA_LOG_LINES(INFO, options.ToString());
+  }
+  if (VLOG_IS_ON(10)) {
     LOG(INFO) << "Module before memory space assignment: ";
     XLA_LOG_LINES(INFO, module->ToString());
     LOG(INFO) << "Schedule: " << module->schedule().ToString();
@@ -1273,8 +1275,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
-            value->ToString(), start_time, end_time, chunk.offset, chunk.size,
-            overlapping_chunk.offset, overlapping_chunk.size);
+            value->ToShortString(), start_time, end_time, chunk.offset,
+            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);
