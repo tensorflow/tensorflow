@@ -57,7 +57,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 
@@ -592,6 +592,49 @@ TEST(CustomCallThunkTest, SerializationFails) {
 
   EXPECT_THAT(thunk->ToProto(), StatusIs(absl::StatusCode::kInternal,
                                          HasSubstr("Serialization failed")));
+}
+
+TEST(CustomCallThunkTest, ParseFFIProtoWithNonUtf8Attribute) {
+  // This test ensures that FFI attributes can contain non-UTF-8 data, and
+  // these will be correctly parsed (and not fail).
+
+  CustomCallThunkProto proto =
+      tsl::proto_testing::ParseTextProtoOrDie<CustomCallThunkProto>(
+          R"pb(
+            target_name: "__xla_test$$return_error"
+            api_version: API_VERSION_TYPED_FFI
+            attributes {
+              attrs {
+                key: "my_string_attr"
+                value { str: "\xfe" }
+              }
+            }
+          )pb");
+
+  std::string serialized_to_wire_format;
+  proto.SerializeToString(&serialized_to_wire_format);
+
+  CustomCallThunkProto reconstructed_proto;
+  EXPECT_TRUE(reconstructed_proto.ParseFromString(serialized_to_wire_format));
+}
+
+TEST(CustomCallThunkTest, ParseLegacyProtoWithNonUtf8Opaque) {
+  // This test ensures that legacy custom calls can contain non-UTF-8 opaque
+  // data, and these will be correctly parsed (and not fail).
+
+  CustomCallThunkProto proto =
+      tsl::proto_testing::ParseTextProtoOrDie<CustomCallThunkProto>(
+          R"pb(
+            target_name: "Callback_WithStatusFailed"
+            api_version: API_VERSION_STATUS_RETURNING
+            opaque: "\xfe"
+          )pb");
+
+  std::string serialized_to_wire_format;
+  proto.SerializeToString(&serialized_to_wire_format);
+
+  CustomCallThunkProto reconstructed_proto;
+  EXPECT_TRUE(reconstructed_proto.ParseFromString(serialized_to_wire_format));
 }
 
 TEST(CustomCallThunkTest, LegacyCustomCallRoundTrip) {

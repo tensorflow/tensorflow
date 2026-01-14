@@ -357,7 +357,7 @@ message CustomCallThunkProto {
   string target_name = 1;
   repeated NullableShapedSliceProto operands = 2;
   repeated NullableShapedSliceProto results = 3;
-  string opaque = 4;
+  bytes opaque = 4;
   CustomCallApiVersion api_version = 5;
   xla.ffi.AttributesMapProto attributes = 6;
   // The name of the called computation. It needs to match the HloCompuation in
