@@ -38,7 +38,8 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 struct Flags {
@@ -55,7 +56,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using CorrectnessTest = HloTestBase;
+using CorrectnessTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 const Shape& GetFirstArrayShape(const Shape& shape) {
   if (shape.IsArray()) {
