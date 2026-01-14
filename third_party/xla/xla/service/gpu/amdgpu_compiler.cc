@@ -391,12 +391,10 @@ absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   auto native_backend = std::make_unique<NativeEmitterBackend>(
       &debug_options, this, target_config);
-  native_backend->AllowRegisterSpills();
   backends.push_back(std::move(native_backend));
   auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
       &debug_options, this, shape_size_fn, target_config,
       /*use_default_config=*/true);
-  ble_backend->AllowRegisterSpills();
   backends.push_back(std::move(ble_backend));
 
   TF_ASSIGN_OR_RETURN(
@@ -404,7 +402,9 @@ absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
       AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
                             thread_pool, ShouldAutotuneBetweenFusionEmitters,
                             target_config, options.device_allocator,
-                            /*optimize_scratch_bytes=*/false));
+                            /*optimize_scratch_bytes=*/false,
+                            MultiProcessKeyValueStore(),
+                            /*allow_reg_spills=*/true));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
