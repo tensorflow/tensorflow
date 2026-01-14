@@ -302,10 +302,10 @@ class TransposePlan {
   int num_chunks_requested_ = 1;
 
   // Size of each element in bytes.
-  int64_t elem_size_in_bytes_;
+  int64_t elem_size_in_bytes_ = 0;
 
   // Number of elements in the input array.
-  int64_t num_elems_;
+  int64_t num_elems_ = 0;
 
   // Description of the transpose, before any optimizations such as coalescing
   // dimensions have been applied.
@@ -334,8 +334,8 @@ class TransposePlan {
   // A 1 entry means that dimension is not tiled.
   absl::InlinedVector<int64_t, 4> a_tiling_;
   absl::InlinedVector<int64_t, 4> b_tiling_;
-  bool a_is_tiled_;
-  bool b_is_tiled_;
+  bool a_is_tiled_ = false;
+  bool b_is_tiled_ = false;
 
   // Per-chunk loop nests. Each loop nest has its own start/end bounds
   // representing one chunk of the work.
@@ -365,7 +365,7 @@ class TransposePlan {
 
   // Are the innermost (stride-1) dimensions the same dimension? This determines
   // whether the inner kernel is a transpose or a memcpy.
-  bool inner_kernel_is_memcpy_;
+  bool inner_kernel_is_memcpy_ = false;
 
   // Size of the inner (microkernel) block size. This is the unit of work for
   // our vectorized kernels.
@@ -386,9 +386,9 @@ class TransposePlan {
   // (a) it makes sense to fuse cheap computations with a memory-bandwidth
   //     bound transformation, and
   // (b) it allows us to support non-trivial striding.
-  Transformation transformation_;
+  Transformation transformation_ = Transformation::kNone;
 
-  ChunkContiguity chunk_contiguity_;
+  ChunkContiguity chunk_contiguity_ = ChunkContiguity::kNone;
 
   // Size of the per-thread scratch buffer. 0 means "no scratch buffer required"
   int64_t scratch_size_ = 0;
