@@ -235,7 +235,7 @@ struct ConvertUnsignedQConstOp : public RewritePattern {
 // returns true iff @a type is a shaped type with element type that is unsigned
 // integer. If it is, then update the rescaled type, input_zp, and output_zp to
 // use to rescale type to signed type with adjusted zero point.
-bool IsShapedUnsignedRescaledToSignedType(OpBuilder& builder, const Type type,
+bool ConvertUnsignedToSignedRescale(OpBuilder& builder, const Type type,
                           Type& rescaled_type, int32_t& unsigned_zp,
                           int32_t& output_zp, unsigned& bit_width) {
   auto shaped_type = dyn_cast<mlir::ShapedType>(type);
@@ -346,7 +346,7 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       int32_t rescale_input_zp_val, rescale_output_zp_val;
       unsigned bit_width;
 
-      if (!IsShapedUnsignedRescaledToSignedType(builder, arg.getType(), rescaled_type,
+      if (!ConvertUnsignedToSignedRescale(builder, arg.getType(), rescaled_type,
                                 rescale_input_zp_val, rescale_output_zp_val,
                                 bit_width))
         continue;
@@ -416,7 +416,7 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
         int32_t unused_input_zp, unused_output_zp;
         unsigned bit_width;
 
-        if (IsShapedUnsignedRescaledToSignedType(builder, output_val.getType(), new_type,
+        if (ConvertUnsignedToSignedRescale(builder, output_val.getType(), new_type,
                                  unused_input_zp, unused_output_zp, bit_width)) {
           output_val.setType(new_type);
         }
@@ -444,7 +444,7 @@ LogicalResult convert_graph_unsigned_tensor(mlir::MLIRContext& context,
       int32_t unsigned_zp_val, unused_output_zp_val;
       unsigned bit_width;
 
-      if (!IsShapedUnsignedRescaledToSignedType(builder, output_types[i], rescaled_type,
+      if (!ConvertUnsignedToSignedRescale(builder, output_types[i], rescaled_type,
                                 unsigned_zp_val, unused_output_zp_val,
                                 bit_width))
         continue;
