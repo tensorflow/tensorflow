@@ -42,7 +42,8 @@ class CoordinationServiceAgent;
 
 namespace xla {
 
-class DistributedRuntimeClient {
+class DistributedRuntimeClient
+    : public std::enable_shared_from_this<DistributedRuntimeClient> {
  public:
   struct Options {
     // This node's global ID. Required.
