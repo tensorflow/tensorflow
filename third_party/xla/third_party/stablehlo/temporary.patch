@@ -1,3 +1,14 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -2000,6 +2000,7 @@
+     deps = [
+         ":attr_type_builder_util",
+         ":mlir_builder",
++        ":stablehlo_broadcast_lowering",
+         ":stablehlo_builder_inc",
+         ":stablehlo_ops",
+         ":stablehlo_type_inference",
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
