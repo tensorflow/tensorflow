@@ -60,6 +60,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "google/protobuf/text_format.h"
+#include "riegeli/bytes/string_reader.h"
+#include "riegeli/bytes/string_writer.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
@@ -158,6 +160,7 @@ limitations under the License.
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
@@ -304,15 +307,16 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel_stats.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -3115,16 +3119,18 @@ absl::StatusOr<std::unique_ptr<CompiledModule>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   GpuExecutableProto gpu_executable_proto;
+  auto reader =
+      std::make_unique<riegeli::StringReader<>>(serialized_aot_result);
+  ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
+  if (is_split_proto) {
+    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), gpu_executable_proto));
+    return GpuAotCompilationResult::FromProto(std::move(gpu_executable_proto));
+  }
+
   if (!gpu_executable_proto.ParseFromString(serialized_aot_result)) {
     return InvalidArgument(
         "Failed to parse serialized AOT result as GpuExecutableProto.");
   }
-
-  // If the proto has a thunk set, it's a new OAT format.
-  if (gpu_executable_proto.has_thunk()) {
-    return GpuAotCompilationResult::FromProto(gpu_executable_proto);
-  }
-
   return LegacyGpuAotCompilationResult::FromProto(gpu_executable_proto,
                                                   pointer_size_, this);
 }
