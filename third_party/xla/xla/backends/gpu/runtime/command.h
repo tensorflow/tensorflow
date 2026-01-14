@@ -129,8 +129,8 @@ class Command {
     CommandStateManager& state;
 
     // Buffer allocations that changed since the last call to `Record`. Buffer
-    // allocation indices are sorted. CommandBufferCmdExecutor and individual
-    // commands rely on this information to skip unnecessary updates.
+    // allocation indices are sorted. CommandExecutor and individual commands
+    // rely on this information to skip unnecessary updates.
     std::optional<std::vector<BufferAllocation::Index>> updated_allocs;
 
     // A flag indicating whether we record comands at command buffer thunk
@@ -216,7 +216,7 @@ class Command {
 
   std::shared_ptr<Resource> token() const { return token_; }
 
-  void add_resouce_use(ResourceUse resource_use) {
+  void add_resource_use(ResourceUse resource_use) {
     resources_.push_back(resource_use);
   }
   ResourceUseVector resources() const { return resources_; }
