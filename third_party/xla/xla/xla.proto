@@ -429,13 +429,6 @@ message DebugOptions {
   // transformation.
   optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
-  // Do not lock collective cliques for each XLA:GPU execution, and instead
-  // use per-process cliques that are never unlocked. This disables deadlock
-  // prevention mechanism in XLA:GPU and should be used at you own risk. If
-  // collective operations from concurrent executions are not correcctly ordered
-  // it may lead to deadlocks, crashes or will produce garbage.
-  optional bool xla_gpu_collectives_use_persistent_cliques = 354;
-
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 

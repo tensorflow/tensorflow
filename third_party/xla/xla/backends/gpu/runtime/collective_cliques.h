@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUES_H_
 
-#include <cstdint>
-
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -34,8 +32,7 @@ namespace xla::gpu {
 class CollectiveCliques {
  public:
   CollectiveCliques() = default;
-  CollectiveCliques(AcquiredCliquesMap cliques_map,
-                    int32_t num_transient_cliques);
+  explicit CollectiveCliques(AcquiredCliquesMap cliques_map);
 
   absl::StatusOr<Communicator*> GetComm(const GpuCliqueKey& clique_key,
                                         RankId rank) const;
@@ -50,23 +47,14 @@ class CollectiveCliques {
 
   bool empty() const { return cliques_map_.empty(); }
 
-  bool num_transient_cliques() const { return num_transient_cliques_; }
-
  private:
   AcquiredCliquesMap cliques_map_;
-
-  // The number of acquired non-persistent clique. We need to keep track of
-  // newly created communicators to insert rendezvous after first
-  // initialization, because otherwise we observe deadlocks with NCCL
-  // collectives backends.
-  int32_t num_transient_cliques_ = 0;
 };
 
 // Acquires collective cliques using the given collective parameters for all
 // requested GPU cliques.
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
-    const CollectiveParams& params, const CollectiveCliqueRequests& cliques,
-    bool use_persistent_cliques);
+    const CollectiveParams& params, const CollectiveCliqueRequests& cliques);
 
 }  // namespace xla::gpu
 

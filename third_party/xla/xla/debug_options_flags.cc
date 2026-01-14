@@ -249,8 +249,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
   opts.set_xla_cmd_buffer_trace_cache_size(16);
 
-  opts.set_xla_gpu_collectives_use_persistent_cliques(false);
-
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
   opts.set_xla_gpu_enable_fast_min_max(false);
@@ -1707,12 +1705,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_collectives_use_persistent_cliques",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_collectives_use_persistent_cliques),
-      debug_options->xla_gpu_collectives_use_persistent_cliques(),
-      "Use persistent per-process XLA:GPU collectives cliques"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_command_buffer",
       SetterForRepeatedEnum<DebugOptions::CommandBufferCmdType>(
