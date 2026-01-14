@@ -62,9 +62,6 @@ TARBALL_SUFFIX=$2
 if [[ $(uname -s) != MSYS_NT* ]]; then
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz "${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz"
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz "${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz"
-  # DISABLING LEGACY JAVA - Issue #58424
-  # cp bazel-bin/tensorflow/java/libtensorflow.jar "${DIR}"
-  # cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar "${DIR}/libtensorflow-src.jar"
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip "${DIR}"
 else
   # Temporary directory for package zipping
@@ -72,17 +69,11 @@ else
   mkdir -p ${LIB_PKG}
 
   # Zip up the .dll and the LICENSE for the JNI library.
-  # 1. Comment out the copy commands for legacy Java library - Issue #58424
-  # cp bazel-bin/tensorflow/java/tensorflow_jni.dll ${LIB_PKG}/tensorflow_jni.dll
   libtensorflow_jni_zip="libtensorflow_jni${TARBALL_SUFFIX}.zip"
-  # 2. Comment out the .dll line from the zip command below for legacy Java library - Issue #58424
   zip -j "$libtensorflow_jni_zip" \
-  #  ${LIB_PKG}/tensorflow_jni.dll \
     bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
     LICENSE
   mv "$libtensorflow_jni_zip" "$DIR"
-  # 3. Comment out the removal line below for legacy Java library - Issue #58424
-  # rm -f ${LIB_PKG}/tensorflow_jni.dll
 
   # Zip up the .dll, LICENSE and include files for the C library.
   mkdir -p ${LIB_PKG}/include/tensorflow/c
