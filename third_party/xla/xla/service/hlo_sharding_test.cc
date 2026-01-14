@@ -635,7 +635,7 @@ TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
   EXPECT_EQ(sharding.ToString(), "{@mesh<a=2,b=4>, [{a}, {b}]}");
 
   HloSharding sharding_with_metadata(
-      NamedSharding(mesh, {{ds_a}, {ds_b}}, {}, {}, ListMetadata()));
+      NamedSharding(mesh, {{ds_a}, {ds_b}}, {}, {}, {}, ListMetadata()));
   EXPECT_EQ(sharding_with_metadata.ToString(/*include_metadata=*/true),
             "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
             "{op_name=\"c\"}}}");

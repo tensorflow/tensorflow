@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -808,6 +807,7 @@ HloSharding TransposeSharding(const HloSharding& sharding,
         sharding.named_sharding().mesh(), transposed_dim_shardings,
         sharding.named_sharding().replicated_axes(),
         sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().manual_axes(),
         sharding.named_sharding().metadata()));
   }
 
@@ -1114,6 +1114,7 @@ HloSharding PropagateShardingAlongDimsAndReplicateOthers(
         source_sharding.named_sharding().mesh(), target_dim_shardings,
         source_sharding.named_sharding().replicated_axes(),
         source_sharding.named_sharding().unreduced_axes(),
+        source_sharding.named_sharding().manual_axes(),
         source_sharding.named_sharding().metadata()));
   }
 
@@ -1544,7 +1545,8 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), dim_shardings,
         sharding.named_sharding().replicated_axes(),
-        sharding.named_sharding().unreduced_axes(), sharding.metadata()));
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().manual_axes(), sharding.metadata()));
   }
 
   int64_t group_count = 1;
@@ -1613,7 +1615,8 @@ HloSharding ReplicateAllDataDims(const HloSharding& sharding,
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), dim_shardings,
         sharding.named_sharding().replicated_axes(),
-        sharding.named_sharding().unreduced_axes(), sharding.metadata()));
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().manual_axes(), sharding.metadata()));
   }
 
   if (sharding.IsManual()) {
@@ -1667,7 +1670,8 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), new_dim_shardings,
         sharding.named_sharding().replicated_axes(),
-        sharding.named_sharding().unreduced_axes(), sharding.metadata()));
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().manual_axes(), sharding.metadata()));
   }
 
   DimensionVector new_tile_shape;
@@ -1719,7 +1723,8 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     return HloSharding(NamedSharding(
         source.named_sharding().mesh(), new_dim_shardings,
         source.named_sharding().replicated_axes(),
-        source.named_sharding().unreduced_axes(), source.metadata()));
+        source.named_sharding().unreduced_axes(),
+        source.named_sharding().manual_axes(), source.metadata()));
   }
 
   if (src_to_tgt.size() < source.num_dimensions()) {

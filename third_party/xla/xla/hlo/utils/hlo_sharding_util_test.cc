@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -629,19 +630,19 @@ TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers3) {
 }
 
 TEST(HloShardingUtilTest, PropagateShardingAlongDimsAndReplicateOthers4) {
-  Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
-  NamedSharding source_sharding =
-      test_utils::FromAxisNames(mesh, {{"a"}, {"c", "b"}, {}, {"d"}, {}}, {},
-                                /*unreduced_axes=*/{"e"});
+  Mesh mesh({2, 3, 5, 7, 11, 13}, {"a", "b", "c", "d", "e", "f"});
+  NamedSharding source_sharding = test_utils::FromAxisNames(
+      mesh, {{"a"}, {"c", "b"}, {}, {"d"}, {}}, {},
+      /*unreduced_axes=*/{"e"}, /*manual_axes=*/{"f"});
   std::vector<int64_t> source_dims = {2, 1, 3};
   std::vector<int64_t> target_dims = {0, 3, 1};
   int64_t target_shape_rank = 4;
   HloSharding target_sharding = PropagateShardingAlongDimsAndReplicateOthers(
       HloSharding(source_sharding), source_dims, target_dims,
       target_shape_rank);
-  NamedSharding expected =
-      test_utils::FromAxisNames(mesh, {{}, {"d"}, {}, {"c", "b"}}, {},
-                                /*unreduced_axes=*/{"e"});
+  NamedSharding expected = test_utils::FromAxisNames(
+      mesh, {{}, {"d"}, {}, {"c", "b"}}, {},
+      /*unreduced_axes=*/{"e"}, /*manual_axes=*/{"f"});
   EXPECT_EQ(target_sharding.named_sharding(), expected);
 }
 
@@ -658,14 +659,15 @@ TEST(HloShardingUtilTest, PartiallyReplicateTiledShardingOnDims) {
 }
 
 TEST(HloShardingUtilTest, ReplicateAllDataDims) {
-  Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+  Mesh mesh({2, 3, 5, 7, 11, 13}, {"a", "b", "c", "d", "e", "f"});
   NamedSharding source_sharding = test_utils::FromAxisNames(
       mesh, {{"a"}, {}, {"c"}, {}, {"e"}}, /*replicated_axes=*/{"d"},
-      /*unreduced_axes=*/{"b"});
+      /*unreduced_axes=*/{"b"}, /*manual_axes=*/{"f"});
   HloSharding target_sharding =
       ReplicateAllDataDims(HloSharding(source_sharding), 3);
   NamedSharding expected =
-      test_utils::FromAxisNames(mesh, {{}, {}, {}}, {"d"}, {"b"});
+      test_utils::FromAxisNames(mesh, {{}, {}, {}}, {"d"}, {"b"},
+                                /*manual_axes=*/{"f"});
   EXPECT_EQ(target_sharding.named_sharding(), expected);
 }
 
