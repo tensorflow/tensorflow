@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("//xla:py_strict.bzl", "py_strict_binary")
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -21,8 +22,10 @@ load(
 )
 load(
     "//xla/tsl/platform:rules_cc.bzl",
+    "cc_binary",
     "cc_library",
 )
+load(":cc_embed_data.bzl", "cc_embed_data")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -404,5 +407,100 @@ tsl_cc_test(
     deps = [
         ":safe_reinterpret_cast",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "filewrapper",
+    srcs = ["filewrapper.cc"],
+    compatible_with = get_compatible_with_portable(),
+    data = ["file_toc.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+py_strict_binary(
+    name = "filewrapper_testdata_generator",
+    testonly = True,
+    srcs = ["filewrapper_testdata_generator.py"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+genrule(
+    name = "generate_filewrapper_testdata",
+    testonly = True,
+    outs = ["filewrapper_testdata.txt"],
+    cmd = "$(execpath :filewrapper_testdata_generator) --output_file $@",
+    compatible_with = get_compatible_with_portable(),
+    tools = [":filewrapper_testdata_generator"],
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "file_toc",
+    hdrs = ["file_toc.h"],
+)
+
+cc_embed_data(
+    name = "filewrapper_testdata",
+    testonly = True,
+    srcs = ["filewrapper_testdata.txt"],
+    outs = [
+        "filewrapper_testdata.cc",
+        "filewrapper_testdata.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "filewrapper_testdata_lib",
+    testonly = True,
+    srcs = ["filewrapper_testdata.cc"],
+    hdrs = ["filewrapper_testdata.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":file_toc",
+        ":filewrapper_testdata",
+    ],
+)
+
+tsl_cc_test(
+    name = "filewrapper_embed_test",
+    srcs = [
+        "file_toc.h",
+        "filewrapper_embed_test.cc",
+    ],
+    data = [
+        "filewrapper_testdata.cc",
+        "filewrapper_testdata.h",
+        ":filewrapper_testdata.txt",
+    ],
+    deps = [
+        ":filewrapper_testdata_lib",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:path",
     ],
 )
