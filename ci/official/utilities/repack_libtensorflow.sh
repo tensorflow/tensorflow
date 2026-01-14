@@ -16,7 +16,7 @@
 #
 # ==============================================================================
 #
-# Repacks libtensorflow tarballs into $DIR with provided $TARBALL_SUFFIX
+# Repacks libtensorflow tarballs into $DIR with provided $TARBALL_SUFFIX.
 
 DIR=$1
 mkdir -p "$DIR"
