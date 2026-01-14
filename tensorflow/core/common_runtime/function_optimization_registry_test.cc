@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/platform/errors.h"
