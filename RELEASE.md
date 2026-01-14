@@ -26,6 +26,7 @@
     * Adds support for int2/int4 in tfl.cast .
     * Adds support for SRQ int2 in tfl.fully_connected.
     * Adds support for int4 in tfl.slice.
+    * Adds support for uint4 type.
 
 ### Bug Fixes and Other Changes
 
