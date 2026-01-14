@@ -34,6 +34,178 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  scalar_unit_description {
+    rate_infos {
+      key: 4
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 8
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 128
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 128
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 64
+        ops_per_clock: 1
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 128
+        ops_per_clock: 1
+      }
+    }
+  }
+  matrix_unit_description {
+    rate_infos {
+      key: 2
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 6
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 10
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 1024
+      }
+    }
+    rate_infos {
+      key: 11
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 512
+      }
+    }
+    rate_infos {
+      key: 12
+      value {
+        clock_rate_ghz: 1.965
+        units_per_core: 4
+        ops_per_clock: 16
+      }
+    }
+    rate_infos {
+      key: 16
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 1024
+      }
+    }
+    rate_infos {
+      key: 19
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 20
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 23
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 24
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 25
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 28
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 29
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+    rate_infos {
+      key: 32
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 4096
+      }
+    }
+    rate_infos {
+      key: 33
+      value {
+        clock_rate_ghz: 1.8353101
+        units_per_core: 4
+        ops_per_clock: 2048
+      }
+    }
+  }
 }
 platform_name: "CUDA"
 dnn_version_info {
