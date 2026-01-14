@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package xla.gpu;
+package xla;
 
 import "xla/service/buffer_assignment.proto";
 import "xla/xla_data.proto";

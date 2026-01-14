@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/shaped_slice.h"
+#include "xla/service/shaped_slice.h"
 
 #include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/shaped_slice.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace xla::gpu {
+namespace xla {
 
 absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
     const ShapedSliceProto& proto,
@@ -65,4 +65,4 @@ absl::StatusOr<NullableShapedSliceProto> NullableShapedSlice::ToProto() const {
   return proto;
 }
 
-}  // namespace xla::gpu
+}  // namespace xla

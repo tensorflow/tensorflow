@@ -644,8 +644,7 @@ tf_proto_library(
     name = "convolution_filter_thunk_proto",
     srcs = ["convolution_filter_thunk.proto"],
     deps = [
-        ":shaped_slice_proto",
-        "//xla/service:buffer_assignment_proto",
+        "//xla/service:shaped_slice_proto",
     ],
 )
 
@@ -2230,7 +2229,6 @@ cc_library(
     hdrs = ["outfeed_thunk.h"],
     deps = [
         ":shaped_slice",
-        ":shaped_slice_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_tree",
@@ -2239,6 +2237,7 @@ cc_library(
         "//xla:util",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice_proto_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:gpu_transfer_manager",
         "//xla/service/gpu:io_feed_manager",
@@ -2468,43 +2467,11 @@ xla_cc_test(
     ],
 )
 
-tf_proto_library(
-    name = "shaped_slice_proto",
-    srcs = ["shaped_slice.proto"],
-    deps = [
-        "//xla:xla_data_proto",
-        "//xla/service:buffer_assignment_proto",
-    ],
-)
-
 cc_library(
     name = "shaped_slice",
-    srcs = ["shaped_slice.cc"],
     hdrs = ["shaped_slice.h"],
     deps = [
-        ":shaped_slice_proto_cc",
-        "//xla:shape_util",
-        "//xla/service:buffer_assignment",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "shaped_slice_test",
-    srcs = ["shaped_slice_test.cc"],
-    deps = [
-        ":shaped_slice",
-        ":shaped_slice_proto_cc",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/tsl/util/proto:parse_text_proto",
-        "//xla/tsl/util/proto:proto_matchers",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "//xla/service:shaped_slice",
     ],
 )
 
@@ -3040,13 +3007,13 @@ tf_proto_library(
         ":convolution_filter_thunk_proto",
         ":copy_thunk_proto",
         ":dynamic_slice_thunk_proto",
-        ":shaped_slice_proto",
         "//xla:xla_data_proto",
         "//xla/core/host_offloading:host_offloading_executable_proto",
         "//xla/ffi:attribute_map_proto",
         "//xla/ffi:execution_state_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service:hlo_proto",
+        "//xla/service:shaped_slice_proto",
         "//xla/service/gpu:gpu_conv_runner_proto",
         "//xla/service/gpu:gpu_norm_runner_proto",
         "//xla/service/gpu:launch_dimensions_proto",
@@ -3328,7 +3295,6 @@ cc_library(
     srcs = ["host_execute_thunk.cc"],
     hdrs = ["host_execute_thunk.h"],
     deps = [
-        ":shaped_slice_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:executable_run_options",
@@ -3344,6 +3310,7 @@ cc_library(
         "//xla/core/host_offloading:host_offloading_nanort_executable",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice_proto_cc",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",

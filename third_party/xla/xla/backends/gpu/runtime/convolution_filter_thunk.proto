@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
-import "xla/backends/gpu/runtime/shaped_slice.proto";
+import "xla/service/shaped_slice.proto";
 
 // Dimensions of the convolution filter.
 // See stream_executor::dnn::FilterDescriptor for more details.

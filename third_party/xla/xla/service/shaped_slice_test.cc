@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/shaped_slice.h"
+#include "xla/service/shaped_slice.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,15 +23,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
-#include "xla/backends/gpu/runtime/shaped_slice.pb.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.pb.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu {
+namespace xla {
 namespace {
 using absl_testing::IsOkAndHolds;
 using ::testing::HasSubstr;
@@ -222,4 +222,4 @@ TEST(NullableShapedSliceTest, FromProtoEmptySlice) {
 }
 
 }  // namespace
-}  // namespace xla::gpu
+}  // namespace xla
