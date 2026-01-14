@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <queue>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/types/span.h"
@@ -160,9 +162,18 @@ void HloReachabilityMap::UpdateReachabilityThroughInstruction(
 
   std::vector<HloInstruction*> inputs;
 
+  // Keep track of the number of times an instruction is in the worklist and
+  // only process it only if it is the last occurrence. Note that this might
+  // still mean that an instruction is processed multiple times.
+  absl::flat_hash_map<const HloInstruction*, int64_t> in_worklist;
+
   while (!worklist.empty()) {
     const HloInstruction* item = worklist.front();
     worklist.pop();
+    --in_worklist[item];
+    if (in_worklist[item] > 0) {
+      continue;
+    }
 
     inputs.assign(item->operands().begin(), item->operands().end());
     inputs.insert(inputs.end(), item->control_predecessors().begin(),
@@ -172,9 +183,11 @@ void HloReachabilityMap::UpdateReachabilityThroughInstruction(
       // Add immediate successors to worklist.
       for (const HloInstruction* user : item->users()) {
         worklist.push(user);
+        ++in_worklist[user];
       }
       for (const HloInstruction* succ : item->control_successors()) {
         worklist.push(succ);
+        ++in_worklist[succ];
       }
     }
   }
