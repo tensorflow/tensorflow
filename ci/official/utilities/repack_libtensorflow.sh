@@ -61,20 +61,13 @@ TARBALL_SUFFIX=$2
 
 if [[ $(uname -s) != MSYS_NT* ]]; then
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz "${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz"
-  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz "${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz"
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip "${DIR}"
 else
   # Temporary directory for package zipping
   LIB_PKG="$DIR/lib_package"
   mkdir -p ${LIB_PKG}
 
-  # Zip up the .dll and the LICENSE for the JNI library.
   libtensorflow_jni_zip="libtensorflow_jni${TARBALL_SUFFIX}.zip"
-  zip -j "$libtensorflow_jni_zip" \
-    bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
-    LICENSE
-  mv "$libtensorflow_jni_zip" "$DIR"
-
   # Zip up the .dll, LICENSE and include files for the C library.
   mkdir -p ${LIB_PKG}/include/tensorflow/c
   mkdir -p ${LIB_PKG}/include/tensorflow/c/eager
