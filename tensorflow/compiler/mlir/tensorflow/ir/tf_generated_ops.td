@@ -12086,7 +12086,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [1]. The FFT length.}]>:$fft_length
   );
 
@@ -12122,7 +12122,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [2]. The FFT length for each dimension.}]>:$fft_length
   );
 
@@ -12159,7 +12159,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [3]. The FFT length for each dimension.}]>:$fft_length
   );
 
