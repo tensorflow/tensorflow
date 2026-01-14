@@ -17,4 +17,14 @@
    ROOT tuple = (f16[16,512,64], f16[1024,512], f16[16,512,64], f16[16,512,64])
      tuple(transpose1, slice2, transpose2, transpose3)
  }
-// CHECK-COUNT-2:  xla_gpu.allocate_shared : tensor<64x64xf16>
+// Capture the three allocated shared memory tensors in order and verify
+// the unified loop structure: one xla.loop that takes all 3 shmem tensors
+// as iter_args and yields 3 results (one per transpose).
+// CHECK:  [[SHMEM0:%.*]] = xla_gpu.allocate_shared : tensor<64x64xf16>
+// CHECK:  [[SHMEM1:%.*]] = xla_gpu.allocate_shared : tensor<64x64xf16>
+// CHECK:  [[SHMEM2:%.*]] = xla_gpu.allocate_shared : tensor<64x64xf16>
+// CHECK:  xla.loop
+// CHECK-SAME:  iter_args(%{{.*}} = [[SHMEM0]], %{{.*}} = [[SHMEM1]], %{{.*}} = [[SHMEM2]])
+// CHECK-SAME:  -> (tensor<64x64xf16>, tensor<64x64xf16>, tensor<64x64xf16>)
+// CHECK:  xla.yield
+// CHECK-SAME:  tensor<64x64xf16>, tensor<64x64xf16>, tensor<64x64xf16>
