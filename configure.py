@@ -160,7 +160,7 @@ def get_python_path(environ_cp, python_bin_path):
         run_shell([
             python_bin_path,
             '-c',
-            'import sysconfig;print(sysconfig.get_path("purelib")',
+            'import sysconfig; print(sysconfig.get_path("purelib"))',
         ])
     ]
 
