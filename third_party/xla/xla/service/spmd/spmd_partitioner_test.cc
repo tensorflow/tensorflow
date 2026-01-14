@@ -496,7 +496,7 @@ HloModule module
 
 ENTRY entry {
   %constant = s32[2,3]{1,0} constant({{1,1,1},{1,1,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   ROOT %copy = s32[2,3]{1,0} copy(%constant), sharding={replicated}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -546,7 +546,7 @@ HloModule module
 
 ENTRY entry {
   %constant = s32[2,3]{1,0} constant({{1,1,1},{1,1,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   ROOT %copy = s32[2,3]{1,0} copy(%constant), sharding={maximal device=0}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -563,8 +563,8 @@ TEST_P(SpmdPartitioningTest, TiledToTiledEven) {
 HloModule module
 
 ENTRY entry {
-  %param= s32[8,2]{1,0} parameter(0), sharding={devices=[2,1]0,1}
-  ROOT %copy = s32[8,2]{1,0} copy(%param), sharding={devices=[1,2]0,1}
+  %param= s32[8,2]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT %copy = s32[8,2]{1,0} copy(%param), sharding={devices=[1,2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -656,8 +656,8 @@ TEST_P(SpmdPartitioningTest, TiledToTiledUneven) {
 HloModule module
 
 ENTRY entry {
-  %param= f32[7,31,128]{2,1,0} parameter(0), sharding={devices=[1,2,1]0,1}
-  ROOT %copy = f32[7,31,128]{2,1,0} copy(%param), sharding={devices=[2,1,1]0,1}
+  %param= f32[7,31,128]{2,1,0} parameter(0), sharding={devices=[1,2,1]<=[2]}
+  ROOT %copy = f32[7,31,128]{2,1,0} copy(%param), sharding={devices=[2,1,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -708,11 +708,11 @@ ENTRY entry {
   param.0 = (f32[2,3]{1,0}, u32[2,3]{1,0}) parameter(0),
     sharding={{replicated}, {replicated}}
   gte.0 = f32[2,3]{1,0} get-tuple-element(param.0), index=0,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   gte.1 = u32[2,3]{1,0} get-tuple-element(param.0), index=1,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   ROOT %tuple = (f32[2,3]{1,0}, u32[2,3]{1,0}) tuple(gte.0, gte.1),
-    sharding={{devices=[2,1]0,1},{devices=[2,1]0,1}}
+    sharding={{devices=[2,1]<=[2]},{devices=[2,1]<=[2]}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -738,7 +738,7 @@ HloModule module
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
   infeed = (f32[8,2]{1,0}, token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {maximal device=0}}
+    sharding={{devices=[2,1]<=[2]}, {maximal device=0}}
   ROOT infeed.data = f32[8,2]{1,0} get-tuple-element(infeed), index=0,
     sharding={maximal device=0}
 })";
@@ -757,9 +757,9 @@ HloModule module
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
   infeed = (f32[9,2]{1,0}, token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {maximal device=0}}
+    sharding={{devices=[2,1]<=[2]}, {maximal device=0}}
   ROOT infeed.data = f32[9,2]{1,0} get-tuple-element(infeed), index=0,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -788,9 +788,9 @@ HloModule module
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
   infeed = ((f32[9,2]{1,0}, f32[2]{0}), token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {replicated}, {maximal device=0}}
+    sharding={{devices=[2,1]<=[2]}, {replicated}, {maximal device=0}}
   ROOT infeed.data = (f32[9,2]{1,0}, f32[2]{0}) get-tuple-element(infeed),
-    index=0, sharding={{devices=[2,1]0,1}, {replicated}}
+    index=0, sharding={{devices=[2,1]<=[2]}, {replicated}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -883,7 +883,7 @@ sum {
 
 ENTRY entry {
   constant = f32[3,3]{1,0} constant({{1,1,1},{1,1,1},{1,1,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT reduce = f32[] reduce(constant, constant.1), dimensions={0,1},
     to_apply=sum, sharding={replicated}
@@ -911,13 +911,13 @@ HloModule module
 
 ENTRY entry {
   constant = f32[3,3]{1,0} constant({{1,1,1},{1,1,1},{1,1,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   constant.1 = f32[3,3]{1,0} constant({{2,2,2},{2,2,2},{2,2,2}}),
     sharding={replicated}
   multiply = f32[3,3]{1,0} multiply(constant, constant.1),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   ROOT add = f32[3,3]{1,0} add(multiply, constant.1),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -947,9 +947,9 @@ sum {
 }
 
 ENTRY entry {
-  parameter = f32[3,3]{1,0} parameter(0), sharding={devices=[2,1]0,1}
+  parameter = f32[3,3]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
   ROOT all-reduce = f32[3,3]{1,0} all-reduce(parameter), to_apply=sum,
-    replica_groups={}, sharding={devices=[2,1]0,1}
+    replica_groups={}, sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -967,7 +967,7 @@ ENTRY entry {
   constant = f32[4,3]{1,0} constant({{1,1,1},{1,1,1},{1,1,1},{1,1,1}}),
     sharding={replicated}
   ROOT broadcast = f32[3,4,3]{2,1,0} broadcast(constant), dimensions={1,2},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -985,7 +985,7 @@ ENTRY entry {
   constant = f32[4,3]{1,0} constant({{1,1,1},{1,1,1},{1,1,1},{1,1,1}}),
     sharding={replicated}
   ROOT broadcast = f32[4,4,3]{2,1,0} broadcast(constant), dimensions={1,2},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1095,9 +1095,9 @@ HloModule module
 
 ENTRY entry {
   constant = f32[4,3]{1,0} constant({{1,1,1},{1,4,1},{1,3,1},{1,2,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   ROOT broadcast = f32[4,4,3]{2,1,0} broadcast(constant), dimensions={1,2},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1143,8 +1143,8 @@ HloModule module
 
 ENTRY entry {
   token.0 = token[] after-all()
-  data = f32[1024]{0} parameter(0), sharding={devices=[2]0,1}
-  ROOT outfeed = token[] outfeed(data, token.0), sharding={devices=[2]0,1}
+  data = f32[1024]{0} parameter(0), sharding={devices=[2]<=[2]}
+  ROOT outfeed = token[] outfeed(data, token.0), sharding={devices=[2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1160,11 +1160,11 @@ HloModule module
 
 ENTRY entry {
   token.0 = token[] after-all()
-  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]0,1},
-    {devices=[2]0,1}}
+  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]<=[2]},
+    {devices=[2]<=[2]}}
   ROOT outfeed = token[] outfeed(data, token.0),
-    outfeed_shape=(f32[1024,2]{0,1}, f32[2]{0}), sharding={{devices=[2,1]0,1},
-    {devices=[2]0,1}}
+    outfeed_shape=(f32[1024,2]{0,1}, f32[2]{0}), sharding={{devices=[2,1]<=[2]},
+    {devices=[2]<=[2]}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1186,9 +1186,9 @@ HloModule module
 
 ENTRY entry {
   token.0 = token[] after-all()
-  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]0,1},
+  data = (f32[1024,2]{1,0}, f32[2]{0}) parameter(0), sharding={{devices=[2,1]<=[2]},
     {replicated}}
-  ROOT outfeed = token[] outfeed(data, token.0), sharding={{devices=[2,1]0,1},
+  ROOT outfeed = token[] outfeed(data, token.0), sharding={{devices=[2,1]<=[2]},
     {replicated}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1205,11 +1205,11 @@ HloModule module
 
 ENTRY entry {
   token.0 = token[] after-all()
-  data = (f32[1023,2]{1,0}, f32[3]{0}) parameter(0), sharding={{devices=[2,1]0,1},
-    {devices=[2]0,1}}
+  data = (f32[1023,2]{1,0}, f32[3]{0}) parameter(0), sharding={{devices=[2,1]<=[2]},
+    {devices=[2]<=[2]}}
   outfeed = token[] outfeed(data, token.0),
-    outfeed_shape=(f32[1023,2]{0,1}, f32[3]{0}), sharding={{devices=[2,1]0,1},
-    {devices=[2]0,1}}
+    outfeed_shape=(f32[1023,2]{0,1}, f32[3]{0}), sharding={{devices=[2,1]<=[2]},
+    {devices=[2]<=[2]}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1268,7 +1268,7 @@ ENTRY entry {
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT reduce-window = f32[3,2]{1,0} reduce-window(constant, constant.1),
     window={size=3x1 stride=2x1 pad=1_0x0_0}, to_apply=sum,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1297,11 +1297,11 @@ sum {
 
 ENTRY entry {
   constant = f32[6,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1},{1,2},{2,2}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT %reduce-window = f32[3,2]{1,0} reduce-window(%constant, %constant.1),
     window={size=3x1 stride=2x1 pad=0_1x0_0}, to_apply=sum,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1337,11 +1337,11 @@ sum {
 }
 
 ENTRY entry {
-  param = f32[9,2] parameter(0), sharding={devices=[5,1]0,1,2,3,4}
+  param = f32[9,2] parameter(0), sharding={devices=[5,1]<=[5]}
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT reduce-window = f32[5,2]{1,0} reduce-window(param, constant.1),
     window={size=4x1 stride=2x1 pad=3_0x0_0}, to_apply=sum,
-    sharding={devices=[5,1]0,1,2,3,4}
+    sharding={devices=[5,1]<=[5]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/5));
@@ -1375,11 +1375,11 @@ sum {
 ENTRY entry {
   constant = f32[9,2]{1,0} constant(
     {{1,1},{1,4},{2,1},{3,1},{1,2},{2,2},{4,1},{1,2},{2,1}}),
-    sharding={devices=[3,1]0,1,2}
+    sharding={devices=[3,1]<=[3]}
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT reduce-window = f32[5,2]{1,0} reduce-window(constant, constant.1),
     window={size=3x1 stride=2x1 pad=1_1x0_0}, to_apply=sum,
-    sharding={devices=[3,1]0,1,2}
+    sharding={devices=[3,1]<=[3]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/3));
@@ -1417,11 +1417,11 @@ sum {
 
 ENTRY entry {
   constant = f32[4,2]{1,0} constant({{1,1},{1,4},{2,1},{3,1}}),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
   constant.1 = f32[] constant(0), sharding={replicated}
   ROOT reduce-window = f32[2,2]{1,0} reduce-window(constant, constant.1),
     window={size=5x1 stride=3x1 pad=2_2x0_0}, to_apply=sum,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -1525,7 +1525,7 @@ HloModule module
 ENTRY entry {
   %lhs = f32[128,224,224,3] parameter(0)
   %lhs.copy = f32[128,224,224,3] copy(f32[128,224,224,3] %lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[7,7,3,64] parameter(1)
   %rhs.copy = f32[7,7,3,64] copy(f32[7,7,3,64] %rhs),
     sharding={replicated}
@@ -1534,7 +1534,7 @@ ENTRY entry {
     f32[7,7,3,64] %rhs.copy),
     window={size=7x7 stride=2x2 pad=3_3x3_3},
     dim_labels=b01f_01io->b01f,
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1568,7 +1568,7 @@ HloModule module
 ENTRY entry {
   %lhs = f32[128,224,224,3] parameter(0)
   %lhs.copy = f32[128,224,224,3] copy(f32[128,224,224,3] %lhs),
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
   %rhs = f32[7,7,3,64] parameter(1)
   %rhs.copy = f32[7,7,3,64] copy(f32[7,7,3,64] %rhs),
     sharding={replicated}
@@ -1577,7 +1577,7 @@ ENTRY entry {
     f32[7,7,3,64] %rhs.copy),
     window={size=7x7 stride=2x2 pad=3_3x3_3},
     dim_labels=b01f_01io->b01f,
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1616,13 +1616,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[224,224,3,128] parameter(0)
-  %lhs.copy = f32[224,224,3,128] copy(%lhs), sharding={devices=[2,1,1,1]0,1}
+  %lhs.copy = f32[224,224,3,128] copy(%lhs), sharding={devices=[2,1,1,1]<=[2]}
   %rhs = f32[7,7,3,64] parameter(1)
   %rhs.copy = f32[7,7,3,64] copy(%rhs), sharding={replicated}
   ROOT %conv = f32[128,112,112,64] convolution(%lhs.copy, %rhs.copy),
     window={size=7x7 stride=2x2 pad=3_3x3_3},
     dim_labels=01fb_01io->b01f,
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1658,14 +1658,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[128,7,7,512] parameter(0)
   %lhs.copy = f32[128,7,7,512] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[3,3,512,512] parameter(1)
   %rhs.copy = f32[3,3,512,512] copy(%rhs),
     sharding={replicated}
   ROOT %conv = f32[128,4,4,512] convolution(%lhs.copy, %rhs.copy),
     window={size=3x3 stride=4x4 pad=1_1x1_1 lhs_dilate=2x2 rhs_reversal=1x1},
     dim_labels=b01f_01io->b01f,
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1697,14 +1697,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[128,7,7,512] parameter(0)
   %lhs.copy = f32[128,7,7,512] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[3,3,512,512] parameter(1)
   %rhs.copy = f32[3,3,512,512] copy(%rhs),
     sharding={replicated}
   ROOT %conv = f32[128,14,14,512] convolution(%lhs.copy, %rhs.copy),
     window={size=3x3 pad=1_2x1_2 lhs_dilate=2x2 rhs_reversal=1x1},
     dim_labels=b01f_01io->b01f,
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1953,9 +1953,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,56,56,64] parameter(0)
-  %lhs.copy = f32[128,56,56,64] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,56,56,64] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,56,56,256] parameter(1)
-  %rhs.copy = f32[128,56,56,256] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,56,56,256] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[1,1,64,256] convolution(%lhs.copy, %rhs.copy),
     window={size=56x56}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2021,7 +2021,7 @@ TEST_P(SpmdPartitioningTest, ConvolutionLhsTiledRhsTiledWindowReversal) {
 HloModule module
 
 ENTRY entry {
-  %lhs = f32[5,128,64] parameter(0), sharding={devices=[2,1,1]0,1}
+  %lhs = f32[5,128,64] parameter(0), sharding={devices=[2,1,1]<=[2]}
   %rhs = f32[5,128,256] parameter(1), sharding={devices=[2,1,1]1,0}
   ROOT %conv = f32[1,64,256] convolution(%lhs, %rhs),
     window={size=5 rhs_reversal=1}, dim_labels=0fb_0io->0bf,
@@ -2052,9 +2052,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,56,56,64] parameter(0)
-  %lhs.copy = f32[128,56,56,64] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,56,56,64] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,56,56,256] parameter(1)
-  %rhs.copy = f32[128,56,56,256] copy(%rhs), sharding={devices=[2,1,1,1]0,1}
+  %rhs.copy = f32[128,56,56,256] copy(%rhs), sharding={devices=[2,1,1,1]<=[2]}
   ROOT %conv = f32[1,1,64,256] convolution(%lhs.copy, %rhs.copy),
     window={size=56x56}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2086,9 +2086,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,56,56,512] parameter(0)
-  %lhs.copy = f32[128,56,56,512] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,56,56,512] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,28,28,64] parameter(1)
-  %rhs.copy = f32[128,28,28,64] copy(%rhs), sharding={devices=[2,1,1,1]0,1}
+  %rhs.copy = f32[128,28,28,64] copy(%rhs), sharding={devices=[2,1,1,1]<=[2]}
   ROOT %conv = f32[1,1,512,64] convolution(%lhs.copy, %rhs.copy),
     window={size=28x28 pad=0_-1x0_-1 rhs_dilate=2x2},
     dim_labels=f01b_i01o->01bf, sharding={replicated}
@@ -2166,9 +2166,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,28,28,128] parameter(0)
-  %lhs.copy = f32[32,28,28,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,28,28,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,28,28,64] parameter(1)
-  %rhs.copy = f32[32,28,28,64] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,28,28,64] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[3,3,128,64] convolution(%lhs.copy, %rhs.copy),
     window={size=28x28 pad=1_1x1_1}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2207,9 +2207,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,224,224,3] parameter(0)
-  %lhs.copy = f32[128,224,224,3] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,224,224,3] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,112,112,64] parameter(1)
-  %rhs.copy = f32[128,112,112,64] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,112,112,64] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[7,7,3,64] convolution(%lhs.copy, %rhs.copy),
     window={size=112x112 pad=3_2x3_2 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2248,9 +2248,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,56,56,256] parameter(0)
-  %lhs.copy = f32[128,56,56,256] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,56,56,256] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,28,28,512] parameter(1)
-  %rhs.copy = f32[128,28,28,512] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,28,28,512] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[1,1,256,512] convolution(%lhs.copy, %rhs.copy),
     window={size=28x28 pad=0_-1x0_-1 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2282,9 +2282,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,14,14,512] parameter(0)
-  %lhs.copy = f32[128,14,14,512] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,14,14,512] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,7,7,512] parameter(1)
-  %rhs.copy = f32[128,7,7,512] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,7,7,512] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[3,3,512,512] convolution(%lhs.copy, %rhs.copy),
     window={size=7x7 pad=1_0x1_0 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2328,9 +2328,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,28,28,128] parameter(0)
-  %lhs.copy = f32[32,28,28,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,28,28,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,28,28,64] parameter(1)
-  %rhs.copy = f32[32,28,28,64] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,28,28,64] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[3,3,128,64] convolution(%lhs.copy, %rhs.copy),
     window={size=28x28 pad=1_1x1_1}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2367,9 +2367,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,224,224,3] parameter(0)
-  %lhs.copy = f32[128,224,224,3] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,224,224,3] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,112,112,64] parameter(1)
-  %rhs.copy = f32[128,112,112,64] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,112,112,64] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[7,7,3,64] convolution(%lhs.copy, %rhs.copy),
     window={size=112x112 pad=3_2x3_2 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2406,9 +2406,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,56,56,256] parameter(0)
-  %lhs.copy = f32[128,56,56,256] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,56,56,256] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,28,28,512] parameter(1)
-  %rhs.copy = f32[128,28,28,512] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,28,28,512] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[1,1,256,512] convolution(%lhs.copy, %rhs.copy),
     window={size=28x28 pad=0_-1x0_-1 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2438,9 +2438,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,14,14,512] parameter(0)
-  %lhs.copy = f32[128,14,14,512] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[128,14,14,512] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[128,7,7,512] parameter(1)
-  %rhs.copy = f32[128,7,7,512] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[128,7,7,512] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[3,3,512,512] convolution(%lhs.copy, %rhs.copy),
     window={size=7x7 pad=1_0x1_0 rhs_dilate=2x2}, dim_labels=f01b_i01o->01bf, sharding={replicated}
 })";
@@ -2483,11 +2483,11 @@ HloModule module
 
 ENTRY entry {
   %param0 = f32[14,257] parameter(0)
-  %param0.copy = f32[14,257] copy(%param0), sharding={devices=[2,1]0,1}
+  %param0.copy = f32[14,257] copy(%param0), sharding={devices=[2,1]<=[2]}
   %param1 = f32[14,116] parameter(1)
-  %param1.copy = f32[14,116] copy(%param1), sharding={devices=[2,1]0,1}
+  %param1.copy = f32[14,116] copy(%param1), sharding={devices=[2,1]<=[2]}
   ROOT %concatenate = f32[14,373] concatenate(%param0.copy, %param1.copy),
-    dimensions={1}, sharding={devices=[2,1]0,1}
+    dimensions={1}, sharding={devices=[2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2510,10 +2510,10 @@ TEST_P(SpmdPartitioningTest, ConcatenateAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]0,1}
-  %param1 = f32[14,116] parameter(1), sharding={devices=[1,2]0,1}
+  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]<=[2]}
+  %param1 = f32[14,116] parameter(1), sharding={devices=[1,2]<=[2]}
   ROOT %concatenate = f32[14,373] concatenate(%param0, %param1),
-    dimensions={1}, sharding={devices=[1,2]0,1}
+    dimensions={1}, sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2607,10 +2607,10 @@ TEST_P(SpmdPartitioningTest, PadAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]0,1}
+  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]<=[2]}
   %const = f32[] constant(0)
   ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2631,7 +2631,7 @@ ENTRY entry {
   %param0 = f32[128,14,257] parameter(0), sharding={replicated}
   %const = f32[] constant(0)
   ROOT %pad = f32[128,17,257] pad(%param0, %const), padding=0_0x1_2x0_0,
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2651,10 +2651,10 @@ TEST_P(SpmdPartitioningTest, PadAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]0,1}
+  %param0 = f32[14,257] parameter(0), sharding={devices=[1,2]<=[2]}
   %const = f32[] constant(0)
   ROOT %pad = f32[14,259] pad(%param0, %const), padding=0_0x0_2,
-    sharding={devices=[1,2]0,1}
+    sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2766,10 +2766,10 @@ TEST_P(SpmdPartitioningTest, PadAlongPartitionedDimensionWithInteriorPadding) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[7] parameter(0), sharding={devices=[2]0,1}
+  %param0 = f32[7] parameter(0), sharding={devices=[2]<=[2]}
   %param1 = f32[] parameter(1), sharding={replicated}
   ROOT %pad = f32[22] pad(%param0, %param1), padding=2_1_2,
-    sharding={devices=[2]0,1}
+    sharding={devices=[2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2831,9 +2831,9 @@ HloModule module
 
 ENTRY entry {
   %param0 = f32[128,14,257] parameter(0)
-  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,1,2]0,1}
+  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,1,2]<=[2]}
   ROOT %slice = f32[128,11,257] slice(%param0.copy),
-    slice={[0:128:1], [2:13:1], [0:257:1]}, sharding={devices=[1,1,2]0,1}
+    slice={[0:128:1], [2:13:1], [0:257:1]}, sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -2853,9 +2853,9 @@ TEST_P(SpmdPartitioningTest, SliceAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]0,1}
+  %param0 = f32[128,14,257] parameter(0), sharding={devices=[1,1,2]<=[2]}
   ROOT %slice = f32[63,14,251] slice(%param0),
-    slice={[2:128:2], [0:14:1], [5:256:1]}, sharding={devices=[1,1,2]0,1}
+    slice={[2:128:2], [0:14:1], [5:256:1]}, sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -3131,12 +3131,12 @@ ge {
 
 ENTRY entry {
   %param0 = f32[128,14,257] parameter(0)
-  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,2,1]0,1}
+  %param0.copy = f32[128,14,257] copy(%param0), sharding={devices=[1,2,1]<=[2]}
   %param1 = s32[128,14,257] parameter(1)
-  %param1.copy = s32[128,14,257] copy(%param1), sharding={devices=[1,2,1]0,1}
+  %param1.copy = s32[128,14,257] copy(%param1), sharding={devices=[1,2,1]<=[2]}
   ROOT %sort.6 = (f32[128,14,257]{2,1,0:T(8,128)}, s32[128,14,257]{2,1,0:T(8,128)})
     sort(%param0.copy, %param1.copy), dimensions={2}, is_stable=true,
-    to_apply=%ge, sharding={{devices=[1,2,1]0,1},{devices=[1,2,1]0,1}}
+    to_apply=%ge, sharding={{devices=[1,2,1]<=[2]},{devices=[1,2,1]<=[2]}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -3163,7 +3163,7 @@ HloModule cluster_2013453984438090939__.47
 ENTRY %cluster_2013453984438090939__.47
   (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]<=[2]}
   %custom-call = (bf16[2,2000]{1,0}, s32[2,2000]{1,0})
     custom-call(bf16[2,209664]{1,0} %copy.arg_tuple.1), custom_call_target="TopK"
   %get-tuple-element = bf16[2,2000]{1,0}
@@ -3290,7 +3290,7 @@ HloModule module
 ENTRY entry
   (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]<=[2]}
   %iota.7 = s32[2,209664] iota(), iota_dimension=1,
     metadata={op_type="TopKV2" op_name="TopKV2"}
   %sort.32 = (bf16[2,209664], s32[2,209664])
@@ -3369,7 +3369,7 @@ HloModule module
 ENTRY entry
   (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]<=[2]}
   %iota.7 = s32[2,209664] iota(), iota_dimension=1,
     metadata={op_type="TopKV2" op_name="TopKV2"}
   %sort.32 = (bf16[2,209664], s32[2,209664])
@@ -3448,7 +3448,7 @@ HloModule module
 ENTRY entry {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
   %arg_tuple.2 = s32[2,209664] parameter(1)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]<=[2]}
   %sort.32 = (bf16[2,209664], s32[2,209664])
     sort(bf16[2,209664] %copy.arg_tuple.1, s32[2,209664] %arg_tuple.2),
     dimensions={1}, is_stable=true, to_apply=%compare-greater-than.8,
@@ -3525,7 +3525,7 @@ HloModule module
 ENTRY entry
   (arg_tuple.1: ()) -> (bf16[2,2000], s32[2,2000]) {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[2,1]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[2,1]<=[2]}
   %iota.7 = s32[2,209664] iota(), iota_dimension=1,
     metadata={op_type="TopKV2" op_name="TopKV2"}
   %sort.32 = (bf16[2,209664], s32[2,209664])
@@ -3600,7 +3600,7 @@ HloModule module
 
 ENTRY entry {
   %arg_tuple.1 = bf16[2,209664] parameter(0)
-  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]0,1}
+  %copy.arg_tuple.1 = bf16[2,209664] copy(%arg_tuple.1), sharding={devices=[1,2]<=[2]}
   %iota.7 = s32[2,209664] iota(), iota_dimension=1,
     metadata={op_type="TopKV2" op_name="TopKV2"}
   %sort.32 = (bf16[2,209664], s32[2,209664])
@@ -3972,9 +3972,9 @@ HloModule module
 
 ENTRY entry {
   %param0 = f32[16,38,38,4] parameter(0)
-  %param0.copy = f32[16,38,38,4] copy(%param0), sharding={devices=[1,2,1,1]0,1}
+  %param0.copy = f32[16,38,38,4] copy(%param0), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %transpose = f32[16,4,38,38] transpose(%param0.copy),
-    dimensions={0,3,1,2}, sharding={devices=[1,1,2,1]0,1}
+    dimensions={0,3,1,2}, sharding={devices=[1,1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4019,9 +4019,9 @@ HloModule module
 
 ENTRY entry {
   %param0 = f32[16,38,38,4] parameter(0)
-  %param0.copy = f32[16,38,38,4] copy(%param0), sharding={devices=[1,2,1,1]0,1}
+  %param0.copy = f32[16,38,38,4] copy(%param0), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %transpose = f32[16,4,38,38] transpose(%param0.copy),
-    dimensions={0,3,1,2}, sharding={devices=[1,2,1,1]0,1}
+    dimensions={0,3,1,2}, sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4092,7 +4092,7 @@ ENTRY entry {
     sharding={devices=[2,2,1,1,2]<=[8] last_tile_dim_replicate}
   ROOT %transpose = f32[38,4,16,38] transpose(%param0.copy),
     dimensions={1,3,0,2},
-    sharding={devices=[2,1,2,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+    sharding={devices=[2,1,2,1,2]<=[2,2,2]T(1,0,2) last_tile_dim_replicate}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4113,9 +4113,9 @@ HloModule module
 
 ENTRY entry {
   %param0 = f32[38,38,324] parameter(0)
-  %param0.copy = f32[38,38,324] copy(%param0), sharding={devices=[2,1,1]0,1}
+  %param0.copy = f32[38,38,324] copy(%param0), sharding={devices=[2,1,1]<=[2]}
   ROOT %reshape = f32[38,38,4,81] reshape(%param0.copy),
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4159,9 +4159,9 @@ TEST_P(SpmdPartitioningTest, ReshapeWithReshard) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]0,1}
+  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]<=[2]}
   ROOT %reshape = f32[38,38,4,81] reshape(%param0),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4180,9 +4180,9 @@ TEST_P(SpmdPartitioningTest, ReshapeWithReshard2) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]0,1}
+  %param0 = f32[38,38,324] parameter(0), sharding={devices=[2,1,1]<=[2]}
   ROOT %reshape = f32[38,38,2,162] reshape(%param0),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4339,9 +4339,9 @@ TEST_P(SpmdPartitioningTest, ReshapeMergeDimsWithHaloExchange) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[2,3,7,10] parameter(0), sharding={devices=[1,1,2,1]0,1}
+  %input = s32[2,3,7,10] parameter(0), sharding={devices=[1,1,2,1]<=[2]}
   ROOT %reshape = s32[3,2,1,14,5] reshape(%input),
-    sharding={devices=[1,1,1,2,1]0,1}
+    sharding={devices=[1,1,1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4477,10 +4477,10 @@ sum {
 ENTRY entry {
   %param0 = f32[4,32,32,128] parameter(0)
   %param0.copy = f32[4,32,32,128] copy(%param0),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %constant.1 = f32[] constant(0), sharding={replicated}
   %reduce = f32[128] reduce(%param0.copy, %constant.1), dimensions={0,1,2},
-    to_apply=%sum, sharding={devices=[2]0,1}
+    to_apply=%sum, sharding={devices=[2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4513,7 +4513,7 @@ ENTRY entry {
   %constant.1 = f32[] constant(0), sharding={replicated}
   ROOT %reduce = f32[4] reduce(%param0, %constant.1), dimensions={0},
     to_apply=%sum,
-    sharding={devices=[2,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+    sharding={devices=[2,4]<=[2,2,2]T(1,0,2) last_tile_dim_replicate}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4577,13 +4577,13 @@ HloModule module
 }
 
 ENTRY %main {
-  %param0 = f32[28,10] parameter(0), sharding={devices=[2,1]0,1}
-  %param1 = s32[28,10] parameter(1), sharding={devices=[2,1]0,1}
+  %param0 = f32[28,10] parameter(0), sharding={devices=[2,1]<=[2]}
+  %param1 = s32[28,10] parameter(1), sharding={devices=[2,1]<=[2]}
   %init0 = f32[] parameter(2)
   %init1 = s32[] parameter(3)
   ROOT %reduce = (f32[28], s32[28]) reduce(%param0, %param1, %init0, %init1),
     dimensions={1}, to_apply=%minmax_func,
-    sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+    sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4707,10 +4707,10 @@ sum {
 ENTRY entry {
   %param0 = f32[4,32,32,128] parameter(0)
   %param0.copy = f32[4,32,32,128] copy(%param0),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %constant.1 = f32[] constant(0), sharding={replicated}
   %reduce = f32[128] reduce(%param0.copy, %constant.1), dimensions={0,1,2},
-    to_apply=%sum, sharding={devices=[2]0,1}
+    to_apply=%sum, sharding={devices=[2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4737,7 +4737,7 @@ HloModule module
 
 ENTRY entry {
   ROOT %iota = s32[16,80,91] iota(), iota_dimension=1,
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4754,7 +4754,7 @@ HloModule module
 
 ENTRY entry {
   ROOT %iota = s32[16,80,91] iota(), iota_dimension=2,
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4772,7 +4772,7 @@ HloModule module
 
 ENTRY entry {
   ROOT %iota = u32[16,80,91] iota(), iota_dimension=2,
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4789,13 +4789,13 @@ TEST_P(SpmdPartitioningTest, Conditional) {
 HloModule module
 
 Negate {
-  x = f32[4,5] parameter(0), sharding={devices=[2,1]0,1}
-  ROOT negate = f32[4,5] negate(x), sharding={devices=[2,1]0,1}
+  x = f32[4,5] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT negate = f32[4,5] negate(x), sharding={devices=[2,1]<=[2]}
 }
 
 Identity {
-  y = f32[4,5] parameter(0), sharding={devices=[2,1]0,1}
-  ROOT copy = f32[4,5] copy(y), sharding={devices=[2,1]0,1}
+  y = f32[4,5] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT copy = f32[4,5] copy(y), sharding={devices=[2,1]<=[2]}
 }
 
 ENTRY entry {
@@ -4804,10 +4804,10 @@ ENTRY entry {
   %param.1 = f32[4,5] parameter(1)
   %param.1.copy = f32[4,5] copy(%param.1), sharding={replicated}
   %param.2 = f32[4,5] parameter(2)
-  %param.2.copy = f32[4,5] copy(%param.2), sharding={devices=[2,1]0,1}
+  %param.2.copy = f32[4,5] copy(%param.2), sharding={devices=[2,1]<=[2]}
   ROOT cond = f32[4,5] conditional(%param.0.copy, %param.1.copy, %param.2.copy),
     true_computation=Negate, false_computation=Identity,
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5052,9 +5052,9 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,64] parameter(0)
-  %lhs.copy = f32[128,64] copy(%lhs), sharding={devices=[1,2]0,1}
+  %lhs.copy = f32[128,64] copy(%lhs), sharding={devices=[1,2]<=[2]}
   %rhs = f32[64,256] parameter(1)
-  %rhs.copy = f32[64,256] copy(%rhs), sharding={devices=[2,1]0,1}
+  %rhs.copy = f32[64,256] copy(%rhs), sharding={devices=[2,1]<=[2]}
   ROOT %conv = f32[128,256] convolution(%lhs.copy, %rhs.copy),
     dim_labels=bf_io->bf, sharding={replicated}
 })";
@@ -5083,11 +5083,11 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,64] parameter(0)
-  %lhs.copy = f32[128,64] copy(%lhs), sharding={devices=[1,2]0,1}
+  %lhs.copy = f32[128,64] copy(%lhs), sharding={devices=[1,2]<=[2]}
   %rhs = f32[64,256] parameter(1)
-  %rhs.copy = f32[64,256] copy(%rhs), sharding={devices=[2,1]0,1}
+  %rhs.copy = f32[64,256] copy(%rhs), sharding={devices=[2,1]<=[2]}
   ROOT %conv = f32[128,256] convolution(%lhs.copy, %rhs.copy),
-    dim_labels=bf_io->bf, sharding={devices=[1,2]0,1}
+    dim_labels=bf_io->bf, sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5114,11 +5114,11 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[128,256,256] parameter(0)
-  %lhs.copy = f32[128,256,256] copy(%lhs), sharding={devices=[1,2,1]0,1}
+  %lhs.copy = f32[128,256,256] copy(%lhs), sharding={devices=[1,2,1]<=[2]}
   %rhs = f32[256,8,1] parameter(1)
   %rhs.copy = f32[256,8,1] copy(%rhs), sharding={replicated}
   ROOT %conv = f32[128,256,8] convolution(%lhs.copy, %rhs.copy),
-    window={size=1}, dim_labels=0bf_io0->0bf, sharding={devices=[1,2,1]0,1}
+    window={size=1}, dim_labels=0bf_io0->0bf, sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5143,11 +5143,11 @@ ENTRY entry {
   %lhs = f32[24,64] parameter(0)
   %lhs.copy = f32[24,64] copy(%lhs), sharding={replicated}
   %rhs = f32[39296,64] parameter(1)
-  %rhs.copy = f32[39296,64] copy(%rhs), sharding={devices=[2,1]0,1}
+  %rhs.copy = f32[39296,64] copy(%rhs), sharding={devices=[2,1]<=[2]}
   ROOT %dot = f32[24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={1},
-    sharding={devices=[1,2]0,1}
+    sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5216,9 +5216,9 @@ TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsLhsReshard) {
 HloModule module
 
 ENTRY entry {
-  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
-  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
-  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -5265,9 +5265,9 @@ TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsRhsReshard) {
 HloModule module
 
 ENTRY entry {
-  %p0 = f32[4096,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
-  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
-  ROOT %dot.224 = f32[4096,2176]{1,0} dot(f32[4096,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+  %p0 = f32[4096,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %dot.224 = f32[4096,2176]{1,0} dot(f32[4096,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -5411,9 +5411,9 @@ TEST_P(SpmdPartitioningTest, WindowedEinsumNoRewriteWithTotalBytesThreshold) {
 HloModule module
 
 ENTRY entry {
-  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
-  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
-  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}
+  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -5458,9 +5458,9 @@ TEST_P(SpmdPartitioningTest, DisableWindowedEinsumWithUserAnnotation) {
 HloModule module
 
 ENTRY entry {
-  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]0,1}
-  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]0,1}
-  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]0,1}, frontend_attributes={_xla_collective_matmul="none"}
+  %p0 = f32[2048,2,3264]{2,1,0} parameter(0), sharding={devices=[1,1,2]<=[2]}
+  %p1 = f32[2,3264,2176]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT %dot.224 = f32[2048,2176]{1,0} dot(f32[2048,2,3264]{2,1,0} %p0, f32[2,3264,2176]{2,1,0} %p1), lhs_contracting_dims={1,2}, rhs_contracting_dims={0,1}, sharding={devices=[1,2]<=[2]}, frontend_attributes={_xla_collective_matmul="none"}
 })";
 
   SpmdPartitionerOptions options;
@@ -5480,13 +5480,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64] parameter(0)
-  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[2,1,1]0,1}
+  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[2,1,1]<=[2]}
   %rhs = f32[32,39296,64] parameter(1)
-  %rhs.copy = f32[32,39296,64] copy(%rhs), sharding={devices=[2,1,1]0,1}
+  %rhs.copy = f32[32,39296,64] copy(%rhs), sharding={devices=[2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5511,13 +5511,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64] parameter(0)
-  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[2,1,1]0,1}
+  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[2,1,1]<=[2]}
   %rhs = f32[32,39296,64] parameter(1)
   %rhs.copy = f32[32,39296,64] copy(%rhs), sharding={replicated}
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5543,13 +5543,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64] parameter(0)
-  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[1,2,1]0,1}
+  %lhs.copy = f32[32,24,64] copy(%lhs), sharding={devices=[1,2,1]<=[2]}
   %rhs = f32[32,39296,64] parameter(1)
-  %rhs.copy = f32[32,39296,64] copy(%rhs), sharding={devices=[2,1,1]0,1}
+  %rhs.copy = f32[32,39296,64] copy(%rhs), sharding={devices=[2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5583,7 +5583,7 @@ ENTRY entry {
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5645,7 +5645,7 @@ ENTRY entry {
   %rhs = f32[64,128] parameter(1), sharding={devices=[4,1]<=[4]}
   ROOT %dot = f32[32,128] dot(%lhs, %rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5730,7 +5730,7 @@ ENTRY entry {
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -5763,7 +5763,7 @@ ENTRY entry {
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -6313,17 +6313,17 @@ TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingNoDoubleAG) {
 HloModule module
 
 ENTRY entry {
-  %lhs = f32[32,24,64,128] parameter(0), sharding={devices=[1,2,1,1]0,1}
-  %lhs2 = f32[32,24,64,128] parameter(2), sharding={devices=[1,2,1,1]0,1}
-  %rhs = f32[32,40,64,128] parameter(1), sharding={devices=[1,2,1,1]0,1}
+  %lhs = f32[32,24,64,128] parameter(0), sharding={devices=[1,2,1,1]<=[2]}
+  %lhs2 = f32[32,24,64,128] parameter(2), sharding={devices=[1,2,1,1]<=[2]}
+  %rhs = f32[32,40,64,128] parameter(1), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,40] dot(%lhs, %rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %dot2 = f32[32,24,40] dot(%lhs2, %rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   ROOT %t = tuple(%dot, %dot2)
 })";
 
@@ -6340,19 +6340,19 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %lhs2 = f32[32,24,64,128] parameter(2)
-  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,1,2,1]0,1}
+  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,1,2,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %dot2 = f32[32,24,39295] dot(%lhs2.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
   ROOT %t = tuple(%dot, %dot2)
 })";
 
@@ -6373,19 +6373,19 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %lhs2 = f32[32,24,64,128] parameter(2)
-  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,1,2,1]0,1}
+  %lhs2.copy = f32[32,24,64,128] copy(%lhs2), sharding={devices=[1,1,2,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %dot2 = f32[32,24,39295] dot(%lhs2.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[2,1,1]0,1}
+    sharding={devices=[2,1,1]<=[2]}
   ROOT %t = tuple(%dot, %dot2)
 })";
 
@@ -6517,13 +6517,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
@@ -6582,13 +6582,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -6734,13 +6734,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,63,128] parameter(0)
-  %lhs.copy = f32[32,24,63,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,63,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39296,63,128] parameter(1)
-  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]0,1}
+  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
@@ -6800,13 +6800,13 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[32,24,63,128] parameter(0)
-  %lhs.copy = f32[32,24,63,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,63,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39296,63,128] parameter(1)
-  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]0,1}
+  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -6947,30 +6947,30 @@ sum {
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(2)
   %constant.2 = f32[] constant(4)
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %reduce = f32[32,24] reduce(%multiply, %constant), dimensions={2},
-    to_apply=sum, sharding={devices=[1,2]0,1}
+    to_apply=sum, sharding={devices=[1,2]<=[2]}
   %all-reduce = f32[32,24] all-reduce(%reduce),
-    to_apply=sum, sharding={devices=[1,2]0,1}
+    to_apply=sum, sharding={devices=[1,2]<=[2]}
   %broadcast.1 = f32[32,24,39295] broadcast(%all-reduce), dimensions={0,1},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %subtract = f32[32,24,39295] subtract(%multiply, %broadcast.1),
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   ROOT %reduce.1 = f32[32,24] reduce(%subtract, %constant.2), dimensions={2},
-    to_apply=sum, sharding={devices=[1,2]0,1}
+    to_apply=sum, sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7041,21 +7041,21 @@ sum {
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   ROOT %reduce = f32[32,24] reduce(%multiply, %constant), dimensions={2},
-    to_apply=sum, sharding={devices=[1,2]0,1}
+    to_apply=sum, sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7125,21 +7125,21 @@ sum {
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-  sharding={devices=[1,2,1]0,1}
+  sharding={devices=[1,2,1]<=[2]}
   ROOT %reduce = f32[32,24] reduce(%multiply, %constant), dimensions={2},
-    to_apply=sum, sharding={devices=[1,2]0,1}
+    to_apply=sum, sharding={devices=[1,2]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -7334,19 +7334,19 @@ sum {
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   ROOT %reduce = f32[32,39295] reduce(%multiply, %constant), dimensions={1},
     to_apply=sum, sharding={replicated}
 })";
@@ -7369,19 +7369,19 @@ sum {
 
 ENTRY entry {
   %lhs = f32[32,24,64,128] parameter(0)
-  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]0,1}
+  %lhs.copy = f32[32,24,64,128] copy(%lhs), sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[32,39295,64,128] parameter(1)
-  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]0,1}
+  %rhs.copy = f32[32,39295,64,128] copy(%rhs), sharding={devices=[1,2,1,1]<=[2]}
   %dot = f32[32,24,39295] dot(%lhs.copy, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %constant = f32[] constant(0)
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,39295] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   %multiply = f32[32,24,39295] multiply(%dot, %broadcast),
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
   ROOT %reduce = f32[32,39295] reduce(%multiply, %constant), dimensions={1},
     to_apply=sum, sharding={replicated}
 })";
@@ -7564,16 +7564,16 @@ HloModule module
 
 ENTRY entry {
   %rhs = f32[32,39296,63,128] parameter(0)
-  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]0,1}
+  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]<=[2]}
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,63,128] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %add = f32[32,24,63,128] add(%broadcast, %broadcast),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%add, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, PartitionComputation(hlo_string,
@@ -7588,16 +7588,16 @@ HloModule module
 
 ENTRY entry {
   %rhs = f32[32,39296,63,128] parameter(0)
-  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]0,1}
+  %rhs.copy = f32[32,39296,63,128] copy(%rhs), sharding={devices=[1,1,2,1]<=[2]}
   %constant.1 = f32[] constant(2)
   %broadcast = f32[32,24,63,128] broadcast(%constant.1), dimensions={},
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %add = f32[32,24,63,128] add(%broadcast, %broadcast),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   ROOT %dot = f32[32,24,39296] dot(%add, %rhs.copy),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2,3}, rhs_contracting_dims={2,3},
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   SpmdPartitionerOptions options;
@@ -7740,7 +7740,7 @@ ENTRY entry {
     sharding={devices=[4,1,2,1]<=[8]}
   %rhs = bf16[2,1536,512,1] parameter(1)
   %rhs.copy = bf16[2,1536,512,1] copy(rhs),
-    sharding={devices=[2,1,2,1,2]0,4,2,6,1,5,3,7 last_tile_dim_replicate}
+    sharding={devices=[2,1,2,1,2]<=[2,2,2]T(2,1,0) last_tile_dim_replicate}
   ROOT %convolution = bf16[8,1024,512,1] convolution(lhs.copy, rhs.copy),
     window={size=1x2}, dim_labels=0b1f_1io0->0bf1,
     sharding={devices=[4,1,2,1]<=[8]}
@@ -7866,7 +7866,7 @@ ENTRY entry {
   %rhs = s32[] parameter(1)
   %rhs.copy = s32[] copy(%rhs), sharding={maximal device=1}
   ROOT %rng = s32[4]{0} rng(%lhs.copy, %rhs.copy),
-      distribution=rng_uniform, sharding={devices=[2]0,1}
+      distribution=rng_uniform, sharding={devices=[2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7932,11 +7932,11 @@ TEST_P(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0), sharding={devices=[2,1]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[2,1]<=[2]}
   %index = s32[] parameter(1)
   %trivial_index = s32[] parameter(2)
   ROOT %dynamic-slice = s32[128,2] dynamic-slice(%input, %trivial_index, %index),
-    dynamic_slice_sizes={128,2}, sharding={devices=[2,1]0,1}
+    dynamic_slice_sizes={128,2}, sharding={devices=[2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7955,14 +7955,14 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceAlongNonPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0), sharding={devices=[2,1]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[2,1]<=[2]}
   %index = s32[] parameter(1)
   %update = s32[128,2] parameter(2)
   %trivial_index = s32[] parameter(3)
-  %update.copy = s32[128,2] copy(%update), sharding={devices=[2,1]0,1}
+  %update.copy = s32[128,2] copy(%update), sharding={devices=[2,1]<=[2]}
   ROOT %dynamic-update-slice = s32[128,64]
     dynamic-update-slice(%input, %update.copy, %trivial_index, %index),
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7984,13 +7984,13 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceAlongPartitionedDimension) {
 HloModule module
 
 ENTRY entry {
-  %input = s32[128,64] parameter(0), sharding={devices=[1,2]0,1}
+  %input = s32[128,64] parameter(0), sharding={devices=[1,2]<=[2]}
   %index = s32[] parameter(1)
   %constant = s32[] constant(60)
-  %update = s32[128,2] parameter(2), sharding={devices=[1,2]0,1}
+  %update = s32[128,2] parameter(2), sharding={devices=[1,2]<=[2]}
   ROOT %dynamic-update-slice = s32[128,64]
     dynamic-update-slice(%input, %update, %index, %constant),
-    sharding={devices=[1,2]0,1}
+    sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -8246,7 +8246,7 @@ ENTRY entry {
   %indices = s32[3] parameter(1), sharding={replicated}
   ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
-    slice_sizes={1,9}, sharding={devices=[1,2]0,1}
+    slice_sizes={1,9}, sharding={devices=[1,2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -8265,11 +8265,11 @@ TEST_P(SpmdPartitioningTest, PassthroughGather) {
 HloModule module
 
 ENTRY entry {
-  %input = f32[2,9] parameter(0), sharding={devices=[1,2]0,1}
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
   %indices = s32[3] parameter(1), sharding={replicated}
   ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
-    slice_sizes={1,9}, sharding={devices=[1,2]0,1}
+    slice_sizes={1,9}, sharding={devices=[1,2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -8347,11 +8347,11 @@ ENTRY entry {
   %input = f32[7,12] parameter(0),
     sharding={devices=[1,2,2]<=[4] last_tile_dim_replicate}
   %indices = s32[16,2] parameter(1),
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   ROOT %gather = f32[16,1,12] gather(%input, %indices),
     offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1},
     index_vector_dim=1, slice_sizes={1,12},
-    sharding={devices=[2,1,2]0,2,1,3}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0)}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -8496,7 +8496,7 @@ TEST_P(SpmdPartitioningTest, GatherPartitionedOnTrivialSliceDims) {
 HloModule module
 
 ENTRY entry {
-  %input = f32[17,9] parameter(0), sharding={devices=[2,1]0,1}
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
   %indices = s32[2,3] parameter(1), sharding={replicated}
   ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
@@ -8576,7 +8576,7 @@ ENTRY entry {
       update_window_dims={1},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, sharding={devices=[1,2]0,1}
+      index_vector_dim=1, sharding={devices=[1,2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -8606,17 +8606,17 @@ add (lhs.0: f32[], lhs.1: f32[], rhs.0: f32[], rhs.1: f32[]) -> (f32[], f32[]) {
 }
 
 ENTRY entry {
-  %input.0 = f32[2,9] parameter(0), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
-  %input.1 = f32[2,9] parameter(1), sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}
+  %input.0 = f32[2,9] parameter(0), sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %input.1 = f32[2,9] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   %indices = s32[3] parameter(2), sharding={replicated}
-  %updates.0 = f32[3,9] parameter(3), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
-  %updates.1 = f32[3,9] parameter(4), sharding={devices=[1,4]0,1,2,3}
+  %updates.0 = f32[3,9] parameter(3), sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %updates.1 = f32[3,9] parameter(4), sharding={devices=[1,4]<=[4]}
   ROOT %scatter = (f32[2,9],f32[2,9]) scatter(%input.0, %input.1, %indices, %updates.0, %updates.1),
       to_apply=add,
       update_window_dims={1},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, sharding={devices=[1,4]0,1,2,3}
+      index_vector_dim=1, sharding={devices=[1,4]<=[4]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -8685,15 +8685,15 @@ add (lhs: f32[], rhs: f32[]) -> f32[] {
 }
 
 ENTRY entry {
-  %input = f32[2,9] parameter(0), sharding={devices=[1,2]0,1}
+  %input = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
   %indices = s32[3] parameter(1), sharding={replicated}
-  %updates = f32[3,9] parameter(2), sharding={devices=[1,2]0,1}
+  %updates = f32[3,9] parameter(2), sharding={devices=[1,2]<=[2]}
   ROOT %scatter = f32[2,9] scatter(%input, %indices, %updates),
       to_apply=add,
       update_window_dims={1},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=1, sharding={devices=[1,2]0,1}
+      index_vector_dim=1, sharding={devices=[1,2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -8721,16 +8721,16 @@ add_min_max {
 }
 
 ENTRY entry {
-  %input0 = f32[2,9] parameter(0), sharding={devices=[1,2]0,1}
-  %input1 = f32[2,9] parameter(1), sharding={devices=[1,2]0,1}
+  %input0 = f32[2,9] parameter(0), sharding={devices=[1,2]<=[2]}
+  %input1 = f32[2,9] parameter(1), sharding={devices=[1,2]<=[2]}
   %indices = s32[3] parameter(2), sharding={replicated}
-  %updates0 = f32[3,9] parameter(3), sharding={devices=[1,2]0,1}
-  %updates1 = f32[3,9] parameter(4), sharding={devices=[1,2]0,1}
+  %updates0 = f32[3,9] parameter(3), sharding={devices=[1,2]<=[2]}
+  %updates1 = f32[3,9] parameter(4), sharding={devices=[1,2]<=[2]}
   ROOT %scatter = (f32[2,9], f32[2,9])
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={1}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=1,
-      sharding={{devices=[1,2]0,1},{devices=[1,2]0,1}}
+      sharding={{devices=[1,2]<=[2]},{devices=[1,2]<=[2]}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -9127,7 +9127,7 @@ add (lhs: f32[], rhs: f32[]) -> f32[] {
 }
 
 ENTRY entry {
-  %input = f32[17,9] parameter(0), sharding={devices=[2,1]0,1}
+  %input = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
   %indices = s32[2,3] parameter(1), sharding={replicated}
   %updates = f32[2,3,9] parameter(2), sharding={replicated}
   ROOT %scatter = f32[17,9] scatter(%input, %indices, %updates),
@@ -9135,7 +9135,7 @@ ENTRY entry {
       update_window_dims={2},
       inserted_window_dims={0},
       scatter_dims_to_operand_dims={0},
-      index_vector_dim=2, sharding={devices=[2,1]0,1}
+      index_vector_dim=2, sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -9167,8 +9167,8 @@ add_min_max {
 }
 
 ENTRY entry {
-  %input0 = f32[17,9] parameter(0), sharding={devices=[2,1]0,1}
-  %input1 = f32[17,9] parameter(1), sharding={devices=[2,1]0,1}
+  %input0 = f32[17,9] parameter(0), sharding={devices=[2,1]<=[2]}
+  %input1 = f32[17,9] parameter(1), sharding={devices=[2,1]<=[2]}
   %indices = s32[2,3] parameter(2), sharding={replicated}
   %updates0 = f32[2,3,9] parameter(3), sharding={replicated}
   %updates1 = f32[2,3,9] parameter(4), sharding={replicated}
@@ -9176,7 +9176,7 @@ ENTRY entry {
     scatter(%input0, %input1, %indices, %updates0, %updates1),
       to_apply=add_min_max, update_window_dims={2}, inserted_window_dims={0},
       scatter_dims_to_operand_dims={0}, index_vector_dim=2,
-      sharding={{devices=[2,1]0,1},{devices=[2,1]0,1}}
+      sharding={{devices=[2,1]<=[2]},{devices=[2,1]<=[2]}}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -9279,9 +9279,9 @@ TEST_P(SpmdPartitioningTest, TiledReversePassthrough) {
 HloModule module
 
 ENTRY entry {
-  p0 = f32[3,3] parameter(0), sharding={devices=[2,1]0,1}
+  p0 = f32[3,3] parameter(0), sharding={devices=[2,1]<=[2]}
   ROOT reverse = f32[3,3] reverse(p0), dimensions={1},
-    sharding={devices=[2,1]0,1}
+    sharding={devices=[2,1]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -9296,7 +9296,7 @@ TEST_P(SpmdPartitioningTest, TiledReverseViaReversedSharding) {
 HloModule module
 
 ENTRY entry {
-  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  param = f32[4] parameter(0), sharding={devices=[2]<=[2]}
   ROOT reverse = f32[4] reverse(param), dimensions={0},
     sharding={devices=[2]1,0}
 })";
@@ -9312,9 +9312,9 @@ TEST_P(SpmdPartitioningTest, TiledReverseSwapShards) {
 HloModule module
 
 ENTRY entry {
-  param = f32[4] parameter(0), sharding={devices=[2]0,1}
+  param = f32[4] parameter(0), sharding={devices=[2]<=[2]}
   ROOT reverse = f32[4] reverse(param), dimensions={0},
-    sharding={devices=[2]0,1}
+    sharding={devices=[2]<=[2]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -9330,7 +9330,7 @@ TEST_P(SpmdPartitioningTest, TiledReverseHaloExchange) {
 HloModule module
 
 ENTRY entry {
-  param = f32[3] parameter(0), sharding={devices=[2]0,1}
+  param = f32[3] parameter(0), sharding={devices=[2]<=[2]}
   ROOT reverse = f32[3] reverse(param), dimensions={0},
     sharding={devices=[2]1,0}
 })";
@@ -9351,13 +9351,13 @@ TEST_P(SpmdPartitioningTest, MixWithManualPartitioning) {
 HloModule module
 
 ENTRY entry {
-  param = (f32[8,2], f32[4,2]) parameter(0), sharding={{devices=[2,1]0,1},{manual}}
-  param0 = f32[8,2] get-tuple-element(param), index=0, sharding={devices=[2,1]0,1}
+  param = (f32[8,2], f32[4,2]) parameter(0), sharding={{devices=[2,1]<=[2]},{manual}}
+  param0 = f32[8,2] get-tuple-element(param), index=0, sharding={devices=[2,1]<=[2]}
   param1 = f32[4,2] get-tuple-element(param), index=1, sharding={manual}
   to_shard = f32[4,2] custom-call(param0), custom_call_target="SPMDFullToShardShape", sharding={manual}
   add = f32[4,2] add(to_shard, param1), sharding={manual}
-  to_full = f32[8,2] custom-call(add), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
-  mul = f32[8,2] multiply(to_full, param0), sharding={devices=[2,1]0,1}
+  to_full = f32[8,2] custom-call(add), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]<=[2]}
+  mul = f32[8,2] multiply(to_full, param0), sharding={devices=[2,1]<=[2]}
   to_shard2 = f32[4,2] custom-call(mul), custom_call_target="SPMDFullToShardShape", sharding={manual}
   ROOT tuple = (f32[4,2]) tuple(to_shard2), sharding={{manual}}
 })";
@@ -9402,7 +9402,7 @@ ENTRY entry {
   %param0 = f32[8,8,8,8] parameter(0),
     sharding={devices=[2,2,1,2]<=[8]}
   ROOT %copy = f32[8,8,8,8] copy(%param0),
-    sharding={devices=[1,2,2,2]0,1,4,5,2,3,6,7}
+    sharding={devices=[1,2,2,2]<=[2,2,2]T(1,0,2)}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -9428,7 +9428,7 @@ ENTRY entry {
   %param0 = f32[8,8] parameter(0),
     sharding={devices=[2,4]<=[8]}
   ROOT %copy = f32[8,8] copy(%param0),
-    sharding={devices=[4,2]0,1,4,5,2,3,6,7}
+    sharding={devices=[4,2]<=[2,2,2]T(1,0,2)}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -9451,7 +9451,7 @@ ENTRY entry {
   %param0 = f32[8,8,8] parameter(0),
     sharding={devices=[2,4,1]<=[8]}
   ROOT %copy = f32[8,8,8] copy(%param0),
-    sharding={devices=[1,2,4]0,1,4,5,2,3,6,7}
+    sharding={devices=[1,2,4]<=[2,2,2]T(1,0,2)}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -9476,7 +9476,7 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[48,12] parameter(0), sharding={devices=[2,2]<=[4]}
-  %rhs = f32[32,12] parameter(1), sharding={devices=[2,2]0,2,1,3}
+  %rhs = f32[32,12] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0)}
   ROOT %dot = f32[48,32] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={1},
@@ -9792,7 +9792,7 @@ ENTRY entry {
   ROOT %dot = f32[24,32] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1}, rhs_contracting_dims={1},
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -9844,7 +9844,7 @@ ENTRY entry {
   %lhs = f32[4,24,100] parameter(0),
     sharding={devices=[2,2,2]<=[8]}
   %rhs = f32[4,32,100] parameter(1),
-    sharding={devices=[2,1,2,2]0,2,1,3,4,6,5,7 last_tile_dim_replicate}
+    sharding={devices=[2,1,2,2]<=[2,2,2]T(0,2,1) last_tile_dim_replicate}
   ROOT %dot = f32[4,24,32] dot(%lhs, %rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2},
@@ -9869,7 +9869,7 @@ HloModule module
 ENTRY entry {
   %lhs = f32[24,8,100] parameter(0),
     sharding={devices=[2,1,1,2]<=[4] last_tile_dim_replicate}
-  %rhs = f32[32,100] parameter(1), sharding={devices=[2,2]0,2,1,3}
+  %rhs = f32[32,100] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0)}
   ROOT %dot = f32[24,8,32] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={2}, rhs_contracting_dims={1},
@@ -9897,7 +9897,7 @@ HloModule module
 ENTRY entry {
   %lhs = f32[24,8,100] parameter(0), sharding={devices=[1,2,2]<=[4]}
   %rhs = f32[32,8,100] parameter(1),
-    sharding={devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[1,1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   ROOT %dot = f32[24,32] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={1,2}, rhs_contracting_dims={1,2},
@@ -9923,7 +9923,7 @@ HloModule module
 
 ENTRY entry {
   %lhs = f32[24,8,100] parameter(0), sharding={devices=[2,1,2]<=[4]}
-  %rhs = f32[100,50] parameter(1), sharding={devices=[2,2]0,2,1,3}
+  %rhs = f32[100,50] parameter(1), sharding={devices=[2,2]<=[2,2]T(1,0)}
   ROOT %dot = f32[24,8,50] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={2}, rhs_contracting_dims={0},
@@ -9952,7 +9952,7 @@ HloModule module
 ENTRY entry {
   %lhs = f32[24,8,10] parameter(0), sharding={devices=[2,2,1]<=[4]}
   %rhs = f32[10,50] parameter(1),
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   ROOT %dot = f32[24,8,50] dot(%lhs, %rhs),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={2}, rhs_contracting_dims={0},
@@ -10466,14 +10466,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[16,801,1,1024] parameter(1)
   %rhs.copy = f32[16,801,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=f01b_i01o->01bf,batch_group_count=1024,
     window={size=801x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10500,14 +10500,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[16,801,1,1024] parameter(1)
   %rhs.copy = f32[16,801,1,1024] copy(%rhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=f01b_i01o->01bf,batch_group_count=1024,
     window={size=801x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10537,14 +10537,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[16,801,1,1024] parameter(1)
   %rhs.copy = f32[16,801,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=f01b_i01o->01bf,batch_group_count=1024,
     window={size=801x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10575,14 +10575,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[16,801,1,1024] parameter(1)
   %rhs.copy = f32[16,801,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=f01b_i01o->01bf,batch_group_count=1024,
     window={size=801x1 pad=2_2x0_0},
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10611,14 +10611,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[16,801,1,1024] parameter(1)
   %rhs.copy = f32[16,801,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[5,1,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=f01b_i01o->01bf,batch_group_count=1024,
     window={size=801x1 pad=2_2x0_0},
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10725,14 +10725,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[5,1,1,2048] parameter(1)
   %rhs.copy = f32[5,1,1,2048] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[16,801,1,2048] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10758,17 +10758,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[64,3,1,3072] parameter(0)
   %lhs.copy = f32[64,3,1,3072] copy(%lhs),
-    sharding={devices=[1,1,1,4,8]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,24,25
-    ,26,27,28,29,30,31,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+    sharding={devices=[1,1,1,4,8]<=[32] last_tile_dim_replicate}
   %rhs = f32[3,1,1,3072] parameter(1)
   %rhs.copy = f32[3,1,1,3072] copy(%rhs),
-    sharding={devices=[1,1,1,4,8]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,24,25
-    ,26,27,28,29,30,31,8,9,10,11,12,13,14,15 last_tile_dim_replicate}
+    sharding={devices=[1,1,1,4,8]<=[32] last_tile_dim_replicate}
   ROOT %conv = f32[64,1,1,3072] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=3072,
     window={size=3x1},
-    sharding={devices=[8,1,1,4]0,16,24,8,2,18,26,10,4,20,28,12,6,22,30,14,7,23,
-    31,15,5,21,29,13,3,19,27,11,1,17,25,9}
+    sharding={devices=[8,1,1,4]<=[4,8]T(1,0)}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10871,14 +10868,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10909,14 +10906,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10947,14 +10944,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -10986,7 +10983,7 @@ ENTRY entry {
     sharding={devices=[1,2,1,2]<=[4]}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[1,1,1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
@@ -11069,7 +11066,7 @@ ENTRY entry {
     sharding={devices=[2,1,1,1,2]<=[4] last_tile_dim_replicate}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+    sharding={devices=[1,1,1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
@@ -11173,14 +11170,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,2,1,1]0,1}
+    sharding={devices=[1,2,1,1]<=[2]}
   %rhs = f32[5,1,1,1024] parameter(1)
   %rhs.copy = f32[5,1,1,1024] copy(%rhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01io->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0},
-    sharding={devices=[2,1,1,1]0,1}
+    sharding={devices=[2,1,1,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -11213,14 +11210,14 @@ HloModule module
 ENTRY entry {
   %lhs = f32[16,801,1,1024] parameter(0)
   %lhs.copy = f32[16,801,1,1024] copy(%lhs),
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
   %rhs = f32[5,1,1024,1] parameter(1)
   %rhs.copy = f32[5,1,1024,1] copy(%rhs),
-    sharding={devices=[1,1,2,1]0,1}
+    sharding={devices=[1,1,2,1]<=[2]}
   ROOT %conv = f32[16,801,1,1024] convolution(%lhs.copy, %rhs.copy),
     dim_labels=b01f_01oi->b01f,feature_group_count=1024,
     window={size=5x1 pad=2_2x0_0 rhs_reversal=1x1},
-    sharding={devices=[1,1,1,2]0,1}
+    sharding={devices=[1,1,1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -11402,9 +11399,9 @@ HloModule module
 ENTRY entry {
   constant = c64[1,1,6]
     constant({{{(0,0),(1,1),(2,2),(3,3),(4,4),(5,5)}}}),
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
   ROOT fft = c64[1,1,6] fft(c64[1,1,6] constant), fft_type=FFT, fft_length={6},
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
 }
 )";
 
@@ -12017,7 +12014,7 @@ HloModule module
 
 ENTRY %module {
   %convert.303 = bf16[1000,16]{1,0} parameter(0), sharding={devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}
-  %reshape.830 = s32[16,8,1]{2,1,0} parameter(1), sharding={devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %reshape.830 = s32[16,8,1]{2,1,0} parameter(1), sharding={devices=[2,1,1,4]<=[8] last_tile_dim_replicate}
   ROOT %gather.831 = bf16[16,8,16]{2,1,0} gather(convert.303, reshape.830),
     offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
     index_vector_dim=2, slice_sizes={1,16}, sharding={devices=[2,1,4]<=[8]}
@@ -13876,17 +13873,17 @@ HloModule module
 
 ENTRY entry {
   %operand = bf16[2,1024]{1,0} parameter(0),
-    sharding={devices=[1,2]0,1}
+    sharding={devices=[1,2]<=[2]}
   %indices = s32[8,512,1]{2,1,0} parameter(1),
     sharding={replicated}
   %updates = bf16[8,512,1024]{2,1,0} parameter(2),
-    sharding={devices=[1,1,2]0,1}
+    sharding={devices=[1,1,2]<=[2]}
   ROOT %scatter = bf16[2,1024]{1,0} scatter(bf16[2,1024]{1,0} %operand,
     s32[8,512,1]{2,1,0} %indices,
     bf16[8,512,1024]{2,1,0} %updates), update_window_dims={2},
     inserted_window_dims={0}, scatter_dims_to_operand_dims={0},
     index_vector_dim=2, to_apply=%scatter_add,
-    sharding={devices=[1,2]0,1}
+    sharding={devices=[1,2]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -13915,13 +13912,13 @@ TEST_P(SpmdPartitioningTest, CollectivePermuteSimplifyIdentity) {
 HloModule test
 
 ENTRY entry {
-  %parameter.7 = f32[3,16] parameter(0), sharding={devices=[1,2]0,1}
+  %parameter.7 = f32[3,16] parameter(0), sharding={devices=[1,2]<=[2]}
   %constant.7 = f32[] constant(0)
-  %pad.3 = f32[3,18] pad(f32[3,16] %parameter.7, f32[] %constant.7), padding=0_0x1_1, sharding={devices=[1,2]0,1}
+  %pad.3 = f32[3,18] pad(f32[3,16] %parameter.7, f32[] %constant.7), padding=0_0x1_1, sharding={devices=[1,2]<=[2]}
   // Shift right by 16.
-  %slice.8 = f32[3,16] slice(f32[3,18] %pad.3), slice={[0:3], [2:18]}, sharding={devices=[1,2]0,1}
-  %slice.9 = f32[3,2] slice(f32[3,18] %pad.3), slice={[0:3], [0:2]}, sharding={devices=[1,2]0,1}
-  ROOT %concatenate.6 = f32[3,18] concatenate(f32[3,16] %slice.8, f32[3,2] %slice.9), dimensions={1}, sharding={devices=[1,2]0,1}
+  %slice.8 = f32[3,16] slice(f32[3,18] %pad.3), slice={[0:3], [2:18]}, sharding={devices=[1,2]<=[2]}
+  %slice.9 = f32[3,2] slice(f32[3,18] %pad.3), slice={[0:3], [0:2]}, sharding={devices=[1,2]<=[2]}
+  ROOT %concatenate.6 = f32[3,18] concatenate(f32[3,16] %slice.8, f32[3,2] %slice.9), dimensions={1}, sharding={devices=[1,2]<=[2]}
 }
 )";
 
@@ -13943,10 +13940,10 @@ TEST_P(SpmdPartitioningTest, CollectivePermuteSimplifyZero) {
 HloModule test
 
 ENTRY entry {
-  %parameter = f32[3,16,16,16,16,132]{5,4,3,2,1,0} parameter(0), sharding={devices=[1,2,1,1,1,1]0,1}
-  %slice = f32[3,1,16,16,16,132]{5,4,3,2,1,0} slice(f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter), slice={[0:3], [15:16], [0:16], [0:16], [0:16], [0:132]}, sharding={devices=[1,2,1,1,1,1]0,1}
+  %parameter = f32[3,16,16,16,16,132]{5,4,3,2,1,0} parameter(0), sharding={devices=[1,2,1,1,1,1]<=[2]}
+  %slice = f32[3,1,16,16,16,132]{5,4,3,2,1,0} slice(f32[3,16,16,16,16,132]{5,4,3,2,1,0} %parameter), slice={[0:3], [15:16], [0:16], [0:16], [0:16], [0:132]}, sharding={devices=[1,2,1,1,1,1]<=[2]}
   %c0 = f32[] constant(0)
-  ROOT %pad = f32[3,18,16,16,16,132]{5,4,3,2,1,0} pad(f32[3,1,16,16,16,132]{5,4,3,2,1,0} %slice, f32[] %c0), padding=0_0x0_17x0_0x0_0x0_0x0_0, sharding={devices=[1,2,1,1,1,1]0,1}
+  ROOT %pad = f32[3,18,16,16,16,132]{5,4,3,2,1,0} pad(f32[3,1,16,16,16,132]{5,4,3,2,1,0} %slice, f32[] %c0), padding=0_0x0_17x0_0x0_0x0_0x0_0, sharding={devices=[1,2,1,1,1,1]<=[2]}
 }
 )";
 
@@ -14018,12 +14015,12 @@ TEST_P(SpmdPartitioningTest, PadWrapWithNegatePattern) {
 HloModule module
 
 ENTRY entry {
-  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]0,1}
-  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]0,1}
-  %negate.2 = f32[1,2] negate(f32[1,2] %slice.16), sharding={devices=[1,2]0,1}
-  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]0,1}
-  %negate.3 = f32[1,2] negate(f32[1,2] %slice.17), sharding={devices=[1,2]0,1}
-  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %negate.2, f32[1,18] %parameter.1, f32[1,2] %negate.3), dimensions={1}, sharding={devices=[1,2]0,1}
+  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]<=[2]}
+  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]<=[2]}
+  %negate.2 = f32[1,2] negate(f32[1,2] %slice.16), sharding={devices=[1,2]<=[2]}
+  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]<=[2]}
+  %negate.3 = f32[1,2] negate(f32[1,2] %slice.17), sharding={devices=[1,2]<=[2]}
+  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %negate.2, f32[1,18] %parameter.1, f32[1,2] %negate.3), dimensions={1}, sharding={devices=[1,2]<=[2]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -14045,15 +14042,15 @@ TEST_P(SpmdPartitioningTest, PadWrapWithMultipleModifiersPattern) {
 HloModule module
 
 ENTRY entry {
-  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]0,1}
-  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]0,1}
-  %mod0.16 = f32[1,2] rsqrt(f32[1,2] %slice.16), sharding={devices=[1,2]0,1}
-  %mod1.16 = f32[1,2] sine(f32[1,2] %mod0.16), sharding={devices=[1,2]0,1}
-  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]0,1}
-  %mod0.17 = f16[1,2] convert(f32[1,2] %slice.17), sharding={devices=[1,2]0,1}
-  %mod1.17 = f16[1,2] cosine(f16[1,2] %mod0.17), sharding={devices=[1,2]0,1}
-  %mod2.17 = f32[1,2] convert(f16[1,2] %mod1.17), sharding={devices=[1,2]0,1}
-  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %mod1.16, f32[1,18] %parameter.1, f32[1,2] %mod2.17), dimensions={1}, sharding={devices=[1,2]0,1}
+  %parameter.1 = f32[1,18] parameter(0), sharding={devices=[1,2]<=[2]}
+  %slice.16 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [16:18]}, sharding={devices=[1,2]<=[2]}
+  %mod0.16 = f32[1,2] rsqrt(f32[1,2] %slice.16), sharding={devices=[1,2]<=[2]}
+  %mod1.16 = f32[1,2] sine(f32[1,2] %mod0.16), sharding={devices=[1,2]<=[2]}
+  %slice.17 = f32[1,2] slice(f32[1,18] %parameter.1), slice={[0:1], [0:2]}, sharding={devices=[1,2]<=[2]}
+  %mod0.17 = f16[1,2] convert(f32[1,2] %slice.17), sharding={devices=[1,2]<=[2]}
+  %mod1.17 = f16[1,2] cosine(f16[1,2] %mod0.17), sharding={devices=[1,2]<=[2]}
+  %mod2.17 = f32[1,2] convert(f16[1,2] %mod1.17), sharding={devices=[1,2]<=[2]}
+  ROOT %concatenate.13 = f32[1,22] concatenate(f32[1,2] %mod1.16, f32[1,18] %parameter.1, f32[1,2] %mod2.17), dimensions={1}, sharding={devices=[1,2]<=[2]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -14205,10 +14202,10 @@ sum {
 
 ENTRY entry {
   param = f32[2,2] parameter(0),
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
   ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
     replica_groups={{2,0},{1,3}}, use_global_device_ids=true, channel_id=1,
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
 }
 )";
 
@@ -14233,10 +14230,10 @@ sum {
 
 ENTRY entry {
   param = f32[2,2] parameter(0),
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
   ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
     replica_groups={{1,0},{2,3}}, use_global_device_ids=true, channel_id=1,
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
 }
 )";
 
@@ -14286,7 +14283,7 @@ ENTRY entry {
   constant = f32[] constant(0),
     sharding={devices=[2,2]<=[4] last_tile_dims={manual,replicated}}
   param = f32[2,2] parameter(0),
-    sharding={devices=[2,1,2]0,2,1,3 last_tile_dims={manual}}
+    sharding={devices=[2,1,2]<=[2,2]T(1,0) last_tile_dims={manual}}
   ROOT reduce = f32[2] reduce(param, constant), dimensions={0}, to_apply=sum,
     sharding={devices=[1,2,2]<=[4] last_tile_dims={manual,replicated}}
 }
@@ -14686,8 +14683,8 @@ TEST_P(SpmdPartitioningTest, SliceToLessThanHalf) {
 HloModule module
 
 ENTRY entry {
-  %input = f32[100,2] parameter(0), sharding={devices=[2,1]0,1}
-  ROOT slice.20 = f32[6,2] slice(input), slice={[0:6], [0:2]}, sharding={devices=[2,1]0,1}
+  %input = f32[100,2] parameter(0), sharding={devices=[2,1]<=[2]}
+  ROOT slice.20 = f32[6,2] slice(input), slice={[0:6], [0:2]}, sharding={devices=[2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -15172,10 +15169,9 @@ TEST_P(SpmdPartitioningTest, MatchOutputAlignmentNonContractingDot) {
 HloModule pjit
 
 ENTRY %main.21 {
-  multiply.3535 = f32[4,4]{1,0} parameter(0), sharding={devices=[2,4,2]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
-  reshape.4221 = f32[4,4]{1,0} parameter(1), sharding={devices=[4,1,4]0,8,4,12,1,9,5,13,2,10,6,14,3,11,7,15 last_tile_dim_replicate}
-  dot.11597 = f32[4,4]{1,0} dot(multiply.3535, reshape.4221), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
-  ROOT copy.1 = f32[4,4]{1,0} copy(dot.11597), sharding={devices=[2,1,8]0,8,1,9,2,10,3,11,4,12,5,13,6,14,7,15 last_tile_dim_replicate}
+  multiply.3535 = f32[4,4]{1,0} parameter(0), sharding={devices=[2,4,2]<=[2,2,4]T(1,2,0) last_tile_dim_replicate}
+  reshape.4221 = f32[4,4]{1,0} parameter(1), sharding={devices=[4,1,4]<=[2,2,4]T(2,1,0) last_tile_dim_replicate}
+  ROOT dot = f32[4,4]{1,0} dot(multiply.3535, reshape.4221), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={devices=[2,1,8]<=[2,2,4]T(1,2,0) last_tile_dim_replicate}
 }
 )";
 
@@ -15416,7 +15412,7 @@ TEST_P(SpmdPartitioningTest, ReshardCrash) {
 HloModule Test
 
 ENTRY main.6 {
-  Arg_0.1 = f32[8,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  Arg_0.1 = f32[8,32,4] parameter(0), sharding={devices=[4,2,1]<=[2,2,2]T(0,2,1)}
   ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]<=[8]}
 })";
 
@@ -15457,7 +15453,7 @@ TEST_P(SpmdPartitioningTest, ReshardNoFullRematIncompatible) {
 HloModule Test
 
 ENTRY main.6 {
-  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]<=[2,2,2]T(0,2,1)}
   ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,3,4,2,6,5,7}
 })";
 
@@ -15505,10 +15501,10 @@ TEST_P(SpmdPartitioningTest, PadUneven) {
 HloModule module
 
 ENTRY entry {
-  %param0 = f32[128,13,257] parameter(0), sharding={devices=[1,2,1]0,1}
+  %param0 = f32[128,13,257] parameter(0), sharding={devices=[1,2,1]<=[2]}
   %const = f32[] constant(0)
   ROOT %pad = f32[128,14,257] pad(%param0, %const), padding=0_0x0_1x0_0,
-    sharding={devices=[1,2,1]0,1}
+    sharding={devices=[1,2,1]<=[2]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -15578,8 +15574,8 @@ region_695.22546 {
 }
 
 ENTRY %entry {
-  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[1,2]0,1}
-  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[1,2]0,1}, {devices=[1,2]0,1}}
+  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[1,2]<=[2]}, {devices=[1,2]<=[2]}}
   %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
 })";
 
@@ -15610,8 +15606,8 @@ region_695.22546 {
 }
 
 ENTRY %entry {
-  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,1]0,1}
-  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[1,2]0,1}, {devices=[2,1]0,1}}
+  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{devices=[1,2]<=[2]}, {devices=[2,1]<=[2]}}
   %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
 })";
 
@@ -15642,7 +15638,7 @@ region_695.22546 {
 }
 
 ENTRY %entry {
-  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,1]0,1}
+  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
   %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{replicated}, {replicated}}
   %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
 })";
@@ -15675,7 +15671,7 @@ region_695.22546 {
 }
 
 ENTRY %entry {
-  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[1,2]0,1}
+  %multiply.43401 = bf16[64,256000]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
   %custom-call = (bf16[64,40]{1,0}, s32[64,40]{1,0}) custom-call(bf16[64,256000]{1,0} %multiply.43401), custom_call_target="TopK", called_computations={%region_695.22546}, sharding={{replicated}, {replicated}}
   %get-tuple-element.336 = bf16[64,40]{1,0} get-tuple-element((bf16[64,40]{1,0}, s32[64,40]{1,0}) %custom-call), index=0
 })";
@@ -15728,10 +15724,9 @@ TEST_P(SpmdPartitioningTest, WindowedEinsumShouldMatchLhs_b305313406) {
   absl::string_view hlo_string = R"(
 HloModule module
 
-
 ENTRY %entry {
   %copy.11 = bf16[64,2048,20480]{2,1,0} parameter(0), sharding={devices=[8,1,4]<=[32]}
-  %reshape.44 = bf16[20480,65536]{1,0} parameter(1), sharding={devices=[4,4,2]0,16,1,17,2,18,3,19,4,20,5,21,6,22,7,23,8,24,9,25,10,26,11,27,12,28,13,29,14,30,15,31 last_tile_dim_replicate}
+  %reshape.44 = bf16[20480,65536]{1,0} parameter(1), sharding={devices=[4,4,2]<=[2,16]T(1,0) last_tile_dim_replicate}
   ROOT %dot.339 = bf16[64,2048,65536]{2,1,0} dot(bf16[64,2048,20480]{2,1,0} %copy.11, bf16[20480,65536]{1,0} %reshape.44), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[8,1,4]<=[32]}
 })";
 
@@ -15910,9 +15905,9 @@ TEST_P(SpmdPartitioningTest, PartialWindowedEinsumNonMonotonicTileAssignment) {
 HloModule module
 
 ENTRY entry {
-  %p0 = f32[8,2048,3264]{2,1,0} parameter(0), sharding={devices=[2,4,1]0,2,4,6,1,3,5,7}
+  %p0 = f32[8,2048,3264]{2,1,0} parameter(0), sharding={devices=[2,4,1]<=[2,2,2]T(2,0,1)}
   %p1 = f32[3264,2176]{1,0} parameter(1), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
-  ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]0,2,4,6,1,3,5,7}
+  ROOT %dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} %p0, f32[3264,2176]{1,0} %p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}, sharding={devices=[2,1,4]<=[2,2,2]T(2,0,1)}
 })";
 
   SpmdPartitionerOptions options;
@@ -16037,14 +16032,14 @@ TEST_P(SpmdPartitioningTest, PartitionOffloading) {
 HloModule module, entry_computation_layout={(f32[1,256,128]{2,1,0})->f32[1,256,128]{2,1,0}}
 ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
   zero = f32[] constant(0), sharding={replicated}
-  broadcast = f32[256,256,128]{2,1,0} broadcast(zero), dimensions={}, sharding={devices=[1,1,4]0,1,2,3}
-  param0 = f32[1,256,128]{2,1,0} parameter(0), sharding={devices=[1,1,4]0,1,2,3}
-  move-to-host  = f32[1,256,128]{2,1,0} custom-call(param0), custom_call_target="MoveToHost", sharding={devices=[1,1,4]0,1,2,3}
+  broadcast = f32[256,256,128]{2,1,0} broadcast(zero), dimensions={}, sharding={devices=[1,1,4]<=[4]}
+  param0 = f32[1,256,128]{2,1,0} parameter(0), sharding={devices=[1,1,4]<=[4]}
+  move-to-host  = f32[1,256,128]{2,1,0} custom-call(param0), custom_call_target="MoveToHost", sharding={devices=[1,1,4]<=[4]}
   izero = s32[] constant(0)
-  dynamic-update-slice = f32[256,256,128]{2,1,0} dynamic-update-slice(broadcast, move-to-host, izero, izero, izero), sharding={devices=[1,1,4]0,1,2,3}
-  dynamic-slice = f32[1,256,128]{2,1,0} dynamic-slice(dynamic-update-slice, izero, izero, izero), dynamic_slice_sizes={1,256,128}, sharding={devices=[1,1,4]0,1,2,3}
-  move-to-device = f32[1,256,128]{2,1,0} custom-call(dynamic-slice), custom_call_target="MoveToDevice", sharding={devices=[1,4,1]0,1,2,3}
-  ROOT copy = f32[1,256,128]{2,1,0} copy(move-to-device), sharding={devices=[1,4,1]0,1,2,3}
+  dynamic-update-slice = f32[256,256,128]{2,1,0} dynamic-update-slice(broadcast, move-to-host, izero, izero, izero), sharding={devices=[1,1,4]<=[4]}
+  dynamic-slice = f32[1,256,128]{2,1,0} dynamic-slice(dynamic-update-slice, izero, izero, izero), dynamic_slice_sizes={1,256,128}, sharding={devices=[1,1,4]<=[4]}
+  move-to-device = f32[1,256,128]{2,1,0} custom-call(dynamic-slice), custom_call_target="MoveToDevice", sharding={devices=[1,4,1]<=[4]}
+  ROOT copy = f32[1,256,128]{2,1,0} copy(move-to-device), sharding={devices=[1,4,1]<=[4]}
 }
 )";
 
@@ -16355,8 +16350,8 @@ TEST_P(SpmdPartitioningTest, UnreducedDot) {
 HloModule module
 
 ENTRY entry {
-  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2]0,1}
-  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1]0,1}
+  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1]<=[2]}
   dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sharding={unreduced}
   ROOT copy = f32[8,256]{1,0} copy(dot), sharding={unreduced}
 })";
@@ -16573,9 +16568,9 @@ HloModule module
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
   infeed = ((f32[9,2]{1,0}, f32[2]{0}), token[]) infeed(token0),
-    sharding={{devices=[2,1]0,1}, {replicated}, {maximal device=0}}
+    sharding={{devices=[2,1]<=[2]}, {replicated}, {maximal device=0}}
   ROOT infeed.data = (f32[9,2]{1,0}, f32[2]{0}) get-tuple-element(infeed),
-    index=0, sharding={{devices=[2,1]0,1}, {replicated}}, origin={({"a"}, {"b"})}
+    index=0, sharding={{devices=[2,1]<=[2]}, {replicated}}, origin={({"a"}, {"b"})}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
