@@ -638,7 +638,8 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 }
 
 /*static*/ bool LayoutUtil::IsUntiledLayout(absl::Span<const Tile> tiles,
-                                            absl::Span<const int64_t> shape) {
+                                            absl::Span<const int64_t> shape,
+                                            bool allow_trailing_padding) {
   // Tiles are applied recursively to expand current_shape
   // Example: (t0, t1) tile applied to (..., n, m) expands it to
   // (..., ceildiv(n, t0), ceildiv(m, t1), t0, t1)
@@ -646,28 +647,40 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
   for (const Tile& tile : tiles) {
     const int64_t tile_ndims = tile.dimensions().size();
     CHECK_LE(tile_ndims, current_shape.size());
-    const absl::Span<const int64_t> tiled_shape =
+    const absl::Span<const int64_t> dims_to_tile =
         absl::Span<const int64_t>(current_shape).last(tile_ndims);
-    // new_tiled_shape will hold the tiled shape after the tile is applied.
-    std::vector<int64_t> new_tiled_shape(2 * tile_ndims);
-    bool allow_multiple_tiles = true;
+    // expanded_tile_dims will hold the tiled shape after the tile is applied.
+    std::vector<int64_t> expanded_tile_dims(2 * tile_ndims);
+    bool seen_nontrivial_tile_dim = false;
+    bool seen_nontrivial_major_dim = !absl::c_all_of(
+        absl::MakeSpan(current_shape).first(current_shape.size() - tile_ndims),
+        [](int64_t x) { return x == 1; });
+
     for (int64_t i = 0; i < tile_ndims; ++i) {
-      if (tiled_shape[i] % tile.dimension(i) != 0) {
-        return false;
-      }
       CHECK_GT(tile.dimension(i), 0);
-      new_tiled_shape[i] = tiled_shape[i] / tile.dimension(i);
-      new_tiled_shape[tile_ndims + i] = tile.dimension(i);
-      if (!allow_multiple_tiles && new_tiled_shape[i] != 1) {
+      const int64_t tile_count =
+          CeilOfRatio(dims_to_tile[i], tile.dimension(i));
+      if (seen_nontrivial_tile_dim && tile_count != 1) {
+        // Cannot span multiple tiles in a minor dimension if a major dimension
+        // within the tile is non-trivial.
         return false;
       }
-      if (tile.dimension(i) != 1) {
-        allow_multiple_tiles = false;
+      bool has_padding = dims_to_tile[i] % tile.dimension(i) != 0;
+      if (has_padding &&
+          (seen_nontrivial_tile_dim || seen_nontrivial_major_dim ||
+           !allow_trailing_padding)) {
+        return false;
       }
+
+      seen_nontrivial_tile_dim |= (tile.dimension(i) != 1);
+      seen_nontrivial_major_dim |= (tile_count != 1);
+
+      expanded_tile_dims[i] = tile_count;
+      expanded_tile_dims[tile_ndims + i] = tile.dimension(i);
     }
     current_shape.erase(current_shape.end() - tile_ndims, current_shape.end());
-    current_shape.insert(current_shape.end(), new_tiled_shape.begin(),
-                         new_tiled_shape.end());
+    current_shape.insert(current_shape.end(), expanded_tile_dims.begin(),
+                         expanded_tile_dims.end());
   }
   return true;
 }
