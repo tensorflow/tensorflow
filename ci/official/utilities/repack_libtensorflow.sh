@@ -16,8 +16,7 @@
 #
 # ==============================================================================
 #
-# Repacks libtensorflow tarballs into $DIR with provided $TARBALL_SUFFIX,
-# and also repacks libtensorflow-src.jar into a standardized format.
+# Repacks libtensorflow tarballs into $DIR with provided $TARBALL_SUFFIX
 
 DIR=$1
 mkdir -p "$DIR"
