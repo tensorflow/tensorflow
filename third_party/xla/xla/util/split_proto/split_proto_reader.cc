@@ -27,6 +27,7 @@ limitations under the License.
 #include "google/protobuf/message.h"
 #include "google/protobuf/reflection.h"
 #include "riegeli/bytes/reader.h"
+#include "riegeli/records/record_position.h"
 #include "riegeli/records/record_reader.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
@@ -38,7 +39,7 @@ namespace {
 template <typename T, typename Src>
 absl::Status ReadRecord(riegeli::RecordReader<Src>& record_reader, T& record) {
   if (!record_reader.ReadRecord(record)) {
-    return record_reader.status().ok()
+    return record_reader.ok()
                ? absl::InternalError(
                      "Manifest indicates there are more records, but the "
                      "file has ended")
@@ -161,6 +162,27 @@ absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
     return record_reader.status();
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<bool> IsSplitProto(riegeli::Reader& reader) {
+  riegeli::RecordReader<riegeli::Reader&> record_reader(reader);
+  if (!record_reader.CheckFileFormat()) {
+    return false;
+  }
+  riegeli::RecordPosition initial_pos = record_reader.pos();
+
+  SplitProtoManifest manifest;
+  bool read_ok = record_reader.ReadRecord(manifest);
+  bool manifest_was_read = !manifest.result_proto_type().empty();
+
+  // Resets the reader back, leaving it as it was when we started.
+  record_reader.Seek(initial_pos);
+  if (!record_reader.ok()) {
+    return record_reader.status();
+  }
+
+  // Make its an actual manifest, and not an empty or other proto.
+  return read_ok && manifest_was_read;
 }
 
 }  // namespace xla

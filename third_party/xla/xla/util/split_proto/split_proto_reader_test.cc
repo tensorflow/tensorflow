@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "riegeli/records/record_reader.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -32,6 +33,8 @@ limitations under the License.
 #include "xla/util/split_proto/split_proto.pb.h"
 
 namespace xla {
+using absl_testing::IsOkAndHolds;
+
 namespace {
 
 using ::absl_testing::StatusIs;
@@ -201,4 +204,70 @@ TEST(SplitProtoReaderTest, UnknownRecordType) {
 }
 
 }  // namespace
+
+TEST(IsSplitProtoTest, ValidSplitProto) {
+  std::string data;
+  riegeli::RecordWriter record_writer{riegeli::StringWriter(&data)};
+  record_writer.WriteRecord(ParseTextProtoOrDie<SplitProtoManifest>(
+      R"pb(
+        result_proto_type: "xla.gpu.GpuExecutableProto"
+        records { proto_merge_record {} }
+      )pb"));
+  record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
+      R"pb(asm_text: "test_text")pb"));
+  record_writer.Close();
+
+  riegeli::StringReader reader(data);
+  EXPECT_THAT(IsSplitProto(reader), IsOkAndHolds(true));
+}
+
+TEST(IsSplitProtoTest, EmptyFile) {
+  std::string data;
+  riegeli::StringReader reader(data);
+  EXPECT_THAT(IsSplitProto(reader), IsOkAndHolds(false));
+}
+
+TEST(IsSplitProtoTest, NotRiegeliFormat) {
+  std::string data = "This is not a riegeli file";
+  riegeli::StringReader reader(data);
+  EXPECT_THAT(IsSplitProto(reader), IsOkAndHolds(false));
+}
+
+TEST(IsSplitProtoTest, RiegeliButNotSplitProto) {
+  std::string data;
+  riegeli::RecordWriter record_writer{riegeli::StringWriter(&data)};
+  record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
+      R"pb(asm_text: "test_text")pb"));
+  record_writer.Close();
+
+  riegeli::StringReader reader(data);
+  EXPECT_THAT(IsSplitProto(reader), IsOkAndHolds(false));
+}
+
+TEST(IsSplitProtoTest, ReaderPositionResets) {
+  std::string data;
+  riegeli::RecordWriter record_writer{riegeli::StringWriter(&data)};
+  SplitProtoManifest manifest = ParseTextProtoOrDie<SplitProtoManifest>(
+      R"pb(
+        result_proto_type: "xla.gpu.GpuExecutableProto"
+        records { proto_merge_record {} }
+        records { proto_merge_record {} }
+      )pb");
+  record_writer.WriteRecord(manifest);
+  record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
+      R"pb(asm_text: "test_text")pb"));
+  record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
+      R"pb(binary: "test_binary")pb"));
+  record_writer.Close();
+
+  riegeli::StringReader reader(data);
+  EXPECT_THAT(IsSplitProto(reader), IsOkAndHolds(true));
+
+  // Check if the reader position is reset by reading the first record again.
+  riegeli::RecordReader<riegeli::Reader&> record_reader(reader);
+  SplitProtoManifest manifest_after_check;
+  EXPECT_TRUE(record_reader.ReadRecord(manifest_after_check));
+  EXPECT_THAT(manifest_after_check, EqualsProto(manifest));
+}
+
 }  // namespace xla

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "google/protobuf/message.h"
 #include "riegeli/bytes/reader.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -29,6 +30,9 @@ namespace xla {
 // See proto_splitter.proto for more details on the split proto format.
 absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
                             google::protobuf::Message& proto);
+
+// Return true if the data being read by the reader is a split proto.
+absl::StatusOr<bool> IsSplitProto(riegeli::Reader& reader);
 
 }  // namespace xla
 
