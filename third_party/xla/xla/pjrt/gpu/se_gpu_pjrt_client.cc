@@ -1907,13 +1907,14 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
 absl::StatusOr<PjRtStreamExecutorExecutionOutput>
 StreamExecutorGpuClient::RunAsync(
     LocalExecutable& exec, PjRtDevice* device,
-    std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
-    ExecutableRunOptions run_options_inp) {
+    std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+    ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
+    absl::Span<const Shape> executable_parameter_shapes) {
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
   std::vector<const Shape*> argument_shapes;
-  argument_shapes.reserve(arguments.size());
-  for (const ShapeTree<PjRtStreamExecutorExecutionInput>& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
+  argument_shapes.reserve(flat_arguments.size());
+  for (const Shape& arg_shape : executable_parameter_shapes) {
+    argument_shapes.push_back(&arg_shape);
   }
 
   TF_ASSIGN_OR_RETURN(auto options_and_stream,
@@ -1978,12 +1979,18 @@ StreamExecutorGpuClient::RunAsync(
       if (allocation.is_thread_local()) {
         // buffer = se::DeviceAddressBase{};
       } else if (allocation.is_entry_computation_parameter()) {
-        int64_t param_no = allocation.parameter_number();
-        buffer = [&] {
-          return arguments[param_no]
-              .element(allocation.param_shape_index())
-              .buf->mem();
-        }();
+        int64_t param_no;
+        if (parameter_is_tupled_arguments) {
+          // TODO(parkers): Change compiler to not even pretend to read
+          // the tuple index tables (also GPU shouldn't tuple ever).
+          if (allocation.param_shape_index().empty()) {
+            continue;
+          }
+          param_no = allocation.param_shape_index()[0];
+        } else {
+          param_no = allocation.parameter_number();
+        }
+        buffer = flat_arguments[param_no].buf->mem();
         if (buffer.is_null() && buffer.size() > 0) {
           return FailedPrecondition(
               "Cannot run XLA computation because pointer to (sub-)buffer at "
@@ -2041,8 +2048,9 @@ StreamExecutorGpuClient::RunAsync(
 
     if (output_info.alias_config) {
       PjRtStreamExecutorExecutionInput& input =
-          *arguments[allocation->parameter_number()].mutable_element(
-              allocation->param_shape_index());
+          flat_arguments[parameter_is_tupled_arguments
+                             ? allocation->param_shape_index()[0]
+                             : allocation->parameter_number()];
       if (output_info.alias_config->must_alias() && !input.is_donated) {
         return InvalidArgument(
             "An input was configured to be must-alias at "
@@ -2110,19 +2118,18 @@ StreamExecutorGpuClient::RunAsync(
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
 
   // Free allocations for arguments.
-  for (ShapeTree<PjRtStreamExecutorExecutionInput>& input : arguments) {
-    for (auto& v : input) {
-      if (v.second.is_donated) {
-        to_be_released.push_back(std::move(v.second.buf));
-      }
+  for (PjRtStreamExecutorExecutionInput& input : flat_arguments) {
+    if (input.is_donated) {
+      to_be_released.push_back(std::move(input.buf));
     }
   }
 
   return PjRtStreamExecutorExecutionOutput(
       {std::move(results), std::move(to_be_released), {}});
 #else
-  return PjRtStreamExecutorClient::RunAsync(exec, device, std::move(arguments),
-                                            std::move(run_options_inp));
+  return PjRtStreamExecutorClient::RunAsync(
+      exec, device, std::move(flat_arguments), std::move(run_options_inp),
+      parameter_is_tupled_arguments, executable_parameter_shapes);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 

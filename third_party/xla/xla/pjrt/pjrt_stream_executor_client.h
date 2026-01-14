@@ -361,8 +361,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
-      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
-      ExecutableRunOptions run_options);
+      std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+      ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
+      absl::Span<const Shape> executable_parameter_shapes);
 
   void ThenRecordEvent(BufferSequencingEventRef event,
                        LocalDeviceState* local_device,
@@ -671,14 +672,12 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   virtual absl::Span<int const> ParametersThatMustBeDonated(
       int executable_idx) const;
 
-  virtual absl::StatusOr<
-      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>>>
-  MakeExecutionInputsAndWaitForEvents(
+  virtual absl::StatusOr<std::vector<PjRtStreamExecutorExecutionInput>>
+  MakeExecutionInputs(
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
       absl::Span<PjRtBuffer* const> argument_handles,
-      absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers,
-      absl::flat_hash_set<BufferSequencingEvent*>& events) const;
+      absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers) const;
 
   absl::StatusOr<ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>>>
   EnqueueExecution(
