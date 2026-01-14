@@ -20,38 +20,13 @@ package(
     default_visibility = ["//visibility:private"],
 )
 
-cc_library(
-    name = "register_pjrt_cpu_for_ifrt_api_tests",
-    testonly = True,
-    srcs = ["register_pjrt_cpu_for_ifrt_api_tests.cc"],
-    deps = [
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
-        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:attribute_map",
-        "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt_proxy/client:grpc_client",
-        "//xla/python/ifrt_proxy/client:registry",
-        "//xla/python/ifrt_proxy/server:grpc_server",
-        "//xla/python/pjrt_ifrt",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-    ],
-    alwayslink = True,
-)
-
 ifrt_proxy_cc_test(
     name = "client_impl_test_tfrt_cpu",
+    srcs = ["client_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":register_pjrt_cpu_for_ifrt_api_tests",
+        ":scoped_pjrt_cpu_via_proxy",
         "//xla/python/ifrt:client_impl_test_lib",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -59,7 +34,7 @@ ifrt_proxy_cc_test(
     name = "array_impl_test_tfrt_cpu",
     srcs = ["array_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":register_pjrt_cpu_for_ifrt_api_tests",
+        ":scoped_pjrt_cpu_via_proxy",
         "//xla/python/ifrt:array_impl_test_lib",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -76,7 +51,7 @@ ifrt_proxy_cc_test(
         "IFRT_PROXY_GRPC_LARGE_TRANSFER_OPTIMIZATION_DIRECTORY": "$$$$TEST_TMPDIR$$$$",
     },
     deps = [
-        ":register_pjrt_cpu_for_ifrt_api_tests",
+        ":scoped_pjrt_cpu_via_proxy",
         "//xla/python/ifrt:array_impl_test_lib",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -89,7 +64,7 @@ ifrt_proxy_cc_test(
     srcs = ["executable_impl_test_tfrt_cpu.cc"],
     shuffle_tests = False,
     deps = [
-        ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
+        ":scoped_pjrt_cpu_via_proxy",
         "//xla/python/pjrt_ifrt:xla_executable_impl_test_lib",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -101,9 +76,8 @@ ifrt_proxy_cc_test(
     size = "small",
     srcs = ["remap_impl_test_tfrt_cpu.cc"],
     deps = [
-        ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
+        ":scoped_pjrt_cpu_via_proxy",
         "//xla/python/ifrt:remap_impl_test_lib",
-        "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -150,5 +124,30 @@ ifrt_proxy_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "scoped_pjrt_cpu_via_proxy",
+    testonly = True,
+    srcs = ["scoped_pjrt_cpu_via_proxy.cc"],
+    hdrs = ["scoped_pjrt_cpu_via_proxy.h"],
+    deps = [
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:test_util",
+        "//xla/python/ifrt_proxy/client:grpc_client",
+        "//xla/python/ifrt_proxy/client:registry",
+        "//xla/python/ifrt_proxy/server:grpc_server",
+        "//xla/python/pjrt_ifrt",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
