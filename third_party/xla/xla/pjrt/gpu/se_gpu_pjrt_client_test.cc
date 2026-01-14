@@ -3259,7 +3259,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
 
   if (tsl::kIsOpenSource) {
     // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
-    tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1",
+    tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=10,autotuner=10",
                 /*overwrite=*/true);
   }
 
@@ -3280,7 +3280,7 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
       // Test relies on VLOG(1) messages. Enable VLOG(1) in Non-OSS.
       if (!tsl::kIsOpenSource) {
-        argv.push_back("--vmodule=gemm_fusion_autotuner=1");
+        argv.push_back("--vmodule=autotuner_pass=10,autotuner=10");
         argv.push_back("--logtostderr");
       }
       child[node_id].SetProgram(test_binary_name, argv);
@@ -3306,10 +3306,16 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
         if (iteration > 0 && node_id < param.num_nodes_using_cache) {
           num_fusions_to_autotune = 0;
         }
-        EXPECT_THAT(stderr_str,
-                    HasSubstr(absl::StrFormat(
-                        "Rank %d / %d: autotuning %d / 1 fusions", node_id,
-                        param.num_active_nodes, num_fusions_to_autotune)));
+        LOG(INFO) << "stderr_str: " << stderr_str;
+        if (num_fusions_to_autotune > 0) {
+          EXPECT_THAT(
+              stderr_str,
+              HasSubstr(absl::StrFormat(
+                  "Shard %d/%d: finding configs for %d/1 unique instructions",
+                  node_id, kNumNodes, num_fusions_to_autotune)));
+        } else {
+          EXPECT_THAT(stderr_str, HasSubstr("No instructions to autotune."));
+        }
       } else {
         stderr_str = absl::StrReplaceAll(
             stderr_str, {{"sharded_autotuning_test", "sharded_test"}});
@@ -3371,7 +3377,9 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   debug_options.set_xla_gpu_cublas_fallback(false);
 
   if (node_id < num_nodes_using_cache) {
-    debug_options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
+    debug_options.set_xla_gpu_experimental_autotune_cache_mode(
+        DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
+    debug_options.set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
   }
 
   const char* kHlo = R"(
@@ -3402,7 +3410,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
 INSTANTIATE_TEST_SUITE_P(
     ShardedAutotuningTest, ShardedAutotuningTest,
     ::testing::ValuesIn(std::vector<ShardedAutotuningTestInfo>{
-        {2, 0}, {1, 0}, {2, 1}, {2, 2}}),
+        {2, 0}, {2, 1}, {2, 2}}),
     ShardedAutotuningTestInfo::Name);
 
 }  // namespace

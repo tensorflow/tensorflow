@@ -28,11 +28,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -69,20 +68,11 @@ class NVPTXCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  // target_config must outlive the pipeline.
-  absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config) override;
-
-  absl::Status AddGemmFusionAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version,
-      se::StreamExecutor* stream_executor) override;
+  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+  GetCodegenBackends(se::StreamExecutor* stream_exec,
+                     const Compiler::GpuTargetConfig* target_config,
+                     const DebugOptions& debug_options,
+                     mlir::MLIRContext* mlir_context) override;
 
   // target_config must outlive the pipeline.
   absl::Status AddFusionAutotuningPass(

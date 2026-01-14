@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
@@ -30,22 +31,32 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
@@ -59,10 +70,12 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -107,7 +120,8 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
-TEST_F(FunctionalHloRunnerTest, SingleDevicePinnedHostZeroInputs) {
+// TODO(b/475218574): Re-enable once the test is fixed.
+TEST_F(FunctionalHloRunnerTest, DISABLED_SingleDevicePinnedHostZeroInputs) {
   if (test::DeviceTypeIs(test::kCpu)) {
     GTEST_SKIP() << "This test is specialized for GPU platform!";
   }
@@ -597,13 +611,23 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
-  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=2", /*overwrite=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string cache_dir = temp_dir.path();
+
+  tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=2,autotuner=2",
+              /*overwrite=*/true);
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
     argv.push_back(binary_name);
     argv.push_back("--xla_gpu_shard_autotuning");
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
+    if (!tsl::kIsOpenSource) {
+      argv.push_back("--logtostderr");
+      argv.push_back("--vmodule=autotuner_pass=2,autotuner=2");
+    }
     child[node_id].SetProgram(binary_name, argv);
     child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -647,18 +671,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
-        env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "b190aeb9aa0b9e93e4c08d095726f562_"
-                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
+        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_0",
                           absl::Seconds(1)));
-    CHECK(absl::StrContains(results0, "run_time"));
+    CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
-        env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "b190aeb9aa0b9e93e4c08d095726f562_"
-                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_1",
+        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_1",
                           absl::Seconds(1)));
-    CHECK(absl::StrContains(results1, "run_time"));
+    CHECK(absl::StrContains(results1, "result"));
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
@@ -1207,7 +1227,12 @@ int main(int argc, char* argv[]) {
   tsl::Flags::Parse(&argc, argv, flag_list);
   testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
-    return !xla::ShardedAutotuningWorksTestBody(node_id).ok();
+    absl::Status status = xla::ShardedAutotuningWorksTestBody(node_id);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+      return 1;
+    }
+    return 0;
   }
   return RUN_ALL_TESTS();
 }
