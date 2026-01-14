@@ -98,10 +98,9 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
 
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    HloModuleConfig config = GetModuleConfigForTest(
+        /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
     config.set_debug_options(options);
-    config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
 
@@ -591,11 +590,10 @@ TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpyWithSplitDim) {
   )";
   const int64_t kNumReplicas = 2;
 
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_debug_options(debug_options);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
@@ -684,11 +682,10 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_debug_options(debug_options);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
@@ -977,20 +974,14 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
                  << hlo_runner_->device_count() << " available)";
   }
 
+  bool enable_cublaslt = GetParam();
+  VLOG(0) << "Running with CUBLAS enabled: " << enable_cublaslt;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_cublaslt(GetParam());
-  VLOG(0) << "Running with CUBLAS enabled: " << opts.xla_gpu_enable_cublaslt();
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_cublaslt(enable_cublaslt);
 
   ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/1);
-  for (int64_t i = 0; i < kNumReplicas; ++i) {
-    assn(i, 0) = i;
-  }
 
   auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
   std::vector<Literal*> fake_ptrs(fake_arguments.size());
@@ -1106,12 +1097,10 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << hlo_runner_->device_count() << " available)";
 
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  config.set_replica_count(kNumReplicas);
-  config.set_num_partitions(1);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
@@ -1243,9 +1232,9 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
   )";
 
   const int64_t kNumReplicas = 1;
+
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
   config.mutable_debug_options().set_xla_gpu_enable_host_memory_offloading(
       true);
 
@@ -1289,18 +1278,19 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
                    << " available)";
     }
 
-    HloModuleConfig ref_config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    auto ref_opts = GetDebugOptionsForTest();
-    ref_opts.set_xla_gpu_graph_min_graph_size(200);
-    ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    HloModuleConfig config = GetModuleConfigForTest(
+        /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+
+    DebugOptions debug_options = config.mutable_debug_options();
+    debug_options.set_xla_gpu_graph_min_graph_size(200);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     if (disable_dot_merger) {
-      ref_opts.add_xla_disable_hlo_passes("dot-merger");
+      debug_options.add_xla_disable_hlo_passes("dot-merger");
     }
-    ref_config.set_debug_options(ref_opts);
-    ref_config.set_num_partitions(kNumPartitions);
+
+    // Run with reference config.
     TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
-                            ParseAndReturnVerifiedModule(hlo_text, ref_config));
+                            ParseAndReturnVerifiedModule(hlo_text, config));
     auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
     std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
     for (int i = 0; i < fake_ref_arguments.size(); i++) {
@@ -1312,24 +1302,12 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
         ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
     const std::vector<Literal>& ref_results = ref_execution_result.results;
 
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    auto opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-    opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
-    opts.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
+    debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+    debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    debug_options.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
         enable_a2a_rewrite);
-    opts.set_xla_gpu_graph_min_graph_size(200);
-    opts.set_xla_gpu_enable_triton_gemm(false);
-    if (disable_dot_merger) {
-      opts.add_xla_disable_hlo_passes("dot-merger");
-    }
-    config.set_debug_options(opts);
-    config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
-
-    config.set_replica_count(kNumReplicas);
 
     auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
     std::vector<Literal*> fake_ptrs(fake_arguments.size());
@@ -1678,13 +1656,6 @@ ENTRY entry {
 }
 )";
 
-  const int64_t kNumReplicas = 1;
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << hlo_runner_->device_count() << " available)";
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_enable_triton_gemm(false);
   CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
@@ -1702,8 +1673,6 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
 
     HloModuleConfig config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-    auto opts = GetDebugOptionsForTest();
-    config.set_debug_options(opts);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_string, config));
     auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
@@ -1719,11 +1688,11 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
 
     HloModuleConfig ref_config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-    auto ref_opts = GetDebugOptionsForTest();
+    DebugOptions& ref_opts = ref_config.mutable_debug_options();
     ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
     ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
     ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
-    ref_config.set_debug_options(ref_opts);
+
     TF_ASSERT_OK_AND_ASSIGN(
         auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));
     auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
@@ -2025,9 +1994,8 @@ ENTRY entry {
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
@@ -2056,20 +2024,18 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
-
-  ASSERT_GE(hlo_runner_->device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << hlo_runner_->device_count() << " available)";
   const int64_t kNumPartitions = 4;
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << hlo_runner_->device_count()
+                 << " available)";
+  }
 
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_ignore_channel_id(true);
-  config.set_debug_options(opts);
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  config.mutable_debug_options().set_xla_ignore_channel_id(true);
 
-  config.set_num_partitions(kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
@@ -2155,9 +2121,8 @@ ENTRY main.49 {
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_use_memcpy_local_p2p(true);
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
@@ -2173,9 +2138,8 @@ ENTRY main.49 {
 
   HloModuleConfig ref_config =
       GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto ref_opts = GetDebugOptionsForTest();
-  ref_opts.set_xla_gpu_use_memcpy_local_p2p(false);
-  ref_config.set_debug_options(ref_opts);
+  ref_config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_string, ref_config));
   auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
@@ -2231,12 +2195,11 @@ ENTRY main {
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_use_memcpy_local_p2p(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
@@ -2244,11 +2207,11 @@ ENTRY main {
   for (int i = 0; i < fake_arguments.size(); ++i) {
     fake_ptrs[i] = &fake_arguments[i];
   }
+
   HloModuleConfig ref_config =
       GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto ref_opts = GetDebugOptionsForTest();
-  ref_opts.set_xla_gpu_use_memcpy_local_p2p(false);
-  ref_config.set_debug_options(ref_opts);
+  ref_config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_string, ref_config));
   auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
@@ -2299,12 +2262,11 @@ ENTRY main {
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_nccl_user_buffers(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2348,12 +2310,11 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_nccl_user_buffers(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(
