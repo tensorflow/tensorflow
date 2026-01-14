@@ -154,7 +154,7 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
                             int64_t contracting_dim) {
       auto op_type = operand->shape().element_type();
       auto scale_type = scale->shape().element_type();
-      if ((op_type == F8E4M3FN || op_type == F8E5M2) &&
+      if ((op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) &&
           scale_type == F8E8M0FNU) {
         if (contracting_dim >= scale->shape().dimensions().size()) {
           return false;

@@ -967,7 +967,9 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
   if (!debug_options_.xla_gpu_experimental_disable_binary_libraries() &&
       IsAutotuningEnabled() && !config_.IsDeviceless()) {
     // Add cuBLAS reference config, if available.
-    configs.push_back(CuBlasConfig{});
+    if (dot->operand(0)->shape().element_type() != F4E2M1FN) {
+      configs.push_back(CuBlasConfig{});
+    }
     // Add lib (e.g. cuDNN) plans, if available.
     if (AddLibConfigs(fusion, dot, configs)) {
       return configs;
@@ -975,14 +977,16 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
   }
 
   // TODO(b/436988479): fine tune the search space.
-  for (int block_m = 16; block_m <= 256; block_m *= 2) {
-    for (int block_n = 16; block_n <= 256; block_n *= 2) {
-      configs.push_back(TritonGemmConfig(block_m, block_n,
-                                         /*block_k=*/128, /*split_k=*/1,
-                                         /*num_stages=*/1,
-                                         /*num_warps=*/4,
-                                         /*num_ctas=*/1,
-                                         /*is_tma_allowed=*/false));
+  for (int block_m = 128; block_m <= 256; block_m *= 2) {
+    for (int block_n = 32; block_n <= 256; block_n *= 2) {
+      for (int block_k = 128; block_k <= 256; block_k *= 2) {
+        configs.push_back(TritonGemmConfig(block_m, block_n,
+                                           /*block_k=*/block_k, /*split_k=*/1,
+                                           /*num_stages=*/1,
+                                           /*num_warps=*/4,
+                                           /*num_ctas=*/1,
+                                           /*is_tma_allowed=*/false));
+      }
     }
   }
   return configs;
