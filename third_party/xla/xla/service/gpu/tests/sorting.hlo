@@ -609,22 +609,26 @@ compare {
 // CHECK:         %[[VAL_405:.*]] = icmp slt i64 %[[VAL_404]], 3
 // CHECK:         br i1 %[[VAL_405]], label %[[VAL_406:.*]], label %[[VAL_407:.*]]
 // CHECK:       smaller_keys_index-after29:                       ; preds = %[[VAL_406]], %[[VAL_403]]
-// CHECK:         call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_408:.*]] = mul i64 %[[VAL_363]], 4
 // CHECK:         %[[VAL_409:.*]] = icmp uge i64 %[[VAL_408]], 0
 // CHECK:         br i1 %[[VAL_409]], label %[[VAL_410:.*]], label %[[VAL_411:.*]]
 // CHECK:       is_last_tile-after:                               ; preds = %[[VAL_412:.*]], %[[VAL_413:.*]]
-// CHECK:         call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_414:.*]] = mul i64 %[[VAL_363]], 4
 // CHECK:         %[[VAL_415:.*]] = icmp uge i64 %[[VAL_414]], 0
 // CHECK:         br i1 %[[VAL_415]], label %[[VAL_416:.*]], label %[[VAL_417:.*]]
 // CHECK:       is_last_tile-after56:                             ; preds = %[[VAL_418:.*]], %[[VAL_419:.*]]
-// CHECK:         call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_420:.*]] = mul i64 %[[VAL_363]], 4
 // CHECK:         %[[VAL_421:.*]] = icmp uge i64 %[[VAL_420]], 0
 // CHECK:         br i1 %[[VAL_421]], label %[[VAL_422:.*]], label %[[VAL_423:.*]]
 // CHECK:       is_last_tile-after89:                             ; preds = %[[VAL_424:.*]], %[[VAL_425:.*]]
-// CHECK:         call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
+// CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_426:.*]] = mul nuw nsw i64 %[[VAL_363]], 4
 // CHECK:         %[[VAL_427:.*]] = mul nuw nsw i64 %[[VAL_371]], 4
 // CHECK:         %[[VAL_428:.*]] = add nuw nsw i64 %[[VAL_426]], 0
@@ -1251,10 +1255,10 @@ compare {
 // CHECK:         %[[VAL_843:.*]] = load float, ptr %[[VAL_844:.*]], align 4
 // CHECK:         %[[VAL_845:.*]] = fcmp olt float %[[VAL_841]], %[[VAL_843]]
 // CHECK:         %[[VAL_846:.*]] = zext i1 %[[VAL_845]] to i8
-// CHECK:         store i8 %[[VAL_846]], ptr %[[VAL_840]], align 1
-// CHECK:         %[[VAL_847:.*]] = load i8, ptr %[[VAL_840]], align 1
-// CHECK:         store i8 %[[VAL_847]], ptr %[[VAL_848:.*]], align 1
-// CHECK:         ret void
+// CHECK-PTX:     store i8 %[[VAL_846]], ptr %[[VAL_840]], align 1
+// CHECK-PTX:     %[[VAL_847:.*]] = load i8, ptr %[[VAL_840]], align 1
+// CHECK-PTX:     store i8 %[[VAL_847]], ptr %[[VAL_848:.*]], align 1
+// CHECK-PTX:     ret void
 
 ENTRY main {
   x = s32[2, 3] parameter(0)
@@ -1286,7 +1290,7 @@ ENTRY main {
   ROOT sort = (f64[2, 2048], f64[2, 2048], f64[2, 2048], f64[2, 2048]) sort(param0, param1, param2, param3), dimensions={1}, to_apply=compare
 }
 // Check that we have a tile size of 1024.
-// CHECK:         getelementptr [1024 x double], ptr addrspace(3) @sort_tile_param_0
+// CHECK-PTX:         getelementptr [1024 x double], ptr addrspace(3) @sort_tile_param_0
 
 // -----
 
@@ -1304,4 +1308,4 @@ ENTRY main {
 }
 
 // CHECK-COUNT-334: xor i64
-// CHECK-NOT: xor i64
+// CHECK-GCN: xor i64
