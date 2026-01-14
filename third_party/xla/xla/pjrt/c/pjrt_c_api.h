@@ -104,7 +104,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 89
+#define PJRT_API_MINOR 90
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1998,9 +1998,11 @@ struct PJRT_Executable_GetCompiledMemoryStats_Args {
 
   // Device memory stats, from xla::CompiledMemoryStats.
   int64_t peak_memory_in_bytes;  // out
+  // Total Device default memory (e.g., HBM for GPU/TPU) usage.
+  int64_t total_size_in_bytes;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompiledMemoryStats_Args,
-                          peak_memory_in_bytes);
+                          total_size_in_bytes);
 
 // Return memory stats that allow callers to estimate memory usage when running
 // this executable. The memory stats could contain usage info from different
