@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -67,7 +68,8 @@ int main(int argc, char** argv) {
       mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
       mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
       xla::cpu::XlaCpuDialect, xla::gpu::XlaGpuDialect,
-      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect>();
+      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect,
+      mlir::ROCDL::ROCDLDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::registerCanonicalizerPass();
