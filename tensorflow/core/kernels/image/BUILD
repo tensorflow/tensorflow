@@ -156,7 +156,10 @@ IMAGE_TEST_DEPS = [
 tf_kernel_library(
     name = "adjust_contrast_op",
     prefix = "adjust_contrast_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 cc_library(
@@ -279,7 +282,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_kernel_library(
@@ -333,7 +340,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log:check"],
 )
 
 # Tests ------------------------
@@ -429,6 +436,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":image",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + IMAGE_TEST_DEPS,
 )
