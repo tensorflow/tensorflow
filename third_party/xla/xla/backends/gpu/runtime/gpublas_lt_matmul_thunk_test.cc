@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/runtime/cublas_lt_matmul_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/error_spec.h"

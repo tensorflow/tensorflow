@@ -1,0 +1,45 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/buffer_assignment.proto";
+import "xla/stream_executor/gpu/gpu_blas_lt.proto";
+import "xla/xla_data.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "CublasLtMatmulThunkProtoOuterClass";
+
+message CublasLtMatmulThunkProto {
+  xla.GemmConfigProto gemm_config = 1;
+  xla.BlasLtEpilogueProto epilogue = 2;
+  int64 algorithm_idx = 3;
+  string canonical_hlo = 4;
+  xla.buffer_assignment.BufferAllocationSliceProto a = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto b = 6;
+  xla.buffer_assignment.BufferAllocationSliceProto c = 7;
+  xla.buffer_assignment.BufferAllocationSliceProto d = 8;
+  optional xla.buffer_assignment.BufferAllocationSliceProto bias = 9;
+  optional xla.buffer_assignment.BufferAllocationSliceProto aux = 10;
+  optional xla.buffer_assignment.BufferAllocationSliceProto a_scale = 11;
+  optional xla.buffer_assignment.BufferAllocationSliceProto b_scale = 12;
+  optional xla.buffer_assignment.BufferAllocationSliceProto c_scale = 13;
+  optional xla.buffer_assignment.BufferAllocationSliceProto d_scale = 14;
+  optional xla.buffer_assignment.BufferAllocationSliceProto d_amax = 15;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
+  int64 autotune_workspace_size = 17;
+}

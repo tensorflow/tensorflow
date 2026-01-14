@@ -551,11 +551,22 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "convolution_thunk_proto",
+    srcs = ["convolution_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu:gpu_conv_runner_proto",
+    ],
+)
+
 cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
     deps = [
+        ":convolution_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         "//xla:util",
@@ -605,6 +616,7 @@ cc_library(
     hdrs = ["convolution_reorder_thunk.h"],
     deps = [
         ":convolution_filter_thunk_proto_cc",
+        ":convolution_reorder_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
@@ -652,8 +664,8 @@ tf_proto_library(
 tf_proto_library(
     name = "copy_thunk_proto",
     srcs = ["copy_thunk.proto"],
-    protodeps = [
-        # keep sorted
+    deps = [
+        ":shaped_slice_proto",
         "//xla/service:buffer_assignment_proto",
     ],
 )
@@ -708,11 +720,21 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "cub_sort_thunk_proto",
+    srcs = ["cub_sort_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "cub_sort_thunk",
     srcs = ["cub_sort_thunk.cc"],
     hdrs = ["cub_sort_thunk.h"],
     deps = [
+        ":cub_sort_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:executable_run_options",
@@ -769,6 +791,17 @@ xla_cc_test(
     ]),
 )
 
+tf_proto_library(
+    name = "custom_call_thunk_proto",
+    srcs = ["custom_call_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla/ffi:attribute_map_proto",
+        "//xla/ffi:execution_state_proto",
+        "//xla/service:hlo_proto",
+    ],
+)
+
 cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
@@ -778,6 +811,7 @@ cc_library(
         ":collective_cliques",
         ":collective_params",
         ":custom_call_target",
+        ":custom_call_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         "//xla:executable_run_options",
@@ -826,6 +860,7 @@ xla_test(
     deps = [
         ":collective_multimem_registry",
         ":custom_call_thunk",
+        ":custom_call_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         "//xla:executable_run_options",
@@ -862,11 +897,21 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "fft_thunk_proto",
+    srcs = ["fft_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "fft_thunk",
     srcs = ["fft_thunk.cc"],
     hdrs = ["fft_thunk.h"],
     deps = [
+        ":fft_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
@@ -911,11 +956,22 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "gemm_thunk_proto",
+    srcs = ["gemm_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/stream_executor/gpu:gpu_blas_lt_proto",
+    ],
+)
+
 cc_library(
     name = "gemm_thunk",
     srcs = ["gemm_thunk.cc"],
     hdrs = ["gemm_thunk.h"],
     deps = [
+        ":gemm_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
@@ -952,11 +1008,22 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "cublas_lt_matmul_thunk_proto",
+    srcs = ["cublas_lt_matmul_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/stream_executor/gpu:gpu_blas_lt_proto",
+    ],
+)
+
 cc_library(
     name = "gpublas_lt_matmul_thunk",
     srcs = ["gpublas_lt_matmul_thunk.cc"],
     hdrs = ["gpublas_lt_matmul_thunk.h"],
     deps = [
+        ":cublas_lt_matmul_thunk_proto_cc",
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
@@ -981,6 +1048,7 @@ xla_test(
     tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
+        ":cublas_lt_matmul_thunk_proto_cc",
         ":gpublas_lt_matmul_thunk",
         ":thunk",
         ":thunk_id",
@@ -1019,11 +1087,20 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "infeed_thunk_proto",
+    srcs = ["infeed_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+    ],
+)
+
 cc_library(
     name = "infeed_thunk",
     srcs = ["infeed_thunk.cc"],
     hdrs = ["infeed_thunk.h"],
     deps = [
+        ":infeed_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         "//xla:shape_tree",
@@ -1053,6 +1130,7 @@ xla_cc_test(
     srcs = ["infeed_thunk_test.cc"],
     deps = [
         ":infeed_thunk",
+        ":infeed_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
@@ -1064,11 +1142,24 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "kernel_thunk_proto",
+    srcs = ["kernel_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu:launch_dimensions_proto",
+        "//xla/stream_executor:launch_dim_proto",
+        "//xla/stream_executor/gpu:tma_metadata_proto",
+    ],
+)
+
 cc_library(
     name = "kernel_thunk",
     srcs = ["kernel_thunk.cc"],
     hdrs = ["kernel_thunk.h"],
     deps = [
+        ":kernel_thunk_proto_cc",
         ":print_buffer_contents",
         ":thunk",
         ":thunk_proto_cc",
@@ -1113,6 +1204,7 @@ xla_test(
         ":command_buffer_cmd_emitter",
         ":command_buffer_thunk",
         ":kernel_thunk",
+        ":kernel_thunk_proto_cc",
         ":sequential_thunk",
         ":thunk",
         ":thunk_id",
@@ -1221,11 +1313,21 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "select_k_thunk_proto",
+    srcs = ["select_k_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "select_k_thunk",
     srcs = ["select_k_thunk.cc"],
     hdrs = ["select_k_thunk.h"],
     deps = [
+        ":select_k_thunk_proto_cc",
         ":thunk",
         ":thunk_id",
         ":thunk_proto_cc",
@@ -1273,11 +1375,21 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "memset_thunk_proto",
+    srcs = ["memset_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "memset_thunk",
     srcs = ["memset_thunk.cc"],
     hdrs = ["memset_thunk.h"],
     deps = [
+        ":memset_thunk_proto_cc",
         ":shaped_slice",
         ":thunk",
         "//xla:shape_util",
@@ -1928,6 +2040,17 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "collective_thunk_proto",
+    srcs = ["collective_thunk.proto"],
+    deps = [
+        ":thunk_kind_proto",
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service:hlo_proto",
+    ],
+)
+
 cc_library(
     name = "collective_thunk",
     srcs = ["collective_thunk.cc"],
@@ -1935,6 +2058,7 @@ cc_library(
     deps = [
         ":collective_execution",
         ":collective_params",
+        ":collective_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:debug_options_flags",
@@ -2181,11 +2305,21 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "norm_thunk_proto",
+    srcs = ["norm_thunk.proto"],
+    deps = [
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu:gpu_norm_runner_proto",
+    ],
+)
+
 cc_library(
     name = "norm_thunk",
     srcs = ["norm_thunk.cc"],
     hdrs = ["norm_thunk.h"],
     deps = [
+        ":norm_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:util",
@@ -2224,11 +2358,20 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "outfeed_thunk_proto",
+    srcs = ["outfeed_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+    ],
+)
+
 cc_library(
     name = "outfeed_thunk",
     srcs = ["outfeed_thunk.cc"],
     hdrs = ["outfeed_thunk.h"],
     deps = [
+        ":outfeed_thunk_proto_cc",
         ":shaped_slice",
         ":shaped_slice_proto_cc",
         ":thunk",
@@ -2269,11 +2412,20 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "replica_id_thunk_proto",
+    srcs = ["replica_id_thunk.proto"],
+    deps = [
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "replica_id_thunk",
     srcs = ["replica_id_thunk.cc"],
     hdrs = ["replica_id_thunk.h"],
     deps = [
+        ":replica_id_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
@@ -2363,11 +2515,21 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "host_send_recv_thunk_proto",
+    srcs = ["host_send_recv_thunk.proto"],
+    deps = [
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "host_send_recv_thunk",
     srcs = ["host_send_recv_thunk.cc"],
     hdrs = ["host_send_recv_thunk.h"],
     deps = [
+        ":host_send_recv_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
@@ -2414,6 +2576,11 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "thunk_kind_proto",
+    srcs = ["thunk_kind.proto"],
+)
+
 cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
@@ -2424,6 +2591,7 @@ cc_library(
         ":collective_multimem_registry",
         ":collective_params",
         ":thunk_id",
+        ":thunk_kind_proto_cc",
         ":thunk_proto_cc",
         "//xla:executable_run_options",
         "//xla:status_macros",
@@ -2529,6 +2697,15 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "triangular_solve_thunk_proto",
+    srcs = ["triangular_solve_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla:xla_data_proto",
+    ],
+)
+
 cc_library(
     name = "triangular_solve_thunk",
     srcs = ["triangular_solve_thunk.cc"],
@@ -2538,6 +2715,7 @@ cc_library(
         ":shaped_slice",
         ":thunk",
         ":thunk_proto_cc",
+        ":triangular_solve_thunk_proto_cc",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -2658,6 +2836,11 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "wait_for_streams_thunk_proto",
+    srcs = ["wait_for_streams_thunk.proto"],
+)
+
 cc_library(
     name = "wait_for_streams_thunk",
     srcs = ["wait_for_streams_thunk.cc"],
@@ -2665,6 +2848,7 @@ cc_library(
     deps = [
         ":thunk",
         ":thunk_proto_cc",
+        ":wait_for_streams_thunk_proto_cc",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -2685,11 +2869,20 @@ xla_cc_test(
     ],
 )
 
+tf_proto_library(
+    name = "cudnn_thunk_proto",
+    srcs = ["cudnn_thunk.proto"],
+    deps = [
+        "//xla/service:buffer_assignment_proto",
+    ],
+)
+
 cc_library(
     name = "cudnn_thunk",
     srcs = ["cudnn_thunk.cc"],
     hdrs = ["cudnn_thunk.h"],
     deps = [
+        ":cudnn_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla/runtime:buffer_use",
@@ -2712,6 +2905,7 @@ xla_cc_test(
     srcs = ["cudnn_thunk_test.cc"],
     deps = [
         ":cudnn_thunk",
+        ":cudnn_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
@@ -3032,15 +3226,47 @@ xla_test(
 )
 
 tf_proto_library(
+    name = "convolution_reorder_thunk_proto",
+    srcs = ["convolution_reorder_thunk.proto"],
+    deps = [
+        ":convolution_filter_thunk_proto",
+        ":shaped_slice_proto",
+    ],
+)
+
+tf_proto_library(
     name = "thunk_proto",
     srcs = [
         "thunk.proto",
     ],
     deps = [
+        ":buffer_debug_log_proto",
+        ":collective_thunk_proto",
         ":convolution_filter_thunk_proto",
+        ":convolution_reorder_thunk_proto",
+        ":convolution_thunk_proto",
         ":copy_thunk_proto",
+        ":cub_sort_thunk_proto",
+        ":cublas_lt_matmul_thunk_proto",
+        ":cudnn_thunk_proto",
+        ":custom_call_thunk_proto",
+        ":custom_kernel_thunk_proto",
         ":dynamic_slice_thunk_proto",
+        ":fft_thunk_proto",
+        ":gemm_thunk_proto",
+        ":host_execute_thunk_proto",
+        ":host_send_recv_thunk_proto",
+        ":infeed_thunk_proto",
+        ":kernel_thunk_proto",
+        ":memset_thunk_proto",
+        ":norm_thunk_proto",
+        ":outfeed_thunk_proto",
+        ":replica_id_thunk_proto",
+        ":select_k_thunk_proto",
         ":shaped_slice_proto",
+        ":thunk_kind_proto",
+        ":triangular_solve_thunk_proto",
+        ":wait_for_streams_thunk_proto",
         "//xla:xla_data_proto",
         "//xla/core/host_offloading:host_offloading_executable_proto",
         "//xla/ffi:attribute_map_proto",
@@ -3139,7 +3365,9 @@ xla_cc_test(
         ":copy_thunk",
         ":custom_kernel_thunk",
         ":host_execute_thunk",
+        ":host_execute_thunk_proto_cc",
         ":host_send_recv_thunk",
+        ":host_send_recv_thunk_proto_cc",
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
@@ -3323,11 +3551,21 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "host_execute_thunk_proto",
+    srcs = ["host_execute_thunk.proto"],
+    deps = [
+        ":shaped_slice_proto",
+        "//xla/core/host_offloading:host_offloading_executable_proto",
+    ],
+)
+
 cc_library(
     name = "host_execute_thunk",
     srcs = ["host_execute_thunk.cc"],
     hdrs = ["host_execute_thunk.h"],
     deps = [
+        ":host_execute_thunk_proto_cc",
         ":shaped_slice_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
@@ -3376,6 +3614,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":host_execute_thunk",
+        ":host_execute_thunk_proto_cc",
         ":thunk",
         "//xla:executable_run_options",
         "//xla:literal",
@@ -3907,11 +4146,21 @@ xla_test(
     ],
 )
 
+tf_proto_library(
+    name = "custom_kernel_thunk_proto",
+    srcs = ["custom_kernel_thunk.proto"],
+    deps = [
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu/kernels:custom_kernel_proto",
+    ],
+)
+
 cc_library(
     name = "custom_kernel_thunk",
     srcs = ["custom_kernel_thunk.cc"],
     hdrs = ["custom_kernel_thunk.h"],
     deps = [
+        ":custom_kernel_thunk_proto_cc",
         ":print_buffer_contents",
         ":thunk",
         ":thunk_proto_cc",
@@ -3945,6 +4194,7 @@ xla_cc_test(
     srcs = ["custom_kernel_thunk_test.cc"],
     deps = [
         ":custom_kernel_thunk",
+        ":custom_kernel_thunk_proto_cc",
         ":thunk",
         "//xla:shape_util",
         "//xla/codegen/emitters:kernel_arguments",

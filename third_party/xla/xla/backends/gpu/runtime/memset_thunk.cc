@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/memset_thunk.pb.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
