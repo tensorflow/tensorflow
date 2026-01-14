@@ -163,6 +163,7 @@ TEST(CompiledMemoryStatsTest, Serialization) {
   stats.host_alias_size_in_bytes = 23;
   stats.host_temp_size_in_bytes = 29;
   stats.peak_memory_in_bytes = 31;
+  stats.total_size_in_bytes = 37;
 
   CompiledMemoryStatsProto serialized = stats.ToProto();
   CompiledMemoryStats deserialized = CompiledMemoryStats::FromProto(serialized);
