@@ -11,7 +11,7 @@ compiled XLA program executable into the TPU's HBM.
 XlaRuntimeError: RESOURCE_EXHAUSTED: Error loading program 'jit_embedding_pipeline_step_fn': Attempting to reserve 29.49G at the bottom of memory. That was not possible. There are 147.64M free, 0B reserved, and 147.64M reservable. Scope: unknown..: while running replica 0 and partition 34 of a replicated computation (other replicas may have failed as well).
 ```
 
-**XLA backed:** TPU
+**XLA backends:** TPU
 
 ## Overview
 

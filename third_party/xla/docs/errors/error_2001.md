@@ -1,6 +1,6 @@
 # Error code: E2001
 
-**Category:** Unsupported RHS DataType on Hardware
+**Category:** Compile Time: Unsupported RHS DataType on Hardware
 
 This error occurs when the data type used for the **Right-Hand Side (RHS)**
 operand in a matrix multiplication (e.g., `jax.lax.dot_general`, `jax.lax.conv`,
@@ -15,7 +15,6 @@ INTERNAL: Mosaic failed to compile TPU kernel: Unsupported matmul RHS type on ta
 
 The MLIR operation involved:
 %13440 = "tpu.matmul"(%13435, %13437, %13439) <dimension_numbers = #tpu.dot_dimension_numbers<...>
-
 ```
 
 **XLA Backends:** TPU

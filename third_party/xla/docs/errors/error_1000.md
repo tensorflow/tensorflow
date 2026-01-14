@@ -1,6 +1,6 @@
 # Error code: 1000
 
-**Category:** Compile Time HBM OOM
+**Category:** Compile Time: HBM OOM
 
 This error indicates that the program requires more High Bandwidth Memory (HBM)
 than is physically available on the TPU device.
@@ -9,12 +9,10 @@ than is physically available on the TPU device.
 
 ```
 RESOURCE_EXHAUSTED: XLA:TPU compile permanent error. Ran out of memory in memory space hbm. Used 49.34G of 32.00G hbm. Exceeded hbm capacity by 17.34G.
-
 ```
 
 ```
 RESOURCE_EXHAUSTED: TPU TensorCore Hbm usage: 34.82G, SparseCore Hbm usage 174.10G, exceeding available bytes: 95.74G
-
 ```
 
 **XLA Backends:** TPU
@@ -172,8 +170,9 @@ as a last resort measure because it can adversely affect performance.
 #### E. Tune XLA Rematerialization Pass / Manual Checkpointing
 
 If the model is close to fitting into memory, you can force the
-XLA::Rematerialization pass to prioritize memory savings, potentially at the
+`XLA::Rematerialization` pass to prioritize memory savings, potentially at the
 cost of slower compilations:
+
 | Flag | Description | Impact / Trade-off |
 | --- | --- | --- |
 | `--xla_tpu_max_hbm_size_mib` | Manually sets the limit on HBM size used by the Rematerialization pass. | Forces the compiler to work harder to fit the program into a limit smaller than the actual physical HBM. |

@@ -12,7 +12,7 @@ actually provided at execution time.
 XlaRuntimeError: INVALID_ARGUMENT: Executable(jit_embedding_pipeline_step_fn) expected parameter 2482 of size 5242880 (bf16[16,1280,40]{2,1,0:T(8,128)(2,1)}) but got buffer with incompatible size 1638400 (bf16[16,1280,40]{1,2,0:T(8,128)(2,1)}): while running replica 0 and partition 0 of a replicated computation (other replicas may have failed as well).
 ```
 
-**XLA backed:** TPU
+**XLA backends:** TPU
 
 ## Overview
 

@@ -1,6 +1,6 @@
 # Error code: E2003
 
-**Category:** Mosaic Unproven Memory Access Alignment
+**Category:** Compile Time: Mosaic Unproven Memory Access Alignment
 
 This error occurs when the compiler analyzes a memory access operation (such as
 `vector.load`, `vector.store`, `tpu.load`, or `tpu.store`) and cannot
@@ -16,7 +16,6 @@ at location: ...
 
 The MLIR operation involved:
   %14372 = "vector.load"(%14371, %93, %14363) : (memref<4x256xf32, #tpu.memory_space<vmem>>, index, index) -> vector<1x32xf32>
-
 ```
 
 **XLA Backends:** TPU
@@ -32,13 +31,13 @@ requirements for static indices.
 
 The compiler enforces this requirement using **static analysis**. It traces the
 history of the index variable back through the arithmetic operations that
-produced it (e.g., multiplications, additions). If the compiler cannot
-guarantee—at compile time—that the resulting value will always be divisible by
-the tiling size, it raises this error.
+produced it (e.g., multiplications, additions). If the compiler cannot guarantee
+(at compile time) that the resulting value will always be divisible by the
+tiling size, it raises this error.
 
 The compiler treats "proven misalignment" and "unknown alignment" identically.
-So if you use an index that is mathematically guaranteed to be misaligned
-(e.g., i * 128 + 32), the compiler will raise the same error.
+So if you use an index that is mathematically guaranteed to be misaligned (e.g.,
+`i * 128 + 32`), the compiler will raise the same error.
 
 So this error can occur when
 1. You use a runtime variable (dynamic index) to access memory.
@@ -61,16 +60,16 @@ value is divisible by a specific factor.
 In scenarios where the misalignment is intentional,
 instead of loading a small, unaligned vector segment:
 
-* Load a larger, fully aligned tile and then rotate the values by a dynamic
-amount to shift the desired data into position (since vector slices with dynamic
-start indices are not supported). or
-* Reshape or pad the tensor so that the data starts at index 0 and the stride
-between accesses matches the hardware alignment.
-  * Example: If you iterate over chunks of size 32 starting at offset 1, your
-  offsets are 1, 33, 65... (unaligned).
-  * Fix: Re-pack the data into a new tensor where the first chunk is at 0 and
-  the dimension is padded to 128. Your offsets become 0, 128, 256..., which
-  satisfies the alignment requirement.
+*   Load a larger, fully aligned tile and then rotate the values by a dynamic
+    amount to shift the desired data into position (since vector slices with
+    dynamic start indices are not supported). or
+*   Reshape or pad the tensor so that the data starts at index 0 and the stride
+    between accesses matches the hardware alignment.
+    *   Example: If you iterate over chunks of size 32 starting at offset 1,
+        your offsets are 1, 33, 65... (unaligned).
+    *   Fix: Re-pack the data into a new tensor where the first chunk is at 0
+        and the dimension is padded to 128. Your offsets become 0, 128, 256...,
+        which satisfies the alignment requirement.
 
 These methods consume more memory but often simplify kernel logic and eliminate
 the need for manual alignment assertions.

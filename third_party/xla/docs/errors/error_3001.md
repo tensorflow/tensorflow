@@ -10,7 +10,6 @@ the SparseCore's local scratchpad memory (Tilespmem).
 
 ```
 XLA:TPU compile permanent error. Compilation failure: No viable logical replica count for the embedding table with metadata: max_nz_per_row = 141352, max_unique_nz_per_row = 8, feature_width = 8, sample_count = 204800 (last tried split factor for vector splitting = 1, last tried split factor for sample dimension splitting = 1, fixed_size_allocation_bytes = 410880, row_dependent_size_allocation_bytes = 1696224, total_spmem_size_bytes = 524288) ...
-
 ```
 
 **XLA Backends:** TPU

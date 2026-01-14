@@ -11,10 +11,9 @@ deliberate interrupt triggered by compiler-generated runtime assertions.
 
 ```
 INTERNAL: Accelerator device halted prematurely, perhaps due to an on-device check-failure. Node 0 halted unexpectedly at tag:pc TensorCoreSequencer:1:0x1d9 ...
-
 ```
 
-**XLA backed:** TPU
+**XLA backends:** TPU
 
 ## Overview
 
@@ -80,7 +79,6 @@ error message to determine the sub-type:
 
 ```
 Core halted unexpectedly: INTERNAL: Accelerator device halted prematurely, perhaps due to an on-device check-failure. Node 0 halted unexpectedly at tag:pc TensorCoreSequencer:1:0x1d9 (from TensorCoreSequencer:1:0x309): scheckne: An unexpected leader shows up in the launch group with a different launch id than the current group leader.
-
 ```
 
 **Cause:**
@@ -100,19 +98,20 @@ Jax program. verify docker images, libtpu versions etc.
 
 ```
 Core halted unexpectedly: INTERNAL: Accelerator device halted prematurely, perhaps due to an on-device check-failure. Node 0 halted unexpectedly at tag:pc TensorCoreSequencer:23:0x292 (from TensorCoreSequencer:23:0xd74a): BoundsCheck 92 [deref of %s931] for %937 = dma.hbm_to_vmem [thread:$0]  /*hbm=*/%s931, /*size_in_granules=*/16384, /*vmem=*/%s935, /*dst_syncflagno=*/%s860, /*src_stride=*/512, /*dst_stride=*/128, /*steps_per_stride=*/8
-
 ```
 
 **Cause:** The program tried to access memory outside of allocated bounds. The
 error message often includes details about the memory access type (e.g.,
 dma.hbm_to_vmem) and the address calculation.
 
-* **Debug Custom Kernels:** If using Pallas, check your index calculations.
-Use [pl.debug_print](https://docs.jax.dev/en/latest/_autosummary/jax.experimental.pallas.debug_print.html)
-or [checkify](https://docs.jax.dev/en/latest/_autosummary/jax.experimental.checkify.check.html)
-to validate tensor indices.
-* **Check Sharding:** Ensure sharding annotations are consistent with tensor
-shapes.
+*   **Debug Custom Kernels:** If using Pallas, check your index calculations.
+    Use
+    [`pl.debug_print`](https://docs.jax.dev/en/latest/_autosummary/jax.experimental.pallas.debug_print.html)
+    or
+    [`checkify`](https://docs.jax.dev/en/latest/_autosummary/jax.experimental.checkify.check.html)
+    to validate tensor indices.
+*   **Check Sharding:** Ensure sharding annotations are consistent with tensor
+    shapes.
 
 #### Scenario 3.C: Mosaic/Pallas Synchronization
 

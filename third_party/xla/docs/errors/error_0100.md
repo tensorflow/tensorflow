@@ -11,7 +11,7 @@ suitable block of memory on the accelerator’s HBM for the requested allocation
 ValueError: RESOURCE_EXHAUSTED: Error allocating device buffer: Attempting to allocate 8.00M. That was not possible. There are 6.43M free.; (0x0x1_HBM0)
 ```
 
-**XLA backend:** TPU
+**XLA backends:** TPU
 
 ## Overview
 

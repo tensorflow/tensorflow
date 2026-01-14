@@ -10,7 +10,6 @@ SparseCore program.
 
 ```
 INTERNAL:Failed to run pass pipeline. Hlo-Op: result.1:279:1: error: 'memref.alloca' op current allocation offset upper bound (140704 words) exceeds the legitimate user allocatable offset upper bound (131071 words) in memory space 201 when allocating 23440 words. result.1:279:1: note: see current operation: %232 = "memref.alloca"() <{operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<23440xf32, 201>
-
 ```
 
 **XLA Backends:** TPU
