@@ -2092,9 +2092,12 @@ PJRT_Error* PJRT_Executable_GetCompileOptions(
 
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args) {
+  // TODO(b/475848769): Make this check stricter after 12week compatibility
+  // window is over.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Executable_GetCompiledMemoryStats_Args",
-      PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE,
+      PJRT_STRUCT_SIZE(PJRT_Executable_GetCompiledMemoryStats_Args,
+                       peak_memory_in_bytes),
       args->struct_size));
   PJRT_ASSIGN_OR_RETURN(auto memory_stats,
                         args->executable->executable->GetCompiledMemoryStats());
@@ -2111,6 +2114,12 @@ PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
   args->host_alias_size_in_bytes = memory_stats.host_alias_size_in_bytes;
   args->host_temp_size_in_bytes = memory_stats.host_temp_size_in_bytes;
   args->peak_memory_in_bytes = memory_stats.peak_memory_in_bytes;
+  // TODO(b/475848769): Remove after 12week compatibility window is over.
+  // Only fill the new field if the caller's struct is large enough.
+  if (args->struct_size >=
+      PJRT_Executable_GetCompiledMemoryStats_Args_STRUCT_SIZE) {
+    args->total_size_in_bytes = memory_stats.total_size_in_bytes;
+  }
   args->total_size_in_bytes = memory_stats.total_size_in_bytes;
   return nullptr;
 }
