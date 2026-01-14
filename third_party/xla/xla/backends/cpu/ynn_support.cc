@@ -316,9 +316,14 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
 
-  PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
-  PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
-  PrimitiveType out_dtype = conv->shape().element_type();
+  const Shape& lhs_shape = conv->operand(0)->shape();
+  const Shape& rhs_shape = conv->operand(1)->shape();
+  const Shape& out_shape = conv->shape();
+
+  PrimitiveType lhs_dtype = lhs_shape.element_type();
+  PrimitiveType rhs_dtype = rhs_shape.element_type();
+  PrimitiveType out_dtype = out_shape.element_type();
+
   if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
     return false;
   }
@@ -347,6 +352,14 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
       conv_dimensions.output_spatial_dimensions(0) != 1 ||
       conv_dimensions.output_spatial_dimensions(1) != 2) {
     return false;
+  }
+
+  // Skip if output is larger than input.
+  for (int i = 0; i < conv_dimensions.input_spatial_dimensions_size(); ++i) {
+    if (out_shape.dimensions(conv_dimensions.output_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
   }
 
   // No base dilation for now.
