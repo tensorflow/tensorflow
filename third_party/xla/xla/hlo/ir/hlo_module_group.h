@@ -80,11 +80,6 @@ class HloModuleGroup {
     return H::combine(std::move(h), group.module_);
   }
 
-  // Serialize the module group to/from a proto.
-  HloModuleGroupProto ToProto() const;
-  static absl::StatusOr<HloModuleGroup> CreateFromProto(
-      const HloModuleGroupProto& proto,
-      absl::Span<const HloModuleConfig> module_configs);
 
   // Returns the number of modules in the module group.
   int size() const { return module_ ? 1 : 0; }
