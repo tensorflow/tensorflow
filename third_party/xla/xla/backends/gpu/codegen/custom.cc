@@ -1147,20 +1147,20 @@ CollectSliceArgumentMetadataForCollectives(
   }
 
   // Collect slice information for outputs.
-  PtrVec<const HloInstruction*> collective_results;
+  std::vector<ShapeIndex> output_shape_indices;
   if (instr->shape().IsTuple()) {
-    for (const HloInstruction* user : instr->users()) {
-      collective_results.push_back(user);
+    for (int64_t i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
+      output_shape_indices.push_back({i});
     }
   } else {
-    collective_results.push_back(instr);
+    output_shape_indices.push_back({});
   }
-  for (const HloInstruction* user : collective_results) {
+  for (const ShapeIndex& output_shape_idx : output_shape_indices) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice dst,
         GetResultSlice(buffer_assignment, adaptor, fusion_instr,
-                       /*start_instr=*/*user, slice_data.slice_instrs,
-                       /*shape_idx=*/{}, arg_idx));
+                       /*start_instr=*/*instr, slice_data.slice_instrs,
+                       output_shape_idx, arg_idx));
     slice_data.arguments[arg_idx] = dst;
     TF_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
@@ -1209,16 +1209,15 @@ CollectSliceArgumentMetadataForCollectives(
       slice_data.fake_arguments[fake_arg_idx] = fake_slice;
       fake_arg_idx++;
     }
-    PtrVec<const HloInstruction*> collective_results;
+
+    std::vector<Shape> output_shapes;
     if (instr->shape().IsTuple()) {
-      for (const HloInstruction* user : instr->users()) {
-        collective_results.push_back(user);
-      }
+      output_shapes = instr->shape().tuple_shapes();
     } else {
-      collective_results.push_back(instr);
+      output_shapes.push_back(instr->shape());
     }
-    for (const HloInstruction* user : collective_results) {
-      int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(user->shape());
+    for (const Shape& shape : output_shapes) {
+      int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(shape);
       slice_data.fake_allocations[fake_arg_idx] = BufferAllocation(
           /*index=*/fake_arg_idx, /*size=*/out_fake_byte_size,
           /*color=*/0);
@@ -1302,12 +1301,12 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
                                    ? instr->shape().tuple_shapes(idx)
                                    : instr->shape();
       std::optional<BufferAllocation::Slice> src = slice_data.args()[idx];
+      TF_RET_CHECK(src.has_value())
+          << "Expected source to be present for non-degenerate collective";
       std::optional<BufferAllocation::Slice> dst =
           slice_data.args()[idx + instr->operand_count()];
-      TF_RET_CHECK(src.has_value() && dst.has_value())
-          << "Expected source and destination to be present for "
-             "non-degenerate "
-             "collective";
+      TF_RET_CHECK(dst.has_value())
+          << "Expected destination to be present for non-degenerate collective";
       buffers.push_back(CollectiveThunk::Buffer{
           /*element_count=*/ShapeUtil::ElementsIn(src_shape),
           /*source_buffer=*/src.value(),
