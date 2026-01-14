@@ -49,8 +49,8 @@ namespace gpu {
 
 namespace {
 
-bool IsTritonSupportedDataType(PrimitiveType type,
-                               const se::GpuComputeCapability& gpu_version) {
+CodegenDecision IsTritonSupportedDataType(
+    PrimitiveType type, const se::GpuComputeCapability& gpu_version) {
   switch (type) {
     case PRED:
     case S4:
@@ -61,16 +61,32 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     case F16:
     case F32:
     case F64:
-      return true;
+      return CodegenDecision::Allow();
     case F8E5M2:
     case F8E4M3FN:
-      return gpu_version.IsCuda();
+      if (gpu_version.IsCuda()) {
+        return CodegenDecision::Allow();
+      }
+      if (gpu_version.IsRocm()) {
+        return CodegenDecision::Forbid("F8E4M3FN is not supported on ROCm.");
+      }
+      return CodegenDecision::Forbid(
+          "Unsupported GPU architecture for F8E4M3FN.");
     case BF16:
-      return gpu_version.IsCuda() ||
-             (gpu_version.IsRocm() &&
-              gpu_version.rocm_compute_capability()->has_bf16_dtype_support());
+      if (gpu_version.IsCuda()) {
+        return CodegenDecision::Allow();
+      }
+      if (gpu_version.IsRocm()) {
+        if (gpu_version.rocm_compute_capability()->has_bf16_dtype_support()) {
+          return CodegenDecision::Allow();
+        }
+        return CodegenDecision::Forbid("BF16 is not supported on ROCm.");
+      }
+      return CodegenDecision::Forbid("Unsupported GPU architecture for BF16.");
     default:
-      return false;
+      return CodegenDecision::Forbid(
+          absl::StrCat("Unsupported data type: ",
+                       primitive_util::LowercasePrimitiveTypeName(type)));
   }
 }
 
@@ -149,17 +165,18 @@ CodegenDecision IsTritonSupportedConversion(
     return input == compare || output == compare;
   };
 
-  auto error_message = [&]() {
+  auto error_message = [&](absl::string_view message) {
     return CodegenDecision::Forbid(
         absl::StrCat("Unsupported conversion in Triton: ",
                      primitive_util::LowercasePrimitiveTypeName(input), " to ",
-                     primitive_util::LowercasePrimitiveTypeName(output)));
+                     primitive_util::LowercasePrimitiveTypeName(output),
+                     " with message:\n", message));
   };
 
   if (input != output && any_is(PrimitiveType::F8E4M3FN) &&
       gpu_version.IsCuda() &&
       !gpu_version.cuda_compute_capability()->IsAtLeastHopper()) {
-    return error_message();
+    return error_message("F8E4M3FN is not supported before Hopper.");
   }
 
   bool is_f8_conversion =
@@ -169,23 +186,29 @@ CodegenDecision IsTritonSupportedConversion(
                        any_is(PrimitiveType::BF16) ||
                        any_is(PrimitiveType::F32);
   if (input != output && is_f8 && !is_f8_conversion && !is_f16_or_f32) {
-    return error_message();
+    return error_message("Unsupported F8 conversion.");
   }
 
   if (input == S4 && output != S8 && output != F16 && output != BF16 &&
       output != F32 && output != F64) {
-    return error_message();
+    return error_message("Unsupported S4 conversion.");
   }
   if (output == S4) {
-    return error_message();
+    return error_message("Unsupported S4 output type.");
   }
 
-  if (IsTritonSupportedDataType(input, gpu_version) &&
-      IsTritonSupportedDataType(output, gpu_version)) {
-    return CodegenDecision::Allow();
+  if (!IsTritonSupportedDataType(input, gpu_version)) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported input type for conversion: ",
+                     primitive_util::LowercasePrimitiveTypeName(input)));
+  }
+  if (!IsTritonSupportedDataType(output, gpu_version)) {
+    return CodegenDecision::Forbid(
+        absl::StrCat("Unsupported output type for conversion: ",
+                     primitive_util::LowercasePrimitiveTypeName(output)));
   }
 
-  return error_message();
+  return CodegenDecision::Allow();
 }
 
 // Set of binary element-wise ops that are genuinely supported by Triton.
@@ -337,7 +360,7 @@ absl::Status CheckSupportedCheckDotDimensions(const HloDotInstruction& dot) {
   return absl::OkStatus();
 }
 
-bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
+CodegenDecision IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
   switch (algorithm) {
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
@@ -350,7 +373,7 @@ bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      return true;
+      return CodegenDecision::Allow();
     case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
@@ -358,7 +381,9 @@ bool IsSupportedDotAlgorithm(PrecisionConfig::Algorithm algorithm) {
       break;
   }
 
-  return false;
+  return CodegenDecision::Forbid(
+      absl::StrCat("Unsupported dot algorithm: ",
+                   PrecisionConfig::Algorithm_Name(algorithm)));
 }
 
 CodegenDecision AreTypesSupportedByAlgUnsetDot(
@@ -400,7 +425,8 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
     return CodegenDecision::Allow();
   }
 
-  return CodegenDecision::Forbid("Unsupported types.");
+  return CodegenDecision::Forbid(absl::StrCat(
+      "Unsupported types: input=", input_type, ", result=", result_type));
 }
 
 // Checks whether the conversions generated during the lowering of the relevant
@@ -629,20 +655,22 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   }
 
   auto type = instr.shape().element_type();
-  bool output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
+  auto output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
 
   if (!output_type_is_supported) {
-    return CodegenDecision::Forbid("Unsupported output data type.");
+    return CodegenDecision::Forbid(absl::StrCat(
+        "Unsupported output data type: ", output_type_is_supported.Explain()));
   }
 
-  bool input_types_are_supported =
+  CodegenDecision input_types_are_supported =
       absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
         return IsTritonSupportedDataType(operand->shape().element_type(),
                                          gpu_version);
       });
 
   if (!input_types_are_supported) {
-    return CodegenDecision::Forbid("Unsupported input data type.");
+    return CodegenDecision::Forbid(absl::StrCat(
+        "Unsupported input data type: ", input_types_are_supported.Explain()));
   }
 
   if (instr.opcode() == HloOpcode::kConcatenate) {

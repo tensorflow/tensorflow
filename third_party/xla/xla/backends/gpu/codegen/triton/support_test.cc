@@ -283,13 +283,17 @@ class TritonSupportTest : public TritonSupportTestBase {
                            llvm_ctx_, mlir_context_);
     };
 
-    if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+    auto is_supported = IsTritonSupportedInstruction(ti.Instruction(), cc);
+    if (is_supported) {
       EXPECT_THAT(run_triton_codegen(), absl_testing::IsOk())
           << ti.Module()->ToString();
       return;
     }
     if (failure_mode == ExpectedFailMode::kFail) {
-      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()));
+      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()))
+          << "The instruction should not be supported, but it is.\nThe "
+             "decision to not support it was:\n\t"
+          << is_supported.Explain();
       return;
     }
     EXPECT_DEATH(
