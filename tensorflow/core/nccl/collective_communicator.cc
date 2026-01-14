@@ -28,33 +28,34 @@ namespace tensorflow {
 
 class NcclCommunicator : public NcclCommunicatorInterface {
  public:
-  string GenerateCommunicatorKey() override {
+  std::string GenerateCommunicatorKey() override {
     return nccl_manager_.GenerateCommunicatorKey();
   }
 
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const absl::Status& s) override;
 
  private:
   NcclManager nccl_manager_;
 };
 
 namespace {
-Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
+absl::Status ReductionOp(const std::string& merge_op,
+                         ncclRedOp_t* reduction_op) {
   if (merge_op == "Add") {
     *reduction_op = ncclSum;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (merge_op == "Mul") {
     *reduction_op = ncclProd;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (merge_op == "Maximum") {
     *reduction_op = ncclMax;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (merge_op == "Minimum") {
     *reduction_op = ncclMin;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Internal(
         "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
@@ -62,8 +63,8 @@ Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   }
 }
 
-string NcclCollectiveKey(const string& exec_key, int step_id) {
-  return strings::StrCat(exec_key, ":", step_id);
+std::string NcclCollectiveKey(const std::string& exec_key, int step_id) {
+  return absl::StrCat(exec_key, ":", step_id);
 }
 }  // namespace
 
@@ -84,7 +85,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   const int num_global_devices = col_params->group.group_size;
   const int num_local_devices = col_params->group.num_devices_per_task.at(
       col_params->group.members[col_params->default_rank].task);
-  const string nccl_collective_key =
+  const std::string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
   auto* gpu_info =
@@ -108,7 +109,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       return;
     }
     participant->done_callback = [cancel_mgr, cancel_token,
-                                  done = std::move(done)](const Status& s) {
+                                  done =
+                                      std::move(done)](const absl::Status& s) {
       // Do not block on deregistration since this can be invoked by
       // NcclManager::StartAbort() in the cancellation callback.
       cancel_mgr->TryDeregisterCallback(cancel_token);
@@ -138,7 +140,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   switch (col_params->instance.type) {
     case REDUCTION_COLLECTIVE: {
       ncclRedOp_t reduction_op;
-      Status s =
+      absl::Status s =
           ReductionOp(col_params->merge_op->type_string(), &reduction_op);
       if (!s.ok()) {
         participant->done_callback(s);
@@ -162,7 +164,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
     }
     case REDUCE_SCATTER_COLLECTIVE: {
       ncclRedOp_t reduction_op;
-      Status s =
+      absl::Status s =
           ReductionOp(col_params->merge_op->type_string(), &reduction_op);
       if (!s.ok()) {
         participant->done_callback(s);
@@ -218,7 +220,7 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   }
 }
 
-void NcclCommunicator::StartAbort(const Status& s) {
+void NcclCommunicator::StartAbort(const absl::Status& s) {
   nccl_manager_.StartAbort(s);
 }
 
