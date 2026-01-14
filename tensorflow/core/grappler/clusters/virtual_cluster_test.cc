@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "absl/log/check.h"
