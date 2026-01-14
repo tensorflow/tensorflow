@@ -139,7 +139,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status StartContinuousProfiling(
       ::grpc::ServerContext* ctx, const ProfileRequest* req,
       ContinuousProfilingResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::ALREADY_EXISTS,
                             "A profiling session is already running.");
@@ -162,7 +162,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status GetSnapshot(::grpc::ServerContext* ctx,
                              const GetSnapshotRequest* req,
                              ProfileResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (!continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
                             "No continuous profiling session found.");
