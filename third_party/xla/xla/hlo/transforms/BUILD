@@ -300,6 +300,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/error:error_codes",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
