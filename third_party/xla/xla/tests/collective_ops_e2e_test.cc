@@ -1291,16 +1291,25 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     // Run with reference config.
     TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
-    auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
+    ASSERT_OK_AND_ASSIGN(auto ref_executable, hlo_runner_->CreateExecutable(
+                                                  std::move(ref_module),
+                                                  /*run_hlo_passes=*/true));
+    ASSERT_OK_AND_ASSIGN(
+        const HloModule* ref_optimized_module,
+        hlo_runner_->HloModuleFromWrapped(ref_executable.get()));
+
+    auto fake_ref_arguments =
+        xla::MakeFakeArguments(ref_optimized_module).value();
     std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
     for (int i = 0; i < fake_ref_arguments.size(); i++) {
       ref_fake_ptrs[i] = &fake_ref_arguments[i];
     }
+    std::vector<std::vector<Literal*>> ref_fake_ptrs_replicated(
+        kNumReplicas * kNumPartitions, ref_fake_ptrs);
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        ExecutionResult ref_execution_result,
-        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
-    const std::vector<Literal>& ref_results = ref_execution_result.results;
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> ref_results,
+        ExecuteReplicated(ref_executable.get(), ref_fake_ptrs_replicated));
 
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
@@ -1309,14 +1318,9 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
 
-    auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
-    std::vector<Literal*> fake_ptrs(fake_arguments.size());
-    for (int i = 0; i < fake_arguments.size(); i++) {
-      fake_ptrs[i] = &fake_arguments[i];
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                            ExecuteReplicated(std::move(module), fake_ptrs));
+    TF_ASSERT_OK_AND_ASSIGN(
+        ExecutionResult execution_result,
+        ExecuteReplicated(std::move(module), ref_fake_ptrs));
     const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), kNumPartitions);
 
@@ -2123,17 +2127,29 @@ ENTRY main.49 {
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
   config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                       hlo_runner_->CreateExecutable(std::move(module),
+                                                     /*run_hlo_passes=*/true));
+
+  ASSERT_OK_AND_ASSIGN(const HloModule* optimized_module,
+                       hlo_runner_->HloModuleFromWrapped(executable.get()));
+
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                       xla::MakeFakeArguments(optimized_module));
   std::vector<Literal*> fake_ptrs(fake_arguments.size());
   for (int i = 0; i < fake_arguments.size(); ++i) {
     fake_ptrs[i] = &fake_arguments[i];
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
-                          ExecuteReplicated(std::move(module), fake_ptrs));
-  const std::vector<Literal>& results = execution_result.results;
+  std::vector<std::vector<Literal*>> fake_ptrs_replicated(
+      kNumReplicas * kNumPartitions, fake_ptrs);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(executable.get(), fake_ptrs_replicated));
   ASSERT_EQ(results.size(), kNumPartitions);
 
   HloModuleConfig ref_config =
@@ -2142,15 +2158,9 @@ ENTRY main.49 {
 
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_string, ref_config));
-  auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
-  std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
-  for (int i = 0; i < fake_ref_arguments.size(); ++i) {
-    ref_fake_ptrs[i] = &fake_ref_arguments[i];
-  }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      ExecutionResult ref_execution_result,
-      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
+                          ExecuteReplicated(std::move(ref_module), fake_ptrs));
   const std::vector<Literal>& ref_results = ref_execution_result.results;
   ASSERT_EQ(ref_results.size(), kNumPartitions);
   ErrorSpec error_spec{1e-5, 1e-5};

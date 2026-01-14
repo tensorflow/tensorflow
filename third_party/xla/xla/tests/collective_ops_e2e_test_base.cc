@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/integrations/stream_executor_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {
@@ -137,6 +139,30 @@ absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
 CollectiveOpsE2ETestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
+  ExecutionResult execution_result;
+
+  TF_ASSIGN_OR_RETURN(
+      execution_result.executable,
+      hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
+
+  TF_ASSIGN_OR_RETURN(
+      execution_result.optimized_module,
+      hlo_runner_->HloModuleFromWrapped(execution_result.executable.get()));
+
+  TF_ASSIGN_OR_RETURN(execution_result.results,
+                      ExecuteReplicated(execution_result.executable.get(),
+                                        arguments, run_hlo_passes));
+
+  return execution_result;
+}
+
+absl::StatusOr<std::vector<Literal>>
+CollectiveOpsE2ETestBase::ExecuteReplicated(
+    OpaqueExecutable* executable,
+    const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
+  ASSIGN_OR_RETURN(const HloModule* module,
+                   hlo_runner_->HloModuleFromWrapped(executable));
+
   int64_t num_replicas = module->config().replica_count();
   int64_t num_partitions = module->config().num_partitions();
 
@@ -150,16 +176,6 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   CHECK(num_devices == arguments.size() &&
         "expect arguments for each replica and partition");
 
-  ExecutionResult execution_result;
-
-  TF_ASSIGN_OR_RETURN(
-      execution_result.executable,
-      hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
-
-  TF_ASSIGN_OR_RETURN(
-      execution_result.optimized_module,
-      hlo_runner_->HloModuleFromWrapped(execution_result.executable.get()));
-
   // TODO(b/441865120): Use designated initializers this once XLA moves to
   // C++20.
   HloRunnerInterface::ReplicatedExecuteOptions options;
@@ -167,21 +183,17 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
 
-  TF_ASSIGN_OR_RETURN(
-      execution_result.results,
-      hlo_runner_->ExecuteReplicated(
-          /*executable_provider=*/
-          [&](int64_t) { return execution_result.executable.get(); },
-          /*argument_count_provider=*/
-          [&](int64_t) { return arguments.front().size(); },
-          /*argument_provider=*/
-          [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
-            return arguments[replica_idx][argument_idx];
-          },
-          std::move(options),
-          /*device_assignment=*/&device_assignment));
-
-  return execution_result;
+  return hlo_runner_->ExecuteReplicated(
+      /*executable_provider=*/
+      [&](int64_t) { return executable; },
+      /*argument_count_provider=*/
+      [&](int64_t) { return arguments.front().size(); },
+      /*argument_provider=*/
+      [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
+        return arguments[replica_idx][argument_idx];
+      },
+      std::move(options),
+      /*device_assignment=*/&device_assignment);
 }
 
 DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {

@@ -68,6 +68,11 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
       const std::vector<std::vector<Literal*>>& arguments,
       bool run_hlo_passes = true);
 
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
+      OpaqueExecutable* executable,
+      const std::vector<std::vector<Literal*>>& arguments,
+      bool run_hlo_passes = true);
+
   const se::GpuComputeCapability& Capability() {
     return gpu_compute_capability_;
   }
