@@ -172,11 +172,10 @@ TEST_F(CollectiveMetadataTest, BuildMultimemOnlyOncePerModuleExecution) {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
   Literal input_0 = LiteralUtil::CreateR1<float>({1.0f});
-  Literal input_1 = LiteralUtil::CreateR1<float>({1.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
-                        /*arguments=*/std::vector<Literal*>{&input_0, &input_1},
+                        /*arguments=*/std::vector<Literal*>{&input_0},
                         /*run_hlo_passes=*/false));
 
   std::vector<Literal>& literals = execution_result.results;

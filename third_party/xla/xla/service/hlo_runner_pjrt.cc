@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -700,6 +701,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                      absl::InternalError("No result for replica."));
 
         {
+          RunId run_id = RunId::CreateUniqueId();
           // NB: `pool` is joined on destruction.
           tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
                                        options.num_devices);
@@ -714,10 +716,14 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                 PjRtLoadedExecutable * pjrt_executable,
                 executable->GetOrLoadExecutable(pjrt_client_.get()));
             pool.Schedule([&per_replica_results, i, pjrt_executable,
+                           // Add 1 to the launch ID to avoid a zero, because
+                           // zero means that launch id is not set.
+                           launch_id = run_id.ToInt() + 1,
                            args = argument_buffer_slices[i],
                            device_ptr = id_to_device_ptr[i]]() {
               std::optional<Future<>> returned_future = {};
               xla::ExecuteOptions options;
+              options.launch_id = launch_id;
               per_replica_results[i] = pjrt_executable->ExecuteSharded(
                   args, device_ptr, options,
                   /*returned_future=*/returned_future,

@@ -4550,6 +4550,7 @@ cc_library(
         ":computation_layout",
         ":computation_placer_hdr",
         ":hlo_runner_interface",
+        "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",

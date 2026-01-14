@@ -45,12 +45,11 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/collective_ops_e2e_test_base.h"
@@ -78,7 +77,7 @@ bool IsAsync(const HloInstruction* inst) {
 
 class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
-  explicit CollectiveOpsTestE2E(size_t memory_size = 32 * kMB,
+  explicit CollectiveOpsTestE2E(size_t memory_size = 128 * kMB,
                                 size_t collectives_memory_size = 0)
       : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size) {}
 
@@ -97,6 +96,11 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
     }
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
+    if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
+      GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                   << " devices (" << hlo_runner_->device_count()
+                   << " available)";
+    }
 
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -1997,6 +2001,11 @@ ENTRY entry {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
+  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << hlo_runner_->device_count()
+                 << " available)";
+  }
 
   HloModuleConfig config = GetModuleConfigForTest(
       /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
@@ -2029,6 +2038,11 @@ ENTRY entry {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
+  if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << hlo_runner_->device_count()
+                 << " available)";
+  }
 
   if (hlo_runner_->device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions

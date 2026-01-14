@@ -17,36 +17,34 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/platform_util.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
-#include "xla/stream_executor/integrations/stream_executor_allocator.h"
-#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "xla/stream_executor/memory_space.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/framework/bfc_allocator.h"
-#include "xla/tsl/framework/device_id.h"
+#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -54,65 +52,46 @@ limitations under the License.
 namespace xla {
 namespace {
 
-std::unique_ptr<tsl::BFCAllocator> CreateAllocator(se::StreamExecutor* executor,
-                                                   int64_t device_ordinal,
-                                                   bool is_collective,
-                                                   size_t memory_size) {
-  std::string name_suffix = is_collective ? "_collectives_bfc" : "_bfc";
-  tsl::BFCAllocator::Options opts;
-  opts.allow_growth = false;
-  std::unique_ptr<tsl::SubAllocator> device_mem_allocator;
-  if (is_collective) {
-    device_mem_allocator = std::make_unique<se::StreamExecutorAllocator>(
-        executor
-            ->CreateMemoryAllocator(stream_executor::MemorySpace::kCollective)
-            .value(),
-        /*memory_type=*/stream_executor::MemorySpace::kCollective,
-        device_ordinal);
-  } else {
-    device_mem_allocator = std::make_unique<se::DeviceMemAllocator>(
-        executor, tsl::PlatformDeviceId(device_ordinal));
+absl::StatusOr<gpu::GpuTargetConfig> GetGpuTargetConfig(PjRtClient* client) {
+  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
+                   client->GetTopologyDescription());
+  auto it = topology->Attributes().find("target_config");
+  if (it == topology->Attributes().end()) {
+    return absl::InvalidArgumentError(
+        "Topology description does not contain target config");
   }
-  return std::make_unique<tsl::BFCAllocator>(
-      std::move(device_mem_allocator), memory_size,
-      absl::StrCat("GPU_", device_ordinal, name_suffix), opts);
-}
-
-template <typename Type>
-Type CheckStatus(absl::StatusOr<Type> result) {
-  CHECK_OK(result);
-  return *result;
+  if (!std::holds_alternative<std::string>(it->second)) {
+    return absl::InvalidArgumentError(
+        "Target config is not a string in topology description");
+  }
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  if (!tsl::protobuf::TextFormat::ParseFromString(
+          std::get<std::string>(it->second), &target_config_proto)) {
+    return absl::InvalidArgumentError(
+        "Failed to parse target config from topology description");
+  }
+  return gpu::GpuTargetConfig::FromProto(target_config_proto);
 }
 
 }  // namespace
 
 void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
                                               size_t collectives_memory_size) {
-  se::Platform* platform = CheckStatus(PlatformUtil::GetPlatform("GPU"));
+  xla::GpuClientOptions options;
+  options.allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
+  options.allocator_config.gpu_system_memory_size = memory_size;
+  options.allocator_config.collective_memory_size = collectives_memory_size;
+  options.use_tfrt_gpu_client =
+      std::getenv("XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT") == nullptr;
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> pjrt_client,
+                       xla::GetXlaPjrtGpuClient(options));
 
-  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
-  for (int64_t i = 0; i < platform->VisibleDeviceCount(); ++i) {
-    se::StreamExecutor* executor = CheckStatus(platform->ExecutorForDevice(i));
-    // Common memory allocator for device i.
-    allocators.emplace_back(
-        CreateAllocator(executor, i, /*is_collective=*/false, memory_size),
-        nullptr, 0, i, platform);
+  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
+                       GetGpuTargetConfig(pjrt_client.get()));
+  gpu_compute_capability_ =
+      target_config.device_description.gpu_compute_capability();
 
-    // Collectives and symmetric memory allocator for device i.
-    allocators.emplace_back(CreateAllocator(executor, i, /*is_collective=*/true,
-                                            collectives_memory_size),
-                            nullptr, (int)gpu::MemorySpaceColor::kCollective, i,
-                            platform);
-  }
-
-  gpu_compute_capability_ = CheckStatus(platform->ExecutorForDevice(0))
-                                ->GetDeviceDescription()
-                                .gpu_compute_capability();
-
-  hlo_runner_ =
-      std::make_unique<HloRunner>(platform, /*intra_op_parallelism_threads=*/0,
-                                  std::make_unique<se::MultiDeviceAdapter>(
-                                      platform, std::move(allocators)));
+  hlo_runner_ = std::make_unique<HloRunnerPjRt>(std::move(pjrt_client));
 }
 
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
@@ -198,10 +177,7 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
 
 DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
   DebugOptions debug_options =
-      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-
-  // Disable autotuning which is unnecessary.
-  debug_options.set_xla_gpu_autotune_level(0);
+      CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
 
   // Enable or disable all async collectives based on test parameter.
   if (!enable_async_) {
