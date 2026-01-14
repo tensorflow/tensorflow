@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/scoped_mock_log.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -26,7 +28,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 struct SymbolicMapTest : public ::testing::Test {
   static constexpr int kSampleDims = 2;
@@ -37,6 +41,7 @@ struct SymbolicMapTest : public ::testing::Test {
     d1 = CreateDimExpr(1, &ctx);
     s0 = CreateSymbolExpr(0, kSampleDims, &ctx);
     s1 = CreateSymbolExpr(1, kSampleDims, &ctx);
+    s2 = CreateSymbolExpr(2, kSampleDims, &ctx);
     c2 = CreateSymbolicConstant(2, &ctx);
     c10 = CreateSymbolicConstant(10, &ctx);
     sample_map =
@@ -48,6 +53,7 @@ struct SymbolicMapTest : public ::testing::Test {
   SymbolicExpr d1;
   SymbolicExpr s0;
   SymbolicExpr s1;
+  SymbolicExpr s2;
   SymbolicExpr c2;
   SymbolicExpr c10;
   SymbolicMap sample_map;
@@ -374,6 +380,74 @@ TEST_F(SymbolicMapTest, Hashing) {
   EXPECT_EQ(set.size(), 1);
   set.insert(map3);
   EXPECT_EQ(set.size(), 2);
+}
+
+TEST_F(SymbolicMapTest, ParseSymbolicMap) {
+  SymbolicMap id = ParseSymbolicMap("(d0) -> (d0)", &ctx);
+  EXPECT_EQ(id.GetNumDims(), 1);
+  EXPECT_EQ(id.GetNumSymbols(), 0);
+  EXPECT_THAT(id.GetResults(), ElementsAre(d0));
+
+  SymbolicMap empty = ParseSymbolicMap("()[] -> ()", &ctx);
+  EXPECT_EQ(empty.GetNumDims(), 0);
+  EXPECT_EQ(empty.GetNumSymbols(), 0);
+  EXPECT_TRUE(empty.IsEmpty());
+
+  SymbolicMap no_dims = ParseSymbolicMap("()[s0] -> (s0)", &ctx);
+  EXPECT_EQ(no_dims.GetNumDims(), 0);
+  EXPECT_EQ(no_dims.GetNumSymbols(), 1);
+  EXPECT_THAT(no_dims.GetResults(), ElementsAre(CreateSymbolExpr(0, 0, &ctx)));
+
+  SymbolicMap no_symbols = ParseSymbolicMap("(d0)[] -> (d0)", &ctx);
+  EXPECT_EQ(no_symbols.GetNumDims(), 1);
+  EXPECT_EQ(no_symbols.GetNumSymbols(), 0);
+  EXPECT_THAT(no_symbols.GetResults(), ElementsAre(d0));
+
+  SymbolicMap no_results = ParseSymbolicMap("(d0)[s0] -> ()", &ctx);
+  EXPECT_EQ(no_results.GetNumDims(), 1);
+  EXPECT_EQ(no_results.GetNumSymbols(), 1);
+  EXPECT_TRUE(no_results.IsEmpty());
+
+  SymbolicMap map_with_constants =
+      ParseSymbolicMap("(d0)[s0] -> (d0 * 2 + s0 - 5)", &ctx);
+  EXPECT_EQ(map_with_constants.GetNumDims(), 1);
+  EXPECT_EQ(map_with_constants.GetNumSymbols(), 1);
+  EXPECT_THAT(
+      map_with_constants.GetResults(),
+      ElementsAre(d0 * 2 + CreateSymbolExpr(0, /*num_dims=*/1, &ctx) - 5));
+
+  // Expressions with different naming convention.
+  SymbolicMap map_with_different_naming = ParseSymbolicMap(
+      "(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)", &ctx);
+  EXPECT_EQ(map_with_different_naming.GetNumDims(), 2);
+  EXPECT_EQ(map_with_different_naming.GetNumSymbols(), 3);
+  EXPECT_THAT(map_with_different_naming.GetResults(),
+              ElementsAre(d1, d0, s0 + s1, s2));
+}
+
+TEST_F(SymbolicMapTest, ParseSymbolicMap_Invalid) {
+  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
+  log.StartCapturingLogs();
+
+  EXPECT_CALL(log,
+              Log(absl::LogSeverity::kError, _, HasSubstr("missing `->`")));
+  EXPECT_EQ(ParseSymbolicMap("(d0) (d0)", &ctx), SymbolicMap());
+
+  // Invalid: Unbalanced parentheses
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
+                       HasSubstr("Failed to parse dimension list")));
+  EXPECT_EQ(ParseSymbolicMap("(d0 -> (d0)", &ctx), SymbolicMap());
+
+  // Invalid: Unbalanced brackets
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
+                       HasSubstr("Failed to parse symbol list")));
+  EXPECT_EQ(ParseSymbolicMap("(d0)[s0 -> (d0)", &ctx), SymbolicMap());
+
+  // Invalid: Missing parentheses around expression list.
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
+                       HasSubstr("Failed to parse expression list")));
+  EXPECT_EQ(ParseSymbolicMap("(d0) -> d0", &ctx), SymbolicMap());
+  ::testing::Mock::VerifyAndClearExpectations(&log);
 }
 
 }  // namespace
